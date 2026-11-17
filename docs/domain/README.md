@@ -347,29 +347,29 @@ Lokale Kopien, die daraus folgen:
 | E11 | Seiten Redaktions-Eingang und Version bearbeiten (Kapitel, Uploads) | frontend | E1 | E2, P6 |
 | E12 | Seite Test: Vorgaben, KI-Entwurf, Fragen prüfen, Herkunft | frontend | E2, E5, E7 | E9, E11 |
 | E13 | Prüfen und Veröffentlichen in der UI | frontend | E4 | E5, E12 |
-| K1 | Catalog: Read Model aus CourseVersionPublished, Endpunkte | backend | – | E6 |
-| C1 | Compliance: lokale Kopien von Mitgliedern und Kursversionen | backend | – | O1, E6 |
+| K1 | Catalog: Read Model aus CourseVersionPublished, Endpunkte | backend | – | P5 |
+| C1 | Compliance: lokale Kopien von Mitgliedern und Kursversionen | backend | – | P5 |
 | C2 | Assignment-Aggregat, Zuweisen an mehrere Mitarbeiter | backend | C1 | C1 |
 | C3 | Frist ändern, zurückziehen, Storno bei Austritt | backend | C1 | C2, O5 |
 | C4 | Wiederholung: Folgezuweisung nach Abschluss | backend | C2 | C6 |
-| C5 | Reaktionen auf Session-Start und Sperre | backend | C3 | C2, L4 |
-| C6 | Abschluss über CertificateIssued | backend | C1 | C2, Z1 |
+| C5 | Reaktionen auf Session-Start und Sperre | backend | C3 | C2 |
+| C6 | Abschluss über CertificateIssued | backend | C1 | C2 |
 | C7 | Matrix-Endpunkt mit Compliance-Quote | backend | C3 | C2 |
 | C8 | Mein-Dashboard-Endpunkt | backend | C4 | C2 |
 | C9 | Seite Team-Matrix | frontend | C3 | C7, P6 |
 | C10 | Zuweisen-Assistent | frontend | C1, C2 | C2, K1, P6 |
 | C11 | Seite Meine Schulungen | frontend | C4 | C8, P6 |
-| L1 | LearningSession-Aggregat (Marten), starten oder fortsetzen | backend | L1 | E6 |
+| L1 | LearningSession-Aggregat (Marten), starten oder fortsetzen | backend | L1 | P5 |
 | L2 | Fortschritt melden, Kapitelabschluss, ContentCompleted | backend | L1, L2 | L1 |
 | L3 | Lese-URLs für PDF und Video | backend | L1 | L1, P3 |
-| L4 | Integration Events und Reaktionen (Sperre, Bestehen) | backend | L2 | L2, A3 |
+| L4 | Integration Events und Reaktionen (Sperre, Bestehen) | backend | L2 | L2 |
 | L5 | Plausibilitätsprüfung Video | backend | L2 | L2 |
 | L6 | Kapitel-Player: Text, PDF, Video mit Vorspul-Sperre | frontend | L1, L2 | L2, L3 |
-| A1 | Examination-Aggregat (Marten), lokale Testdefinition | backend | A1 | E6 |
-| A2 | Versuch starten, antworten, abgeben (gemischt, ohne Lösungen) | backend | A1 | A1, L2 |
+| A1 | Examination-Aggregat (Marten), lokale Testdefinition | backend | A1 | P5 |
+| A2 | Versuch starten, antworten, abgeben (gemischt, ohne Lösungen) | backend | A1 | A1 |
 | A3 | Sperre nach 3 Fehlversuchen, Entsperren, Events | backend | A2 | A2 |
 | A4 | Seiten Test und Ergebnis | frontend | A1, A2 | A2, L6 |
-| Z1 | Certificate-Aggregat, Ausstellen aus TestPassed | backend | Z1 | A2, O1, E6 |
+| Z1 | Certificate-Aggregat, Ausstellen aus TestPassed | backend | Z1 | P5 |
 | Z2 | PDF erzeugen und speichern | backend | Z1 | Z1, P3 |
 | Z3 | Öffentliche QR-Prüfung (mit Rate-Limit) | backend | Z2 | Z1 |
 | Z4 | Export ZIP mit CSV, nur Beschäftigungszeit | backend | Z3 | Z2 |
