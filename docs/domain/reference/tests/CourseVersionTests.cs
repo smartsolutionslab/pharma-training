@@ -1,0 +1,188 @@
+// Editorial — behaviour of the CourseVersion aggregate: content, the AI test draft, review and publishing.
+
+namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.Tests.CourseVersions;
+
+public class CourseVersionTests
+{
+    private static readonly Timestamp Now = Timestamp.From(new DateTimeOffset(2027, 3, 1, 9, 0, 0, TimeSpan.Zero));
+    private static readonly PersonId Author = PersonId.From(Guid.CreateVersion7());
+    private static readonly PersonId Reviewer = PersonId.From(Guid.CreateVersion7());
+
+    [Fact]
+    public void A_first_draft_starts_with_the_default_blueprint()
+    {
+        var version = Draft();
+
+        version.Status.ShouldBe(CourseVersionStatus.Draft);
+        version.Number.ShouldBe(VersionNumber.First);
+        version.Blueprint.ShouldBe(TestBlueprint.Default);
+    }
+
+    [Fact]
+    public void An_ai_draft_replaces_unreviewed_questions_but_keeps_approved_ones()
+    {
+        var version = DraftWithChapter(out var chapter);
+        version.SetBlueprint(Blueprint(questions: 3));
+        version.ApplyAiTestDraft([Single(chapter), Single(chapter)], NewQuestion, NewOption);
+        var kept = version.Questions[0].Id;
+        version.ApproveQuestion(kept, Author, Now);
+
+        version.ApplyAiTestDraft([Single(chapter), Single(chapter)], NewQuestion, NewOption);
+
+        version.Questions.Count.ShouldBe(3);
+        version.Questions.ShouldContain(question => question.Id == kept && question.Review == ReviewState.Approved);
+        version.Questions.ShouldAllBe(question => question.Provenance == Provenance.AiDrafted);
+    }
+
+    [Fact]
+    public void Editing_an_approved_question_takes_its_approval_away()
+    {
+        var version = DraftWithChapter(out var chapter);
+        var question = version.AddQuestion(NewQuestion(), Single(chapter), NewOption).Value;
+        version.ApproveQuestion(question, Author, Now);
+
+        version.EditQuestion(question, Single(chapter), NewOption);
+
+        version.Questions.Single().Review.ShouldBe(ReviewState.Unreviewed);
+        version.Questions.Single().ReviewedBy.ShouldBeNull();
+    }
+
+    [Fact]
+    public void Replacing_a_chapter_sends_its_questions_back_to_review()
+    {
+        var version = DraftWithChapter(out var chapter);
+        var question = version.AddQuestion(NewQuestion(), Single(chapter), NewOption).Value;
+        version.ApproveQuestion(question, Author, Now);
+
+        version.ReplaceChapter(Chapter.OfText(chapter, ChapterTitle.From("Händehygiene"), MarkdownText.From("Neu: …")));
+
+        version.Questions.Single().Review.ShouldBe(ReviewState.Unreviewed);
+    }
+
+    [Fact]
+    public void Removing_a_chapter_removes_its_questions()
+    {
+        var version = DraftWithChapter(out var chapter);
+        version.AddQuestion(NewQuestion(), Single(chapter), NewOption);
+
+        version.RemoveChapter(chapter);
+
+        version.Questions.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void A_single_choice_question_with_two_right_answers_cannot_be_approved()
+    {
+        var version = DraftWithChapter(out var chapter);
+        var broken = new DraftedQuestion(
+            QuestionText.From("Wie oft?"),
+            QuestionType.SingleChoice,
+            chapter,
+            [(AnswerText.From("Täglich"), Correctness.Correct), (AnswerText.From("Stündlich"), Correctness.Correct)]);
+        var question = version.AddQuestion(NewQuestion(), broken, NewOption).Value;
+
+        version.ApproveQuestion(question, Author, Now).Error.ShouldBeOfType<SingleChoiceNeedsOneCorrect>();
+    }
+
+    [Fact]
+    public void A_test_short_of_its_blueprint_cannot_be_submitted()
+    {
+        var version = DraftWithChapter(out var chapter);
+        version.SetBlueprint(Blueprint(questions: 2));
+        version.AddQuestion(NewQuestion(), Single(chapter), NewOption);
+
+        version.SubmitForReview(Author).Error.ShouldBeOfType<TestIncomplete>();
+    }
+
+    [Fact]
+    public void Publishing_needs_every_question_approved()
+    {
+        var version = Submitted(approveAll: false);
+
+        version.Publish(Reviewer, ReviewPolicy.SingleEditor, Now).Error.ShouldBeOfType<QuestionNotApproved>();
+    }
+
+    [Fact]
+    public void With_four_eyes_the_submitter_cannot_publish()
+    {
+        var version = Submitted(approveAll: true);
+
+        version.Publish(Author, ReviewPolicy.FourEyes, Now).Error.ShouldBeOfType<FourEyesRequired>();
+        version.Publish(Reviewer, ReviewPolicy.FourEyes, Now).IsSuccess.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void A_single_editor_may_publish_what_they_submitted()
+    {
+        var version = Submitted(approveAll: true);
+
+        version.Publish(Author, ReviewPolicy.SingleEditor, Now).IsSuccess.ShouldBeTrue();
+
+        version.DomainEvents.OfType<CourseVersionPublished>().ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public void A_published_version_cannot_be_edited()
+    {
+        var version = Submitted(approveAll: true);
+        version.Publish(Author, ReviewPolicy.SingleEditor, Now);
+
+        version.Rename(CourseTitle.From("Anders")).Error.ShouldBeOfType<NotADraft>();
+    }
+
+    [Fact]
+    public void The_next_version_copies_content_and_approvals_with_new_ids()
+    {
+        var published = Submitted(approveAll: true);
+        published.Publish(Author, ReviewPolicy.SingleEditor, Now);
+
+        var next = published.DraftNext(CourseVersionId.New(), Author, NewChapter, NewQuestion, NewOption).Value;
+
+        next.Number.ShouldBe(VersionNumber.From(2));
+        next.Status.ShouldBe(CourseVersionStatus.Draft);
+        next.Chapters.Single().Id.ShouldNotBe(published.Chapters.Single().Id);
+        next.Questions.Single().Chapter.ShouldBe(next.Chapters.Single().Id);
+        next.Questions.Single().Review.ShouldBe(ReviewState.Approved);
+    }
+
+    private static CourseVersion Draft() =>
+        CourseVersion.DraftFirst(CourseVersionId.New(), CourseId.From(Guid.CreateVersion7()), CourseTitle.From("Hygiene 2027"), Author);
+
+    private static CourseVersion DraftWithChapter(out ChapterId chapter)
+    {
+        var version = Draft();
+        chapter = NewChapter();
+        version.AddChapter(Chapter.OfText(chapter, ChapterTitle.From("Händehygiene"), MarkdownText.From("Hände vor und nach …")));
+        return version;
+    }
+
+    private static CourseVersion Submitted(bool approveAll)
+    {
+        var version = DraftWithChapter(out var chapter);
+        version.SetBlueprint(Blueprint(questions: 1));
+        var question = version.AddQuestion(NewQuestion(), Single(chapter), NewOption).Value;
+        if (approveAll)
+        {
+            version.ApproveQuestion(question, Author, Now);
+        }
+
+        version.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
+        return version;
+    }
+
+    private static TestBlueprint Blueprint(int questions) =>
+        new(QuestionCount.From(questions), ScorePercent.From(80), RecurrenceInterval.Yearly);
+
+    private static DraftedQuestion Single(ChapterId chapter) =>
+        new(
+            QuestionText.From("Wann desinfizieren Sie die Hände?"),
+            QuestionType.SingleChoice,
+            chapter,
+            [(AnswerText.From("Vor jedem Kundenkontakt mit Rezeptur"), Correctness.Correct), (AnswerText.From("Einmal am Tag"), Correctness.Incorrect)]);
+
+    private static ChapterId NewChapter() => ChapterId.From(Guid.CreateVersion7());
+
+    private static QuestionId NewQuestion() => QuestionId.From(Guid.CreateVersion7());
+
+    private static AnswerOptionId NewOption() => AnswerOptionId.From(Guid.CreateVersion7());
+}
