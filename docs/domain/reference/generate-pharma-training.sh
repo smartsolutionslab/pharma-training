@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # PharmaTraining — generate the project with Software Fabric.
-# Draft, not yet run: validate first with the same --set flags.
+# Draft: validated against fabric v0.8.0 (2026-11-20), but not runnable there. v0.8.0 cannot mix module styles:
+# add-module refuses event-sourced/Marten in a DDD project and DDD in an event-sourced one
+# (software-fabric#848, which blocks P1). Adapt the add-module lines to the form #848 settles on.
 #
 # Topology: services (ADR-0017 in software-fabric, decision D7): one host per module behind a YARP edge, a database
 # per service, integration events over RabbitMQ with the outbox. Needs software-fabric #703 to #708; the profile
@@ -14,6 +16,7 @@ fabric new pharma-training --profile saas-services-vue \
   --set backend.auth=keycloak \
   --set backend.authorization=roles \
   --set backend.llm=azure-openai \
+  --set backend.llm.extras=evals \
   --set module.style=ddd \
   --set module.ddd-depth=strict
 

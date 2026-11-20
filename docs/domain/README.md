@@ -62,6 +62,7 @@ Stand der Diskussion vom 17.11.2026.
 | Redaktions-Workflow | Draft → InReview → Published → Retired; Vier-Augen-Freigabe als Einstellung, zunächst aus | Solange die Redaktion aus einer Person besteht |
 | Herkunft der Fragen | Jede Frage vermerkt „KI-entworfen, geprüft von X am Y“ | Nachweis, dass ein Mensch jede Frage freigegeben hat |
 | LLM-Anbieter | azure-openai mit EU-Region | DSGVO, Gesundheitsbereich; in Fabric supported |
+| LLM-Evals | `backend.llm.extras: evals` von Anfang an | E8 prüft den KI-Testentwurf mit dem generierten Evals-Job |
 | Testvorgaben | Pro Schulung gespeichert; Standard 10 Fragen, gleichmäßig auf Kapitel verteilt | Testentwurf reproduzierbar nach Inhaltsänderung |
 | Identity | Kein eigener Service; PersonId = Keycloak-Subject; Anzeigename pflegt Organisation | Ein Identity-Service hätte in MVP 1 nichts zu tun |
 | Catalog | Eigener Service als Read Model aus CourseVersionPublished | Lernende kommen nie an die Redaktions-API |
@@ -71,7 +72,7 @@ Stand der Diskussion vom 17.11.2026.
 | Nach 3 Fehlversuchen | Nur die Kapitel der falsch beantworteten Fragen werden zurückgesetzt; AttemptsExhausted trägt deren ChapterIds | Nutzerfreundlicher; jede Frage ist über die Testvorgaben einem Kapitel zugeordnet |
 | Testablauf | Fragen und Antwortoptionen pro Versuch gemischt; kein Zeitlimit; nach Bestehen keine Wiederholung | Erschwert Abschreiben; bestanden ist bestanden |
 | Keine Primitive im Model | module.ddd-depth: strict in allen Services; Zeit als Timestamp/CalendarDate, Zustände als Enums, Domain-Methoden ohne Uhr (Zeit wird übergeben) | Architekturregel in Fabric prüft es |
-| Projektname | PharmaTraining; Namespace SmartSolutionsLab.PharmaTraining | Entscheidung von Heiko |
+| Projektname | PharmaTraining; Namespace `PharmaTraining`, wie Fabric ihn aus dem Projektnamen ableitet | Entscheidung von Heiko; `SmartSolutionsLab.PharmaTraining` erst, wenn Fabric einen Namespace-Präfix kann (software-fabric#850) |
 | Bewertung Multiple Choice | Keine Teilpunkte: richtig nur bei genau den richtigen Optionen | Bei Pflichtschulungen üblich und gut begründbar |
 | Gemeinsame Bausteine | Kein Shared Kernel: jeder Service hat eigene PersonId, CourseId, Timestamp | Ein gemeinsames Paket würde die Services wieder koppeln |
 | Mitgliedschaften | Entities in Pharmacy; Name kommt beim Annehmen aus Keycloak; Einladung läuft nach 14 Tagen ab und geht per Mail über den IdP | Regeln zur letzten Leitung und Doppel-Mitgliedschaft in einer Transaktion; Person pflegt ihren Namen selbst |
