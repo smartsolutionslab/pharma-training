@@ -72,7 +72,7 @@ Stand der Diskussion vom 17.11.2026.
 | Nach 3 Fehlversuchen | Nur die Kapitel der falsch beantworteten Fragen werden zurückgesetzt; AttemptsExhausted trägt deren ChapterIds | Nutzerfreundlicher; jede Frage ist über die Testvorgaben einem Kapitel zugeordnet |
 | Testablauf | Fragen und Antwortoptionen pro Versuch gemischt; kein Zeitlimit; nach Bestehen keine Wiederholung | Erschwert Abschreiben; bestanden ist bestanden |
 | Keine Primitive im Model | module.ddd-depth: strict in allen Services; Zeit als Timestamp/CalendarDate, Zustände als Enums, Domain-Methoden ohne Uhr (Zeit wird übergeben) | Architekturregel in Fabric prüft es |
-| Projektname | PharmaTraining; Namespace `PharmaTraining`, wie Fabric ihn aus dem Projektnamen ableitet | Entscheidung von Heiko; `SmartSolutionsLab.PharmaTraining` erst, wenn Fabric einen Namespace-Präfix kann (software-fabric#850) |
+| Projektname | PharmaTraining; Namespace SmartSolutionsLab.PharmaTraining | Entscheidung von Heiko |
 | Bewertung Multiple Choice | Keine Teilpunkte: richtig nur bei genau den richtigen Optionen | Bei Pflichtschulungen üblich und gut begründbar |
 | Gemeinsame Bausteine | Kein Shared Kernel: jeder Service hat eigene PersonId, CourseId, Timestamp | Ein gemeinsames Paket würde die Services wieder koppeln |
 | Mitgliedschaften | Entities in Pharmacy; Name kommt beim Annehmen aus Keycloak; Einladung läuft nach 14 Tagen ab und geht per Mail über den IdP | Regeln zur letzten Leitung und Doppel-Mitgliedschaft in einer Transaktion; Person pflegt ihren Namen selbst |
