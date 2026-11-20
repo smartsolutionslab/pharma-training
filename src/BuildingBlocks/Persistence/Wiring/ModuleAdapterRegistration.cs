@@ -1,0 +1,35 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Modules;
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Persistence;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+
+namespace Microsoft.Extensions.DependencyInjection;
+
+public static class ModuleAdapterRegistration
+{
+    /// <summary>
+    /// Registers each class in the module's Infrastructure project whose constructor takes the module's DbContext (a store
+    /// over its tables) as the module's Application interfaces it implements, so a handler depends on the interface and
+    /// never on EF Core. A registration of the same interface by the same class made before this one, such as the unit of
+    /// work's, is not repeated; any other second registration fails the architecture rule EveryModuleServiceIsRegisteredOnce.
+    /// </summary>
+    public static IServiceCollection AddModuleAdapters<TModule>(this IServiceCollection services)
+        where TModule : IModule
+    {
+        Ensure.That(services).IsNotNull();
+
+        var application = ModuleAssemblies.Of<TModule>("Application");
+        var adapters = ModuleAssemblies.Of<TModule>("Infrastructure").GetTypes()
+            .Where(type => type is { IsClass: true, IsAbstract: false }
+                && type.GetConstructors().Any(constructor => constructor.GetParameters().Any(parameter => typeof(ModuleDbContext).IsAssignableFrom(parameter.ParameterType))))
+            .OrderBy(type => type.FullName, StringComparer.Ordinal);
+        foreach (var adapter in adapters)
+        {
+            foreach (var contract in adapter.GetInterfaces().Where(contract => contract.Assembly == application))
+            {
+                services.TryAddEnumerable(ServiceDescriptor.Scoped(contract, adapter));
+            }
+        }
+
+        return services;
+    }
+}

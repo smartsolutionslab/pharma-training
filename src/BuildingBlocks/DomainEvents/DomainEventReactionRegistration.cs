@@ -1,0 +1,4 @@
+namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.DomainEvents;
+
+/// <summary>One reaction of one event type, as discovered in a module's Application assembly.</summary>
+public sealed record DomainEventReactionRegistration(Type Event, Type Reaction);

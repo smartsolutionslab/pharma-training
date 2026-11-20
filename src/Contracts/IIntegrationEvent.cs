@@ -1,0 +1,11 @@
+namespace SmartSolutionsLab.PharmaTraining.Contracts;
+
+/// <summary>
+/// Something a module tells other modules has happened. A versioned record deriving from <see cref="IntegrationEvent"/>:
+/// InvoicePaidV1.
+/// </summary>
+public interface IIntegrationEvent
+{
+    /// <summary>The event's identifier and time, filled when it is published.</summary>
+    EventMetadata Metadata { get; }
+}

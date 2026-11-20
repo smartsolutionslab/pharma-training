@@ -1,0 +1,503 @@
+using System.Collections;
+using System.Reflection;
+using System.Text.Json.Serialization;
+
+namespace SmartSolutionsLab.PharmaTraining.Architecture.Tests.Rules;
+
+/// <summary>
+/// The Learning module is strict and event-sourced: an event carries its value objects as required
+/// parameters of the constructor System.Text.Json selects, so a stored event that lacks one fails to read
+/// (RespectRequiredConstructorParameters) instead of leaving it null without <c>From</c> (module.ddd-depth: strict, docs/adr).
+/// A domain type the event holds, at any depth, carries its value objects the same way.
+/// </summary>
+/// <remarks>
+/// Each closed type is checked once. A generic definition that can recur forever (<c>Node&lt;T&gt;</c> holding a
+/// <c>Node&lt;Envelope&lt;T&gt;&gt;</c>), and every definition it builds from its own type parameters, would give the
+/// walk a new closed type at every step. What a closed type's members carry, and how its checks read them, depends
+/// only on whether each type argument it reads carries a value object and whether it is a value type that cannot be
+/// null (an optional <c>T?</c> is nullable for a class but not for a struct), so such a definition is checked once for
+/// each combination of those, on the first closed type found with it; of every later closed type with the same
+/// combination only the arguments it reads are walked. There are finitely many combinations, so the walk ends. A type parameter of an open generic event carries
+/// nothing.
+/// </remarks>
+public sealed class LearningEventsTakeValueObjectsByConstructor : IArchitectureRule
+{
+    private const string Domain = "SmartSolutionsLab.PharmaTraining.Modules.Learning.Domain";
+    private const string DomainEvent = "SmartSolutionsLab.PharmaTraining.BuildingBlocks.EventSourcing.IDomainEvent";
+
+    public string Description =>
+        "The Learning module is strict and event-sourced: every value object an event carries, itself or through a domain type it holds, is a required parameter of the constructor System.Text.Json selects.";
+
+    public IEnumerable<string> Violations(ArchitectureModel model)
+    {
+        Ensure.That(model).IsNotNull();
+
+        List<Type> types = [.. model.ModuleAssemblies.Where(assembly => assembly.GetName().Name == Domain).SelectMany(assembly => assembly.GetTypes())];
+        var walk = new Walk(types);
+        foreach (var domainEvent in types.Where(type => !type.IsAbstract && !type.IsInterface && type.GetInterfaces().Any(contract => contract.FullName == DomainEvent)))
+        {
+            walk.Enter(domainEvent);
+        }
+
+        return walk.Violations();
+    }
+
+    /// <summary>
+    /// The constructor System.Text.Json deserialises with: the one marked [JsonConstructor], else the public parameterless
+    /// one, else the only public one. A struct without the attribute is built by its default constructor, so none.
+    /// </summary>
+    private static ConstructorInfo? JsonConstructor(Type type)
+    {
+        var marked = type.GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+            .FirstOrDefault(constructor => constructor.IsDefined(typeof(JsonConstructorAttribute), inherit: false));
+        if (marked is not null || type.IsValueType)
+        {
+            return marked;
+        }
+
+        var constructors = type.GetConstructors(BindingFlags.Public | BindingFlags.Instance);
+        return constructors.FirstOrDefault(constructor => constructor.GetParameters().Length == 0)
+            ?? (constructors.Length == 1 ? constructors[0] : null);
+    }
+
+    /// <summary>The members System.Text.Json reads: public properties, neither indexers nor always ignored.</summary>
+    private static IEnumerable<PropertyInfo> Members(Type type) =>
+        type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(property => property.GetIndexParameters().Length == 0
+                && property.GetCustomAttribute<JsonIgnoreAttribute>() is not { Condition: JsonIgnoreCondition.Always });
+
+    /// <summary>
+    /// What System.Text.Json reads a type's value as, other than members: an array's or a collection's elements (a
+    /// dictionary's keys and values through its <see cref="KeyValuePair{TKey, TValue}"/>), and the arguments of a generic
+    /// type from outside the Domain (<see cref="Nullable{T}"/>). A generic domain type is read through its members only, so
+    /// a phantom argument (<c>Reference&lt;Invoice&gt;</c>) is not followed.
+    /// </summary>
+    private static IEnumerable<Type> Contents(Type type)
+    {
+        if (type.IsArray)
+        {
+            return [type.GetElementType()!];
+        }
+
+        if (IsCollection(type))
+        {
+            return type.GetInterfaces()
+                .Append(type)
+                .Where(contract => contract.IsInterface && contract.IsGenericType && contract.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+                .Select(contract => contract.GetGenericArguments()[0])
+                .Distinct();
+        }
+
+        return type.IsGenericType && !InDomain(type) ? type.GetGenericArguments() : [];
+    }
+
+    /// <summary>
+    /// The types a domain type's value is read through, whatever its type arguments: a collection's elements, else the
+    /// members of a type the walk enters (<see cref="Enters"/>), as declared.
+    /// </summary>
+    private static IEnumerable<Type> Reads(Type type)
+    {
+        if (IsValueObject(type) || type.IsEnum)
+        {
+            return [];
+        }
+
+        if (IsCollection(type))
+        {
+            return Contents(type);
+        }
+
+        return Enters(type) ? Members(type).Select(property => property.PropertyType) : [];
+    }
+
+    private static bool IsValueObject(Type type) => typeof(IValueObject).IsAssignableFrom(type);
+
+    private static bool IsCollection(Type type) => type != typeof(string) && typeof(IEnumerable).IsAssignableFrom(type);
+
+    private static bool InDomain(Type type) => type.Assembly.GetName().Name == Domain;
+
+    private static Type Definition(Type type) => type.IsGenericType ? type.GetGenericTypeDefinition() : type;
+
+    /// <summary>
+    /// Whether the walk looks into a domain type's members: a concrete type of this module's Domain that is not a value
+    /// object, an enum or a collection.
+    /// </summary>
+    private static bool Enters(Type type) =>
+        !type.IsAbstract
+        && !type.IsEnum
+        && !type.IsGenericParameter
+        && InDomain(type)
+        && !IsValueObject(type)
+        && !IsCollection(type);
+
+    /// <summary>
+    /// The Domain's generic definitions that can recur forever, and every one of the Domain's generic definitions they
+    /// build from their own type parameters. A type parameter whose argument a definition passes on, inside a larger
+    /// type, to one of the Domain's generic types that leads back to it (<c>Node&lt;T&gt;</c> holding a
+    /// <c>Node&lt;Envelope&lt;T&gt;&gt;</c>) grows the arguments at every turn; one passed on as itself (<c>Growing&lt;T&gt;</c>
+    /// collecting <c>Branch&lt;T&gt;</c>), or a closed type that does not use one (<c>Box&lt;List&lt;InvoiceNumber&gt;&gt;</c>),
+    /// does not. Without such a cycle a definition has finitely many closed types to walk. The types are read as
+    /// declared, so the answer may name a definition whose cycle the walk never takes; that only means it checks that
+    /// definition once per combination of carrying arguments rather than closed type by closed type.
+    /// </summary>
+    private static HashSet<Type> Recurring(List<Type> types)
+    {
+        List<(Type From, int FromPosition, Type To, int ToPosition, bool Grows)> uses = [];
+        foreach (var definition in types.Where(type => type.IsGenericTypeDefinition))
+        {
+            foreach (var read in Reads(definition))
+            {
+                AddUses(definition, read, uses);
+            }
+        }
+
+        HashSet<Type> recurring =
+        [
+            .. uses.Where(use => use.Grows && Leads(uses, (use.To, use.ToPosition), (use.From, use.FromPosition))).Select(use => use.From),
+        ];
+
+        var changed = true;
+        while (changed)
+        {
+            changed = false;
+            foreach (var use in uses.Where(use => recurring.Contains(use.From)))
+            {
+                changed |= recurring.Add(use.To);
+            }
+        }
+
+        return recurring;
+    }
+
+    /// <summary>Each place a type passes one of a definition's type parameters to one of the Domain's generic types.</summary>
+    private static void AddUses(Type definition, Type type, List<(Type From, int FromPosition, Type To, int ToPosition, bool Grows)> uses)
+    {
+        if (type.HasElementType)
+        {
+            AddUses(definition, type.GetElementType()!, uses);
+            return;
+        }
+
+        if (!type.IsGenericType)
+        {
+            return;
+        }
+
+        var used = type.GetGenericTypeDefinition();
+        var arguments = type.GetGenericArguments();
+        for (var position = 0; position < arguments.Length; position++)
+        {
+            if (InDomain(used))
+            {
+                foreach (var parameter in Parameters(arguments[position]).Where(parameter => parameter.DeclaringType == definition))
+                {
+                    uses.Add((definition, parameter.GenericParameterPosition, used, position, arguments[position] != parameter));
+                }
+            }
+
+            AddUses(definition, arguments[position], uses);
+        }
+    }
+
+    private static IEnumerable<Type> Parameters(Type type) =>
+        type.IsGenericParameter ? [type]
+        : type.HasElementType ? Parameters(type.GetElementType()!)
+        : type.IsGenericType ? type.GetGenericArguments().SelectMany(Parameters)
+        : [];
+
+    /// <summary>Whether one type parameter's argument reaches another's through the uses.</summary>
+    private static bool Leads(List<(Type From, int FromPosition, Type To, int ToPosition, bool Grows)> uses, (Type, int) start, (Type, int) goal)
+    {
+        HashSet<(Type, int)> reached = [start];
+        Queue<(Type, int)> pending = new([start]);
+        while (pending.TryDequeue(out var current))
+        {
+            if (current == goal)
+            {
+                return true;
+            }
+
+            foreach (var use in uses.Where(use => (use.From, use.FromPosition) == current))
+            {
+                if (reached.Add((use.To, use.ToPosition)))
+                {
+                    pending.Enqueue((use.To, use.ToPosition));
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// What a domain type's value carries, whatever its type arguments: a value object of its own, and which of its
+    /// type parameters' arguments it reads, so that it carries one when such an argument does.
+    /// </summary>
+    private sealed class Reading(int parameters)
+    {
+        public bool Carries { get; set; }
+
+        public bool[] Arguments { get; } = new bool[parameters];
+
+        public int Count => (Carries ? 1 : 0) + Arguments.Count(argument => argument);
+    }
+
+    /// <summary>One walk over a module's Domain.</summary>
+    private sealed class Walk
+    {
+        private readonly HashSet<Type> recurring;
+        private readonly Dictionary<Type, Reading> readings;
+        private readonly Dictionary<Type, bool> carrying = [];
+        private readonly Dictionary<(Type Definition, string Shape), Type> firsts = [];
+        private readonly HashSet<Type> visited = [];
+        private readonly List<Type> holders = [];
+
+        public Walk(List<Type> types)
+        {
+            recurring = Recurring(types);
+            readings = types.ToDictionary(type => type, type => new Reading(type.GetGenericArguments().Length));
+            Settle();
+        }
+
+        public void Enter(Type domainEvent)
+        {
+            if (visited.Add(domainEvent))
+            {
+                Hold(domainEvent);
+            }
+        }
+
+        public List<string> Violations()
+        {
+            HashSet<(Type Definition, string Member)> named = [];
+            List<string> violations = [];
+            foreach (var holder in holders)
+            {
+                var once = holder.IsGenericType && recurring.Contains(holder.GetGenericTypeDefinition());
+                foreach (var (member, problem) in Violations(holder))
+                {
+                    if (!once || named.Add((holder.GetGenericTypeDefinition(), member)))
+                    {
+                        violations.Add($"{holder}.{member} {problem}");
+                    }
+                }
+            }
+
+            return violations;
+        }
+
+        private IEnumerable<(string Member, string Problem)> Violations(Type holder)
+        {
+            // System.Text.Json matches a constructor parameter to a property by name, ignoring case.
+            Dictionary<string, ParameterInfo> parameters = [with(StringComparer.OrdinalIgnoreCase)];
+            foreach (var parameter in JsonConstructor(holder)?.GetParameters() ?? [])
+            {
+                parameters[parameter.Name!] = parameter;
+            }
+
+            NullabilityInfoContext nullability = new();
+
+            foreach (var property in Members(holder))
+            {
+                if (!Carries(property.PropertyType))
+                {
+                    continue;
+                }
+
+                if (!parameters.TryGetValue(property.Name, out var parameter))
+                {
+                    yield return (property.Name, "carries a value object outside its constructor; make it a parameter of the constructor System.Text.Json selects ([JsonConstructor], else the public parameterless one, else the only public one), so a stored event without it fails to read.");
+                }
+                else if (parameter.IsOptional && nullability.Create(parameter).ReadState != NullabilityState.Nullable)
+                {
+                    yield return (property.Name, "carries a value object through an optional constructor parameter; remove its default, or declare it nullable, so a stored event without it fails to read.");
+                }
+            }
+        }
+
+        /// <summary>Adds the holder, and every domain type its public properties hold, to the types whose members are checked.</summary>
+        private void Hold(Type holder)
+        {
+            holders.Add(holder);
+            foreach (var property in Members(holder))
+            {
+                Reach(property.PropertyType);
+            }
+        }
+
+        /// <summary>
+        /// Walks a type once: its contents, and its members if it is a domain type. A closed type of a recurring
+        /// definition reads what the first one found with the same carrying arguments reads, so of it only those
+        /// arguments are walked, for the domain types they hold.
+        /// </summary>
+        private void Reach(Type type)
+        {
+            // A value object is stored as its backing value: what its type arguments name (TypedId<Invoice>) is never read.
+            if (IsValueObject(type) || type.IsEnum)
+            {
+                return;
+            }
+
+            var first = First(type);
+            if (first != type)
+            {
+                var arguments = type.GetGenericArguments();
+                for (var position = 0; position < arguments.Length; position++)
+                {
+                    if (readings[first.GetGenericTypeDefinition()].Arguments[position])
+                    {
+                        Reach(arguments[position]);
+                    }
+                }
+
+                return;
+            }
+
+            if (!visited.Add(type))
+            {
+                return;
+            }
+
+            foreach (var content in Contents(type))
+            {
+                Reach(content);
+            }
+
+            if (Enters(type))
+            {
+                Hold(type);
+            }
+        }
+
+        /// <summary>
+        /// The first type found of a recurring definition whose arguments it reads have the type's arguments' shape (see
+        /// <see cref="Shape"/>); any other type stands for itself.
+        /// </summary>
+        private Type First(Type type)
+        {
+            if (!type.IsGenericType || type.IsGenericTypeDefinition || !recurring.Contains(type.GetGenericTypeDefinition()))
+            {
+                return type;
+            }
+
+            var reading = readings[type.GetGenericTypeDefinition()];
+            var arguments = type.GetGenericArguments();
+            var key = (type.GetGenericTypeDefinition(), string.Concat(arguments.Select((argument, position) => reading.Arguments[position] ? Shape(argument) : '-')));
+            if (!firsts.TryGetValue(key, out var first))
+            {
+                first = type;
+                firsts.Add(key, first);
+            }
+
+            return first;
+        }
+
+        /// <summary>
+        /// What the checks of a type built from an argument depend on: whether it carries a value object, and whether it
+        /// is a reference type, a value type that cannot be null, or a nullable value type. An optional <c>T?</c>
+        /// parameter is not nullable for a value type that cannot be null, and an optional <c>T</c> one of a definition
+        /// declared nullable-oblivious is nullable for a nullable value type but not for a reference type. Both carry over
+        /// to every type built from it, so closed types whose read arguments have the same shapes show the same violations,
+        /// and so do the types they hold.
+        /// </summary>
+        private char Shape(Type argument) =>
+            (Carries(argument), argument.IsValueType, Nullable.GetUnderlyingType(argument) is not null) switch
+            {
+                (false, false, _) => '0',
+                (false, true, false) => '1',
+                (true, false, _) => '2',
+                (true, true, false) => '3',
+                (false, true, true) => '4',
+                (true, true, true) => '5',
+            };
+
+        /// <summary>Whether the type is a value object, or holds one in its contents or in a member of a domain type.</summary>
+        private bool Carries(Type type)
+        {
+            if (!carrying.TryGetValue(type, out var carries))
+            {
+                Reading reading = new(0);
+                Read(type, null, reading, []);
+                carries = reading.Carries;
+                carrying.Add(type, carries);
+            }
+
+            return carries;
+        }
+
+        /// <summary>
+        /// Reads each domain type's value as declared until nothing changes: what it carries of its own, and which of its
+        /// type parameters' arguments it reads. Each step only adds, and there is finitely much to add.
+        /// </summary>
+        private void Settle()
+        {
+            var changed = true;
+            while (changed)
+            {
+                changed = false;
+                foreach (var (type, reading) in readings)
+                {
+                    var before = reading.Count;
+                    foreach (var read in Reads(type))
+                    {
+                        Read(read, type, reading, []);
+                    }
+
+                    changed |= reading.Count != before;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Adds what a value of the type carries to the reading: a value object, or an argument of one of the context's
+        /// type parameters. A domain type is read through what it was settled to read, so the walk never builds a new
+        /// closed type here; any other type through its contents.
+        /// </summary>
+        private void Read(Type type, Type? context, Reading reading, HashSet<Type> seen)
+        {
+            if (type.IsGenericParameter)
+            {
+                if (type.DeclaringType == context)
+                {
+                    reading.Arguments[type.GenericParameterPosition] = true;
+                }
+
+                return;
+            }
+
+            if (IsValueObject(type))
+            {
+                reading.Carries = true;
+                return;
+            }
+
+            if (type.IsEnum || !seen.Add(type))
+            {
+                return;
+            }
+
+            if (InDomain(type) && !type.IsArray)
+            {
+                if (readings.TryGetValue(Definition(type), out var own))
+                {
+                    reading.Carries |= own.Carries;
+                    var arguments = type.GetGenericArguments();
+                    for (var position = 0; position < arguments.Length; position++)
+                    {
+                        if (own.Arguments[position])
+                        {
+                            Read(arguments[position], context, reading, seen);
+                        }
+                    }
+                }
+
+                return;
+            }
+
+            foreach (var content in Contents(type))
+            {
+                Read(content, context, reading, seen);
+            }
+        }
+    }
+}

@@ -1,0 +1,9 @@
+namespace SmartSolutionsLab.PharmaTraining.Contracts;
+
+/// <summary>
+/// What every integration event carries besides its own data, filled by the unit of work that publishes it. A
+/// redelivery carries the same metadata, so a consumer deduplicates on <see cref="EventIdentifier"/>.
+/// </summary>
+/// <param name="EventIdentifier">Guid v7, one per published event; the same on every delivery of it.</param>
+/// <param name="OccurredAt">When the event was published.</param>
+public sealed record EventMetadata(Guid EventIdentifier, DateTimeOffset OccurredAt);

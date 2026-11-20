@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>SmartSolutionsLab.PharmaTraining.BuildingBlocks.EventSourcing</AssemblyName>
+    <RootNamespace>SmartSolutionsLab.PharmaTraining.BuildingBlocks.EventSourcing</RootNamespace>
+  </PropertyGroup>
+
+</Project>

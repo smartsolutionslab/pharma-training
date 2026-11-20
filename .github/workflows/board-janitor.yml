@@ -1,0 +1,27 @@
+name: board-janitor
+
+# Returns lapsed claims to Todo (board protocol, docs/adr).
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+# No concurrency group: the janitor writes to issues, branches and the board, so cancelling a run halfway would leave
+# a claim half returned, and it runs once an hour, so there is no queue of runs to thin out.
+permissions:
+  contents: write
+  issues: write
+  pull-requests: read
+
+jobs:
+  janitor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: bash .github/scripts/board/janitor.sh
+        env:
+          # The default token cannot edit a GitHub Project; BOARD_TOKEN can (scopes repo and project).
+          GH_TOKEN: ${{ secrets.BOARD_TOKEN || github.token }}
+          BOARD_PROJECT_OWNER: ${{ vars.BOARD_PROJECT_OWNER }}
+          BOARD_PROJECT_NUMBER: ${{ vars.BOARD_PROJECT_NUMBER }}
+

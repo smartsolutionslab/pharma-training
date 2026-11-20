@@ -1,0 +1,125 @@
+using System.Reflection;
+using Microsoft.EntityFrameworkCore;
+
+namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Persistence;
+
+/// <summary>Maps every value object and identifier of a module's Domain to its backing value, so no entity configuration converts one by hand.</summary>
+public static class ValueObjectConventions
+{
+    private const BindingFlags State = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+
+    /// <summary>
+    /// Registers a <see cref="ValueObjectConverter{TValueObject, TValue}"/> for each <see cref="IValueObject{TValue}"/>
+    /// in the Domain project of the module whose Infrastructure assembly holds the context
+    /// (<c>Shop.Modules.Billing.Infrastructure</c> maps <c>Shop.Modules.Billing.Domain</c>). A generic value object is
+    /// registered as each closed type the Domain's properties and fields use (<c>TypedId&lt;Customer&gt;</c>), never as
+    /// its open definition, which EF Core cannot convert. A context in an assembly that does not reference such a Domain,
+    /// as a test project's own context does, has no module value objects to map.
+    /// </summary>
+    public static ModelConfigurationBuilder MapValueObjects(this ModelConfigurationBuilder configurationBuilder, Assembly contextAssembly)
+    {
+        Ensure.That(configurationBuilder).IsNotNull();
+        Ensure.That(contextAssembly).IsNotNull();
+
+        var infrastructure = contextAssembly.GetName().Name!;
+        var domainName = string.Concat(infrastructure.AsSpan(0, infrastructure.LastIndexOf('.')), ".Domain");
+        var reference = contextAssembly.GetReferencedAssemblies().FirstOrDefault(name => name.Name == domainName);
+        if (reference is null)
+        {
+            return configurationBuilder;
+        }
+
+        var domain = Assembly.Load(reference);
+        foreach (var type in ValueObjectsOf(domain))
+        {
+            var backing = type.GetInterfaces()
+                .Where(contract => contract.IsGenericType && contract.GetGenericTypeDefinition() == typeof(IValueObject<>))
+                .Select(contract => contract.GetGenericArguments()[0])
+                .ToList();
+            if (backing.Count == 1)
+            {
+                configurationBuilder.Properties(type).HaveConversion(typeof(ValueObjectConverter<,>).MakeGenericType(type, backing[0]));
+            }
+        }
+
+        return configurationBuilder;
+    }
+
+    /// <summary>
+    /// The Domain's closed value-object types: those it declares, and those its types' properties and fields use,
+    /// inside collections, arrays and other generic arguments too, and inside the closed Domain types they reach:
+    /// <c>Line&lt;Shipment&gt; : Entity&lt;TypedId&lt;Shipment&gt;&gt;</c> uses <c>TypedId&lt;Shipment&gt;</c>.
+    /// </summary>
+    private static HashSet<Type> ValueObjectsOf(Assembly domain)
+    {
+        var scan = new ValueObjectScan(domain);
+        foreach (var type in domain.GetTypes())
+        {
+            scan.Collect(type);
+
+            // An open definition is not collected itself, but a closed type its members use still is.
+            if (type.ContainsGenericParameters)
+            {
+                scan.CollectMembers(type);
+            }
+        }
+
+        return scan.ValueObjects;
+    }
+
+    private sealed class ValueObjectScan(Assembly domain)
+    {
+        private readonly HashSet<Type> visited = [];
+        private readonly HashSet<Type> expanded = [];
+
+        /// <summary>The generic definitions whose members are being walked, so a definition is not entered inside itself.</summary>
+        private readonly HashSet<Type> expanding = [];
+
+        public HashSet<Type> ValueObjects { get; } = [];
+
+        public void Collect(Type type)
+        {
+            if (type.ContainsGenericParameters)
+            {
+                return;
+            }
+
+            if (visited.Add(type))
+            {
+                if (type.HasElementType)
+                {
+                    Collect(type.GetElementType()!);
+                }
+
+                foreach (var argument in type.IsGenericType ? type.GetGenericArguments() : [])
+                {
+                    Collect(argument);
+                }
+
+                if (type is { IsClass: true, IsAbstract: false } && typeof(IValueObject).IsAssignableFrom(type))
+                {
+                    ValueObjects.Add(type);
+                }
+            }
+
+            // A Domain type's members are walked once per closed type, but never inside a walk of the same definition:
+            // Node<T> holding a Node<List<T>> would otherwise construct a new type at every step.
+            var definition = type.IsGenericType ? type.GetGenericTypeDefinition() : type;
+            if (type.Assembly == domain && !expanding.Contains(definition) && expanded.Add(type))
+            {
+                expanding.Add(definition);
+                CollectMembers(type);
+                expanding.Remove(definition);
+            }
+        }
+
+        public void CollectMembers(Type type)
+        {
+            foreach (var member in type.GetProperties(State).Select(property => property.PropertyType)
+                .Concat(type.GetFields(State).Select(field => field.FieldType)))
+            {
+                Collect(member);
+            }
+        }
+    }
+}

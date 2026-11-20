@@ -1,0 +1,106 @@
+using System.Runtime.CompilerServices;
+
+namespace SmartSolutionsLab.PharmaTraining.Kernel;
+
+/// <summary>
+/// Either a value or an expected failure: a union of <see cref="SuccessOutcome{TValue}"/> and
+/// <see cref="FailureOutcome{TError}"/>, so a <c>switch</c> on a result that misses either case does not compile.
+/// Business failures carry a typed error; bugs and broken infrastructure throw.
+/// </summary>
+[Union]
+public readonly struct Result<TValue, TError> : Result<TValue, TError>.IUnionMembers
+    where TValue : notnull
+    where TError : notnull
+{
+    private readonly TValue value;
+    private readonly TError error;
+    private readonly bool isSuccess;
+
+    private Result(TValue value, TError error, bool isSuccess)
+    {
+        this.value = value;
+        this.error = error;
+        this.isSuccess = isSuccess;
+    }
+
+    /// <summary>
+    /// What makes the result a union, kept apart so that <see cref="Value"/> stays the success's value: the compiler
+    /// matches a case with <c>TryGetValue</c>, without boxing it. A case becomes a result through the conversions below,
+    /// which the compiler prefers to <c>Create</c>.
+    /// </summary>
+    public interface IUnionMembers
+    {
+        object? Value { get; }
+
+        bool HasValue { get; }
+
+        static abstract Result<TValue, TError> Create(SuccessOutcome<TValue> outcome);
+
+        static abstract Result<TValue, TError> Create(FailureOutcome<TError> outcome);
+
+        bool TryGetValue(out SuccessOutcome<TValue> outcome);
+
+        bool TryGetValue(out FailureOutcome<TError> outcome);
+    }
+
+    public bool IsSuccess => isSuccess;
+
+    public bool IsFailure => !isSuccess;
+
+    public TValue Value =>
+        isSuccess ? value : throw new InvalidOperationException("Result is a failure; no value.");
+
+    public TError Error =>
+        isSuccess ? throw new InvalidOperationException("Result is a success; no error.") : error;
+
+    object? IUnionMembers.Value => isSuccess ? new SuccessOutcome<TValue>(value) : new FailureOutcome<TError>(error);
+
+    bool IUnionMembers.HasValue => true;
+
+    static Result<TValue, TError> IUnionMembers.Create(SuccessOutcome<TValue> outcome) => Success(outcome.Value);
+
+    static Result<TValue, TError> IUnionMembers.Create(FailureOutcome<TError> outcome) => Failure(outcome.Error);
+
+    // What lets a handler write Success(dto) and the return type supply the error type. Through Create, a static abstract
+    // member, every such return was a constrained call, and code coverage made methods with one into IL the runtime
+    // refuses (InvalidProgramException) once a second covered process, such as the MigrationRunner the Testcontainers
+    // fixture starts, had loaded the same assembly. A conversion operator is a plain call.
+    public static implicit operator Result<TValue, TError>(SuccessOutcome<TValue> outcome) => Success(outcome.Value);
+
+    public static implicit operator Result<TValue, TError>(FailureOutcome<TError> outcome) => Failure(outcome.Error);
+
+#pragma warning disable CA1000 // Static factories on the generic type: Result<InvoiceDto, ApiError>.Success(dto) where no return type infers it.
+    public static Result<TValue, TError> Success(TValue value) => new(value, default!, isSuccess: true);
+
+    public static Result<TValue, TError> Failure(TError error) => new(default!, error, isSuccess: false);
+#pragma warning restore CA1000
+
+    public TOut Match<TOut>(Func<TValue, TOut> onSuccess, Func<TError, TOut> onFailure)
+    {
+        Ensure.That(onSuccess).IsNotNull();
+        Ensure.That(onFailure).IsNotNull();
+
+        return isSuccess ? onSuccess(value) : onFailure(error);
+    }
+
+    /// <summary>The same outcome with the error translated, e.g. a domain error to an <c>ApiError</c> in Application.</summary>
+    public Result<TValue, TOut> MapError<TOut>(Func<TError, TOut> map)
+        where TOut : notnull
+    {
+        Ensure.That(map).IsNotNull();
+
+        return isSuccess ? Result<TValue, TOut>.Success(value) : Result<TValue, TOut>.Failure(map(error));
+    }
+
+    bool IUnionMembers.TryGetValue(out SuccessOutcome<TValue> outcome)
+    {
+        outcome = isSuccess ? new SuccessOutcome<TValue>(value) : default;
+        return isSuccess;
+    }
+
+    bool IUnionMembers.TryGetValue(out FailureOutcome<TError> outcome)
+    {
+        outcome = isSuccess ? default : new FailureOutcome<TError>(error);
+        return !isSuccess;
+    }
+}

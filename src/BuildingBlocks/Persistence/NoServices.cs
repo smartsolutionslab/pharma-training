@@ -1,0 +1,9 @@
+namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Persistence;
+
+/// <summary>An empty service provider, for building a module's DbContext without the application (dotnet ef).</summary>
+public sealed class NoServices : IServiceProvider
+{
+    public static NoServices Instance { get; } = new();
+
+    public object? GetService(Type serviceType) => null;
+}

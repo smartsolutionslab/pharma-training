@@ -1,0 +1,10 @@
+{
+  "name": "pharma-training-web",
+  "private": true,
+  "packageManager": "pnpm@10.0.0",
+  "scripts": {
+    "build": "pnpm --recursive build",
+    "lint": "pnpm --recursive lint",
+    "test": "pnpm --recursive test"
+  }
+}

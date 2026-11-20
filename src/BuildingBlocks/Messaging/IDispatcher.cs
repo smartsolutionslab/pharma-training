@@ -1,0 +1,8 @@
+namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
+
+public interface IDispatcher
+{
+    Task<TResult> SendAsync<TResult>(ICommand<TResult> command, CancellationToken cancellationToken);
+
+    Task<TResult> QueryAsync<TResult>(IQuery<TResult> query, CancellationToken cancellationToken);
+}

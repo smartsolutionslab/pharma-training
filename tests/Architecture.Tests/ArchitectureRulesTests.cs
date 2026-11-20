@@ -1,0 +1,19 @@
+namespace SmartSolutionsLab.PharmaTraining.Architecture.Tests;
+
+public class ArchitectureRulesTests
+{
+    private static readonly ArchitectureModel Model = ArchitectureModel.Load();
+
+    public static TheoryData<string> Rules { get; } = [.. ArchitectureModel.Rules.Select(rule => rule.GetType().Name)];
+
+    [Theory]
+    [MemberData(nameof(Rules))]
+    public void Rule_holds(string rule)
+    {
+        var architectureRule = ArchitectureModel.Rules.Single(candidate => candidate.GetType().Name == rule);
+        var violations = architectureRule.Violations(Model).ToList();
+        var description = architectureRule.Description;
+
+        violations.ShouldBeEmpty(description);
+    }
+}
