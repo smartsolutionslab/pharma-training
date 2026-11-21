@@ -132,4 +132,26 @@ public class CourseVersionPublishedV1ConsumerTests
 
         store.Stored.ShouldBeEmpty();
     }
+
+    [Theory]
+    [InlineData("title")]
+    [InlineData("chapter title")]
+    [InlineData("empty chapter id")]
+    [InlineData("repeated chapter id")]
+    public async Task A_missing_title_or_a_chapter_id_that_is_empty_or_repeated_is_refused_as_such_and_nothing_stored(string what)
+    {
+        var store = new InMemoryCourseVersionStore();
+        var repeated = Guid.CreateVersion7();
+        List<CourseChapterV1> chapters =
+        [
+            new CourseChapterV1(what == "empty chapter id" ? Guid.Empty : repeated, 1, what == "chapter title" ? null! : "Grundlagen", ChapterKindV1.Text, null, "# Grundlagen", null),
+            new CourseChapterV1(what == "repeated chapter id" ? repeated : Guid.CreateVersion7(), 2, "Lagerung", ChapterKindV1.Text, null, "# Lagerung", null),
+        ];
+        var published = CourseVersionEvents.Published(Guid.CreateVersion7(), Guid.CreateVersion7(), 1, what == "title" ? null! : "Kühlkette", chapters);
+
+        await Should.ThrowAsync<GuardException>(() => new CourseVersionPublishedV1Consumer(store, store).HandleAsync(published, TestContext.Current.CancellationToken));
+
+        store.Stored.ShouldBeEmpty();
+        store.Commits.ShouldBe(0);
+    }
 }
