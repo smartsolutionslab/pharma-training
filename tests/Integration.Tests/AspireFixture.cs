@@ -14,7 +14,9 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// <summary>The whole application, started once per test run on empty containers.</summary>
 public sealed partial class AspireFixture : IAsyncLifetime
 {
-    private static readonly TimeSpan StartupTimeout = TimeSpan.FromMinutes(5);
+    // Twice the slowest start-up measured on the CI runner since every project starts from the AppHost's build
+    // (#126: 136, 182 and 204 s), rounded up to the minute; the fixture logs each run's start-up beside this limit.
+    private static readonly TimeSpan StartupTimeout = TimeSpan.FromMinutes(7);
 
     private DistributedApplication? app;
 
