@@ -296,6 +296,97 @@ public class OrganisationMembersTests(AspireFixture aspire)
         (await database.MembershipAsync(own, cancellationToken)).Role.ShouldBe("Employee");
     }
 
+    [Fact]
+    public async Task Changing_only_a_membership_moves_the_pharmacys_row_version()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var owner = await aspire.CreateHostClientAsync("owner");
+        var pharmacy = await RegisterAsync(owner, cancellationToken);
+        var membership = await database.SeedMemberAsync(pharmacy, "employee-a", "Employee", "Pta", cancellationToken);
+        var before = await database.RowVersionAsync(pharmacy, cancellationToken);
+
+        using var changed = await owner.PatchAsJsonAsync(MemberUri(pharmacy, membership), new { jobFunction = "Pka", role = "Employee" }, cancellationToken);
+
+        changed.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await database.RowVersionAsync(pharmacy, cancellationToken)).ShouldNotBe(before, "a change to a membership must move its pharmacy's row version");
+    }
+
+    [Fact]
+    public async Task Of_two_managers_ending_each_others_membership_at_once_one_succeeds_and_the_other_is_told_the_pharmacy_changed()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var owner = await aspire.CreateHostClientAsync("owner");
+        using var second = await aspire.CreateHostClientAsync("employee-b");
+        var pharmacy = await RegisterAsync(owner, cancellationToken);
+        var own = await MembershipOfAsync(owner, pharmacy, cancellationToken);
+        var other = await database.SeedMemberAsync(pharmacy, "employee-b", "Manager", "Pharmacist", cancellationToken);
+
+        HttpResponseMessage[] responses;
+        await using (var gate = await database.LockPharmacyAsync(pharmacy, cancellationToken))
+        {
+            var ownerEndsOther = owner.DeleteAsync(MemberUri(pharmacy, other), cancellationToken);
+            var otherEndsOwner = second.DeleteAsync(MemberUri(pharmacy, own), cancellationToken);
+            await database.WaitUntilBlockedAsync(2, cancellationToken);
+            await gate.CommitAsync(cancellationToken);
+            responses = await Task.WhenAll(ownerEndsOther, otherEndsOwner);
+        }
+
+        try
+        {
+            await ShouldBeOneWonAndOneChangedAsync(responses, cancellationToken);
+            (await database.ActiveManagersAsync(pharmacy, cancellationToken)).ShouldBe(1L, "the pharmacy must keep exactly one manager");
+        }
+        finally
+        {
+            foreach (var response in responses)
+            {
+                response.Dispose();
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Of_ending_and_changing_one_membership_at_once_one_succeeds_and_the_other_is_told_the_pharmacy_changed()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var owner = await aspire.CreateHostClientAsync("owner");
+        var pharmacy = await RegisterAsync(owner, cancellationToken);
+        var membership = await database.SeedMemberAsync(pharmacy, "employee-a", "Employee", "Pta", cancellationToken);
+
+        HttpResponseMessage[] responses;
+        await using (var gate = await database.LockPharmacyAsync(pharmacy, cancellationToken))
+        {
+            var end = owner.DeleteAsync(MemberUri(pharmacy, membership), cancellationToken);
+            var change = owner.PatchAsJsonAsync(MemberUri(pharmacy, membership), new { jobFunction = "Pka", role = "Manager" }, cancellationToken);
+            await database.WaitUntilBlockedAsync(2, cancellationToken);
+            await gate.CommitAsync(cancellationToken);
+            responses = await Task.WhenAll(end, change);
+        }
+
+        try
+        {
+            await ShouldBeOneWonAndOneChangedAsync(responses, cancellationToken);
+            var stored = await database.MembershipAsync(membership, cancellationToken);
+            if (responses[0].StatusCode == HttpStatusCode.OK)
+            {
+                // The end won: the membership is ended with the job function and role it had, the change is not stored.
+                (stored.Status, stored.Role, stored.JobFunction).ShouldBe(("Ended", "Employee", "Pta"));
+                stored.EndedAt.ShouldNotBeNull();
+            }
+            else
+            {
+                stored.ShouldBe(new OrganisationDatabase.StoredMembership("Active", "Manager", "Pka", null), "the change won, so the end must not be stored");
+            }
+        }
+        finally
+        {
+            foreach (var response in responses)
+            {
+                response.Dispose();
+            }
+        }
+    }
+
     private static Uri PharmacyUri(Guid pharmacy) => new($"/organisation/pharmacies/{pharmacy}", UriKind.Relative);
 
     private static Uri MemberUri(Guid pharmacy, Guid membership) => new($"/organisation/pharmacies/{pharmacy}/members/{membership}", UriKind.Relative);
@@ -319,6 +410,20 @@ public class OrganisationMembersTests(AspireFixture aspire)
         response.StatusCode.ShouldBe(status, body);
         var problem = string.IsNullOrWhiteSpace(body) ? null : JsonSerializer.Deserialize<Problem>(body, JsonSerializerOptions.Web);
         (problem?.Code).ShouldBe(code, $"{(int)response.StatusCode} with body: {body}");
+    }
+
+    private static async Task ShouldBeOneWonAndOneChangedAsync(HttpResponseMessage[] responses, CancellationToken cancellationToken)
+    {
+        List<string> answers = [];
+        foreach (var response in responses)
+        {
+            answers.Add($"{(int)response.StatusCode} {await response.Content.ReadAsStringAsync(cancellationToken)}");
+        }
+
+        var described = string.Join(" | ", answers);
+        responses.Select(response => response.StatusCode).ShouldBe([HttpStatusCode.OK, HttpStatusCode.Conflict], ignoreOrder: true, described);
+        var lost = responses.Single(response => response.StatusCode == HttpStatusCode.Conflict);
+        await ShouldBeRefusedAsync(lost, HttpStatusCode.Conflict, "organisation.pharmacy-changed", cancellationToken);
     }
 
     /// <summary>Asks for the exchange without declaring it, so the test never conflicts with the arguments Wolverine gives it.</summary>

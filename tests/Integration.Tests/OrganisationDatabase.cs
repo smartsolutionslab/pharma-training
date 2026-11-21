@@ -63,6 +63,93 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
             await reader.IsDBNullAsync(3, cancellationToken) ? null : reader.GetFieldValue<DateTimeOffset>(3));
     }
 
+    /// <summary>The number of the pharmacy's memberships that are active and hold the role Manager.</summary>
+    public async Task<long> ActiveManagersAsync(Guid pharmacy, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            "SELECT count(*) FROM organisation.memberships WHERE pharmacy_id = @pharmacy AND status = 'Active' AND role = 'Manager'",
+            connection);
+        command.Parameters.AddWithValue("pharmacy", pharmacy);
+        return (long)(await command.ExecuteScalarAsync(cancellationToken) ?? 0L);
+    }
+
+    /// <summary>The pharmacy row's PostgreSQL row version (<c>xmin</c>), which every update of the row moves on.</summary>
+    public async Task<string> RowVersionAsync(Guid pharmacy, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("SELECT xmin::text FROM organisation.pharmacies WHERE id = @id", connection);
+        command.Parameters.AddWithValue("id", pharmacy);
+        return (string)(await command.ExecuteScalarAsync(cancellationToken) ?? throw new InvalidOperationException($"There is no pharmacy {pharmacy}."));
+    }
+
+    /// <summary>
+    /// Opens a transaction that holds the pharmacy's row and its memberships' rows, so every request that writes them
+    /// waits after it has loaded the pharmacy until the transaction ends. <c>FOR UPDATE</c> locks the rows without
+    /// moving their row version, so what the requests loaded stays current. Disposing the lock closes its connection.
+    /// </summary>
+    public async Task<PharmacyLock> LockPharmacyAsync(Guid pharmacy, CancellationToken cancellationToken)
+    {
+        var connection = await OpenAsync(cancellationToken);
+        try
+        {
+            var transaction = await connection.BeginTransactionAsync(cancellationToken);
+            await using (var row = new NpgsqlCommand("SELECT 1 FROM organisation.pharmacies WHERE id = @id FOR UPDATE", connection, transaction))
+            {
+                row.Parameters.AddWithValue("id", pharmacy);
+                (await row.ExecuteScalarAsync(cancellationToken)).ShouldNotBeNull();
+            }
+
+            await using (var memberships = new NpgsqlCommand("SELECT 1 FROM organisation.memberships WHERE pharmacy_id = @id FOR UPDATE", connection, transaction))
+            {
+                memberships.Parameters.AddWithValue("id", pharmacy);
+                await memberships.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            return new PharmacyLock(connection, transaction);
+        }
+        catch
+        {
+            await connection.DisposeAsync();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Polls the organisation database until the given number of statements on the module's tables wait for a lock,
+    /// and fails the test when they do not within 30 seconds.
+    /// </summary>
+    public async Task WaitUntilBlockedAsync(int expected, CancellationToken cancellationToken)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT count(*) FROM pg_stat_activity
+            WHERE wait_event_type = 'Lock' AND datname = current_database() AND pid <> pg_backend_pid()
+              AND query ILIKE '%organisation.%'
+            """,
+            connection);
+
+        var blocked = 0L;
+        while (blocked < expected)
+        {
+            if (timeout.IsCancellationRequested)
+            {
+                blocked.ShouldBe(expected, "the concurrent requests never waited for the lock on the pharmacy");
+            }
+
+            blocked = (long)(await command.ExecuteScalarAsync(cancellationToken) ?? 0L);
+            if (blocked < expected)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken);
+            }
+        }
+
+        blocked.ShouldBe(expected);
+    }
+
     private async Task<JsonDocument> ClaimsOfAsync(string user)
     {
         var token = await aspire.RequestAccessTokenAsync(user);
