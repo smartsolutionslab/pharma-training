@@ -29,12 +29,15 @@ if (builder.ExecutionContext.IsRunMode)
 var messaging = builder.AddRabbitMQ("messaging")
     .WithManagementPlugin()
     .WithDataVolume();
-// Models deployed in your own Azure OpenAI resource, through its OpenAI v1 endpoint; nothing is provisioned. The endpoint
-// (https://<resource>.openai.azure.com) has no default, the key is a secret (dotnet user-secrets set
-// Parameters:azure-openai-api-key ...), and the deployment must name one in that resource (gpt-5 for harder questions).
-var azureOpenAIEndpoint = builder.AddParameter("azure-openai-endpoint");
+// Models deployed in your own Azure OpenAI resource in an EU region, through its OpenAI v1 endpoint; nothing is
+// provisioned (docs/adr/0001). Set the endpoint (https://<resource>.openai.azure.com) and the key with dotnet user-secrets
+// (Parameters:azure-openai-endpoint, Parameters:azure-openai-api-key) or the deployment's secret store. Both are read from
+// configuration when they are needed and are empty when unset, so nothing waits for them: the application starts without a
+// model, and a request that needs it answers 503 model-not-configured. Neither value is published to a manifest as a
+// default. The deployment must name one in that resource (gpt-5 for harder questions).
+var azureOpenAIEndpoint = builder.AddParameter("azure-openai-endpoint", () => builder.Configuration["Parameters:azure-openai-endpoint"] ?? string.Empty, publishValueAsDefault: false);
 var azureOpenAIDeployment = builder.AddParameter("azure-openai-deployment", "gpt-5-mini", publishValueAsDefault: true);
-var azureOpenAIApiKey = builder.AddParameter("azure-openai-api-key", secret: true);
+var azureOpenAIApiKey = builder.AddParameter("azure-openai-api-key", () => builder.Configuration["Parameters:azure-openai-api-key"] ?? string.Empty, publishValueAsDefault: false, secret: true);
 
 var host = builder.AddProject("host", "../Edge/Edge.csproj")
     .WithHttpHealthCheck("/health")
