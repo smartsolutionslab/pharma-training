@@ -6,6 +6,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application.Consum
 /// <summary>
 /// Stores a membership Organisation started, once. A membership starts once, so a member already stored means its event
 /// was handled, whatever the event's identifier or payload: a second delivery changes nothing, and the first one wins.
+/// It deduplicates on the membership id, not on <c>Metadata.EventIdentifier</c>: for a fact only ever inserted that is stronger, since it also absorbs a re-publish under a new identifier.
 /// </summary>
 public sealed class MembershipStartedV1Consumer(IMemberStore members, IComplianceUnitOfWork unitOfWork)
 {

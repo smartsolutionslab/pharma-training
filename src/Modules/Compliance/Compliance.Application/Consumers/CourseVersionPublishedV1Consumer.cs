@@ -7,6 +7,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application.Consum
 /// Stores a course version Editorial published, once, without its chapters, which Compliance does not keep. A version is
 /// published once, so a version already stored means its event was handled, whatever the event's identifier or
 /// payload: a second delivery changes nothing, and the first one wins.
+/// It deduplicates on the version id, not on <c>Metadata.EventIdentifier</c>: for a fact only ever inserted that is stronger, since it also absorbs a re-publish under a new identifier.
 /// </summary>
 public sealed class CourseVersionPublishedV1Consumer(ICourseVersionStore versions, IComplianceUnitOfWork unitOfWork)
 {

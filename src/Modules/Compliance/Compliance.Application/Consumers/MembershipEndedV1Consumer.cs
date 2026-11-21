@@ -6,6 +6,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application.Consum
 /// <summary>
 /// Stores that Organisation ended a membership, once, whether the membership's start has arrived yet or not: the member
 /// is kept, and reads as ended whenever it is there.
+/// It deduplicates on the membership id, not on <c>Metadata.EventIdentifier</c>: for a fact only ever inserted that is stronger, since it also absorbs a re-publish under a new identifier.
 /// </summary>
 public sealed class MembershipEndedV1Consumer(IMemberStore members, IComplianceUnitOfWork unitOfWork)
 {

@@ -6,6 +6,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application.Consum
 /// <summary>
 /// Stores that Editorial retired a course version, once, whether the version has arrived yet or not: the version reads
 /// as retired whenever it is there.
+/// It deduplicates on the version id, not on <c>Metadata.EventIdentifier</c>: for a fact only ever inserted that is stronger, since it also absorbs a re-publish under a new identifier.
 /// </summary>
 public sealed class CourseVersionRetiredV1Consumer(ICourseVersionStore versions, IComplianceUnitOfWork unitOfWork)
 {
