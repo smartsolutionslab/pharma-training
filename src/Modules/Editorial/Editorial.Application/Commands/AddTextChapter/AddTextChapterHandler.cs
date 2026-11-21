@@ -22,7 +22,11 @@ public sealed class AddTextChapterHandler(ICourseVersionStore versions, IEditori
             return Failure(CourseVersionFailures.From(changed.Error));
         }
 
-        await unitOfWork.CommitAsync(cancellationToken);
+        if (!await unitOfWork.TryCommitAsync(cancellationToken))
+        {
+            return Failure(CourseVersionFailures.Changed(command.Version.Value));
+        }
+
         return Success(changed.Value.Value);
     }
 }

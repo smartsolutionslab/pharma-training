@@ -22,7 +22,11 @@ public sealed class ReorderChaptersHandler(ICourseVersionStore versions, IEditor
             return Failure(CourseVersionFailures.From(changed.Error));
         }
 
-        await unitOfWork.CommitAsync(cancellationToken);
+        if (!await unitOfWork.TryCommitAsync(cancellationToken))
+        {
+            return Failure(CourseVersionFailures.Changed(command.Version.Value));
+        }
+
         return Success(Unit.Value);
     }
 }

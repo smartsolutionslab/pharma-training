@@ -22,7 +22,11 @@ public sealed class RemoveChapterHandler(ICourseVersionStore versions, IEditoria
             return Failure(CourseVersionFailures.From(changed.Error));
         }
 
-        await unitOfWork.CommitAsync(cancellationToken);
+        if (!await unitOfWork.TryCommitAsync(cancellationToken))
+        {
+            return Failure(CourseVersionFailures.Changed(command.Version.Value));
+        }
+
         return Success(Unit.Value);
     }
 }

@@ -20,6 +20,9 @@ public static class CourseVersionFailures
 
     public static ApiError NotFound(Guid id) => new CourseVersionNotFound(id);
 
+    /// <summary>A save that lost a race: another change to the same version was saved since this one loaded it.</summary>
+    public static ApiError Changed(Guid id) => new CourseVersionChanged(id);
+
     public static ApiError UnknownChapter(Guid version, Guid chapter) => new UnknownChapter(version, chapter);
 
     /// <summary>
