@@ -47,8 +47,10 @@ public abstract class ModuleDbContext(DbContextOptions options, IServiceProvider
     {
         Ensure.That(optionsBuilder).IsNotNull();
 
-        // Per instance: an interceptor may keep state for the context it belongs to.
+        // Per instance: an interceptor may keep state for the context it belongs to. The bump comes first, so the
+        // aggregate roots it marks are part of the save the dispatch sees.
         optionsBuilder.AddInterceptors(
+            new RowVersionBump(),
             new SmartSolutionsLab.PharmaTraining.BuildingBlocks.DomainEvents.DomainEventDispatch(Services));
         base.OnConfiguring(optionsBuilder);
     }
