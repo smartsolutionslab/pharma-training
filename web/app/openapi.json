@@ -770,6 +770,107 @@
         }
       }
     },
+    "/organisation/pharmacies": {
+      "post": {
+        "tags": [
+          "Host"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterPharmacyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organisation/pharmacies/mine": {
+      "get": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "maximum": 21474837,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedResultOfMyPharmacyDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organisation/pharmacies/{id}": {
+      "get": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyPharmacyDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/organisation/samples": {
       "post": {
         "tags": [
@@ -1059,6 +1160,59 @@
           }
         }
       },
+      "MyPharmacyDto": {
+        "required": [
+          "id",
+          "name",
+          "membershipId",
+          "role",
+          "jobFunction",
+          "canManageMembers",
+          "canAssignCourses"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "membershipId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "role": {
+            "$ref": "#/components/schemas/OrganisationMembershipRole"
+          },
+          "jobFunction": {
+            "$ref": "#/components/schemas/OrganisationJobFunction"
+          },
+          "canManageMembers": {
+            "type": "boolean"
+          },
+          "canAssignCourses": {
+            "type": "boolean"
+          }
+        }
+      },
+      "OrganisationJobFunction": {
+        "enum": [
+          "Pharmacist",
+          "Pta",
+          "Pka",
+          "Trainee",
+          "Other",
+          null
+        ]
+      },
+      "OrganisationMembershipRole": {
+        "enum": [
+          "Manager",
+          "Employee"
+        ]
+      },
       "OrganisationSampleDto": {
         "required": [
           "id",
@@ -1321,6 +1475,47 @@
           }
         }
       },
+      "PagedResultOfMyPharmacyDto": {
+        "required": [
+          "items",
+          "totalCount",
+          "page",
+          "pageSize"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MyPharmacyDto"
+            }
+          },
+          "totalCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "page": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "pageSize": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "PagedResultOfOrganisationSampleDto": {
         "required": [
           "items",
@@ -1370,6 +1565,31 @@
         "properties": {
           "name": {
             "type": "string"
+          }
+        }
+      },
+      "RegisterPharmacyRequest": {
+        "required": [
+          "name",
+          "jobFunction"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "jobFunction": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/OrganisationJobFunction"
+              }
+            ]
           }
         }
       }
