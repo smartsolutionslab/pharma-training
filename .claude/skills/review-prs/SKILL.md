@@ -1,6 +1,6 @@
 ---
 name: review-prs
-description: Interim review step until the cross-model review is back (Copilot's limit, until 2026-12-01). Review every open agent pull request whose head has no claude-review/verdict yet, post the findings, and set the verdict. Never pushes, approves or merges.
+description: Interim review step until the cross-model review is back (Copilot's limit, until 2026-12-01). Review every open agent pull request whose head has no Claude review yet, post the findings, and label the verdict. Never pushes, approves or merges.
 ---
 
 # Review the open agent pull requests
@@ -16,8 +16,8 @@ family would (ADR-0004), so it is a stop-gap, and every verdict says so.
 
 1. **Find the work.** List the open pull requests whose head branch starts with `agent/`:
    `gh api "repos/smartsolutionslab/pharma-training/pulls?state=open&per_page=100"`. Skip one when:
-   - its head commit already has a `claude-review/verdict` status
-     (`gh api repos/smartsolutionslab/pharma-training/commits/<sha>/status`), so that head is reviewed;
+   - one of its reviews already names its head SHA (`gh api repos/smartsolutionslab/pharma-training/pulls/<n>/reviews`,
+     a body starting `Claude review` that contains the SHA), so that head is reviewed;
    - its `cross-model-review/verdict` says `Reviewed by …`, so the real cross-model review ran.
 2. **Read fresh.** `git fetch origin <branch>` and read the diff: `git diff origin/main...<sha>`. Read `AGENTS.md`
    on `main` first; the change is held to those rules. Read the linked issue (`Closes #n`) for what it had to do,
@@ -32,9 +32,11 @@ family would (ADR-0004), so it is a stop-gap, and every verdict says so.
    with a body that lists every finding, blocking ones first, and inline `comments` on their lines where the diff
    has them. Start the body with `Claude review (same family, interim until 2026-12-01)` and the head SHA.
    End it with the footer the session's instructions give.
-5. **Set the verdict** on the head commit:
-   `gh api -X POST repos/smartsolutionslab/pharma-training/statuses/<sha> -f context=claude-review/verdict -f state=<success|failure> -f description="<n> blocking, <m> optional (same family)"`.
-   `failure` when any finding blocks, `success` otherwise.
+5. **Label the verdict.** Cloud sessions cannot write commit statuses (the proxy answers 403), so the verdict is a
+   label on the pull request: remove both `claude-review:passed` and `claude-review:blocking`, then add
+   `claude-review:blocking` when any finding blocks, otherwise `claude-review:passed`
+   (`gh api -X POST repos/smartsolutionslab/pharma-training/issues/<n>/labels -f 'labels[]=claude-review:passed'`).
+   A new push makes the label stale until the next run reviews the new head.
 
 ## Rules
 

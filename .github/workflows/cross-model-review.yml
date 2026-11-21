@@ -247,7 +247,7 @@ jobs:
       NOTE: ${{ needs.choose.outputs.note }}
       POSTPONED: ${{ needs.review.outputs.postponed }}
       # Hand-written, not generated: until this date (exclusive, UTC) a review that Copilot's usage limit postponed
-      # does not hold the pull request. A Claude Code review session reviews instead and sets claude-review/verdict
+      # does not hold the pull request. A Claude Code review session reviews instead and labels the pull request
       # (docs/engineering-workflow.md). From this date on, a postponed review leaves the verdict pending again.
       # Override with the repository variable REVIEW_OPTIONAL_UNTIL (YYYY-MM-DD); remove at the next fabric upgrade.
       REVIEW_OPTIONAL_UNTIL: ${{ vars.REVIEW_OPTIONAL_UNTIL || '2026-12-01' }}
@@ -305,7 +305,7 @@ jobs:
           fi
           if [ "$POSTPONED" = true ] && [[ "$(date -u +%F)" < "$REVIEW_OPTIONAL_UNTIL" ]]; then
             echo "::warning title=cross-model review::Postponed by Copilot's usage limit; optional until $REVIEW_OPTIONAL_UNTIL."
-            verdict success "Not reviewed: Copilot's limit. Optional until $REVIEW_OPTIONAL_UNTIL; see claude-review/verdict."
+            verdict success "Not reviewed: Copilot's limit. Optional until $REVIEW_OPTIONAL_UNTIL; see the claude-review label."
             exit 0
           fi
           if [ "$POSTPONED" = true ]; then
