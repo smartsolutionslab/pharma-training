@@ -13,3 +13,16 @@ test("every module's route declares the audience its page is for", () => {
     organisation: 'manager',
   });
 });
+
+// A page below a module (its routes.ts's pages) declares its own audience: registering a pharmacy needs no pharmacy.
+test('every page below a module declares the audience it is for, and its title', () => {
+  expect(
+    moduleRoutes.flatMap((route) =>
+      (route.pages ?? []).map((page) => ({
+        address: `/${route.path}/${page.path}`,
+        title: page.title,
+        audience: page.audience,
+      })),
+    ),
+  ).toEqual([{ address: '/organisation/register', title: 'Register a pharmacy', audience: 'signed-in' }]);
+});
