@@ -6,6 +6,17 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersion
 public class ValueObjectTests
 {
     [Fact]
+    public void A_text_with_a_nul_character_is_no_title_and_no_chapter_text_because_the_database_cannot_hold_it()
+    {
+        CourseTitle.TryFrom("Hygiene\0", out _).ShouldBeFalse();
+        ChapterTitle.TryFrom("Hände\0hygiene", out _).ShouldBeFalse();
+        MarkdownText.TryFrom("Vor und\0 nach", out _).ShouldBeFalse();
+        Should.Throw<GuardException>(() => CourseTitle.From("Hygiene\0"));
+        Should.Throw<GuardException>(() => ChapterTitle.From("Hände\0hygiene"));
+        Should.Throw<GuardException>(() => MarkdownText.From("Vor und\0 nach"));
+    }
+
+    [Fact]
     public void A_new_identity_is_a_time_ordered_guid_and_from_keeps_the_guid_it_is_given()
     {
         var guid = Guid.CreateVersion7();

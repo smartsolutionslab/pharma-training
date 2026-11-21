@@ -242,6 +242,20 @@ public class EditorialCourseVersionsTests(AspireFixture aspire)
         (await CodeOfAsync(refused, cancellationToken)).ShouldBe("editorial.invalid-status");
     }
 
+    [Theory]
+    [InlineData("InReview,Published")]
+    [InlineData("Draft,Published")]
+    public async Task A_list_of_statuses_is_refused_rather_than_read_as_another_status(string statuses)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+
+        using var refused = await client.GetAsync(new Uri($"/editorial/course-versions?status={statuses}", UriKind.Relative), cancellationToken);
+
+        refused.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await CodeOfAsync(refused, cancellationToken)).ShouldBe("editorial.invalid-status");
+    }
+
     [Fact]
     public async Task A_page_size_above_the_maximum_is_refused()
     {
