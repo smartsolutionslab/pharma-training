@@ -86,7 +86,7 @@ foreach (var (module, project) in builder.ServiceHosts())
         .WaitFor(service);
 }
 
-builder.AddViteApp("web", "../../web/app")
+var web = builder.AddViteApp("web", "../../web/app")
     .WithPnpm()
     // OIDC redirect URIs name this port; the dev server proxies /api to the host.
     .WithEndpoint("http", endpoint => endpoint.Port = 5173)
@@ -94,5 +94,7 @@ builder.AddViteApp("web", "../../web/app")
     .WaitFor(host)
     .WaitFor(keycloak)
     .WithEnvironment("VITE_OIDC_AUTHORITY", ReferenceExpression.Create($"{keycloak.GetEndpoint("http")}/realms/pharma-training"));
+// The browser PUTs uploads and GETs files with the signed URLs, straight to blob storage, from the web app's origin alone.
+storage.AllowBrowserAccessFrom(web);
 
 builder.Build().Run();
