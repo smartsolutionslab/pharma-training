@@ -6,10 +6,14 @@
 
   <ItemGroup>
     <PackageReference Include="Aspire.Hosting.Testing" />
+    <!-- The blob containers' resource types, read from the AppHost's model (AppHostBlobContainersTests). -->
+    <PackageReference Include="Aspire.Hosting.Azure.Storage" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="../../src/AppHost/AppHost.csproj" />
+    <!-- AzureBlobUrls signs the URLs BlobStorageTests sends to the storage emulator. -->
+    <ProjectReference Include="../../src/BuildingBlocks/BuildingBlocks.csproj" />
   </ItemGroup>
 
 </Project>

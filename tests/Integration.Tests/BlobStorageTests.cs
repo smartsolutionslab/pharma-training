@@ -1,0 +1,255 @@
+using System.Net;
+using System.Security.Cryptography;
+using Aspire.Hosting.Testing;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Time.Testing;
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Storage;
+
+namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
+
+/// <summary>
+/// The URLs AzureBlobUrls signs, sent to the storage emulator the AppHost runs: an upload URL creates its own blob and does
+/// nothing else, a read URL reads its own blob and does nothing else, neither works once its lifetime ends, and the web
+/// app's origin, alone, may use them from a browser.
+/// </summary>
+public class BlobStorageTests(AspireFixture aspire)
+{
+    private const string Storage = "storage";
+
+    private const string WebOrigin = "http://localhost:5173";
+
+    private const string OtherOrigin = "http://other.example";
+
+    private static readonly TimeSpan ResourceTimeout = TimeSpan.FromMinutes(2);
+
+    private static readonly BlobUrlLifetime FiveMinutes = BlobUrlLifetime.From(TimeSpan.FromMinutes(5));
+
+    private static readonly BlobUrlLifetime FifteenMinutes = BlobUrlLifetime.From(TimeSpan.FromMinutes(15));
+
+    private static readonly HttpClient Http = new();
+
+    public static TheoryData<string> Modules { get; } =
+        ["assessment", "catalog", "certification", "compliance", "editorial", "learning", "organisation"];
+
+    public static TheoryData<string> BrowserMethods { get; } = ["PUT", "GET"];
+
+    [Theory]
+    [MemberData(nameof(Modules))]
+    public async Task Each_modules_container_takes_an_upload_and_serves_it_to_a_read_url(string module)
+    {
+        var urls = await UrlsAsync(module, TimeProvider.System.GetUtcNow());
+        var name = NewName();
+        var content = RandomNumberGenerator.GetBytes(256);
+
+        var upload = await urls.CreateUploadUrlAsync(name, FiveMinutes, TestContext.Current.CancellationToken);
+        using var put = await PutAsync(upload.Url, content);
+        var read = await urls.CreateReadUrlAsync(name, FiveMinutes, TestContext.Current.CancellationToken);
+        using var get = await Http.GetAsync(read.Url, TestContext.Current.CancellationToken);
+
+        put.StatusCode.ShouldBe(HttpStatusCode.Created);
+        get.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await get.Content.ReadAsByteArrayAsync(TestContext.Current.CancellationToken)).ShouldBe(content);
+    }
+
+    [Theory]
+    [MemberData(nameof(Modules))]
+    public async Task The_container_connection_string_names_the_module(string module)
+    {
+        var connectionString = await ConnectionStringAsync(module);
+
+        connectionString.ShouldContain($"ContainerName={module}");
+    }
+
+    [Fact]
+    public async Task An_upload_url_puts_no_other_blob()
+    {
+        var urls = await UrlsAsync("editorial", TimeProvider.System.GetUtcNow());
+        var name = NewName();
+        var other = NewName();
+
+        var upload = await urls.CreateUploadUrlAsync(name, FiveMinutes, TestContext.Current.CancellationToken);
+        using var put = await PutAsync(Elsewhere(upload.Url, name, other), RandomNumberGenerator.GetBytes(16));
+
+        put.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task An_upload_url_cannot_read_its_blob()
+    {
+        var urls = await UrlsAsync("editorial", TimeProvider.System.GetUtcNow());
+        var name = NewName();
+
+        var upload = await urls.CreateUploadUrlAsync(name, FiveMinutes, TestContext.Current.CancellationToken);
+        using var put = await PutAsync(upload.Url, RandomNumberGenerator.GetBytes(16));
+        using var get = await Http.GetAsync(upload.Url, TestContext.Current.CancellationToken);
+
+        put.StatusCode.ShouldBe(HttpStatusCode.Created);
+        get.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task An_upload_url_cannot_delete_its_blob()
+    {
+        var urls = await UrlsAsync("editorial", TimeProvider.System.GetUtcNow());
+        var name = NewName();
+
+        var upload = await urls.CreateUploadUrlAsync(name, FiveMinutes, TestContext.Current.CancellationToken);
+        using var put = await PutAsync(upload.Url, RandomNumberGenerator.GetBytes(16));
+        using var delete = await Http.DeleteAsync(upload.Url, TestContext.Current.CancellationToken);
+        var read = await urls.CreateReadUrlAsync(name, FiveMinutes, TestContext.Current.CancellationToken);
+        using var get = await Http.GetAsync(read.Url, TestContext.Current.CancellationToken);
+
+        put.StatusCode.ShouldBe(HttpStatusCode.Created);
+        delete.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        get.StatusCode.ShouldBe(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task An_upload_url_cannot_overwrite_its_blob()
+    {
+        var urls = await UrlsAsync("editorial", TimeProvider.System.GetUtcNow());
+        var name = NewName();
+        var first = RandomNumberGenerator.GetBytes(16);
+
+        var upload = await urls.CreateUploadUrlAsync(name, FiveMinutes, TestContext.Current.CancellationToken);
+        using var put = await PutAsync(upload.Url, first);
+        using var again = await PutAsync(upload.Url, RandomNumberGenerator.GetBytes(16));
+        var read = await urls.CreateReadUrlAsync(name, FiveMinutes, TestContext.Current.CancellationToken);
+        using var get = await Http.GetAsync(read.Url, TestContext.Current.CancellationToken);
+
+        put.StatusCode.ShouldBe(HttpStatusCode.Created);
+        again.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await get.Content.ReadAsByteArrayAsync(TestContext.Current.CancellationToken)).ShouldBe(first);
+    }
+
+    [Fact]
+    public async Task An_expired_upload_url_is_refused()
+    {
+        var urls = await UrlsAsync("editorial", TimeProvider.System.GetUtcNow().AddMinutes(-16));
+
+        var upload = await urls.CreateUploadUrlAsync(NewName(), FifteenMinutes, TestContext.Current.CancellationToken);
+        using var put = await PutAsync(upload.Url, RandomNumberGenerator.GetBytes(16));
+
+        put.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task A_read_url_gets_no_other_blob()
+    {
+        var urls = await UrlsAsync("editorial", TimeProvider.System.GetUtcNow());
+        var name = NewName();
+        var other = NewName();
+
+        using var putName = await PutAsync((await urls.CreateUploadUrlAsync(name, FiveMinutes, TestContext.Current.CancellationToken)).Url, RandomNumberGenerator.GetBytes(16));
+        using var putOther = await PutAsync((await urls.CreateUploadUrlAsync(other, FiveMinutes, TestContext.Current.CancellationToken)).Url, RandomNumberGenerator.GetBytes(16));
+        var read = await urls.CreateReadUrlAsync(name, FiveMinutes, TestContext.Current.CancellationToken);
+        using var get = await Http.GetAsync(Elsewhere(read.Url, name, other), TestContext.Current.CancellationToken);
+
+        putName.StatusCode.ShouldBe(HttpStatusCode.Created);
+        putOther.StatusCode.ShouldBe(HttpStatusCode.Created);
+        get.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task A_read_url_cannot_put()
+    {
+        var urls = await UrlsAsync("editorial", TimeProvider.System.GetUtcNow());
+
+        var read = await urls.CreateReadUrlAsync(NewName(), FiveMinutes, TestContext.Current.CancellationToken);
+        using var put = await PutAsync(read.Url, RandomNumberGenerator.GetBytes(16));
+
+        put.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task An_expired_read_url_is_refused()
+    {
+        var now = TimeProvider.System.GetUtcNow();
+        var urls = await UrlsAsync("editorial", now);
+        var expired = await UrlsAsync("editorial", now.AddMinutes(-16));
+        var name = NewName();
+
+        using var put = await PutAsync((await urls.CreateUploadUrlAsync(name, FiveMinutes, TestContext.Current.CancellationToken)).Url, RandomNumberGenerator.GetBytes(16));
+        var read = await expired.CreateReadUrlAsync(name, FifteenMinutes, TestContext.Current.CancellationToken);
+        using var get = await Http.GetAsync(read.Url, TestContext.Current.CancellationToken);
+
+        put.StatusCode.ShouldBe(HttpStatusCode.Created);
+        get.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    [Theory]
+    [MemberData(nameof(BrowserMethods))]
+    public async Task The_web_origin_may_put_and_get_from_the_browser(string method)
+    {
+        using var preflight = await PreflightAsync(WebOrigin, method);
+
+        preflight.StatusCode.ShouldBe(HttpStatusCode.OK);
+        preflight.Headers.TryGetValues("Access-Control-Allow-Origin", out var origins).ShouldBeTrue();
+        origins.ShouldNotBeNull().ShouldContain(origin => origin == WebOrigin || origin == "*");
+    }
+
+    [Fact]
+    public async Task Another_origin_may_not()
+    {
+        using var preflight = await PreflightAsync(OtherOrigin, "PUT");
+
+        preflight.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    private static BlobName NewName() => BlobName.From($"probes/{Guid.CreateVersion7()}.bin");
+
+    /// <summary>The same signature, pointed at another blob.</summary>
+    private static Uri Elsewhere(Uri url, BlobName name, BlobName other) =>
+        new(url.AbsoluteUri.Replace(name.Value, other.Value, StringComparison.Ordinal));
+
+    private static async Task<HttpResponseMessage> PutAsync(Uri url, byte[] content)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Put, url) { Content = new ByteArrayContent(content) };
+        request.Headers.Add("x-ms-blob-type", "BlockBlob");
+        return await Http.SendAsync(request, TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>A browser's CORS preflight for a blob upload or read, sent to the emulator's blob endpoint.</summary>
+    private async Task<HttpResponseMessage> PreflightAsync(string origin, string method)
+    {
+        await WaitForHealthyAsync(Storage);
+        var blobEndpoint = Part(await ConnectionStringAsync("editorial"), "BlobEndpoint").TrimEnd('/');
+        using var request = new HttpRequestMessage(HttpMethod.Options, new Uri($"{blobEndpoint}/editorial/{NewName().Value}"));
+        request.Headers.Add("Origin", origin);
+        request.Headers.Add("Access-Control-Request-Method", method);
+        request.Headers.Add("Access-Control-Request-Headers", "x-ms-blob-type,content-type");
+        return await Http.SendAsync(request, TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>Urls for a module's container, signed at the given instant as the service would sign them.</summary>
+    private async Task<AzureBlobUrls> UrlsAsync(string module, DateTimeOffset now)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:blobs"] = await ConnectionStringAsync(module) })
+            .Build();
+        return new AzureBlobUrls(configuration, new FakeTimeProvider(now));
+    }
+
+    private async Task<string> ConnectionStringAsync(string module)
+    {
+        var container = $"{module}-blobs";
+        await WaitForHealthyAsync(container);
+        return await aspire.App.GetConnectionStringAsync(container, TestContext.Current.CancellationToken)
+            ?? throw new InvalidOperationException($"{container} has no connection string.");
+    }
+
+    private async Task WaitForHealthyAsync(string resource)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(ResourceTimeout);
+        await aspire.App.ResourceNotifications.WaitForResourceHealthyAsync(resource, timeout.Token);
+    }
+
+    private static string Part(string connectionString, string key) =>
+        connectionString.Split(';', StringSplitOptions.RemoveEmptyEntries)
+            .Select(part => part.Split('=', 2))
+            .Where(pair => pair.Length == 2 && string.Equals(pair[0].Trim(), key, StringComparison.OrdinalIgnoreCase))
+            .Select(pair => pair[1].Trim())
+            .FirstOrDefault()
+            ?? throw new InvalidOperationException($"The connection string has no {key}.");
+}
