@@ -9,7 +9,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb';
-import { moduleRoutes } from '@/modules';
+import { useVisibleModules } from './useVisibleModules';
 
 // One word is the file's name; lint wants a component's name in two.
 defineOptions({ name: 'ShellBreadcrumbs' });
@@ -21,6 +21,8 @@ interface Crumb {
 
 // Home, the module the address is in (by the title its routes.ts gives it), and each step of the address below it.
 const route = useRoute();
+// A module the user may not see is an unknown segment of the address to them: it is not named.
+const modules = useVisibleModules();
 const crumbs = computed<Crumb[]>(() => {
   const [first, ...rest] = route.path.split('/').filter((segment) => segment !== '');
   const all: Crumb[] = [{ label: 'Home', to: '/' }];
@@ -28,7 +30,7 @@ const crumbs = computed<Crumb[]>(() => {
     return all;
   }
 
-  const module = moduleRoutes.find((candidate) => candidate.path === first);
+  const module = modules.value.find((candidate) => candidate.path === first);
   all.push({ label: module?.title ?? decodeURIComponent(first), to: `/${first}` });
   let to = `/${first}`;
   for (const segment of rest) {
