@@ -60,8 +60,12 @@ public static class ServiceHostProjects
             .ToList();
 
         // The SDK generates one type per referenced project, so a path names one type or, with a stale build, none.
-        return matches.SingleOrDefault()
-            ?? throw new InvalidOperationException($"The AppHost's build generated no Projects.* type for {projectPath}; AppHost.csproj references every src/Services/*/Host/Host.csproj, so build the AppHost again.");
+        return matches.Count switch
+        {
+            1 => matches[0],
+            0 => throw new InvalidOperationException($"The AppHost's build generated no Projects.* type for {projectPath}; AppHost.csproj references every src/Services/*/Host/Host.csproj, so build the AppHost again."),
+            _ => throw new InvalidOperationException($"The AppHost's build generated more than one Projects.* type for {projectPath} ({string.Join(", ", matches.Select(type => type.Name))}); reference it once in AppHost.csproj."),
+        };
     }
 
     private static string ModuleName(string projectPath) =>
