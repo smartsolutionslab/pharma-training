@@ -11,7 +11,7 @@ public sealed partial class EventSourcedEventsCarryNoPersonalData : IArchitectur
         "SmartSolutionsLab.PharmaTraining.Contracts.Assessment",
     ];
 
-    public string Description => "Integration events of Learning and Assessment carry no name or e-mail at any depth, only PersonId, so a person's data never lands in an event store.";
+    public string Description => "Integration events of Learning and Assessment carry no name or e-mail at any depth, only PersonId, so a person can be erased from the services that keep their names (docs/domain/README.md). Their internal domain events are not checked here.";
 
     public static IReadOnlyList<Type> EventsOfEventSourcedModules() =>
         [.. Assembly.Load("Contracts")
@@ -77,6 +77,11 @@ public sealed partial class EventSourcedEventsCarryNoPersonalData : IArchitectur
             return type;
         }
 
+        if (Nullable.GetUnderlyingType(type) is { } underlying)
+        {
+            return ElementType(underlying);
+        }
+
         var enumerable = type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IEnumerable<>)
             ? type
             : type.GetInterfaces().FirstOrDefault(contract => contract.IsGenericType && contract.GetGenericTypeDefinition() == typeof(IEnumerable<>));
@@ -85,7 +90,7 @@ public sealed partial class EventSourcedEventsCarryNoPersonalData : IArchitectur
     }
 
     private static bool IsWalked(Type type) =>
-        type is { IsClass: true } && !type.IsEnum && type.Namespace?.StartsWith("System", StringComparison.Ordinal) != true;
+        (type.IsClass || type.IsValueType) && !type.IsEnum && !type.IsPrimitive && type.Namespace?.StartsWith("System", StringComparison.Ordinal) != true;
 
     [GeneratedRegex("name|mail", RegexOptions.IgnoreCase)]
     private static partial Regex PersonalData();
