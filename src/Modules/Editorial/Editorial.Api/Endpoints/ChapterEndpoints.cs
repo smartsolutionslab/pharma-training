@@ -83,6 +83,7 @@ public sealed class ChapterEndpoints : IEndpoint
                 return Result<Unit, ApiError>.Failure(CourseVersionFailures.NotFound(id)).ToHttpResult();
             }
 
+            // The binder leaves a property the body lacks null, whatever the record says; that is no order either.
             if (request.Chapters is not { } chapters || chapters.Contains(Guid.Empty))
             {
                 return Result<Unit, ApiError>.Failure(CourseVersionFailures.InvalidChapterOrder()).ToHttpResult();
