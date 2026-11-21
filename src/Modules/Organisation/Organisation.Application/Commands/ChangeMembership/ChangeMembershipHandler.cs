@@ -30,7 +30,11 @@ public sealed class ChangeMembershipHandler(IPharmacyStore pharmacies, IOrganisa
             return Failure(PharmacyFailures.From(changed.Error));
         }
 
-        await unitOfWork.CommitAsync(cancellationToken);
+        if (!await unitOfWork.TryCommitAsync(cancellationToken))
+        {
+            return Failure(PharmacyFailures.Changed(command.Pharmacy.Value));
+        }
+
         return Success(Unit.Value);
     }
 }

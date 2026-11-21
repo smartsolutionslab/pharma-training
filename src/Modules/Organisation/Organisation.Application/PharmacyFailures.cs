@@ -21,6 +21,8 @@ public static class PharmacyFailures
 
     public static ApiError MembershipNotFound(Guid id) => new MembershipNotFound(id);
 
+    public static ApiError Changed(Guid id) => new PharmacyChanged(id);
+
     /// <summary>
     /// The domain's refusals with the status each use case answers them with. An error no use case returns yet has no
     /// status here: it is mapped where it is first returned, never given a guessed one.
