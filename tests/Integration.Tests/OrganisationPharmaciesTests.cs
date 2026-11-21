@@ -85,6 +85,21 @@ public class OrganisationPharmaciesTests(AspireFixture aspire)
         (await refused.Content.ReadFromJsonAsync<Problem>(cancellationToken))!.Code.ShouldBe("organisation.invalid-job-function");
     }
 
+    [Theory]
+    [InlineData("42")]
+    [InlineData("\"42\"")]
+    public async Task A_job_function_that_is_no_known_one_is_refused_as_the_callers_mistake(string jobFunction)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("owner");
+        using var body = new StringContent($"{{\"name\":\"Stadt-Apotheke\",\"jobFunction\":{jobFunction}}}", System.Text.Encoding.UTF8, "application/json");
+
+        using var refused = await client.PostAsync(Pharmacies, body, cancellationToken);
+
+        refused.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await refused.Content.ReadFromJsonAsync<Problem>(cancellationToken))!.Code.ShouldBe("organisation.invalid-job-function");
+    }
+
     [Fact]
     public async Task A_page_size_above_the_maximum_is_refused()
     {

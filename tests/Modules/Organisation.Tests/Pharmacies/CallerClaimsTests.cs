@@ -69,6 +69,17 @@ public class CallerClaimsTests
     }
 
     [Fact]
+    public void With_a_name_too_long_to_show_the_caller_goes_by_their_user_name()
+    {
+        var user = User(("sub", Subject.ToString()), ("name", new string('a', 101)), ("preferred_username", "owner"), ("email", "owner@example.com"));
+
+        var caller = CallerClaims.Of(user);
+
+        caller.HasValue.ShouldBeTrue();
+        caller.Value.Name.Value.ShouldBe("owner");
+    }
+
+    [Fact]
     public void Without_a_name_or_user_name_there_is_no_caller()
     {
         var user = User(("sub", Subject.ToString()), ("email", "owner@example.com"));
