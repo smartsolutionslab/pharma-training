@@ -32,7 +32,31 @@ public static class Wire
         back.ShouldNotBeNull();
         JsonSerializer.Serialize(back, Options).ShouldBe(json);
         back.Metadata.ShouldBe(published.Metadata);
+        ShouldCarryEveryParameter(typeof(TEvent), JsonElement.Parse(json));
 
         return json;
+    }
+
+    /// <summary>
+    /// Every value a record is built from is on the wire under its own name, at every depth, so a member the serializer
+    /// skips (<c>[JsonIgnore]</c>, a getter it cannot see) fails here rather than reaching consumers as its default.
+    /// </summary>
+    private static void ShouldCarryEveryParameter(Type type, JsonElement element)
+    {
+        var constructor = type.GetConstructors().OrderByDescending(candidate => candidate.GetParameters().Length).First();
+        foreach (var parameter in constructor.GetParameters())
+        {
+            var name = Options.PropertyNamingPolicy?.ConvertName(parameter.Name ?? string.Empty) ?? parameter.Name ?? string.Empty;
+            element.TryGetProperty(name, out var value).ShouldBeTrue($"{type.Name}.{parameter.Name} is not on the wire as \"{name}\".");
+
+            var elementType = parameter.ParameterType.IsGenericType ? parameter.ParameterType.GetGenericArguments()[0] : null;
+            if (elementType is { IsClass: true } && elementType != typeof(string) && value.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in value.EnumerateArray())
+                {
+                    ShouldCarryEveryParameter(elementType, item);
+                }
+            }
+        }
     }
 }
