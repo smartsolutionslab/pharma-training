@@ -1,0 +1,25 @@
+# 0001: Azure OpenAI is optional to start and lives in the EU
+
+**Status:** Accepted
+
+## Context
+
+- The domain decisions (`docs/domain/README.md`, "LLM-Anbieter") chose `azure-openai mit EU-Region`: the project's content is training material of the health sector, its users are pharmacy staff, and DSGVO applies. The fabric ADR `docs/adr/fabric/backend-llm-azure-openai.md` chooses Azure OpenAI but says nothing about where the resource or its deployment runs.
+- The same fabric ADR says the host "starts without" the endpoint and key, and that the first use fails naming the missing parameter. Under Aspire 13 that does not hold: a parameter without a value is unresolved, and run mode holds back every resource that references it, so every service host (they all receive `AzureOpenAI__Endpoint` and `AzureOpenAI__ApiKey`), and with them the edge and the web app, waits until someone sets it. A developer without a key, and the integration tests, could not start the application at all.
+- When the model is needed and a setting is missing, `AzureOpenAIChatClient` threw a plain `InvalidOperationException` while the container created the `IChatClient`, which the host answered with a bare `500`.
+
+## Decision
+
+- **The endpoint and key default to empty.** In `src/AppHost/AppHost.cs`, `azure-openai-endpoint` and `azure-openai-api-key` are read from configuration (`Parameters:<name>`, from user secrets, the environment or the deployment's secret store) when they are needed, and are empty when unset. Configuration always wins. The key stays a secret parameter, and neither empty default is published to a manifest. The deployment keeps its default, `gpt-5-mini`.
+- **A request that needs an unconfigured model answers `503` with the code `model-not-configured`.** `AzureOpenAIChatClient` throws `ModelNotConfiguredException` (`src/BuildingBlocks/Llm`), naming the AppHost parameter, and `AddModelChatClient` registers an exception handler (`ModelNotConfiguredResponses`) that answers it with problem details: title "The AI model is not configured.", a detail saying AI actions are unavailable until it is, no setting's value. It logs a warning naming the parameter. Everything else in the application keeps working.
+- **Why an exception handler and not a `Result` per module.** The failure happens before any handler runs: resolving the handler resolves its `IChatClient`, and that is where the settings are read. It is the infrastructure's failure, not one a caller can correct, so it does not belong in each module's `ApiError`s. The handler mirrors the existing backstops, `invalid-argument` (`400`, a broken guard) and `already-exists` (`409`, a unique index), one stable code for one kind of infrastructure answer. The architecture rule `AnUnconfiguredModelAnswersServiceUnavailable` holds every service host to it.
+- **The integration tests run unconfigured.** `tests/Integration.Tests/AspireFixture.cs` sets both parameters to empty, so a run shows the application starting as a developer without a key starts it, and never uses a developer's own endpoint or key. `AppHostParametersTests` checks the defaults and that configuration wins over them.
+- **The resource and its deployment are in the EU.** The Azure OpenAI resource is created in an EU region (Sweden Central, Germany West Central, France Central, West Europe, ...) and the model is deployed as Data Zone Standard (EU) or regional Standard, never Global Standard, which may process a request in any region. The evals workflow's `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_API_KEY` point at the same resource. The OpenAI-compatible endpoint (`https://api.openai.com/v1`) stays possible for content that may leave the EU only. The README's "Connect the model (Azure OpenAI, EU)" says how.
+
+## Consequences
+
+- Nothing in the code checks the region or the deployment type: the endpoint names a resource, not where it runs. Keeping it in the EU is the job of whoever creates the resource and sets the parameters; a review of a deployment's secret store is where it is seen.
+- Only a missing setting answers `503`. A wrong key, an endpoint that does not exist or a deployment the resource does not have fails when the model is called and stays a `500`, as any other broken infrastructure does.
+- The fabric ADR's statements that the host starts without the parameters and that the integration tests give the endpoint a resource that does not exist are superseded here: the host now does start without them, and the tests give none.
+- The key is still the only authentication. Managed identity is a separate decision.
+- `fabric upgrade` regenerates files this decision changed and may conflict on them: `src/AppHost/AppHost.cs`, `src/BuildingBlocks/Llm/Wiring/AzureOpenAIChatClient.cs`, `src/BuildingBlocks/Llm/Wiring/ChatClientRegistration.cs`, `tests/Integration.Tests/AspireFixture.cs` and `README.md`. Keep this decision's changes when resolving them.
