@@ -161,6 +161,77 @@
         }
       }
     },
+    "/catalog/courses": {
+      "get": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "maximum": 21474837,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedResultOfCatalogCourseDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/catalog/course-versions/{id}": {
+      "get": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogCourseVersionDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/catalog/samples": {
       "post": {
         "tags": [
@@ -534,6 +605,281 @@
         }
       }
     },
+    "/editorial/course-versions/{id}/chapters": {
+      "post": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditorialTextChapterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/editorial/course-versions/{id}/chapters/{chapterId}": {
+      "put": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "chapterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditorialTextChapterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Unit"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "chapterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Unit"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/editorial/course-versions/{id}/chapters/order": {
+      "put": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReorderEditorialChaptersRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Unit"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/editorial/courses": {
+      "post": {
+        "tags": [
+          "Host"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateEditorialCourseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/editorial/course-versions": {
+      "get": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/EditorialCourseVersionStatus"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "maximum": 21474837,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedResultOfEditorialCourseVersionSummaryDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/editorial/course-versions/{id}": {
+      "get": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorialCourseVersionDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/editorial/samples": {
       "post": {
         "tags": [
@@ -770,6 +1116,92 @@
         }
       }
     },
+    "/organisation/pharmacies/{id}/members/{membershipId}": {
+      "delete": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "membershipId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Unit"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "membershipId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeOrganisationMembershipRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Unit"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/organisation/pharmacies": {
       "post": {
         "tags": [
@@ -989,6 +1421,148 @@
           }
         }
       },
+      "CatalogChapterDto": {
+        "required": [
+          "chapterId",
+          "position",
+          "title",
+          "kind",
+          "videoDurationSeconds",
+          "text"
+        ],
+        "type": "object",
+        "properties": {
+          "chapterId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "position": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "title": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/CatalogChapterKind"
+          },
+          "videoDurationSeconds": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "text": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "CatalogChapterKind": {
+        "enum": [
+          "Text",
+          "Pdf",
+          "Video"
+        ]
+      },
+      "CatalogCourseDto": {
+        "required": [
+          "courseId",
+          "courseVersionId",
+          "versionNumber",
+          "title",
+          "validityMonths"
+        ],
+        "type": "object",
+        "properties": {
+          "courseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "courseVersionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "versionNumber": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "title": {
+            "type": "string"
+          },
+          "validityMonths": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "CatalogCourseVersionDto": {
+        "required": [
+          "courseId",
+          "courseVersionId",
+          "versionNumber",
+          "title",
+          "validityMonths",
+          "isRetired",
+          "chapters"
+        ],
+        "type": "object",
+        "properties": {
+          "courseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "courseVersionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "versionNumber": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "title": {
+            "type": "string"
+          },
+          "validityMonths": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "isRetired": {
+            "type": "boolean"
+          },
+          "chapters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CatalogChapterDto"
+            }
+          }
+        }
+      },
       "CatalogSampleDto": {
         "required": [
           "id",
@@ -1018,6 +1592,21 @@
           },
           "name": {
             "type": "string"
+          }
+        }
+      },
+      "ChangeOrganisationMembershipRequest": {
+        "required": [
+          "jobFunction",
+          "role"
+        ],
+        "type": "object",
+        "properties": {
+          "jobFunction": {
+            "$ref": "#/components/schemas/OrganisationJobFunction"
+          },
+          "role": {
+            "$ref": "#/components/schemas/OrganisationMembershipRole"
           }
         }
       },
@@ -1081,6 +1670,17 @@
           }
         }
       },
+      "CreateEditorialCourseRequest": {
+        "required": [
+          "title"
+        ],
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          }
+        }
+      },
       "CreateEditorialSampleRequest": {
         "required": [
           "name"
@@ -1128,6 +1728,133 @@
           }
         }
       },
+      "EditorialChapterDto": {
+        "required": [
+          "id",
+          "position",
+          "title",
+          "kind",
+          "text"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "position": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "title": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/EditorialChapterKind"
+          },
+          "text": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "EditorialChapterKind": {
+        "enum": [
+          "Text",
+          "Pdf",
+          "Video"
+        ]
+      },
+      "EditorialCourseVersionDto": {
+        "required": [
+          "id",
+          "courseId",
+          "number",
+          "title",
+          "status",
+          "chapters"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "courseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "number": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EditorialCourseVersionStatus"
+          },
+          "chapters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorialChapterDto"
+            }
+          }
+        }
+      },
+      "EditorialCourseVersionStatus": {
+        "enum": [
+          "Draft",
+          "InReview",
+          "Published",
+          "Superseded",
+          "Retired"
+        ]
+      },
+      "EditorialCourseVersionSummaryDto": {
+        "required": [
+          "id",
+          "courseId",
+          "number",
+          "title",
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "courseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "number": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EditorialCourseVersionStatus"
+          }
+        }
+      },
       "EditorialSampleDto": {
         "required": [
           "id",
@@ -1140,6 +1867,21 @@
             "format": "uuid"
           },
           "name": {
+            "type": "string"
+          }
+        }
+      },
+      "EditorialTextChapterRequest": {
+        "required": [
+          "title",
+          "text"
+        ],
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "text": {
             "type": "string"
           }
         }
@@ -1203,8 +1945,7 @@
           "Pta",
           "Pka",
           "Trainee",
-          "Other",
-          null
+          "Other"
         ]
       },
       "OrganisationMembershipRole": {
@@ -1242,6 +1983,47 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/AssessmentSampleDto"
+            }
+          },
+          "totalCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "page": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "pageSize": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "PagedResultOfCatalogCourseDto": {
+        "required": [
+          "items",
+          "totalCount",
+          "page",
+          "pageSize"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CatalogCourseDto"
             }
           },
           "totalCount": {
@@ -1365,6 +2147,47 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ComplianceSampleDto"
+            }
+          },
+          "totalCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "page": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "pageSize": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "PagedResultOfEditorialCourseVersionSummaryDto": {
+        "required": [
+          "items",
+          "totalCount",
+          "page",
+          "pageSize"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorialCourseVersionSummaryDto"
             }
           },
           "totalCount": {
@@ -1592,6 +2415,24 @@
             ]
           }
         }
+      },
+      "ReorderEditorialChaptersRequest": {
+        "required": [
+          "chapters"
+        ],
+        "type": "object",
+        "properties": {
+          "chapters": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        }
+      },
+      "Unit": {
+        "type": "object"
       }
     }
   },

@@ -31,7 +31,7 @@ public sealed class SampleEndpoints : IEndpoint
             }
 
             return (await dispatcher.SendAsync(new CreateSample(name), cancellationToken)).ToCreatedHttpResult(Location);
-        }).RequireAuthorization(EditorialPolicyNames.Manage);
+        }).RequireAuthorization(EditorialPolicyNames.Edit);
         endpoints.MapGet("/samples", async (Page? page, PageSize? pageSize, IDispatcher dispatcher, CancellationToken cancellationToken) =>
             (await dispatcher.QueryAsync(new ListSamples(page ?? Page.First, pageSize ?? PageSize.Default), cancellationToken)).ToHttpResult());
         endpoints.MapGet("/samples/{id:guid}", async (Guid id, IDispatcher dispatcher, CancellationToken cancellationToken) =>

@@ -12,12 +12,14 @@ import {
   CommandList,
   CommandShortcut,
 } from '@/components/ui/command';
-import { moduleRoutes } from '@/modules';
+import { useVisibleModules, useVisiblePages } from './useVisibleModules';
 
-// Goes to any page from the keyboard: Ctrl+K (Cmd+K on a Mac) opens it, typing narrows the pages, the arrow keys pick
+// Goes to any page the user may see (Home, the modules, then the pages below them) from the keyboard: Ctrl+K (Cmd+K on a Mac) opens it, typing narrows the pages, the arrow keys pick
 // one and Enter goes there. The button beside the breadcrumbs opens it too.
 const open = ref(false);
 const router = useRouter();
+const modules = useVisibleModules();
+const pages = useVisiblePages();
 
 function onKeyDown(event: KeyboardEvent) {
   if (event.key.toLowerCase() === 'k' && (event.metaKey || event.ctrlKey)) {
@@ -53,13 +55,11 @@ function go(to: string) {
       <CommandEmpty>No page matches.</CommandEmpty>
       <CommandGroup heading="Pages">
         <CommandItem value="Home" @select="go('/')">Home</CommandItem>
-        <CommandItem
-          v-for="route in moduleRoutes"
-          :key="route.path"
-          :value="route.title"
-          @select="go(`/${route.path}`)"
-        >
+        <CommandItem v-for="route in modules" :key="route.path" :value="route.title" @select="go(`/${route.path}`)">
           {{ route.title }}
+        </CommandItem>
+        <CommandItem v-for="page in pages" :key="page.to" :value="page.title" @select="go(page.to)">
+          {{ page.title }}
         </CommandItem>
       </CommandGroup>
     </CommandList>

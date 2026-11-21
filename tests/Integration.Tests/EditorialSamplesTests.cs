@@ -5,7 +5,7 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 
 /// <summary>
 /// The editorial module's sample through the running application: a sample is created, read back and listed a
-/// page at a time. It goes with the sample (AGENTS.md).
+/// page at a time; editors create them (issue #6). It goes with the sample (AGENTS.md).
 /// </summary>
 public class EditorialSamplesTests(AspireFixture aspire)
 {
@@ -15,7 +15,7 @@ public class EditorialSamplesTests(AspireFixture aspire)
     public async Task A_created_sample_is_read_back_and_listed()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        using var client = await aspire.CreateHostClientAsync("developer");
+        using var client = await aspire.CreateHostClientAsync("editor");
         var name = $"Sample {Guid.CreateVersion7()}";
 
         using var created = await client.PostAsJsonAsync(Samples, new { name }, cancellationToken);
@@ -35,7 +35,7 @@ public class EditorialSamplesTests(AspireFixture aspire)
     public async Task A_blank_name_is_refused_as_the_callers_mistake()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        using var client = await aspire.CreateHostClientAsync("developer");
+        using var client = await aspire.CreateHostClientAsync("editor");
 
         using var refused = await client.PostAsJsonAsync(Samples, new { name = "  " }, cancellationToken);
 
@@ -54,7 +54,20 @@ public class EditorialSamplesTests(AspireFixture aspire)
     }
 
     [Fact]
-    public async Task A_user_without_the_manage_permission_lists_samples_but_creates_none()
+    public async Task A_manager_who_is_not_an_editor_lists_samples_but_creates_none()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("developer");
+
+        using var listed = await client.GetAsync(Samples, cancellationToken);
+        using var created = await client.PostAsJsonAsync(Samples, new { name = "Not an editor's to create" }, cancellationToken);
+
+        listed.StatusCode.ShouldBe(HttpStatusCode.OK);
+        created.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task A_user_without_the_edit_permission_lists_samples_but_creates_none()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await aspire.CreateHostClientAsync("visitor");

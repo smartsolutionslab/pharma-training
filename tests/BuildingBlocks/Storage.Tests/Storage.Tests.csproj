@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Tests of the building blocks' blob storage (src/BuildingBlocks/Storage): blob names, URL lifetimes and the SAS URLs AzureBlobUrls signs. -->
+  <PropertyGroup>
+    <RootNamespace>SmartSolutionsLab.PharmaTraining.BuildingBlocks.Storage.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../../src/BuildingBlocks/BuildingBlocks.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,86 @@
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.DTOs;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
+using static SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersions.CourseVersionBuilder;
+
+namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersions;
+
+public class MappingsTests
+{
+    public static TheoryData<CourseVersionStatus> Statuses
+    {
+        get
+        {
+            var data = new TheoryData<CourseVersionStatus>();
+            foreach (var status in Enum.GetValues<CourseVersionStatus>())
+            {
+                data.Add(status);
+            }
+
+            return data;
+        }
+    }
+
+    public static TheoryData<ChapterKind> Kinds
+    {
+        get
+        {
+            var data = new TheoryData<ChapterKind>();
+            foreach (var kind in Enum.GetValues<ChapterKind>())
+            {
+                data.Add(kind);
+            }
+
+            return data;
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(Statuses))]
+    public void A_status_travels_under_its_own_name_to_the_dto_and_back(CourseVersionStatus status)
+    {
+        var dto = status.ToDto();
+
+        dto.ToString().ShouldBe(status.ToString());
+        dto.ToDomain().ShouldBe(status);
+    }
+
+    [Theory]
+    [MemberData(nameof(Kinds))]
+    public void A_chapter_kind_travels_under_its_own_name_to_the_dto(ChapterKind kind) =>
+        kind.ToDto().ToString().ShouldBe(kind.ToString());
+
+    [Fact]
+    public void An_undefined_status_or_kind_is_a_bug()
+    {
+        Should.Throw<System.Diagnostics.UnreachableException>(() => ((CourseVersionStatus)99).ToDto());
+        Should.Throw<System.Diagnostics.UnreachableException>(() => ((EditorialCourseVersionStatus)99).ToDomain());
+        Should.Throw<System.Diagnostics.UnreachableException>(() => ((ChapterKind)99).ToDto());
+    }
+
+    [Fact]
+    public void A_version_is_summed_up_without_its_chapters()
+    {
+        var version = Published(out _);
+
+        version.ToSummaryDto().ShouldBe(new EditorialCourseVersionSummaryDto(version.Id.Value, version.Course.Value, 1, "Hygiene 2027", EditorialCourseVersionStatus.Published));
+    }
+
+    [Fact]
+    public void A_chapter_without_text_has_none_in_the_dto()
+    {
+        var version = DraftWithChapter(out var first);
+        var pdf = ChapterId.New();
+        var video = ChapterId.New();
+        version.AddChapter(Chapter.OfPdf(pdf, ChapterTitle.From("Hygieneplan"), BlobReference.From("courses/plan.pdf"))).IsSuccess.ShouldBeTrue();
+        version.AddChapter(Chapter.OfVideo(video, ChapterTitle.From("Vorführung"), BlobReference.From("courses/demo.mp4"), VideoDuration.From(90))).IsSuccess.ShouldBeTrue();
+
+        var dto = version.ToDto();
+
+        dto.Chapters.ShouldBe(
+        [
+            new EditorialChapterDto(first.Value, 1, "Händehygiene", EditorialChapterKind.Text, "Hände vor und nach …"),
+            new EditorialChapterDto(pdf.Value, 2, "Hygieneplan", EditorialChapterKind.Pdf, null),
+            new EditorialChapterDto(video.Value, 3, "Vorführung", EditorialChapterKind.Video, null),
+        ]);
+    }
+}

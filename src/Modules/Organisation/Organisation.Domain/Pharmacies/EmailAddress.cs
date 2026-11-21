@@ -34,6 +34,6 @@ public sealed partial record EmailAddress : IValueObject<string>
 
     public override string ToString() => Value;
 
-    [GeneratedRegex(@"^[^@\s]+@[^@\s]+\.[^@\s]+$")]
+    [GeneratedRegex(@"^[^@\s\0]+@[^@\s\0]+\.[^@\s\0]+$")]
     private static partial Regex Shape();
 }

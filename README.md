@@ -55,6 +55,10 @@ dotnet run --project src/AppHost
 
 Or, with the [Aspire CLI](https://aspire.dev), `aspire run`, which finds the AppHost through `aspire.config.json`. `aspire doctor` checks the prerequisites above when something does not start.
 
+### Blob storage
+
+The AppHost runs Azurite, the Azure Storage emulator, as the resource `storage`, with a container per module (`<module>-blobs`, named after the module); each service reads only its own, as the connection string `blobs`, and signs short-lived upload and read URLs for it with the emulator's account key (`IBlobUrls`, docs/adr/0002). The web app's origin, `http://localhost:5173`, may `PUT` and `GET` with those URLs straight from the browser: the AppHost sets that CORS rule on the emulator when it starts. Signing in a deployed account, where Aspire disables the account key, is a separate decision (keyless signing).
+
 ### Local users
 
 Keycloak imports these from `src/AppHost/realms/realm.json`, development only. Each one's password is its username.

@@ -1,7 +1,9 @@
 import { expect, type Page, test } from '@playwright/test';
+import { memberOfOnePharmacy } from './onePharmacy';
 
-/** The Organisation page, as a signed-in user opens it. */
+/** The Organisation page, as a signed-in member of a pharmacy, who may manage it, opens it. */
 async function openOrganisation(page: Page) {
+  await memberOfOnePharmacy(page);
   await page.goto('/');
   await page.getByLabel('Username or email').fill('developer');
   await page.getByLabel('Password', { exact: true }).fill('developer');
