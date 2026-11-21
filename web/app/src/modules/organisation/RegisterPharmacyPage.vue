@@ -22,7 +22,7 @@ const registrationSchema = z.object({
   jobFunction: z.enum(OrganisationJobFunction, { error: 'Choose what you do in the pharmacy.' }),
 });
 
-const jobFunctions: { value: OrganisationJobFunction; label: string }[] = [
+const jobFunctions = [
   { value: OrganisationJobFunction.Pharmacist, label: 'Pharmacist' },
   { value: OrganisationJobFunction.Pta, label: 'PTA (pharmaceutical-technical assistant)' },
   { value: OrganisationJobFunction.Pka, label: 'PKA (pharmaceutical-commercial employee)' },
