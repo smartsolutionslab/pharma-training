@@ -14,11 +14,11 @@ importers:
         specifier: 5.3.0
         version: 5.3.0
       '@lucide/vue':
-        specifier: 1.73.0
-        version: 1.73.0(vue@3.5.45(typescript@6.0.3))
+        specifier: 1.75.0
+        version: 1.75.0(vue@3.5.45(typescript@6.0.3))
       '@tanstack/vue-query':
-        specifier: 5.107.1
-        version: 5.107.1(vue@3.5.45(typescript@6.0.3))
+        specifier: 5.108.0
+        version: 5.108.0(vue@3.5.45(typescript@6.0.3))
       '@tanstack/vue-table':
         specifier: 9.3.1
         version: 9.3.1(vue@3.5.45(typescript@6.0.3))
@@ -96,8 +96,8 @@ importers:
         specifier: 14.9.0
         version: 14.9.0(eslint-plugin-vue@10.12.1(@typescript-eslint/parser@8.73.0(eslint@10.15.0(jiti@2.7.0))(typescript@6.0.3))(eslint@10.15.0(jiti@2.7.0))(vue-eslint-parser@10.4.2(eslint@10.15.0(jiti@2.7.0))))(eslint@10.15.0(jiti@2.7.0))(typescript@6.0.3)
       axe-core:
-        specifier: 4.14.0
-        version: 4.14.0
+        specifier: 4.14.1
+        version: 4.14.1
       eslint:
         specifier: 10.15.0
         version: 10.15.0(jiti@2.7.0)
@@ -112,7 +112,7 @@ importers:
         version: 31.0.1
       orval:
         specifier: 8.48.0
-        version: 8.48.0(@tanstack/vue-query@5.107.1(vue@3.5.45(typescript@6.0.3)))(prettier@3.10.1)(zod@4.6.7)
+        version: 8.48.0(@tanstack/vue-query@5.108.0(vue@3.5.45(typescript@6.0.3)))(prettier@3.10.1)(zod@4.6.7)
       prettier:
         specifier: 3.10.1
         version: 3.10.1
@@ -486,8 +486,8 @@ packages:
   '@keyv/serialize@1.1.1':
     resolution: {integrity: sha512-dXn3FZhPv0US+7dtJsIi2R+c7qWYiReoEh5zUntWCf4oSpMNib8FDhSoed6m3QyZdx5hK7iLFkYk3rNxwt8vTA==}
 
-  '@lucide/vue@1.73.0':
-    resolution: {integrity: sha512-QVVRSgu2rqRX3NAUktT9venW0Bvtr03aCZjhFRLwnV3uqLyR7KCTOx5mMlukhw0aiyjC3D6w2b+fmy4MeM5R3Q==}
+  '@lucide/vue@1.75.0':
+    resolution: {integrity: sha512-aO44J4WzSE7+xsPa0L0SQ3Db8jYm+8piJdy95Is4UTpqBV4Krd5XKsivCBLPUSHd6pPZsJ+ou5C5V6KNtfxRFQ==}
     peerDependencies:
       vue: '>=3.0.1'
 
@@ -871,8 +871,8 @@ packages:
     resolution: {integrity: sha512-DIpUSOhPfQ7u/qfUi/Wgm0wBO56MyBYXGvnlI0NcauDRPqdBUlAZZjW2Dxm92m+k1UWVhKw8YJ4f47+75Aujyw==}
     engines: {node: '>=20'}
 
-  '@tanstack/query-core@5.107.1':
-    resolution: {integrity: sha512-PSyAik11oQBEVOiVy5hjZWHmoUqOXqK1WYy4v55mcxozEfKaQgpUMsgnXhWjuESzSht8JfzqMS1m6M/9CpNgvg==}
+  '@tanstack/query-core@5.108.0':
+    resolution: {integrity: sha512-X9zJUtEV/0D2q9pmGS/Bza8S4bNovSBhZOtdhtu0fzsHwizC6C+Eh/q5CX3MQBchsRMrirWVQmv7Fp4OStzV9g==}
 
   '@tanstack/store@0.11.2':
     resolution: {integrity: sha512-sJ4mjol8uQsHV0gOJzzjwXfh2Fwm+Sz0+8deqiTm4jGbMdjzNSW+xZCFm0kUa870uhd8yi+DpKnZb5Kc4apa0Q==}
@@ -884,8 +884,8 @@ packages:
   '@tanstack/virtual-core@3.19.11':
     resolution: {integrity: sha512-/5iHb0RHBvj8Di59FDs4ESNm45jls33aZAi4zccVXZjc/6ZvwQP6nzEYeT6weXjTf9E6/vrp2JhYWRyO+ZP13A==}
 
-  '@tanstack/vue-query@5.107.1':
-    resolution: {integrity: sha512-O08F25JtbFDWJwEUjQNgSFRhkAXjlrAIUe0o06LfHC5agyNaxgzK9VUqjONu/BOUckARYdlXxSS7KIiKWeWlRw==}
+  '@tanstack/vue-query@5.108.0':
+    resolution: {integrity: sha512-Phv8VCKrKVTDyQjREwUwCFTemCOpup1n7Dzom5ql5hAoNfzmdPfdvBpJIht7W56nufRYeV3pxURcRjZTFRSIVw==}
     peerDependencies:
       '@vue/composition-api': ^1.1.2
       vue: ^2.6.0 || ^3.3.0
@@ -1282,8 +1282,8 @@ packages:
     resolution: {integrity: sha512-wvUjBtSGN7+7SjNpq/9M2Tg350UZD3q62IFZLbRAR1bSMlCo1ZaeW+BJ+D090e4hIIZLBcTDWe4Mh4jvUDajzQ==}
     engines: {node: '>= 0.4'}
 
-  axe-core@4.14.0:
-    resolution: {integrity: sha512-9WTZxEjsZ7b13TH8JPmbV2z8CHbl80/2hm3XPEG4JgNdQLK81IBRXmSxHfMAOkSqQeRxT/0dwNDz2GOm3zzpcQ==}
+  axe-core@4.14.1:
+    resolution: {integrity: sha512-FHfa+lmNjQZfJz1q8wKqIDwC6DExcHt/pkjNQb09a3NPjCKg2rhu5qb2S4r76ASyFNNtuFooJpZe37OgudVGtQ==}
     engines: {node: '>=4'}
 
   balanced-match@4.0.4:
@@ -2779,7 +2779,7 @@ snapshots:
 
   '@axe-core/playwright@4.14.0(playwright-core@1.65.1)':
     dependencies:
-      axe-core: 4.14.0
+      axe-core: 4.14.1
       playwright-core: 1.65.1
 
   '@babel/code-frame@7.29.7':
@@ -3034,7 +3034,7 @@ snapshots:
 
   '@keyv/serialize@1.1.1': {}
 
-  '@lucide/vue@1.73.0(vue@3.5.45(typescript@6.0.3))':
+  '@lucide/vue@1.75.0(vue@3.5.45(typescript@6.0.3))':
     dependencies:
       vue: 3.5.45(typescript@6.0.3)
 
@@ -3132,12 +3132,12 @@ snapshots:
       - '@faker-js/faker'
       - '@modelcontextprotocol/server'
 
-  '@orval/query@8.48.0(@tanstack/vue-query@5.107.1(vue@3.5.45(typescript@6.0.3)))':
+  '@orval/query@8.48.0(@tanstack/vue-query@5.108.0(vue@3.5.45(typescript@6.0.3)))':
     dependencies:
       '@orval/core': 8.48.0
       '@orval/fetch': 8.48.0
     optionalDependencies:
-      '@tanstack/vue-query': 5.107.1(vue@3.5.45(typescript@6.0.3))
+      '@tanstack/vue-query': 5.108.0(vue@3.5.45(typescript@6.0.3))
     transitivePeerDependencies:
       - '@faker-js/faker'
       - '@modelcontextprotocol/server'
@@ -3374,7 +3374,7 @@ snapshots:
     dependencies:
       remove-accents: 0.5.0
 
-  '@tanstack/query-core@5.107.1': {}
+  '@tanstack/query-core@5.108.0': {}
 
   '@tanstack/store@0.11.2': {}
 
@@ -3384,10 +3384,10 @@ snapshots:
 
   '@tanstack/virtual-core@3.19.11': {}
 
-  '@tanstack/vue-query@5.107.1(vue@3.5.45(typescript@6.0.3))':
+  '@tanstack/vue-query@5.108.0(vue@3.5.45(typescript@6.0.3))':
     dependencies:
       '@tanstack/match-sorter-utils': 9.2.6
-      '@tanstack/query-core': 5.107.1
+      '@tanstack/query-core': 5.108.0
       '@vue/devtools-api': 6.6.4
       vue: 3.5.45(typescript@6.0.3)
       vue-demi: 0.14.10(vue@3.5.45(typescript@6.0.3))
@@ -3872,7 +3872,7 @@ snapshots:
     dependencies:
       possible-typed-array-names: 1.1.0
 
-  axe-core@4.14.0: {}
+  axe-core@4.14.1: {}
 
   balanced-match@4.0.4: {}
 
@@ -4706,7 +4706,7 @@ snapshots:
       type-check: 0.4.0
       word-wrap: 1.2.5
 
-  orval@8.48.0(@tanstack/vue-query@5.107.1(vue@3.5.45(typescript@6.0.3)))(prettier@3.10.1)(zod@4.6.7):
+  orval@8.48.0(@tanstack/vue-query@5.108.0(vue@3.5.45(typescript@6.0.3)))(prettier@3.10.1)(zod@4.6.7):
     dependencies:
       '@commander-js/extra-typings': 15.1.0(commander@15.1.0)
       '@orval/angular': 8.48.0
@@ -4718,7 +4718,7 @@ snapshots:
       '@orval/mcp': 8.48.0(zod@4.6.7)
       '@orval/mock': 8.48.0
       '@orval/pinia-colada': 8.48.0
-      '@orval/query': 8.48.0(@tanstack/vue-query@5.107.1(vue@3.5.45(typescript@6.0.3)))
+      '@orval/query': 8.48.0(@tanstack/vue-query@5.108.0(vue@3.5.45(typescript@6.0.3)))
       '@orval/solid-start': 8.48.0
       '@orval/swr': 8.48.0
       '@orval/valibot': 8.48.0
@@ -5144,7 +5144,7 @@ snapshots:
   vitest-axe@0.1.0(vitest@5.1.0(@types/node@26.6.6)(jsdom@31.0.1)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))):
     dependencies:
       aria-query: 5.3.2
-      axe-core: 4.14.0
+      axe-core: 4.14.1
       chalk: 5.6.2
       dom-accessibility-api: 0.5.16
       lodash-es: 4.18.1
