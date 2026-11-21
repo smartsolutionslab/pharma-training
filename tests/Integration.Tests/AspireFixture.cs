@@ -46,6 +46,16 @@ public sealed class AspireFixture : IAsyncLifetime
     /// <summary>A client calling the host as a realm user; local users' passwords equal their names.</summary>
     public async Task<HttpClient> CreateHostClientAsync(string user)
     {
+        var accessToken = await RequestAccessTokenAsync(user);
+
+        var client = CreateHostClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        return client;
+    }
+
+    /// <summary>The access token the realm issues to a local user, whose password equals their name.</summary>
+    public async Task<string> RequestAccessTokenAsync(string user)
+    {
         using var identity = new HttpClient { BaseAddress = App.GetEndpoint("keycloak", "http") };
         using var form = new FormUrlEncodedContent(new Dictionary<string, string>
         {
@@ -58,10 +68,7 @@ public sealed class AspireFixture : IAsyncLifetime
         response.EnsureSuccessStatusCode();
         var token = await response.Content.ReadFromJsonAsync<TokenResponse>()
             ?? throw new InvalidOperationException("The realm returned no token.");
-
-        var client = CreateHostClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.AccessToken);
-        return client;
+        return token.AccessToken;
     }
 
     public async ValueTask DisposeAsync()
