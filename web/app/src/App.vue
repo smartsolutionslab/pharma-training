@@ -1,35 +1,27 @@
 <script setup lang="ts">
-import { RouterLink, RouterView, useRoute } from 'vue-router';
+import { RouterView } from 'vue-router';
 import { Separator } from '@/components/ui/separator';
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarInset,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
   SidebarProvider,
   SidebarRail,
   SidebarTrigger,
 } from '@/components/ui/sidebar';
 import { Toaster } from '@/components/ui/sonner';
-import { moduleRoutes } from '@/modules';
+import AudienceGate from '@/shell/AudienceGate.vue';
 import Breadcrumbs from '@/shell/Breadcrumbs.vue';
 import CommandPalette from '@/shell/CommandPalette.vue';
+import PharmacySwitcher from '@/shell/PharmacySwitcher.vue';
+import ShellNavigation from '@/shell/ShellNavigation.vue';
 import ThemeToggle from '@/theme/ThemeToggle.vue';
 import UserMenu from '@/auth/UserMenu.vue';
 
-// The app shell: a sidebar with every module's page (each module's routes.ts adds its own), the breadcrumbs and the
-// command palette above the page, and the toasts.
-const route = useRoute();
-
-/** Whether the address is the page's or below it. */
-const isAt = (path: string) => route.path === path || route.path.startsWith(`${path}/`);
+// The app shell: a sidebar with the pharmacy switcher and every module's page the user may see (each module's routes.ts
+// adds its own), the breadcrumbs and the command palette above the page, the page if it is for the user, and the toasts.
 </script>
 
 <template>
@@ -37,27 +29,10 @@ const isAt = (path: string) => route.path === path || route.path.startsWith(`${p
     <Sidebar>
       <SidebarHeader>
         <p class="px-2 py-1 font-semibold">pharma-training</p>
+        <PharmacySwitcher />
       </SidebarHeader>
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Modules</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <nav aria-label="Modules">
-              <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton as-child :is-active="route.path === '/'">
-                    <RouterLink to="/">Home</RouterLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem v-for="module in moduleRoutes" :key="module.path">
-                  <SidebarMenuButton as-child :is-active="isAt(`/${module.path}`)">
-                    <RouterLink :to="`/${module.path}`">{{ module.title }}</RouterLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              </SidebarMenu>
-            </nav>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        <ShellNavigation />
       </SidebarContent>
       <SidebarFooter>
         <ThemeToggle />
@@ -72,7 +47,9 @@ const isAt = (path: string) => route.path === path || route.path.startsWith(`${p
         <Breadcrumbs />
         <CommandPalette />
       </header>
-      <RouterView />
+      <AudienceGate>
+        <RouterView />
+      </AudienceGate>
     </SidebarInset>
     <Toaster />
   </SidebarProvider>
