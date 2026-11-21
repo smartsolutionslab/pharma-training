@@ -62,6 +62,7 @@ Stand der Diskussion vom 17.11.2026.
 | Redaktions-Workflow | Draft → InReview → Published → Retired; Vier-Augen-Freigabe als Einstellung, zunächst aus | Solange die Redaktion aus einer Person besteht |
 | Herkunft der Fragen | Jede Frage vermerkt „KI-entworfen, geprüft von X am Y“ | Nachweis, dass ein Mensch jede Frage freigegeben hat |
 | LLM-Anbieter | azure-openai mit EU-Region | DSGVO, Gesundheitsbereich; in Fabric supported |
+| LLM-Evals | `backend.llm.extras: evals` von Anfang an | E8 prüft den KI-Testentwurf mit dem generierten Evals-Job |
 | Testvorgaben | Pro Schulung gespeichert; Standard 10 Fragen, gleichmäßig auf Kapitel verteilt | Testentwurf reproduzierbar nach Inhaltsänderung |
 | Identity | Kein eigener Service; PersonId = Keycloak-Subject; Anzeigename pflegt Organisation | Ein Identity-Service hätte in MVP 1 nichts zu tun |
 | Catalog | Eigener Service als Read Model aus CourseVersionPublished | Lernende kommen nie an die Redaktions-API |

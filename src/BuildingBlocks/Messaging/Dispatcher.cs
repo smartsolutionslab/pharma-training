@@ -1,0 +1,28 @@
+using Microsoft.Extensions.DependencyInjection;
+
+namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
+
+/// <summary>Resolves the one handler registered for the request's runtime type.</summary>
+public sealed class Dispatcher(IServiceProvider services) : IDispatcher
+{
+    public Task<TResult> SendAsync<TResult>(ICommand<TResult> command, CancellationToken cancellationToken)
+    {
+        Ensure.That(command).IsNotNull();
+
+        return Handle<TResult>(typeof(ICommandHandler<,>), command, cancellationToken);
+    }
+
+    public Task<TResult> QueryAsync<TResult>(IQuery<TResult> query, CancellationToken cancellationToken)
+    {
+        Ensure.That(query).IsNotNull();
+
+        return Handle<TResult>(typeof(IQueryHandler<,>), query, cancellationToken);
+    }
+
+    private Task<TResult> Handle<TResult>(Type handlerDefinition, object request, CancellationToken cancellationToken)
+    {
+        var handlerType = handlerDefinition.MakeGenericType(request.GetType(), typeof(TResult));
+        var handler = services.GetRequiredService(handlerType);
+        return (Task<TResult>)handlerType.GetMethod("HandleAsync")!.Invoke(handler, [request, cancellationToken])!;
+    }
+}

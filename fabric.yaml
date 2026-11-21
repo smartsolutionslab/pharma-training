@@ -1,0 +1,98 @@
+# Written by fabric. These choices are fixed for this project (ADR-0001 of the generator).
+fabric: 1
+generator: 0.10.0
+catalog: sha256:c37d58df90531045b421acb80c8fece85292a3046ff37b0c3cd0bdbb836c3c5f
+name: pharma-training
+namespace: SmartSolutionsLab.PharmaTraining
+profile: saas-services-vue
+project:
+  backend.database: postgres
+  backend.data-access: ef-core
+  backend.topology: services
+  backend.bus.transport: rabbitmq
+  backend.bus.library: wolverine
+  backend.mediator: hand-rolled
+  backend.api-style: minimal-apis
+  backend.api-protocols: [rest]
+  backend.errors: result
+  backend.result-style: typed-outcomes
+  backend.guards: ensure-that
+  backend.absence: option
+  backend.auth: keycloak
+  backend.authorization: [roles]
+  backend.tenancy: none
+  backend.llm: azure-openai
+  backend.llm.agents: none
+  backend.llm.extras: [evals]
+  backend.mcp: []
+  backend.test.framework: xunit
+  backend.test.assertions: shouldly
+  backend.test.mocks: nsubstitute
+  backend.test.integration: aspire-fixture
+  backend.test.extras: []
+  test.discipline: red-first
+  frontend.framework: vue
+  frontend.architecture: spa
+  frontend.workspace: pnpm-workspaces
+  frontend.state: pinia-tanstack-query
+  frontend.api-client: orval
+  frontend.routing: vue-router
+  frontend.forms: vee-validate
+  frontend.validation: zod
+  frontend.styling: tailwind
+  frontend.ui-library: shadcn-vue
+  frontend.design-system: none
+  frontend.data-grid: tanstack-table
+  frontend.charts: echarts
+  frontend.dashboards: []
+  frontend.realtime: none
+  frontend.auth-client: oidc-client-ts
+  frontend.pwa: "no"
+  frontend.test.extras: [accessibility]
+  frontend.color-scheme: blue
+  frontend.font: inter
+  backend.data-access.reads: ef-core
+settings:
+  backend.llm.extras.evals.threshold: 4
+module-defaults:
+  module.style: ddd
+  module.ddd-depth: strict
+  module.cqrs: logical
+  module.communication: [integration-events]
+modules:
+  organisation:
+    module.style: ddd
+    module.ddd-depth: strict
+    module.cqrs: logical
+    module.communication: [integration-events]
+  editorial:
+    module.style: ddd
+    module.ddd-depth: strict
+    module.cqrs: logical
+    module.communication: [integration-events]
+  certification:
+    module.style: ddd
+    module.ddd-depth: strict
+    module.cqrs: logical
+    module.communication: [integration-events]
+  compliance:
+    module.style: ddd
+    module.ddd-depth: strict
+    module.cqrs: logical
+    module.communication: [integration-events]
+  learning:
+    module.style: event-sourced
+    module.event-store: marten
+    module.ddd-depth: strict
+    module.cqrs: logical
+    module.communication: [integration-events]
+  assessment:
+    module.style: event-sourced
+    module.event-store: marten
+    module.ddd-depth: strict
+    module.cqrs: logical
+    module.communication: [integration-events]
+  catalog:
+    module.style: crud
+    module.cqrs: none
+    module.communication: [integration-events]

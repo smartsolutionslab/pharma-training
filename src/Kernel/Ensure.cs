@@ -1,0 +1,61 @@
+using System.Runtime.CompilerServices;
+
+namespace SmartSolutionsLab.PharmaTraining.Kernel;
+
+/// <summary>
+/// Fluent argument guards (docs/adr). The string overload also validates value-object invariants: the first failed
+/// predicate throws <see cref="GuardException"/>, which a value object's factory may translate into a failure.
+/// </summary>
+public static class Ensure
+{
+    public static EnsuredString That(string value, string parameterName = "value") =>
+        new(value, parameterName);
+
+    /// <summary>
+    /// Begins a guard chain for a reference-type argument; the parameter
+    /// name is captured from the call site. Pair with
+    /// <see cref="EnsuredObject{T}.IsNotNull"/> in place of
+    /// <c>ArgumentNullException.ThrowIfNull</c>. The <c>string</c> overload
+    /// above is more specific, so string arguments still flow to it.
+    /// </summary>
+    public static EnsuredObject<T> That<T>(
+        T value,
+        [CallerArgumentExpression(nameof(value))] string parameterName = "")
+        where T : class =>
+        new(value, parameterName);
+
+    /// <summary>
+    /// Begins a guard chain for a <see cref="Guid"/> argument; pair with
+    /// <see cref="EnsuredGuid.IsNotEmpty"/> in place of a
+    /// <c>value == Guid.Empty ? throw …</c> precondition.
+    /// A dedicated overload is needed because value types do not bind to
+    /// the reference-type <c>That&lt;T&gt;</c> above.
+    /// </summary>
+    public static EnsuredGuid That(
+        Guid value,
+        [CallerArgumentExpression(nameof(value))] string parameterName = "") =>
+        new(value, parameterName);
+
+    /// <summary>
+    /// Begins a guard chain for an <see cref="int"/> argument; pair with
+    /// <see cref="EnsuredValue{T}.AtLeast"/> / <see cref="EnsuredValue{T}.InRange"/>
+    /// / <see cref="EnsuredValue{T}.Satisfies"/> in place of a numeric-range
+    /// <c>throw new ArgumentException</c> precondition.
+    /// </summary>
+    public static EnsuredValue<int> That(
+        int value,
+        [CallerArgumentExpression(nameof(value))] string parameterName = "") =>
+        new(value, parameterName);
+
+    /// <summary>
+    /// Begins a guard chain for a <see cref="decimal"/> argument. A dedicated
+    /// overload is needed for the same reason the <see cref="int"/> one is:
+    /// value types do not bind to the reference-type <c>That&lt;T&gt;</c> above,
+    /// and <see cref="EnsuredValue{T}"/> is already generic over any comparable
+    /// struct.
+    /// </summary>
+    public static EnsuredValue<decimal> That(
+        decimal value,
+        [CallerArgumentExpression(nameof(value))] string parameterName = "") =>
+        new(value, parameterName);
+}

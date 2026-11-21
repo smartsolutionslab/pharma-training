@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>SmartSolutionsLab.PharmaTraining.BuildingBlocks</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Microsoft.Extensions.AI" />
+    <PackageReference Include="WolverineFx.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
+    <ProjectReference Include="../Contracts/Contracts.csproj" />
+    <PackageReference Include="Marten" />
+    <ProjectReference Include="../BuildingBlocks.EventSourcing/BuildingBlocks.EventSourcing.csproj" />
+    <ProjectReference Include="../BuildingBlocks.Domain/BuildingBlocks.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

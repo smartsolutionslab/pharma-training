@@ -1,0 +1,4 @@
+namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.EventSourcing;
+
+/// <summary>Something that happened to an event-sourced aggregate, named in the past tense (InvoicePaid). Stored as it is, forever.</summary>
+public interface IDomainEvent;

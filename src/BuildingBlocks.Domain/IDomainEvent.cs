@@ -1,0 +1,4 @@
+namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Domain;
+
+/// <summary>Something that happened inside an aggregate, named in the past tense (InvoicePaid).</summary>
+public interface IDomainEvent;

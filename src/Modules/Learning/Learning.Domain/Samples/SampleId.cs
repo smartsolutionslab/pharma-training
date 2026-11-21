@@ -1,0 +1,25 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.EventSourcing;
+
+namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Domain.Samples;
+
+/// <summary>
+/// A sample's identity and the id of its event stream, emitted by fabric add-module with the rest of the sample: rename
+/// it after your aggregate (<c>InvoiceId</c>) or delete it (AGENTS.md). A new one is a time-ordered Guid v7; an empty
+/// Guid is never one.
+/// </summary>
+public sealed record SampleId : IValueObject<Guid>, IAggregateId
+{
+    private SampleId(Guid value) => Value = value;
+
+    public Guid Value { get; }
+
+    public static SampleId New() => new(Guid.CreateVersion7());
+
+    public static SampleId From(Guid value)
+    {
+        Ensure.That(value).IsNotEmpty();
+        return new SampleId(value);
+    }
+
+    public override string ToString() => Value.ToString();
+}

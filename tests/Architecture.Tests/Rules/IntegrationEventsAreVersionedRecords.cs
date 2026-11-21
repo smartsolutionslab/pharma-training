@@ -1,0 +1,58 @@
+using System.Reflection;
+using System.Text.RegularExpressions;
+
+namespace SmartSolutionsLab.PharmaTraining.Architecture.Tests.Rules;
+
+public sealed partial class IntegrationEventsAreVersionedRecords : IArchitectureRule
+{
+    public string Description => "Every integration event is a record in Contracts deriving from IntegrationEvent, so its unit of work fills its metadata, and its name ends in V<number>.";
+
+    public IEnumerable<string> Violations(ArchitectureModel model)
+    {
+        Ensure.That(model).IsNotNull();
+
+        var events = model.ModuleAssemblies
+            .Append(Assembly.Load("Contracts"))
+            .SelectMany(assembly => assembly.GetTypes())
+            .Where(type => type is { IsClass: true, IsAbstract: false } && type.GetInterfaces().Any(contract => contract.FullName == "SmartSolutionsLab.PharmaTraining.Contracts.IIntegrationEvent"));
+
+        foreach (var type in events)
+        {
+            if (type.Assembly.GetName().Name != "Contracts")
+            {
+                yield return $"{type.FullName} is an integration event outside Contracts.";
+            }
+
+            if (!Versioned().IsMatch(type.Name))
+            {
+                yield return $"{type.FullName} has no version suffix (V1, V2, ...).";
+            }
+
+            if (type.GetMethod("<Clone>$") is null)
+            {
+                yield return $"{type.FullName} is not a record.";
+            }
+
+            if (!DerivesFromIntegrationEvent(type))
+            {
+                yield return $"{type.FullName} does not derive from IntegrationEvent, so no unit of work can publish it and fill its metadata.";
+            }
+        }
+    }
+
+    private static bool DerivesFromIntegrationEvent(Type type)
+    {
+        for (var baseType = type.BaseType; baseType is not null; baseType = baseType.BaseType)
+        {
+            if (baseType.FullName == "SmartSolutionsLab.PharmaTraining.Contracts.IntegrationEvent")
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    [GeneratedRegex("V[0-9]+$")]
+    private static partial Regex Versioned();
+}

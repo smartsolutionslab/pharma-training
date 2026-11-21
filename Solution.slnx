@@ -1,0 +1,67 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AppHost/AppHost.csproj" />
+    <Project Path="src/BuildingBlocks/BuildingBlocks.csproj" />
+    <Project Path="src/Contracts/Contracts.csproj" />
+    <Project Path="src/Kernel/Kernel.csproj" />
+    <Project Path="src/ServiceDefaults/ServiceDefaults.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Architecture.Tests/Architecture.Tests.csproj" />
+    <Project Path="tests/Kernel/Paging.Tests/Paging.Tests.csproj" />
+  </Folder>
+  <Project Path="tests/Kernel/Absence.Tests/Absence.Tests.csproj" />
+  <Project Path="src/MigrationRunner/MigrationRunner.csproj" />
+  <Project Path="tests/Kernel/Guards.Tests/Guards.Tests.csproj" />
+  <Project Path="tests/Evals/Evals.csproj" />
+  <Project Path="tests/Evals.Tests/Evals.Tests.csproj" />
+
+  <Project Path="tests/Kernel/Results.Tests/Results.Tests.csproj" />
+  <Project Path="tests/Integration.Tests/Integration.Tests.csproj" />
+  <Project Path="src/Edge/Edge.csproj" />
+  <Project Path="src/Services/Organisation/Host/Host.csproj" />
+  <Project Path="src/Services/Editorial/Host/Host.csproj" />
+  <Project Path="src/Services/Certification/Host/Host.csproj" />
+  <Project Path="src/Services/Compliance/Host/Host.csproj" />
+  <Project Path="src/Services/Learning/Host/Host.csproj" />
+  <Project Path="src/Services/Assessment/Host/Host.csproj" />
+  <Project Path="src/Services/Catalog/Host/Host.csproj" />
+
+  <Project Path="src/BuildingBlocks.Domain/BuildingBlocks.Domain.csproj" />
+  <Project Path="src/BuildingBlocks.EventSourcing/BuildingBlocks.EventSourcing.csproj" />
+  <Project Path="src/Modules/Organisation/Organisation.Domain/Organisation.Domain.csproj" />
+  <Project Path="src/Modules/Organisation/Organisation.Application/Organisation.Application.csproj" />
+  <Project Path="src/Modules/Organisation/Organisation.Infrastructure/Organisation.Infrastructure.csproj" />
+  <Project Path="src/Modules/Organisation/Organisation.Api/Organisation.Api.csproj" />
+  <Project Path="tests/Modules/Organisation.Tests/Organisation.Tests.csproj" />
+  <Project Path="src/Modules/Editorial/Editorial.Domain/Editorial.Domain.csproj" />
+  <Project Path="src/Modules/Editorial/Editorial.Application/Editorial.Application.csproj" />
+  <Project Path="src/Modules/Editorial/Editorial.Infrastructure/Editorial.Infrastructure.csproj" />
+  <Project Path="src/Modules/Editorial/Editorial.Api/Editorial.Api.csproj" />
+  <Project Path="tests/Modules/Editorial.Tests/Editorial.Tests.csproj" />
+  <Project Path="src/Modules/Certification/Certification.Domain/Certification.Domain.csproj" />
+  <Project Path="src/Modules/Certification/Certification.Application/Certification.Application.csproj" />
+  <Project Path="src/Modules/Certification/Certification.Infrastructure/Certification.Infrastructure.csproj" />
+  <Project Path="src/Modules/Certification/Certification.Api/Certification.Api.csproj" />
+  <Project Path="tests/Modules/Certification.Tests/Certification.Tests.csproj" />
+  <Project Path="src/Modules/Compliance/Compliance.Domain/Compliance.Domain.csproj" />
+  <Project Path="src/Modules/Compliance/Compliance.Application/Compliance.Application.csproj" />
+  <Project Path="src/Modules/Compliance/Compliance.Infrastructure/Compliance.Infrastructure.csproj" />
+  <Project Path="src/Modules/Compliance/Compliance.Api/Compliance.Api.csproj" />
+  <Project Path="tests/Modules/Compliance.Tests/Compliance.Tests.csproj" />
+  <Project Path="src/Modules/Learning/Learning.Domain/Learning.Domain.csproj" />
+  <Project Path="src/Modules/Learning/Learning.Application/Learning.Application.csproj" />
+  <Project Path="src/Modules/Learning/Learning.Infrastructure/Learning.Infrastructure.csproj" />
+  <Project Path="src/Modules/Learning/Learning.Api/Learning.Api.csproj" />
+  <Project Path="tests/Modules/Learning.Tests/Learning.Tests.csproj" />
+  <Project Path="src/Modules/Assessment/Assessment.Domain/Assessment.Domain.csproj" />
+  <Project Path="src/Modules/Assessment/Assessment.Application/Assessment.Application.csproj" />
+  <Project Path="src/Modules/Assessment/Assessment.Infrastructure/Assessment.Infrastructure.csproj" />
+  <Project Path="src/Modules/Assessment/Assessment.Api/Assessment.Api.csproj" />
+  <Project Path="tests/Modules/Assessment.Tests/Assessment.Tests.csproj" />
+  <Project Path="src/Modules/Catalog/Catalog.Domain/Catalog.Domain.csproj" />
+  <Project Path="src/Modules/Catalog/Catalog.Application/Catalog.Application.csproj" />
+  <Project Path="src/Modules/Catalog/Catalog.Infrastructure/Catalog.Infrastructure.csproj" />
+  <Project Path="src/Modules/Catalog/Catalog.Api/Catalog.Api.csproj" />
+  <Project Path="tests/Modules/Catalog.Tests/Catalog.Tests.csproj" />
+</Solution>

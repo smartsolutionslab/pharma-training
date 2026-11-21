@@ -1,0 +1,4 @@
+namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
+
+/// <summary>A request that only reads.</summary>
+public interface IQuery<TResult>;

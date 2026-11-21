@@ -1,0 +1,90 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# One run per workflow and ref. A newer push to a pull request makes the run before it pointless, so it is cancelled;
+# a run on main is never cancelled while it runs (one that is still waiting gives way to the newer push's).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    # The integration tests start the AppHost through Aspire's testing host.
+    # Aspire's orchestrator also asks podman whether it runs unless the runtime is named; GitHub's runners carry podman,
+    # and that call can hang past the job and fail the AppHost's dependency check.
+    env:
+      ASPIRE_CONTAINER_RUNTIME: docker
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          global-json-file: global.json
+      # The AppHost uses the Aspire CLI bundle (DCP and dashboard); set it up before anything builds the AppHost.
+      - run: dnx --yes aspire.cli@13.6.5 -- setup --install-path "$HOME/.aspire"
+      - name: Check formatting
+        run: bash .github/scripts/format.sh --verify-no-changes
+      - run: dotnet build build.proj -c Release
+      # The integration tests start the whole application, the web app included.
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Test
+        run: bash .github/scripts/test.sh
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: The lockfile is committed
+        run: test -f web/pnpm-lock.yaml || { echo "::error::web/pnpm-lock.yaml is missing. Run pnpm install in web/ and commit it (README, First steps)."; exit 1; }
+      - run: pnpm install --frozen-lockfile
+        working-directory: web
+      - run: pnpm build
+        working-directory: web
+      - run: pnpm lint
+        working-directory: web
+      - run: pnpm test
+        working-directory: web
+      # Formatting is Prettier's (.prettierrc.json); run pnpm format in web/app to fix what this reports.
+      - run: pnpm format:check
+        working-directory: web/app
+
+  e2e:
+    runs-on: ubuntu-latest
+    # The end-to-end tests start the AppHost.
+    # Aspire's orchestrator also asks podman whether it runs unless the runtime is named; GitHub's runners carry podman,
+    # and that call can hang past the job and fail the AppHost's dependency check.
+    env:
+      ASPIRE_CONTAINER_RUNTIME: docker
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          global-json-file: global.json
+      - run: dnx --yes aspire.cli@13.6.5 -- setup --install-path "$HOME/.aspire"
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - run: pnpm install --frozen-lockfile
+        working-directory: web
+      - run: pnpm exec playwright install --with-deps chromium
+        working-directory: web/app
+      - run: bash .github/scripts/e2e.sh
+

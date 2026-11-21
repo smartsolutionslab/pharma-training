@@ -1,0 +1,33 @@
+using Microsoft.AspNetCore.Http.HttpResults;
+
+namespace Microsoft.AspNetCore.Http;
+
+public static class ResultHttpExtensions
+{
+    /// <summary>200 with the value, or problem details carrying the error's status and code.</summary>
+    /// <remarks>The typed union tells the OpenAPI document what a success returns, so clients are generated with its type.</remarks>
+    public static Results<Ok<TValue>, ProblemHttpResult> ToHttpResult<TValue, TError>(this Result<TValue, TError> result)
+        where TValue : notnull
+        where TError : ApiError =>
+        result.Match<Results<Ok<TValue>, ProblemHttpResult>>(
+            value => TypedResults.Ok(value),
+            error => TypedResults.Problem(
+                title: error.Message,
+                statusCode: (int)error.Status,
+                extensions: new Dictionary<string, object?> { ["code"] = error.Code }));
+
+    /// <summary>201 with the value and its location, or problem details carrying the error's status and code: for a create.</summary>
+    public static Results<Created<TValue>, ProblemHttpResult> ToCreatedHttpResult<TValue, TError>(this Result<TValue, TError> result, Func<TValue, string> location)
+        where TValue : notnull
+        where TError : ApiError
+    {
+        Ensure.That(location).IsNotNull();
+
+        return result.Match<Results<Created<TValue>, ProblemHttpResult>>(
+            value => TypedResults.Created(location(value), value),
+            error => TypedResults.Problem(
+                title: error.Message,
+                statusCode: (int)error.Status,
+                extensions: new Dictionary<string, object?> { ["code"] = error.Code }));
+    }
+}

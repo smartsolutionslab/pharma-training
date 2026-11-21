@@ -1,0 +1,7 @@
+namespace SmartSolutionsLab.PharmaTraining.Kernel;
+
+/// <summary>
+/// A value object: a value with rules and meaning of its own, compared by value. Its own backing values are the only
+/// place a strict module (module.ddd-depth: strict) holds a primitive.
+/// </summary>
+public interface IValueObject;

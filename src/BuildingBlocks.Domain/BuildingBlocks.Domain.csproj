@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>SmartSolutionsLab.PharmaTraining.BuildingBlocks.Domain</AssemblyName>
+    <RootNamespace>SmartSolutionsLab.PharmaTraining.BuildingBlocks.Domain</RootNamespace>
+  </PropertyGroup>
+
+</Project>

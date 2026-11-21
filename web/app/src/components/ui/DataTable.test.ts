@@ -1,0 +1,169 @@
+import { render, screen, within } from '@testing-library/vue';
+import userEvent from '@testing-library/user-event';
+import { expect, test, vi } from 'vitest';
+import { h } from 'vue';
+import DataTable from './DataTable.vue';
+import { columnsOf } from './data-table-columns';
+
+interface Person {
+  name: string;
+  team: string;
+}
+
+const people = columnsOf<Person>();
+const columns = people.columns([
+  people.accessor('name', { header: 'Name' }),
+  people.accessor('team', { header: 'Team' }),
+]);
+const data: Person[] = [
+  { name: 'first', team: 'blue' },
+  { name: 'second', team: 'green' },
+];
+const none: Person[] = [];
+const empty = '<p>No people yet.</p>';
+
+test('the table shows a header and one row per item', () => {
+  // A generic component is rendered for one row type, as a template does it from its props.
+  render(DataTable<Person>, { props: { columns, data } });
+
+  expect(screen.getByRole('columnheader', { name: 'Name' })).toBeInTheDocument();
+  expect(screen.getAllByRole('row')).toHaveLength(3);
+});
+
+test('while its query is pending the table is busy, says it is loading and shows skeleton rows in its shape', () => {
+  const { container } = render(DataTable<Person>, {
+    props: { columns, data: none, loading: true },
+    slots: { empty },
+  });
+
+  const table = screen.getByRole('table', { name: 'Loading…', busy: true });
+  expect(within(table).getByRole('columnheader', { name: 'Team' })).toBeInTheDocument();
+  const skeletonRows = container.querySelectorAll('tbody tr');
+  expect(skeletonRows.length).toBeGreaterThan(0);
+  for (const row of skeletonRows) {
+    expect(row.querySelectorAll('td [data-slot="skeleton"]')).toHaveLength(2);
+  }
+  expect(screen.queryByText('No people yet.')).not.toBeInTheDocument();
+});
+
+test('a table without rows shows its empty state in place of them', () => {
+  render(DataTable<Person>, { props: { columns, data: none }, slots: { empty } });
+
+  const table = screen.getByRole('table');
+  expect(table).not.toHaveAttribute('aria-busy');
+  const cell = within(table).getByRole('cell', { name: 'No people yet.' });
+  expect(cell).toHaveAttribute('colspan', '2');
+});
+
+test('a table with rows shows no empty state', () => {
+  render(DataTable<Person>, { props: { columns, data }, slots: { empty } });
+
+  expect(screen.getByRole('cell', { name: 'second' })).toBeInTheDocument();
+  expect(screen.queryByText('No people yet.')).not.toBeInTheDocument();
+});
+
+test('the header stays in view while the rows scroll under it', () => {
+  render(DataTable<Person>, { props: { columns, data } });
+
+  for (const header of screen.getAllByRole('columnheader')) {
+    expect(header).toHaveClass('sticky', 'top-0');
+  }
+});
+
+test('the density toggle switches the rows between comfortable and compact from the keyboard and says which is on', async () => {
+  const user = userEvent.setup();
+  render(DataTable<Person>, { props: { columns, data } });
+  const density = screen.getByRole('group', { name: 'Density' });
+  const comfortable = within(density).getByRole('button', { name: 'Comfortable' });
+  const compact = within(density).getByRole('button', { name: 'Compact' });
+  expect(comfortable).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.getByRole('table')).toHaveAttribute('data-density', 'comfortable');
+
+  compact.focus();
+  await user.keyboard('{Enter}');
+
+  expect(compact).toHaveAttribute('aria-pressed', 'true');
+  expect(comfortable).toHaveAttribute('aria-pressed', 'false');
+  expect(screen.getByRole('table')).toHaveAttribute('data-density', 'compact');
+});
+
+test('the columns control hides and shows columns from the keyboard and always keeps one', async () => {
+  const user = userEvent.setup();
+  render(DataTable<Person>, { props: { columns, data } });
+  const button = screen.getByRole('button', { name: 'Columns' });
+  expect(button).toHaveAttribute('aria-expanded', 'false');
+  expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+
+  button.focus();
+  await user.keyboard('{Enter}');
+  expect(button).toHaveAttribute('aria-expanded', 'true');
+  const shown = screen.getByRole('group', { name: 'Visible columns' });
+  expect(within(shown).getByRole('checkbox', { name: 'Name' })).toBeChecked();
+  await user.tab();
+  await user.tab();
+  expect(within(shown).getByRole('checkbox', { name: 'Team' })).toHaveFocus();
+  await user.keyboard(' ');
+
+  expect(screen.queryByRole('columnheader', { name: 'Team' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('cell', { name: 'blue' })).not.toBeInTheDocument();
+  expect(within(shown).getByRole('checkbox', { name: 'Name' })).toBeDisabled();
+
+  await user.keyboard('{Escape}');
+  expect(button).toHaveAttribute('aria-expanded', 'false');
+  expect(button).toHaveFocus();
+
+  // Name, the one column shown, cannot be hidden and is skipped: the first stop is Team.
+  await user.keyboard('{Enter}');
+  await user.tab();
+  expect(within(shown).getByRole('checkbox', { name: 'Team' })).toHaveFocus();
+  await user.keyboard(' ');
+  expect(screen.getByRole('columnheader', { name: 'Team' })).toBeInTheDocument();
+});
+
+test("a row's actions sit in its last cell, show on hover or focus, and are reached with the keyboard", async () => {
+  const user = userEvent.setup();
+  const edit = vi.fn<(person: Person) => void>();
+  render(DataTable<Person>, {
+    props: { columns, data },
+    slots: {
+      actions: ({ row }: { row: Person }) =>
+        h('button', { type: 'button', onClick: () => edit(row) }, `Edit ${row.name}`),
+    },
+  });
+
+  expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeInTheDocument();
+  const second = screen.getByRole('row', { name: /^second/ });
+  const lastCell = within(second).getAllByRole('cell').at(-1);
+  expect(lastCell).toContainElement(screen.getByRole('button', { name: 'Edit second' }));
+  expect(second).toHaveClass('group');
+  expect(lastCell?.firstElementChild).toHaveClass(
+    'opacity-0',
+    'group-hover:opacity-100',
+    'group-focus-within:opacity-100',
+  );
+
+  // Past the table's own controls (Comfortable, Compact, Columns), the first row's action is next.
+  for (let control = 0; control < 4; control++) {
+    await user.tab();
+  }
+  expect(screen.getByRole('button', { name: 'Edit first' })).toHaveFocus();
+  await user.keyboard('{Enter}');
+  expect(edit).toHaveBeenCalledWith(data[0]);
+});
+
+test('with a page of a longer list the table says which rows it shows of how many, and screen readers hear it with the table', () => {
+  render(DataTable<Person>, { props: { columns, data, paging: { page: 2, pageSize: '2', totalCount: '312' } } });
+
+  expect(screen.getByText('Showing 3–4 of 312')).toBeInTheDocument();
+  expect(screen.getByRole('table')).toHaveAccessibleDescription('Showing 3–4 of 312');
+});
+
+test('the table says nothing of its page while it loads or when it has no rows', async () => {
+  const paging = { page: 1, pageSize: 20, totalCount: 0 };
+  const { rerender } = render(DataTable<Person>, { props: { columns, data: none, loading: true, paging } });
+  expect(screen.queryByText(/^Showing/)).not.toBeInTheDocument();
+
+  await rerender({ columns, data: none, loading: false, paging });
+  expect(screen.queryByText(/^Showing/)).not.toBeInTheDocument();
+  expect(screen.getByRole('table')).not.toHaveAttribute('aria-describedby');
+});

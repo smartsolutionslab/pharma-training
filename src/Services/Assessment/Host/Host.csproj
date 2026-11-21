@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <RootNamespace>SmartSolutionsLab.PharmaTraining.Services.Assessment.Host</RootNamespace>
+    <AssemblyName>SmartSolutionsLab.PharmaTraining.Services.Assessment.Host</AssemblyName>
+    <!-- The AppHost names this service's resource after its module. -->
+    <ModuleName>assessment</ModuleName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The same name at runtime, ServiceModule.Name: the module's route name, which the edge routes /<module>/... by. -->
+    <AssemblyMetadata Include="ModuleName" Value="$(ModuleName)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../../ServiceDefaults/ServiceDefaults.csproj" />
+    <ProjectReference Include="../../../BuildingBlocks/BuildingBlocks.csproj" />
+    <ProjectReference Include="../../../Modules/Assessment/Assessment.Api/Assessment.Api.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- src/Host holds the code packs write once for every host (wiring, host-wide types); each service host compiles it. -->
+    <Compile Include="../../../Host/**/*.cs" Exclude="../../../Host/bin/**;../../../Host/obj/**" Link="Host/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+    <PackageReference Include="WolverineFx" />
+    <PackageReference Include="WolverineFx.RuntimeCompilation" />
+    <PackageReference Include="WolverineFx.Postgresql" />
+    <PackageReference Include="WolverineFx.RabbitMQ" />
+
+  </ItemGroup>
+
+</Project>

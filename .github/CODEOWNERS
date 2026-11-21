@@ -1,0 +1,3 @@
+# The board protocol and the review gate run from .github/, so a change there needs its owner's review
+# (docs/adr/fabric/base-fabric.md). Require code owner review in the branch protection of main.
+/.github/ @notonlywhite
