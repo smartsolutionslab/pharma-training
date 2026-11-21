@@ -32,9 +32,10 @@ public sealed class AspireFixture : IAsyncLifetime
             }
         }
 
-        // A resource that does not exist and a key-shaped value Azure does not accept: the integration tests never call the model.
-        builder.Configuration["Parameters:azure-openai-endpoint"] = "https://not-a-real-resource.openai.azure.com";
-        builder.Configuration["Parameters:azure-openai-api-key"] = "not-a-real-key";
+        // The integration tests run the application as a developer without a key does, with no model configured: the run
+        // shows the application starting that way, and never uses a developer's own endpoint or key from user secrets.
+        builder.Configuration["Parameters:azure-openai-endpoint"] = string.Empty;
+        builder.Configuration["Parameters:azure-openai-api-key"] = string.Empty;
 
         app = await builder.BuildAsync(timeout.Token);
         await app.StartAsync(timeout.Token);
