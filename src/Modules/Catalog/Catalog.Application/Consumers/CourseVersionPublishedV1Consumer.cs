@@ -17,13 +17,20 @@ public sealed class CourseVersionPublishedV1Consumer(ICourseVersionStore version
         Ensure.That(message.CourseId).IsNotEmpty();
         Ensure.That(message.CourseVersionId).IsNotEmpty();
         Ensure.That(message.Chapters).IsNotNull();
+        // Refused here, named, rather than by the database: a poison message then dead-letters with a message that says why.
+        Ensure.That(message.Title, nameof(message.Title)).IsNotNull();
         EnsureNoNul(message.Title, nameof(message.Title));
+        HashSet<Guid> chapterIds = [];
         foreach (var chapter in message.Chapters)
         {
-            Ensure.That(chapter).IsNotNull();
-            EnsureNoNul(chapter.Title, nameof(chapter.Title));
-            EnsureNoNul(chapter.Text, nameof(chapter.Text));
-            EnsureNoNul(chapter.File, nameof(chapter.File));
+            Ensure.That(chapter, "Chapters[]").IsNotNull();
+            var at = $"Chapters[{chapter.Position}]";
+            Ensure.That(chapter.ChapterId, $"{at}.ChapterId").IsNotEmpty();
+            Ensure.That(chapter.ChapterId.ToString(), $"{at}.ChapterId").Satisfies(_ => chapterIds.Add(chapter.ChapterId), "A chapter id may appear once in a version.");
+            Ensure.That(chapter.Title, $"{at}.Title").IsNotNull();
+            EnsureNoNul(chapter.Title, $"{at}.Title");
+            EnsureNoNul(chapter.Text, $"{at}.Text");
+            EnsureNoNul(chapter.File, $"{at}.File");
         }
 
         if (await versions.ExistsAsync(message.CourseVersionId, cancellationToken))
