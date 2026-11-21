@@ -136,3 +136,19 @@ test('below 768 px the sidebar is a sheet the trigger opens, which closes once t
   await vi.waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   expect(await screen.findByRole('heading', { name: 'Learning', level: 1 })).toBeInTheDocument();
 });
+
+// The address does not change, yet the user has made their choice: the sheet must not stay over the page.
+test('below 768 px tapping the link of the page the user is on closes the sheet too', async () => {
+  const typing = userEvent.setup();
+  viewportOf(767);
+  const router = await renderShell();
+
+  await typing.click(within(screen.getByRole('banner')).getByRole('button', { name: 'Toggle Sidebar' }));
+  const sheet = await screen.findByRole('dialog', { name: 'Sidebar' });
+  await typing.click(
+    within(within(sheet).getByRole('navigation', { name: 'Modules' })).getByRole('link', { name: 'Home' }),
+  );
+
+  await vi.waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  expect(router.currentRoute.value.path).toBe('/');
+});

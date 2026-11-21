@@ -242,6 +242,11 @@ test("while the memberships load a pharmacy page shows a skeleton, then the page
 
   const pageArea = () => document.querySelector('[data-slot="sidebar-inset"]');
   expect(pageArea()?.querySelector('[data-slot="skeleton"]')).not.toBeNull();
+  // The page's landmark is there while it loads, busy, and says so to a screen reader.
+  const busy = screen.getByRole('main');
+  expect(busy).toHaveAttribute('aria-busy', 'true');
+  expect(busy.querySelector('[data-slot="skeleton"]')).not.toBeNull();
+  expect(within(busy).getByText('Loading…')).toHaveClass('sr-only');
   expect(screen.queryByRole('heading', { name: 'Organisation' })).not.toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: 'Not available' })).not.toBeInTheDocument();
 
@@ -249,6 +254,56 @@ test("while the memberships load a pharmacy page shows a skeleton, then the page
 
   expect(await screen.findByRole('heading', { name: 'Organisation', level: 1 })).toBeInTheDocument();
   expect(pageArea()?.querySelector('[data-slot="skeleton"]')).toBeNull();
+});
+
+test('a signed-in user who is no editor is told the editorial page is not available to them', async () => {
+  answer([markt]);
+
+  await renderAt('/editorial', { roles: [] });
+
+  const main = within(await screen.findByRole('main'));
+  expect(main.getByRole('heading', { name: 'Not available', level: 1 })).toBeInTheDocument();
+  expect(main.getByText('This page is not available to you.')).toBeInTheDocument();
+  expect(main.getByRole('link', { name: 'Go to Home' })).toHaveAttribute('href', '/');
+  expect(screen.queryByRole('heading', { name: 'Editorial' })).not.toBeInTheDocument();
+});
+
+test('when the memberships could not be loaded a pharmacy page says so and tries again on request', async () => {
+  const user = userEvent.setup();
+  pharmacies.data.value = undefined;
+  pharmacies.isPending.value = false;
+  pharmacies.isError.value = true;
+  pharmacies.refetch.mockClear();
+
+  await renderLoadingAt('/learning', []);
+
+  const main = within(await screen.findByRole('main'));
+  expect(main.getByRole('heading', { name: 'Not available', level: 1 })).toBeInTheDocument();
+  expect(main.getByText('Your pharmacies could not be loaded.')).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Learning' })).not.toBeInTheDocument();
+
+  await user.click(main.getByRole('button', { name: 'Try again' }));
+
+  expect(pharmacies.refetch).toHaveBeenCalledOnce();
+});
+
+// TanStack Query keeps the data it had when a refetch in the background fails; the page the user is on stays.
+test('a failed refetch that keeps the memberships leaves the page the user is on', async () => {
+  const user = userEvent.setup();
+  answer([dom]);
+  await renderAt('/learning', { roles: [] });
+  expect(await screen.findByRole('heading', { name: 'Learning', level: 1 })).toBeInTheDocument();
+
+  pharmacies.isError.value = true;
+  // The shell renders again once the palette opens: by then a shell that blanked itself would have done so.
+  await user.keyboard('{Control>}k{/Control}');
+  const palette = await screen.findByRole('dialog', { name: 'Go to' });
+
+  expect(within(palette).getByRole('option', { name: 'Learning' })).toBeInTheDocument();
+  await user.keyboard('{Escape}');
+  await vi.waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  expect(screen.getByRole('heading', { name: 'Learning', level: 1 })).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Not available' })).not.toBeInTheDocument();
 });
 
 // A module the user may not see is an unknown segment of the address to the breadcrumbs: they do not name it.

@@ -112,3 +112,17 @@ test('a pharmacy chosen on an earlier visit is not asked for again, where a visi
     within(chosen.container as HTMLElement).queryByRole('heading', { name: 'Choose your pharmacy' }),
   ).not.toBeInTheDocument();
 });
+
+// The chosen button goes away with the prompt; focus moves to the page's heading rather than falling to the body.
+test('after choosing a pharmacy the focus is on the start page heading, not lost', async () => {
+  const user = userEvent.setup();
+  answer([markt, dom]);
+  renderHome();
+  const choices = within(await screen.findByRole('region', { name: 'Choose your pharmacy' }));
+
+  await user.click(choices.getByRole('button', { name: /Apotheke am Markt/ }));
+
+  await vi.waitFor(() => expect(prompt()).not.toBeInTheDocument());
+  await vi.waitFor(() => expect(screen.getByRole('heading', { name: 'pharma-training', level: 1 })).toHaveFocus());
+  expect(document.activeElement).not.toBe(document.body);
+});

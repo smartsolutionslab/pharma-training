@@ -191,3 +191,16 @@ test('when the memberships could not be loaded there is no current pharmacy and 
   await waitFor(() => expect(current.current.value).toEqual(dom));
   expect(localStorage.getItem('pharmacy')).toBe(dom.id);
 });
+
+// TanStack Query keeps the data it had when a refetch in the background fails: isError is true, data is still there.
+test('a failed refetch that keeps the memberships leaves the current pharmacy as it was', () => {
+  answer([dom]);
+  const { current } = renderCurrent();
+  expect(current.current.value).toEqual(dom);
+
+  pharmacies.isError.value = true;
+
+  expect(current.status.value).toBe('ready');
+  expect(current.memberships.value).toEqual([dom]);
+  expect(current.current.value).toEqual(dom);
+});
