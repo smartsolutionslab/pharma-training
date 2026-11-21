@@ -6,16 +6,16 @@ using Microsoft.EntityFrameworkCore;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Infrastructure;
 
-/// <summary>The course versions and their chapters. The module's unit of work saves what is added or changed.</summary>
+/// <summary>The course versions with their chapters and questions. The module's unit of work saves what is added or changed.</summary>
 public sealed class CourseVersionStore(EditorialDbContext context) : ICourseVersionStore
 {
     public void Add(CourseVersion version) => context.Add(version);
 
     public Task<Option<CourseVersion>> FindAsync(CourseVersionId id, CancellationToken cancellationToken) =>
-        FindAsync(WithChapters().AsNoTracking(), id, cancellationToken);
+        FindAsync(WithContent().AsNoTracking(), id, cancellationToken);
 
     public Task<Option<CourseVersion>> FindForUpdateAsync(CourseVersionId id, CancellationToken cancellationToken) =>
-        FindAsync(WithChapters(), id, cancellationToken);
+        FindAsync(WithContent(), id, cancellationToken);
 
     public async Task<PagedResult<CourseVersion>> ListAsync(CourseVersionStatus? status, Page page, PageSize pageSize, CancellationToken cancellationToken)
     {
@@ -44,6 +44,14 @@ public sealed class CourseVersionStore(EditorialDbContext context) : ICourseVers
             ? Option<CourseVersion>.Some(version)
             : Option<CourseVersion>.None;
 
-    private IQueryable<CourseVersion> WithChapters() =>
-        context.Set<CourseVersion>().Include(version => version.Chapters.OrderBy(chapter => EF.Property<int>(chapter, ChapterConfiguration.Position)));
+    /// <summary>
+    /// The version with its chapters, its questions and their options, each in its order. Split into one query per
+    /// collection, so the chapters are not repeated for every question and option.
+    /// </summary>
+    private IQueryable<CourseVersion> WithContent() =>
+        context.Set<CourseVersion>()
+            .Include(version => version.Chapters.OrderBy(chapter => EF.Property<int>(chapter, ChapterConfiguration.Position)))
+            .Include(version => version.Questions.OrderBy(question => EF.Property<int>(question, QuestionConfiguration.Position)))
+            .ThenInclude(question => question.Options.OrderBy(option => EF.Property<int>(option, AnswerOptionConfiguration.Position)))
+            .AsSplitQuery();
 }

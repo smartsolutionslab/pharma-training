@@ -17,7 +17,7 @@ partial class EditorialModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261121162323_AddCourseVersionRowVersion";
+    public override string LastMigrationId => "20261121195915_AddQuestions";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -28,6 +28,39 @@ partial class EditorialModelSnapshot : ModelSnapshot
             .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
         NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions.AnswerOption", b =>
+            {
+                b.Property<Guid>("Id")
+                    .HasColumnType("uuid")
+                    .HasColumnName("id");
+
+                b.Property<string>("Correctness")
+                    .IsRequired()
+                    .HasMaxLength(20)
+                    .HasColumnType("character varying(20)")
+                    .HasColumnName("correctness");
+
+                b.Property<int>("Position")
+                    .HasColumnType("integer")
+                    .HasColumnName("position");
+
+                b.Property<Guid>("QuestionId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("question_id");
+
+                b.Property<string>("Text")
+                    .IsRequired()
+                    .HasMaxLength(400)
+                    .HasColumnType("character varying(400)")
+                    .HasColumnName("text");
+
+                b.HasKey("Id");
+
+                b.HasIndex("QuestionId");
+
+                b.ToTable("course_version_answer_options", "editorial");
+            });
 
         modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions.Chapter", b =>
             {
@@ -149,6 +182,65 @@ partial class EditorialModelSnapshot : ModelSnapshot
                 b.ToTable("course_versions", "editorial");
             });
 
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions.Question", b =>
+            {
+                b.Property<Guid>("Id")
+                    .HasColumnType("uuid")
+                    .HasColumnName("id");
+
+                b.Property<Guid>("Chapter")
+                    .HasColumnType("uuid")
+                    .HasColumnName("chapter_id");
+
+                b.Property<Guid>("CourseVersionId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("course_version_id");
+
+                b.Property<int>("Position")
+                    .HasColumnType("integer")
+                    .HasColumnName("position");
+
+                b.Property<string>("Provenance")
+                    .IsRequired()
+                    .HasMaxLength(20)
+                    .HasColumnType("character varying(20)")
+                    .HasColumnName("provenance");
+
+                b.Property<string>("Review")
+                    .IsRequired()
+                    .HasMaxLength(20)
+                    .HasColumnType("character varying(20)")
+                    .HasColumnName("review");
+
+                b.Property<DateTimeOffset?>("ReviewedAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("reviewed_at");
+
+                b.Property<Guid?>("ReviewedBy")
+                    .HasColumnType("uuid")
+                    .HasColumnName("reviewed_by");
+
+                b.Property<string>("Text")
+                    .IsRequired()
+                    .HasMaxLength(1000)
+                    .HasColumnType("character varying(1000)")
+                    .HasColumnName("text");
+
+                b.Property<string>("Type")
+                    .IsRequired()
+                    .HasMaxLength(20)
+                    .HasColumnType("character varying(20)")
+                    .HasColumnName("type");
+
+                b.HasKey("Id");
+
+                b.HasIndex("Chapter");
+
+                b.HasIndex("CourseVersionId");
+
+                b.ToTable("course_version_questions", "editorial");
+            });
+
         modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.Samples.Sample", b =>
             {
                 b.Property<Guid>("Id")
@@ -166,6 +258,15 @@ partial class EditorialModelSnapshot : ModelSnapshot
                 b.ToTable("samples", "editorial");
             });
 
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions.AnswerOption", b =>
+            {
+                b.HasOne("SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions.Question", null)
+                    .WithMany("Options")
+                    .HasForeignKey("QuestionId")
+                    .OnDelete(DeleteBehavior.Cascade)
+                    .IsRequired();
+            });
+
         modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions.Chapter", b =>
             {
                 b.HasOne("SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions.CourseVersion", null)
@@ -175,9 +276,31 @@ partial class EditorialModelSnapshot : ModelSnapshot
                     .IsRequired();
             });
 
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions.Question", b =>
+            {
+                b.HasOne("SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions.Chapter", null)
+                    .WithMany()
+                    .HasForeignKey("Chapter")
+                    .OnDelete(DeleteBehavior.Restrict)
+                    .IsRequired();
+
+                b.HasOne("SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions.CourseVersion", null)
+                    .WithMany("Questions")
+                    .HasForeignKey("CourseVersionId")
+                    .OnDelete(DeleteBehavior.Cascade)
+                    .IsRequired();
+            });
+
         modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions.CourseVersion", b =>
             {
                 b.Navigation("Chapters");
+
+                b.Navigation("Questions");
+            });
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions.Question", b =>
+            {
+                b.Navigation("Options");
             });
 #pragma warning restore 612, 618
     }
