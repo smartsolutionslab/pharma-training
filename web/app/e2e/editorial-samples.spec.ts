@@ -1,12 +1,12 @@
 import { expect, type Page, test } from '@playwright/test';
 
-/** The Editorial page, as a signed-in user opens it. */
+/** The Editorial page, as a signed-in editor (the realm's local user `editor`, of the Redaktion) opens it. */
 async function openEditorial(page: Page) {
   await page.goto('/');
-  await page.getByLabel('Username or email').fill('developer');
-  await page.getByLabel('Password', { exact: true }).fill('developer');
+  await page.getByLabel('Username or email').fill('editor');
+  await page.getByLabel('Password', { exact: true }).fill('editor');
   await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.getByText('Signed in as developer')).toBeVisible();
+  await expect(page.getByText('Signed in as editor')).toBeVisible();
   await page.goto('/editorial');
   await expect(page.getByRole('heading', { name: 'Samples' })).toBeVisible();
 }
