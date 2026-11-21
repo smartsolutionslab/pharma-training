@@ -26,6 +26,10 @@ if (builder.ExecutionContext.IsRunMode)
         .WithHttpHealthCheck("/livez");
     keycloak.WaitFor(mailpit);
 }
+// Blob storage on Azurite: one account, a container per module in the services' loop (docs/adr/0002). Each service signs
+// short-lived upload and read URLs for its own container only, with the account key.
+var storage = builder.AddAzureStorage("storage")
+    .RunAsEmulator(emulator => emulator.WithDataVolume());
 var messaging = builder.AddRabbitMQ("messaging")
     .WithManagementPlugin()
     .WithDataVolume();
@@ -49,6 +53,9 @@ foreach (var (module, project) in builder.ServiceHosts())
 {
     // The service's own database on the one server, named after its module.
     var database = postgres.AddDatabase($"{module}-database", module);
+    // The service's own blob container on the one storage account, named after its module; it reads it as the
+    // connection string blobs and signs URLs for it alone.
+    var blobs = storage.AddBlobContainer($"{module}-blobs", module);
     // The module's migrations, in its database alone, before the service starts.
     var migrations = builder.AddProject<Projects.MigrationRunner>($"{module}-migrations")
         .WithReference(database, "database")
@@ -68,6 +75,7 @@ foreach (var (module, project) in builder.ServiceHosts())
         .WithReference(messaging)
         .WaitFor(messaging)
         .WithEnvironment("Messaging__Queue", module)
+        .WithReference(blobs, "blobs")
         .WithEnvironment("AzureOpenAI__Endpoint", azureOpenAIEndpoint)
         .WithEnvironment("AzureOpenAI__Deployment", azureOpenAIDeployment)
         .WithEnvironment("AzureOpenAI__ApiKey", azureOpenAIApiKey);
