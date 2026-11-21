@@ -5,6 +5,11 @@
     <RootNamespace>SmartSolutionsLab.PharmaTraining.Contracts.Tests</RootNamespace>
   </PropertyGroup>
 
+  <!-- Wire.Options is Wolverine's own serializer settings, so the round-trip checks the JSON the broker carries. -->
+  <ItemGroup>
+    <PackageReference Include="WolverineFx" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="../../src/Contracts/Contracts.csproj" />
   </ItemGroup>

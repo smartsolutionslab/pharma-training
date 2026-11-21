@@ -1,13 +1,15 @@
 using System.Text.Json;
+using Wolverine.Runtime.Serialization;
 
 namespace SmartSolutionsLab.PharmaTraining.Contracts.Tests;
 
 /// <summary>
-/// The JSON an integration event travels as: Wolverine's System.Text.Json serializer with its default options.
+/// The JSON an integration event travels as: Wolverine's default serializer (<see cref="SystemTextJsonSerializer"/>)
+/// with its own default options, camelCase names and case-insensitive reads; src/Host/Wiring/Messaging.cs sets no other.
 /// </summary>
 public static class Wire
 {
-    public static JsonSerializerOptions Options { get; } = new(JsonSerializerDefaults.General);
+    public static JsonSerializerOptions Options { get; } = SystemTextJsonSerializer.DefaultOptions();
 
     /// <summary>
     /// Publishes the event (fills its metadata), sends it over the wire and back, and checks that nothing was lost:

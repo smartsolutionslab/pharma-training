@@ -24,8 +24,8 @@ public class OrganisationEventsTests
 
         var json = Wire.ShouldSurviveTheWire(started);
 
-        json.ShouldContain("\"JobFunction\":\"Pta\"");
-        json.ShouldContain("\"Role\":\"Manager\"");
+        json.ShouldContain("\"jobFunction\":\"Pta\"", Case.Sensitive);
+        json.ShouldContain("\"role\":\"Manager\"", Case.Sensitive);
     }
 
     [Fact]

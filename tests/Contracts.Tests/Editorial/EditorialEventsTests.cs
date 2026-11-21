@@ -20,7 +20,7 @@ public class EditorialEventsTests
 
         var json = Wire.ShouldSurviveTheWire(published);
 
-        json.ShouldContain("\"Kind\":\"Video\"");
+        json.ShouldContain("\"kind\":\"Video\"", Case.Sensitive);
     }
 
     [Fact]
@@ -55,7 +55,7 @@ public class EditorialEventsTests
 
         var json = Wire.ShouldSurviveTheWire(published);
 
-        json.ShouldContain("\"Type\":\"MultipleChoice\"");
+        json.ShouldContain("\"type\":\"MultipleChoice\"", Case.Sensitive);
     }
 
     [Fact]
