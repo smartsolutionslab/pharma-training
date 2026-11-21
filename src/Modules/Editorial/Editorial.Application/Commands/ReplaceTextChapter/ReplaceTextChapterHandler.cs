@@ -1,0 +1,28 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
+
+namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.ReplaceTextChapter;
+
+public sealed class ReplaceTextChapterHandler(ICourseVersionStore versions, IEditorialUnitOfWork unitOfWork)
+    : ICommandHandler<ReplaceTextChapter, Result<Unit, ApiError>>
+{
+    public async Task<Result<Unit, ApiError>> HandleAsync(ReplaceTextChapter command, CancellationToken cancellationToken)
+    {
+        Ensure.That(command).IsNotNull();
+
+        var found = await versions.FindForUpdateAsync(command.Version, cancellationToken);
+        if (!found.HasValue)
+        {
+            return Failure(CourseVersionFailures.NotFound(command.Version.Value));
+        }
+
+        var changed = found.Value.ReplaceChapter(Chapter.OfText(command.Chapter, command.Title, command.Text));
+        if (changed.IsFailure)
+        {
+            return Failure(CourseVersionFailures.From(changed.Error));
+        }
+
+        await unitOfWork.CommitAsync(cancellationToken);
+        return Success(Unit.Value);
+    }
+}
