@@ -77,4 +77,64 @@ public class CourseVersionFailuresTests
         failure.Code.ShouldBe("editorial.no-chapters");
         failure.Status.ShouldBe(HttpStatusCode.Conflict);
     }
+
+    [Fact]
+    public void A_question_the_version_does_not_hold_is_not_found()
+    {
+        var error = new QuestionNotFound(Version, QuestionId.New());
+
+        var failure = CourseVersionFailures.From(error);
+
+        failure.Code.ShouldBe("editorial.question-not-found");
+        failure.Status.ShouldBe(HttpStatusCode.NotFound);
+        failure.ShouldBeOfType<DomainFailure>().Error.ShouldBe(error);
+    }
+
+    [Theory]
+    [InlineData(nameof(TooFewOptions), "editorial.too-few-options")]
+    [InlineData(nameof(SingleChoiceNeedsOneCorrect), "editorial.single-choice-one-correct")]
+    [InlineData(nameof(MultipleChoiceNeedsACorrect), "editorial.multiple-choice-a-correct")]
+    public void A_question_whose_content_breaks_a_rule_of_its_shape_cannot_be_processed(string rule, string code)
+    {
+        var error = Rule(rule);
+
+        var failure = CourseVersionFailures.From(error);
+
+        failure.Code.ShouldBe(code);
+        failure.Status.ShouldBe(HttpStatusCode.UnprocessableEntity);
+        failure.ShouldBeOfType<DomainFailure>().Error.ShouldBe(error);
+    }
+
+    [Theory]
+    [InlineData(nameof(NotADraft), "editorial.not-a-draft")]
+    [InlineData(nameof(NotInReview), "editorial.not-in-review")]
+    [InlineData(nameof(NotPublished), "editorial.not-published")]
+    [InlineData(nameof(OrderDoesNotMatchChapters), "editorial.order-does-not-match")]
+    [InlineData(nameof(NoChapters), "editorial.no-chapters")]
+    [InlineData(nameof(TestIncomplete), "editorial.test-incomplete")]
+    [InlineData(nameof(QuestionNotApproved), "editorial.question-not-approved")]
+    [InlineData(nameof(FourEyesRequired), "editorial.four-eyes")]
+    public void The_versions_state_rules_stay_a_conflict(string rule, string code)
+    {
+        var failure = CourseVersionFailures.From(Rule(rule));
+
+        failure.Code.ShouldBe(code);
+        failure.Status.ShouldBe(HttpStatusCode.Conflict);
+    }
+
+    private static DomainError Rule(string rule) => rule switch
+    {
+        nameof(NotADraft) => CourseVersionErrors.NotADraft(Version, CourseVersionStatus.Published),
+        nameof(NotInReview) => CourseVersionErrors.NotInReview(Version, CourseVersionStatus.Draft),
+        nameof(NotPublished) => CourseVersionErrors.NotPublished(Version, CourseVersionStatus.Draft),
+        nameof(OrderDoesNotMatchChapters) => CourseVersionErrors.OrderDoesNotMatchChapters(Version),
+        nameof(NoChapters) => CourseVersionErrors.NoChapters(Version),
+        nameof(TestIncomplete) => CourseVersionErrors.TestIncomplete(Version, QuestionCount.From(10), QuestionCount.From(3)),
+        nameof(QuestionNotApproved) => CourseVersionErrors.QuestionNotApproved(Version, QuestionId.New()),
+        nameof(FourEyesRequired) => CourseVersionErrors.FourEyesRequired(Version),
+        nameof(TooFewOptions) => CourseVersionErrors.TooFewOptions(QuestionId.New()),
+        nameof(SingleChoiceNeedsOneCorrect) => CourseVersionErrors.SingleChoiceNeedsOneCorrect(QuestionId.New()),
+        nameof(MultipleChoiceNeedsACorrect) => CourseVersionErrors.MultipleChoiceNeedsACorrect(QuestionId.New()),
+        _ => throw new System.Diagnostics.UnreachableException($"No rule of the version is named {rule}."),
+    };
 }
