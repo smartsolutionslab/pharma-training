@@ -31,6 +31,17 @@ dotnet run --project src/AppHost
 
 Or, with the [Aspire CLI](https://aspire.dev), `aspire run`, which finds the AppHost through `aspire.config.json`. `aspire doctor` checks the prerequisites above when something does not start.
 
+### Local users
+
+Keycloak imports these from `src/AppHost/realms/realm.json`, development only. Each one's password is its username.
+
+- `developer`: the realm role `manager`, which each module's sample policy `<module>.manage` requires.
+- `visitor`: no role.
+- `editor`: the realm role `editor`, the platform's editors (the Redaktion), which `editorial.edit` requires.
+- `owner`, `employee-a`, `employee-b`: no realm role; their pharmacy roles (owner, employee) come from the Organisation module, not from Keycloak.
+
+Keycloak imports the realm only when it does not exist yet, and keeps it in a data volume. After `realm.json` gains a role or a user, an existing local Keycloak keeps the old realm: stop the AppHost, find the volume with `docker volume ls` (its name contains `keycloak`), remove it with `docker volume rm <name>`, and start the AppHost again.
+
 ## Test
 
 ```bash

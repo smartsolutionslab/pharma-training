@@ -15,5 +15,6 @@ public sealed class EditorialPolicies : IModulePolicies
         Ensure.That(policies).IsNotNull();
 
         policies.AddPolicy(EditorialPolicyNames.Manage, policy => policy.RequireRole("manager"));
+        policies.AddPolicy(EditorialPolicyNames.Edit, policy => policy.RequireRole("editor"));
     }
 }
