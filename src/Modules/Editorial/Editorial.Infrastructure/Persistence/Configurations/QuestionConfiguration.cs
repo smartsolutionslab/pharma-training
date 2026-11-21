@@ -36,6 +36,13 @@ public sealed class QuestionConfiguration : IEntityTypeConfiguration<Question>
         builder.Property(question => question.ReviewedAt).HasColumnName("reviewed_at");
 
         // The database refuses a question whose chapter is gone; the Domain removes a chapter's questions with it.
+        // In the database this key and the options' key below are DEFERRABLE INITIALLY DEFERRED, and this one is
+        // NO ACTION, since PostgreSQL never defers RESTRICT (migration 20261121223447_DeferQuestionForeignKeys).
+        // EF Core sorts a save's commands by table, so a question or option would otherwise be checked before the
+        // version's xmin UPDATE could report a lost race, and a save that lost to a removal would fail on the key
+        // (23503) instead of answering 409. The model keeps Restrict, which EF Core handles like NoAction on the
+        // client. EF Core does not model deferrability: a later migration that drops and recreates either key must
+        // make it DEFERRABLE INITIALLY DEFERRED again, and this one NO ACTION.
         builder.HasOne<Chapter>()
             .WithMany()
             .HasForeignKey(question => question.Chapter)
