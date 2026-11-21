@@ -13,6 +13,18 @@ public class PharmacyCoverageTests
     private static readonly EmailAddress AnnaMail = EmailAddress.From("anna@example.org");
     private static readonly DisplayName AnnaName = DisplayName.From("Anna Berger");
 
+    private static readonly string[] DomainErrorCodes =
+    [
+        "organisation.already-member-or-invited",
+        "organisation.no-open-invitation",
+        "organisation.invitation-not-found",
+        "organisation.invitation-expired",
+        "organisation.invitation-for-another-address",
+        "organisation.person-already-member",
+        "organisation.no-active-membership",
+        "organisation.last-manager",
+    ];
+
     [Fact]
     public void Registering_raises_that_the_pharmacy_was_registered_and_that_the_founder_started_now()
     {
@@ -238,17 +250,7 @@ public class PharmacyCoverageTests
             new LastManagerCannotLeave(pharmacy),
         ];
 
-        errors.Select(error => error.Code).ShouldBe(new[]
-        {
-            "organisation.already-member-or-invited",
-            "organisation.no-open-invitation",
-            "organisation.invitation-not-found",
-            "organisation.invitation-expired",
-            "organisation.invitation-for-another-address",
-            "organisation.person-already-member",
-            "organisation.no-active-membership",
-            "organisation.last-manager",
-        });
+        errors.Select(error => error.Code).ShouldBe(DomainErrorCodes);
         errors.ShouldAllBe(error => !string.IsNullOrWhiteSpace(error.Message));
     }
 
