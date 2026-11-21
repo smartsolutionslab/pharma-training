@@ -66,6 +66,13 @@ public class PharmacyFailuresTests
     }
 
     [Fact]
+    public void A_membership_id_that_names_no_open_invitation_is_not_found_with_the_domains_code()
+    {
+        PharmacyFailures.OpenInvitationNotFound(Guid.Empty).Code.ShouldBe("organisation.no-open-invitation");
+        PharmacyFailures.OpenInvitationNotFound(Guid.Empty).Status.ShouldBe(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
     public void A_membership_role_that_is_no_known_one_is_the_callers_mistake()
     {
         PharmacyFailures.InvalidMembershipRole().Code.ShouldBe("organisation.invalid-membership-role");

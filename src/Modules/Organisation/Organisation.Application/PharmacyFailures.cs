@@ -26,6 +26,9 @@ public static class PharmacyFailures
     /// <summary>Stub for #9's red tests (T3).</summary>
     public static ApiError InvalidEmail() => throw new NotImplementedException();
 
+    /// <summary>Stub for #9's red tests (T4).</summary>
+    public static ApiError OpenInvitationNotFound(Guid id) => throw new NotImplementedException();
+
     /// <summary>
     /// The domain's refusals with the status each use case answers them with. An error no use case returns yet has no
     /// status here: it is mapped where it is first returned, never given a guessed one.
