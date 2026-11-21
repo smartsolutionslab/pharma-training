@@ -1,4 +1,5 @@
 using SmartSolutionsLab.PharmaTraining.Architecture.Tests.Probes;
+using SmartSolutionsLab.PharmaTraining.Architecture.Tests.Probes.Nested;
 using SmartSolutionsLab.PharmaTraining.Architecture.Tests.Rules;
 
 namespace SmartSolutionsLab.PharmaTraining.Architecture.Tests;
@@ -43,6 +44,32 @@ public class EventSourcedEventsCarryNoPersonalDataTests
         var violations = EventSourcedEventsCarryNoPersonalData.Violations([typeof(ProbeWithOptionalBadgeV1)]).ToList();
 
         violations.ShouldHaveSingleItem().ShouldContain("HolderName");
+    }
+
+    [Fact]
+    public void A_name_inside_a_dictionary_fails_the_rule()
+    {
+        var violations = EventSourcedEventsCarryNoPersonalData.Violations([typeof(ProbeWithMapV1)]).ToList();
+
+        violations.ShouldHaveSingleItem().ShouldContain("HolderName");
+    }
+
+    [Fact]
+    public void The_rule_also_checks_events_in_a_namespace_below_a_module()
+    {
+        var events = EventSourcedEventsCarryNoPersonalData.EventsIn(
+            [typeof(ProbeWithIdsOnlyV1), typeof(NestedProbeWithIdsV1), typeof(ProbeAttendeeV1)],
+            ["SmartSolutionsLab.PharmaTraining.Architecture.Tests.Probes"]);
+
+        events.ShouldBe([typeof(ProbeWithIdsOnlyV1), typeof(NestedProbeWithIdsV1)], ignoreOrder: true);
+    }
+
+    [Fact]
+    public void A_namespace_that_only_starts_with_the_same_letters_is_not_a_module()
+    {
+        var events = EventSourcedEventsCarryNoPersonalData.EventsIn([typeof(ProbeWithIdsOnlyV1)], ["SmartSolutionsLab.PharmaTraining.Architecture.Tests.Prob"]);
+
+        events.ShouldBeEmpty();
     }
 
     [Fact]
