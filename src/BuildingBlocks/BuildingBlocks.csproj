@@ -14,6 +14,8 @@
     <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
     <ProjectReference Include="../Contracts/Contracts.csproj" />
     <PackageReference Include="Marten" />
+    <!-- Signs short-lived upload and read URLs for a module's own blob container (src/BuildingBlocks/Storage); no module names it. -->
+    <PackageReference Include="Azure.Storage.Blobs" />
     <ProjectReference Include="../BuildingBlocks.EventSourcing/BuildingBlocks.EventSourcing.csproj" />
     <ProjectReference Include="../BuildingBlocks.Domain/BuildingBlocks.Domain.csproj" />
   </ItemGroup>
