@@ -20,6 +20,8 @@ public static class CourseVersionFailures
 
     public static ApiError NotFound(Guid id) => new CourseVersionNotFound(id);
 
+    public static ApiError UnknownChapter(Guid version, Guid chapter) => new UnknownChapter(version, chapter);
+
     /// <summary>
     /// A rule of the version, with its own code: a chapter it does not hold is not found, anything else is a conflict
     /// with its state. <see cref="DomainError"/> is no closed union, so the last arm takes the rules no arm names.
