@@ -11,7 +11,8 @@ public interface IBlobUrls
     /// A URL that creates <paramref name="name"/> (PUT) and cannot read, overwrite or delete it, nor touch another blob.
     /// It carries the storage service's Create permission, which also allows what Create allows on that one blob
     /// (snapshots, staged blocks, a server-side copy into it); size and content type are checked by the module that
-    /// accepts the upload, not by the URL (docs/adr/0002).
+    /// accepts the upload, not by the URL (docs/adr/0002). The first PUT to a name wins, so give each upload a name the
+    /// module generates (a Guid v7 segment), never one taken from user input such as the file name.
     /// </summary>
     Task<BlobUrl> CreateUploadUrlAsync(BlobName name, BlobUrlLifetime lifetime, CancellationToken cancellationToken);
 

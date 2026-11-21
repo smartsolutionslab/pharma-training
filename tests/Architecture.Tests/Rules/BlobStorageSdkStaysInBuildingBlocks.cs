@@ -4,7 +4,7 @@ public sealed class BlobStorageSdkStaysInBuildingBlocks : IArchitectureRule
 {
     private const string AzureStorage = "Azure.Storage";
 
-    public string Description => "No module references the Azure Storage SDK: modules take IBlobUrls, and only src/BuildingBlocks/Storage names the SDK.";
+    public string Description => "No module assembly (Domain, Application, Infrastructure, Api) references the Azure Storage SDK: modules take IBlobUrls from src/BuildingBlocks/Storage.";
 
     public IEnumerable<string> Violations(ArchitectureModel model)
     {
@@ -14,7 +14,7 @@ public sealed class BlobStorageSdkStaysInBuildingBlocks : IArchitectureRule
         {
             foreach (var reference in assembly.GetReferencedAssemblies().Select(reference => reference.Name!).Where(IsAzureStorage).Order(StringComparer.Ordinal))
             {
-                yield return $"{assembly.GetName().Name} references {reference}, but only src/BuildingBlocks/Storage may name the Azure Storage SDK; take IBlobUrls instead.";
+                yield return $"{assembly.GetName().Name} references {reference}, but modules take IBlobUrls from src/BuildingBlocks/Storage, never the Azure Storage SDK.";
             }
         }
     }

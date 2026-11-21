@@ -15,7 +15,10 @@ public static class BrowserUploads
 {
     private const string Methods = "GET,HEAD,PUT,OPTIONS";
 
-    private const string AnyHeader = "*";
+    // What a browser upload or read sends and needs to see, and no more: no x-ms-copy-source, no page-blob headers.
+    private const string AllowedHeaders = "content-type,x-ms-blob-type,x-ms-blob-content-type,x-ms-version,x-ms-date,x-ms-client-request-id";
+
+    private const string ExposedHeaders = "etag,content-type,content-length,x-ms-request-id";
 
     private const int MaxAgeInSeconds = 3600;
 
@@ -80,8 +83,8 @@ public static class BrowserUploads
         {
             AllowedOrigins = origin,
             AllowedMethods = Methods,
-            AllowedHeaders = AnyHeader,
-            ExposedHeaders = AnyHeader,
+            AllowedHeaders = AllowedHeaders,
+            ExposedHeaders = ExposedHeaders,
             MaxAgeInSeconds = MaxAgeInSeconds,
         }));
         properties.Cors = rules;

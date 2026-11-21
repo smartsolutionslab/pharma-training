@@ -1,7 +1,10 @@
 using System.Net;
 using System.Security.Cryptography;
+using Aspire.Hosting.ApplicationModel;
+using Aspire.Hosting.Azure;
 using Aspire.Hosting.Testing;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Storage;
 
@@ -28,36 +31,43 @@ public class BlobStorageTests(AspireFixture aspire)
 
     private static readonly HttpClient Http = new();
 
-    public static TheoryData<string> Modules { get; } =
-        ["assessment", "catalog", "certification", "compliance", "editorial", "learning", "organisation"];
-
     public static TheoryData<string> BrowserMethods { get; } = ["PUT", "GET"];
 
-    [Theory]
-    [MemberData(nameof(Modules))]
-    public async Task Each_modules_container_takes_an_upload_and_serves_it_to_a_read_url(string module)
+    [Fact]
+    public async Task Each_modules_container_takes_an_upload_and_serves_it_to_a_read_url()
     {
-        var urls = await UrlsAsync(module, TimeProvider.System.GetUtcNow());
-        var name = NewName();
-        var content = RandomNumberGenerator.GetBytes(256);
+        var modules = Modules();
 
-        var upload = await urls.CreateUploadUrlAsync(name, FiveMinutes, TestContext.Current.CancellationToken);
-        using var put = await PutAsync(upload.Url, content);
-        var read = await urls.CreateReadUrlAsync(name, FiveMinutes, TestContext.Current.CancellationToken);
-        using var get = await Http.GetAsync(read.Url, TestContext.Current.CancellationToken);
+        modules.ShouldNotBeEmpty();
+        foreach (var module in modules)
+        {
+            var urls = await UrlsAsync(module, TimeProvider.System.GetUtcNow());
+            var name = NewName();
+            var content = RandomNumberGenerator.GetBytes(256);
 
-        put.StatusCode.ShouldBe(HttpStatusCode.Created);
-        get.StatusCode.ShouldBe(HttpStatusCode.OK);
-        (await get.Content.ReadAsByteArrayAsync(TestContext.Current.CancellationToken)).ShouldBe(content);
+            var upload = await urls.CreateUploadUrlAsync(name, FiveMinutes, TestContext.Current.CancellationToken);
+            using var put = await PutAsync(upload.Url, content);
+            var read = await urls.CreateReadUrlAsync(name, FiveMinutes, TestContext.Current.CancellationToken);
+            using var get = await Http.GetAsync(read.Url, TestContext.Current.CancellationToken);
+
+            put.StatusCode.ShouldBe(HttpStatusCode.Created, module);
+            get.StatusCode.ShouldBe(HttpStatusCode.OK, module);
+            (await get.Content.ReadAsByteArrayAsync(TestContext.Current.CancellationToken)).ShouldBe(content, module);
+        }
     }
 
-    [Theory]
-    [MemberData(nameof(Modules))]
-    public async Task The_container_connection_string_names_the_module(string module)
+    [Fact]
+    public async Task Each_container_connection_string_names_its_module()
     {
-        var connectionString = await ConnectionStringAsync(module);
+        var modules = Modules();
 
-        connectionString.ShouldContain($"ContainerName={module}");
+        modules.ShouldNotBeEmpty();
+        foreach (var module in modules)
+        {
+            var connectionString = await ConnectionStringAsync(module);
+
+            connectionString.ShouldContain($"ContainerName={module}", Case.Sensitive, module);
+        }
     }
 
     [Fact]
@@ -185,7 +195,7 @@ public class BlobStorageTests(AspireFixture aspire)
 
         preflight.StatusCode.ShouldBe(HttpStatusCode.OK);
         preflight.Headers.TryGetValues("Access-Control-Allow-Origin", out var origins).ShouldBeTrue();
-        origins.ShouldNotBeNull().ShouldContain(origin => origin == WebOrigin || origin == "*");
+        origins.ShouldNotBeNull().ShouldBe([WebOrigin]);
     }
 
     [Fact]
@@ -195,6 +205,16 @@ public class BlobStorageTests(AspireFixture aspire)
 
         preflight.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
     }
+
+    /// <summary>
+    /// The modules whose containers the running AppHost created, read from its application model rather than listed, so a
+    /// module added or removed with <c>fabric add-module</c> is covered without touching this file.
+    /// </summary>
+    private List<string> Modules() =>
+        [.. aspire.App.Services.GetRequiredService<DistributedApplicationModel>().Resources
+            .OfType<AzureBlobStorageContainerResource>()
+            .Select(container => container.BlobContainerName)
+            .Order(StringComparer.Ordinal)];
 
     private static BlobName NewName() => BlobName.From($"probes/{Guid.CreateVersion7()}.bin");
 
