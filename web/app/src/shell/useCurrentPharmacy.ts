@@ -8,7 +8,7 @@ const none: MyPharmacyDto[] = [];
 
 /**
  * The user's memberships and the one they work in: the only one, or the one they chose among several. A stored choice
- * the memberships no longer hold is forgotten once they are known; while they load or fail, nothing is current.
+ * the memberships no longer hold is forgotten once they are known; while they load, or fail to load at all, nothing is current.
  */
 export function useCurrentPharmacy() {
   const pharmacies = useMyPharmacies();
@@ -16,7 +16,8 @@ export function useCurrentPharmacy() {
   const { pharmacyId } = storeToRefs(selected);
 
   const status = computed<'loading' | 'failed' | 'ready'>(() => {
-    if (pharmacies.isError.value) {
+    // A refetch that fails in the background keeps the data it had: only a load that brought nothing has failed.
+    if (pharmacies.isError.value && pharmacies.data.value === undefined) {
       return 'failed';
     }
     return pharmacies.isPending.value || pharmacies.data.value === undefined ? 'loading' : 'ready';
@@ -41,5 +42,10 @@ export function useCurrentPharmacy() {
     { immediate: true },
   );
 
-  return { status, memberships, current, choose: selected.choose };
+  /** Loads the memberships again, after they could not be loaded. */
+  const retry = () => {
+    void pharmacies.refetch();
+  };
+
+  return { status, memberships, current, choose: selected.choose, retry };
 }

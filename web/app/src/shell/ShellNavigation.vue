@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { watch } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import {
   SidebarGroup,
@@ -21,14 +20,12 @@ const { isMobile, setOpenMobile } = useSidebar();
 /** Whether the address is the page's or below it. */
 const isAt = (path: string) => route.path === path || route.path.startsWith(`${path}/`);
 
-watch(
-  () => route.fullPath,
-  () => {
-    if (isMobile.value) {
-      setOpenMobile(false);
-    }
-  },
-);
+/** Closes the sheet once a link is tapped, also the link of the page the user is already on. */
+function closeSheet() {
+  if (isMobile.value) {
+    setOpenMobile(false);
+  }
+}
 </script>
 
 <template>
@@ -39,12 +36,12 @@ watch(
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton as-child :is-active="route.path === '/'">
-              <RouterLink to="/">Home</RouterLink>
+              <RouterLink to="/" @click="closeSheet">Home</RouterLink>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem v-for="module in modules" :key="module.path">
             <SidebarMenuButton as-child :is-active="isAt(`/${module.path}`)">
-              <RouterLink :to="`/${module.path}`">{{ module.title }}</RouterLink>
+              <RouterLink :to="`/${module.path}`" @click="closeSheet">{{ module.title }}</RouterLink>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
