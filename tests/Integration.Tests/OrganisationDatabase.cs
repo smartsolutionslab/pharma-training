@@ -29,7 +29,8 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
             connection);
         command.Parameters.AddWithValue("id", membership);
         command.Parameters.AddWithValue("pharmacy", pharmacy);
-        command.Parameters.AddWithValue("email", claims.RootElement.GetProperty("email").GetString() ?? throw new InvalidOperationException($"{user} has no email."));
+        // Trimmed and lower-cased, as EmailAddress.From writes it: the row must be one the domain could have written.
+        command.Parameters.AddWithValue("email", (claims.RootElement.GetProperty("email").GetString() ?? throw new InvalidOperationException($"{user} has no email.")).Trim().ToLowerInvariant());
         command.Parameters.AddWithValue("person", Guid.Parse(claims.RootElement.GetProperty("sub").GetString() ?? throw new InvalidOperationException($"{user} has no subject.")));
         command.Parameters.AddWithValue("name", claims.RootElement.GetProperty("name").GetString() ?? throw new InvalidOperationException($"{user} has no name."));
         command.Parameters.AddWithValue("jobFunction", jobFunction);
