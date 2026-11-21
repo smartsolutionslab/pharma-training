@@ -26,10 +26,21 @@ public sealed class CourseVersionPublishedV1Consumer(ICourseVersionStore version
             return;
         }
 
+        // Backs the unique (course, number) index: a number its course already has under another id is a conflict no
+        // retry resolves, refused here with the version it conflicts with rather than by the index.
+        var course = CourseId.From(message.CourseId);
+        var number = VersionNumber.From(message.VersionNumber);
+        var stored = await versions.FindByNumberAsync(course, number, cancellationToken);
+        if (stored.HasValue)
+        {
+            throw new InvalidOperationException(
+                $"Course version {version} of course {course} has number {number}, which version {stored.Value} of that course already has.");
+        }
+
         versions.Add(CourseVersion.Published(
             version,
-            CourseId.From(message.CourseId),
-            VersionNumber.From(message.VersionNumber),
+            course,
+            number,
             CourseTitle.From(message.Title),
             ValidityMonths.From(message.ValidityMonths)));
         await unitOfWork.CommitAsync(cancellationToken);

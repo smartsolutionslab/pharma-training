@@ -59,6 +59,25 @@ public class CourseVersionPublishedV1ConsumerTests
     }
 
     [Fact]
+    public async Task Another_version_with_a_number_its_course_already_has_is_refused_naming_the_stored_version_and_nothing_more_stored()
+    {
+        var store = new InMemoryCourseVersionStore();
+        var consumer = new CourseVersionPublishedV1Consumer(store, store);
+        var courseId = Guid.CreateVersion7();
+        var stored = CourseVersionEvents.Published(courseId, Guid.CreateVersion7(), 2, "Hygiene 2");
+        await consumer.HandleAsync(stored, TestContext.Current.CancellationToken);
+        var conflicting = CourseVersionEvents.Published(courseId, Guid.CreateVersion7(), 2, "Hygiene 2, noch einmal");
+
+        var refused = await Should.ThrowAsync<InvalidOperationException>(() => consumer.HandleAsync(conflicting, TestContext.Current.CancellationToken));
+
+        refused.Message.ShouldContain(conflicting.CourseVersionId.ToString());
+        refused.Message.ShouldContain(stored.CourseVersionId.ToString());
+        refused.Message.ShouldContain(courseId.ToString());
+        store.Versions.ShouldHaveSingleItem().Id.ShouldBe(CourseVersionId.From(stored.CourseVersionId));
+        store.Commits.ShouldBe(1);
+    }
+
+    [Fact]
     public async Task A_version_without_chapters_is_stored_since_compliance_keeps_none()
     {
         var store = new InMemoryCourseVersionStore();
