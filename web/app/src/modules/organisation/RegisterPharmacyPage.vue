@@ -30,15 +30,25 @@ const jobFunctions = [
   { value: OrganisationJobFunction.Other, label: 'Other' },
 ];
 
-const { defineField, errors, handleSubmit } = useForm({
+const { defineField, errors, handleSubmit, isSubmitting } = useForm({
   validationSchema: toTypedSchema(registrationSchema),
   initialValues: { name: '', jobFunction: '' },
 });
 const [name, nameAttributes] = defineField('name');
 const [jobFunction, jobFunctionAttributes] = defineField('jobFunction');
 
-const { register, isPending } = useRegisterPharmacy();
-const submit = handleSubmit((values) => register(values));
+// The form is submitting until register has settled, the memberships read again and the page moved on included: a
+// submit meanwhile is ignored, or a second click would register a second pharmacy. The button is disabled from the
+// moment the registration is on its way until the page has moved on.
+const { register, isBusy } = useRegisterPharmacy();
+const registerOnce = handleSubmit((values) => register(values));
+function submit(event: Event) {
+  if (isSubmitting.value) {
+    event.preventDefault();
+    return;
+  }
+  void registerOnce(event);
+}
 </script>
 
 <template>
@@ -57,6 +67,7 @@ const submit = handleSubmit((values) => register(values));
           v-model="name"
           v-bind="nameAttributes"
           autocomplete="organization"
+          aria-required="true"
           :aria-invalid="errors.name ? true : undefined"
           :aria-describedby="errors.name ? `${nameField}-error` : undefined"
         />
@@ -70,9 +81,10 @@ const submit = handleSubmit((values) => register(values));
           :id="jobFunctionField"
           v-model="jobFunction"
           v-bind="jobFunctionAttributes"
+          aria-required="true"
           :aria-invalid="errors.jobFunction ? true : undefined"
           :aria-describedby="errors.jobFunction ? `${jobFunctionField}-error` : undefined"
-          class="h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs motion-safe:transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30 dark:aria-invalid:ring-destructive/40 [&_option]:bg-popover [&_option]:text-popover-foreground"
+          class="h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-body motion-safe:transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:bg-input/30 dark:aria-invalid:ring-destructive/40 [&_option]:bg-popover [&_option]:text-popover-foreground"
         >
           <option value="" disabled>Choose…</option>
           <option v-for="option in jobFunctions" :key="option.value" :value="option.value">{{ option.label }}</option>
@@ -86,7 +98,7 @@ const submit = handleSubmit((values) => register(values));
           {{ errors.jobFunction }}
         </p>
       </div>
-      <Button type="submit" class="self-start" :disabled="isPending">Register pharmacy</Button>
+      <Button type="submit" class="self-start" :disabled="isBusy">Register pharmacy</Button>
     </form>
   </main>
 </template>

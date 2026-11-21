@@ -1,13 +1,16 @@
 import { useQueryClient } from '@tanstack/vue-query';
+import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { z } from 'zod';
 import {
   getGetOrganisationPharmaciesMineQueryKey,
+  getGetOrganisationPharmaciesMineQueryOptions,
   type RegisterPharmacyRequest,
   usePostOrganisationPharmacies,
 } from '@/api/generated';
 import { ApiError } from '@/api/baseApi';
 import { notify } from '@/lib/notify';
+import { myPharmaciesParams } from '@/shell/useMyPharmacies';
 import { useSelectedPharmacyStore } from '@/stores/selectedPharmacy';
 
 /**
@@ -15,6 +18,9 @@ import { useSelectedPharmacyStore } from '@/stores/selectedPharmacy';
  * replaces the generated samples there, at the same address.
  */
 const teamPage = '/organisation';
+
+/** Where the user goes when the new pharmacy cannot be opened: the start page, whose switcher lists it. */
+const startPage = '/';
 
 /** What the user reads when the host refuses a registration, by its status. */
 function refusal(error: unknown): string {
@@ -30,27 +36,67 @@ function refusal(error: unknown): string {
 /**
  * Registers a pharmacy with the user as its manager. Once the host has, the memberships are read again and only then
  * the new pharmacy chosen: chosen among memberships that do not hold it yet, it would be forgotten at once. The user is
- * told and led to the pharmacy's team page; a refusal is reported and leaves the user where they are.
+ * told and led to the pharmacy's team page. A refusal is reported and leaves the user where they are; a pharmacy that
+ * was registered but cannot be opened (no id in the answer, or not among the memberships read again) is not chosen, and
+ * the user goes to the start page. The returned promise settles once the page has moved on.
  */
 export function useRegisterPharmacy() {
   const queryClient = useQueryClient();
   const selected = useSelectedPharmacyStore();
   const router = useRouter();
   const { mutateAsync, isPending } = usePostOrganisationPharmacies();
+  // From the host's answer until the page has moved on: the memberships are read again meanwhile.
+  const isOpening = ref(false);
 
   async function register(values: RegisterPharmacyRequest) {
-    let id: string;
+    let answer: unknown;
     try {
-      id = z.uuid().parse(await mutateAsync({ data: values }));
+      answer = await mutateAsync({ data: values });
     } catch (error) {
       notify.failure(refusal(error));
       return;
     }
-    await queryClient.invalidateQueries({ queryKey: getGetOrganisationPharmaciesMineQueryKey() });
-    selected.choose(id);
+    isOpening.value = true;
+    try {
+      await open(values, answer);
+    } finally {
+      isOpening.value = false;
+    }
+  }
+
+  async function open(values: RegisterPharmacyRequest, answer: unknown) {
+    // 201 says the pharmacy exists, whatever the body: without its id it cannot be chosen, but it was registered.
+    const id = z.uuid().safeParse(answer);
+    if (!id.success) {
+      await queryClient.invalidateQueries({ queryKey: getGetOrganisationPharmaciesMineQueryKey() });
+      notify.success(`The pharmacy ${values.name} was registered.`);
+      await router.push(startPage);
+      return;
+    }
+
+    // Marked stale without a refetch of its own: the read below is the one every observer of the memberships shares.
+    await queryClient.invalidateQueries({ queryKey: getGetOrganisationPharmaciesMineQueryKey(), refetchType: 'none' });
+    let opened = false;
+    try {
+      const mine = await queryClient.fetchQuery(getGetOrganisationPharmaciesMineQueryOptions(myPharmaciesParams));
+      opened = mine.items.some((membership) => membership.id === id.data);
+    } catch {
+      // The memberships could not be read again: the new pharmacy cannot be opened.
+    }
+    if (!opened) {
+      notify.success(
+        `The pharmacy ${values.name} was registered, but it could not be opened. Choose it in the pharmacy switcher.`,
+      );
+      await router.push(startPage);
+      return;
+    }
+    selected.choose(id.data);
     notify.success(`The pharmacy ${values.name} was registered.`);
     await router.push(teamPage);
   }
 
-  return { register, isPending };
+  /** The registration is on its way, or registered and the page not moved on yet. */
+  const isBusy = computed(() => isPending.value || isOpening.value);
+
+  return { register, isBusy };
 }
