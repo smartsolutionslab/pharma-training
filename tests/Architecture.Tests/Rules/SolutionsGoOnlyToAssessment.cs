@@ -5,7 +5,7 @@ namespace SmartSolutionsLab.PharmaTraining.Architecture.Tests.Rules;
 
 public sealed class SolutionsGoOnlyToAssessment : IArchitectureRule
 {
-    private const string AssessmentAssemblies = "Assessment.";
+    public const string AllowedAssemblies = "Assessment.";
 
     public string Description => $"Only Assessment consumes {nameof(TestDefinitionPublishedV1)}, which carries every question's solution; no other module and never the frontend (docs/domain/README.md).";
 
@@ -31,6 +31,6 @@ public sealed class SolutionsGoOnlyToAssessment : IArchitectureRule
     {
         Ensure.That(model).IsNotNull();
 
-        return Violations(model.ModuleAssemblies.SelectMany(assembly => assembly.GetTypes()), AssessmentAssemblies);
+        return Violations(model.ModuleAssemblies.SelectMany(assembly => assembly.GetTypes()), AllowedAssemblies);
     }
 }
