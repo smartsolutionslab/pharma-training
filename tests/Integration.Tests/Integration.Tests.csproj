@@ -8,6 +8,7 @@
     <PackageReference Include="Aspire.Hosting.Testing" />
     <!-- The blob containers' resource types, read from the AppHost's model (AppHostBlobContainersTests). -->
     <PackageReference Include="Aspire.Hosting.Azure.Storage" />
+    <PackageReference Include="RabbitMQ.Client" />
   </ItemGroup>
 
   <ItemGroup>
