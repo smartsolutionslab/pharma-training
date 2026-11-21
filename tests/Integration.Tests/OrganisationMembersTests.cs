@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using RabbitMQ.Client;
 
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 
@@ -315,6 +316,9 @@ public class OrganisationMembersTests(AspireFixture aspire)
         var pharmacy = await RegisterAsync(owner, cancellationToken);
         var own = await MembershipOfAsync(owner, pharmacy, cancellationToken);
         var other = await database.SeedMemberAsync(pharmacy, "employee-b", "Manager", "Pharmacist", cancellationToken);
+        await using var connection = await Broker.ConnectAsync(aspire, cancellationToken);
+        await using var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
+        var listener = await ListenForEndedMembershipsAsync(owner, connection, channel, cancellationToken);
 
         HttpResponseMessage[] responses;
         await using (var gate = await database.LockPharmacyAsync(pharmacy, cancellationToken))
@@ -330,6 +334,7 @@ public class OrganisationMembersTests(AspireFixture aspire)
         {
             await ShouldBeOneWonAndOneChangedAsync(responses, cancellationToken);
             (await database.ActiveManagersAsync(pharmacy, cancellationToken)).ShouldBe(1L, "the pharmacy must keep exactly one manager");
+            await ShouldAnnounceEachEndedMembershipOnceAsync(owner, channel, listener, [own, other], cancellationToken);
         }
         finally
         {
@@ -347,6 +352,9 @@ public class OrganisationMembersTests(AspireFixture aspire)
         using var owner = await aspire.CreateHostClientAsync("owner");
         var pharmacy = await RegisterAsync(owner, cancellationToken);
         var membership = await database.SeedMemberAsync(pharmacy, "employee-a", "Employee", "Pta", cancellationToken);
+        await using var connection = await Broker.ConnectAsync(aspire, cancellationToken);
+        await using var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
+        var listener = await ListenForEndedMembershipsAsync(owner, connection, channel, cancellationToken);
 
         HttpResponseMessage[] responses;
         await using (var gate = await database.LockPharmacyAsync(pharmacy, cancellationToken))
@@ -372,6 +380,8 @@ public class OrganisationMembersTests(AspireFixture aspire)
             {
                 stored.ShouldBe(new OrganisationDatabase.StoredMembership("Active", "Manager", "Pka", null), "the change won, so the end must not be stored");
             }
+
+            await ShouldAnnounceEachEndedMembershipOnceAsync(owner, channel, listener, [membership], cancellationToken);
         }
         finally
         {
@@ -421,9 +431,43 @@ public class OrganisationMembersTests(AspireFixture aspire)
         await ShouldBeRefusedAsync(lost, HttpStatusCode.Conflict, "organisation.pharmacy-changed", cancellationToken);
     }
 
+    /// <summary>
+    /// Binds a queue to MembershipEndedV1 before a race. The listener's pharmacy of its own ends one membership first,
+    /// so Wolverine has declared the exchange, and later one more, whose announcement marks the end of the race's.
+    /// </summary>
+    private async Task<EndedMembershipListener> ListenForEndedMembershipsAsync(HttpClient owner, IConnection connection, IChannel channel, CancellationToken cancellationToken)
+    {
+        var marker = await RegisterAsync(owner, cancellationToken);
+        using var warmedUp = await owner.DeleteAsync(MemberUri(marker, await database.SeedMemberAsync(marker, "employee-a", "Employee", "Pta", cancellationToken)), cancellationToken);
+        warmedUp.StatusCode.ShouldBe(HttpStatusCode.OK);
+        await Broker.WaitForExchangeAsync(connection, MembershipEndedExchange, cancellationToken);
+        return new EndedMembershipListener(await Broker.BindQueueAsync(channel, MembershipEndedExchange, cancellationToken), marker);
+    }
+
+    /// <summary>
+    /// Every membership of the race that is ended in the database was announced exactly once, and one that is not, never:
+    /// the loser's announcement must not reach the broker. Organisation sends its announcements of one event type in
+    /// the order it commits them, so the marker, ended after the race, comes after any the race sent.
+    /// </summary>
+    private async Task ShouldAnnounceEachEndedMembershipOnceAsync(HttpClient owner, IChannel channel, EndedMembershipListener listener, IReadOnlyList<Guid> memberships, CancellationToken cancellationToken)
+    {
+        var marker = await database.SeedMemberAsync(listener.Pharmacy, "employee-b", "Employee", "Pta", cancellationToken);
+        using var markerEnded = await owner.DeleteAsync(MemberUri(listener.Pharmacy, marker), cancellationToken);
+        markerEnded.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var announced = await Broker.ReceiveUntilAsync<MembershipEnded>(channel, listener.Queue, received => received.MembershipId == marker, cancellationToken);
+
+        foreach (var membership in memberships)
+        {
+            var ended = (await database.MembershipAsync(membership, cancellationToken)).Status == "Ended";
+            announced.Count(received => received.MembershipId == membership).ShouldBe(ended ? 1 : 0, $"membership {membership} is {(ended ? "ended" : "not ended")}");
+        }
+    }
+
     private sealed record MyPharmacy(Guid Id, string Name, Guid MembershipId, string Role, string JobFunction, bool CanManageMembers, bool CanAssignCourses);
 
     private sealed record Problem(string Code);
+
+    private sealed record EndedMembershipListener(string Queue, Guid Pharmacy);
 
     private sealed record MembershipEnded(Guid MembershipId, Guid PersonId, Guid PharmacyId, DateTimeOffset EndedAt);
 }
