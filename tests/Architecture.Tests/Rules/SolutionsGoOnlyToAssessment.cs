@@ -5,7 +5,7 @@ namespace SmartSolutionsLab.PharmaTraining.Architecture.Tests.Rules;
 
 public sealed class SolutionsGoOnlyToAssessment : IArchitectureRule
 {
-    public const string AllowedAssemblies = "Assessment.";
+    public const string AllowedAssemblies = "SmartSolutionsLab.PharmaTraining.Modules.Assessment.Application";
 
     public string Description => $"Only Assessment consumes {nameof(TestDefinitionPublishedV1)}, which carries every question's solution; no other module and never the frontend (docs/domain/README.md).";
 
@@ -18,7 +18,7 @@ public sealed class SolutionsGoOnlyToAssessment : IArchitectureRule
             && type.Name.EndsWith("Consumer", StringComparison.Ordinal)
             && type.Assembly.GetName().Name?.StartsWith(allowedAssemblyPrefix, StringComparison.Ordinal) != true))
         {
-            var consumes = type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)
+            var consumes = type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.FlattenHierarchy)
                 .Any(method => method.GetParameters().Any(parameter => parameter.ParameterType == typeof(TestDefinitionPublishedV1)));
             if (consumes)
             {
