@@ -1,0 +1,28 @@
+using SmartSolutionsLab.PharmaTraining.Contracts.Organisation;
+using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Members;
+
+namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application.Consumers;
+
+/// <summary>
+/// Stores that Organisation ended a membership, once, whether the membership's start has arrived yet or not: the member
+/// is kept, and reads as ended whenever it is there.
+/// </summary>
+public sealed class MembershipEndedV1Consumer(IMemberStore members, IComplianceUnitOfWork unitOfWork)
+{
+    public async Task HandleAsync(MembershipEndedV1 message, CancellationToken cancellationToken)
+    {
+        Ensure.That(message).IsNotNull();
+        Ensure.That(message.MembershipId, nameof(message.MembershipId)).IsNotEmpty();
+        Ensure.That(message.PersonId, nameof(message.PersonId)).IsNotEmpty();
+        Ensure.That(message.PharmacyId, nameof(message.PharmacyId)).IsNotEmpty();
+
+        var membership = MembershipId.From(message.MembershipId);
+        if (await members.IsEndedAsync(membership, cancellationToken))
+        {
+            return;
+        }
+
+        members.Add(MembershipEnding.Of(membership, PersonId.From(message.PersonId), PharmacyId.From(message.PharmacyId)));
+        await unitOfWork.CommitAsync(cancellationToken);
+    }
+}

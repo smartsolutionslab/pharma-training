@@ -16,6 +16,8 @@ public sealed class PharmacyConfiguration : IEntityTypeConfiguration<Pharmacy>
         builder.Property(pharmacy => pharmacy.Id).HasColumnName("id").ValueGeneratedNever();
         builder.Property(pharmacy => pharmacy.Name).HasColumnName("name").HasMaxLength(PharmacyName.MaxLength).IsRequired();
         builder.Property(pharmacy => pharmacy.RegisteredAt).HasColumnName("registered_at").IsRequired();
+        // The pharmacy is the consistency boundary: a save of it or of any of its memberships checks and moves this on.
+        builder.HasRowVersion();
 
         builder.HasMany(pharmacy => pharmacy.Memberships)
             .WithOne()

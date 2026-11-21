@@ -2,7 +2,8 @@ import type { Page } from '@playwright/test';
 
 /**
  * GET /organisation/pharmacies/mine answers one membership the user manages, whatever the database holds: a pharmacy's
- * pages are then open to the developer, who is a member of none, and the only membership is current without a choice.
+ * pages are then open to the developer, whatever pharmacies register-pharmacy.spec.ts has made them a member of, and
+ * the only membership is current without a choice.
  */
 export async function memberOfOnePharmacy(page: Page) {
   const pharmacy = {

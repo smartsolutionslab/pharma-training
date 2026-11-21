@@ -1116,6 +1116,92 @@
         }
       }
     },
+    "/organisation/pharmacies/{id}/members/{membershipId}": {
+      "delete": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "membershipId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Unit"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "membershipId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeOrganisationMembershipRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Unit"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/organisation/pharmacies": {
       "post": {
         "tags": [
@@ -1509,6 +1595,21 @@
           }
         }
       },
+      "ChangeOrganisationMembershipRequest": {
+        "required": [
+          "jobFunction",
+          "role"
+        ],
+        "type": "object",
+        "properties": {
+          "jobFunction": {
+            "$ref": "#/components/schemas/OrganisationJobFunction"
+          },
+          "role": {
+            "$ref": "#/components/schemas/OrganisationMembershipRole"
+          }
+        }
+      },
       "ComplianceSampleDto": {
         "required": [
           "id",
@@ -1844,8 +1945,7 @@
           "Pta",
           "Pka",
           "Trainee",
-          "Other",
-          null
+          "Other"
         ]
       },
       "OrganisationMembershipRole": {
