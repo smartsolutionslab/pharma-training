@@ -3,6 +3,8 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
+using Aspire.Hosting.Testing;
 using Npgsql;
 
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
@@ -11,13 +13,15 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// A pharmacy's management invites an address, renews and revokes the invitation through the running application,
 /// and the database backs the rules the aggregate checks: one invited-or-active row per address, one row per token hash.
 /// </summary>
-public class OrganisationInvitationsTests(AspireFixture aspire)
+public partial class OrganisationInvitationsTests(AspireFixture aspire)
 {
     private const string UniqueViolation = "23505";
 
     private static readonly Uri Pharmacies = new("/organisation/pharmacies", UriKind.Relative);
 
     private readonly OrganisationDatabase database = new(aspire);
+
+    private readonly Mailpit mailpit = new(aspire);
 
     [Fact]
     public async Task The_database_refuses_a_second_open_invitation_of_one_address()
@@ -302,6 +306,7 @@ public class OrganisationInvitationsTests(AspireFixture aspire)
             var lost = responses.Single(response => response.StatusCode == HttpStatusCode.Conflict);
             (await CodeOfAsync(lost, cancellationToken)).ShouldBeOneOf(["organisation.pharmacy-changed", "already-exists"], described);
             (await database.StatusesOfAsync(pharmacy, address, cancellationToken)).ShouldBe(["Invited"]);
+            (await mailpit.MessagesToAsync(address, 1, cancellationToken)).ShouldHaveSingleItem("the invitation that lost must send no mail");
         }
         finally
         {
@@ -346,6 +351,43 @@ public class OrganisationInvitationsTests(AspireFixture aspire)
                 response.Dispose();
             }
         }
+    }
+
+    [Fact]
+    public async Task An_invitation_sends_one_mail_whose_link_carries_the_token_the_row_keeps_the_hash_of()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var owner = await aspire.CreateHostClientAsync("owner");
+        var pharmacy = await RegisterAsync(owner, cancellationToken);
+        var address = Invitee();
+
+        var membership = await InviteAsync(owner, pharmacy, address, cancellationToken);
+
+        var mail = (await mailpit.MessagesToAsync(address, 1, cancellationToken)).ShouldHaveSingleItem();
+        mail.To.ShouldBe([address]);
+        mail.Subject.ShouldStartWith("Einladung zu Apotheke ", Case.Sensitive);
+        var token = TokenIn(mail);
+        (await database.TokenHashAsync(membership, cancellationToken)).ShouldBe(HashOf(token));
+    }
+
+    [Fact]
+    public async Task A_renewal_sends_a_second_mail_whose_token_replaced_the_first()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var owner = await aspire.CreateHostClientAsync("owner");
+        var pharmacy = await RegisterAsync(owner, cancellationToken);
+        var address = Invitee();
+        var membership = await InviteAsync(owner, pharmacy, address, cancellationToken);
+        var first = TokenIn((await mailpit.MessagesToAsync(address, 1, cancellationToken)).ShouldHaveSingleItem());
+
+        using var renewed = await owner.PostAsync(RenewUri(pharmacy, membership), content: null, cancellationToken);
+
+        await ShouldAnswerAsync(renewed, HttpStatusCode.OK, cancellationToken);
+        var mails = await mailpit.MessagesToAsync(address, 2, cancellationToken);
+        mails.Count.ShouldBe(2);
+        var second = TokenIn(mails[1]);
+        second.ShouldNotBe(first);
+        (await database.TokenHashAsync(membership, cancellationToken)).ShouldBe(HashOf(second));
     }
 
     /// <summary>A fresh address per test, so no test sees another's invitation or mail.</summary>
@@ -400,6 +442,24 @@ public class OrganisationInvitationsTests(AspireFixture aspire)
 
         return string.Join(" | ", answers);
     }
+
+    /// <summary>The SHA-256 of the token in lower-case hex, as the row keeps it.</summary>
+    private static string HashOf(string token) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
+
+    /// <summary>The token from the mail's link, which leads to the web app's accept page with the token in the fragment.</summary>
+    private string TokenIn(Mailpit.CaughtMail mail)
+    {
+        var accept = $"{aspire.App.GetEndpoint("web", "http").AbsoluteUri.TrimEnd('/')}/invitations/accept#token=";
+        var line = mail.Text.ReplaceLineEndings("\n").Split('\n').Select(candidate => candidate.Trim()).SingleOrDefault(candidate => candidate.Contains("#token=", StringComparison.Ordinal));
+        line.ShouldNotBeNull($"the mail holds no link with a token: {mail.Text}");
+        line.ShouldStartWith(accept, Case.Sensitive);
+        var match = LinkToken().Match(line);
+        match.Success.ShouldBeTrue($"the link's token is not 43 URL-safe characters: {line}");
+        return match.Groups["token"].Value;
+    }
+
+    [GeneratedRegex("#token=(?<token>[A-Za-z0-9_-]{43})$")]
+    private static partial Regex LinkToken();
 
     private static async Task<Guid> RegisterAsync(HttpClient client, CancellationToken cancellationToken)
     {
