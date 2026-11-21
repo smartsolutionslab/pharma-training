@@ -257,6 +257,80 @@ public class EditorialCourseVersionsTests(AspireFixture aspire)
     }
 
     [Fact]
+    public async Task Of_two_concurrent_removals_of_one_chapter_one_succeeds_and_the_other_is_told_the_version_changed()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var id = await CreateAsync(client, $"Hygiene {Guid.CreateVersion7()}", cancellationToken);
+        var chapter = await AddChapterAsync(client, id, "Händehygiene", "Vor und nach …", cancellationToken);
+        var connectionString = await EditorialConnectionStringAsync(cancellationToken);
+
+        HttpResponseMessage[] responses;
+        await using (var gate = await LockVersionAsync(connectionString, id, cancellationToken))
+        {
+            var first = client.DeleteAsync(Chapter(id, chapter), cancellationToken);
+            var second = client.DeleteAsync(Chapter(id, chapter), cancellationToken);
+            await WaitUntilBlockedAsync(connectionString, 2, cancellationToken);
+            await gate.CommitAsync(cancellationToken);
+            responses = await Task.WhenAll(first, second);
+        }
+
+        try
+        {
+            responses.Select(response => response.StatusCode).ShouldBe([HttpStatusCode.OK, HttpStatusCode.Conflict], ignoreOrder: true);
+            var lost = responses.Single(response => response.StatusCode == HttpStatusCode.Conflict);
+            (await CodeOfAsync(lost, cancellationToken)).ShouldBe("editorial.course-version-changed");
+            (await ReadAsync(client, id, cancellationToken)).Chapters.ShouldBeEmpty();
+        }
+        finally
+        {
+            foreach (var response in responses)
+            {
+                response.Dispose();
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Of_two_concurrent_additions_to_one_version_one_is_created_and_the_other_is_told_the_version_changed()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var id = await CreateAsync(client, $"Hygiene {Guid.CreateVersion7()}", cancellationToken);
+        var existing = await AddChapterAsync(client, id, "Händehygiene", "Vor und nach …", cancellationToken);
+        var connectionString = await EditorialConnectionStringAsync(cancellationToken);
+
+        HttpResponseMessage[] responses;
+        await using (var gate = await LockVersionAsync(connectionString, id, cancellationToken))
+        {
+            var first = client.PostAsJsonAsync(Chapters(id), new { title = "Flächendesinfektion", text = "Wischen." }, cancellationToken);
+            var second = client.PostAsJsonAsync(Chapters(id), new { title = "Instrumente", text = "Aufbereiten." }, cancellationToken);
+            await WaitUntilBlockedAsync(connectionString, 2, cancellationToken);
+            await gate.CommitAsync(cancellationToken);
+            responses = await Task.WhenAll(first, second);
+        }
+
+        try
+        {
+            responses.Select(response => response.StatusCode).ShouldBe([HttpStatusCode.Created, HttpStatusCode.Conflict], ignoreOrder: true);
+            var lost = responses.Single(response => response.StatusCode == HttpStatusCode.Conflict);
+            (await CodeOfAsync(lost, cancellationToken)).ShouldBe("editorial.course-version-changed");
+            var won = responses.Single(response => response.StatusCode == HttpStatusCode.Created);
+            var added = await won.Content.ReadFromJsonAsync<Guid>(cancellationToken);
+            var chapters = (await ReadAsync(client, id, cancellationToken)).Chapters;
+            chapters.Select(chapter => chapter.Id).ShouldBe([existing, added]);
+            chapters.Select(chapter => chapter.Position).ShouldBe([1, 2]);
+        }
+        finally
+        {
+            foreach (var response in responses)
+            {
+                response.Dispose();
+            }
+        }
+    }
+
+    [Fact]
     public async Task A_page_size_above_the_maximum_is_refused()
     {
         using var client = await aspire.CreateHostClientAsync("editor");
@@ -313,6 +387,78 @@ public class EditorialCourseVersionsTests(AspireFixture aspire)
         return problem.Code;
     }
 
+    private async Task<string> EditorialConnectionStringAsync(CancellationToken cancellationToken) =>
+        await aspire.App.GetConnectionStringAsync("editorial-database", cancellationToken)
+            ?? throw new InvalidOperationException("The editorial database has no connection string.");
+
+    /// <summary>
+    /// Opens a transaction that holds the version's row and its chapters' rows, so every request that writes them
+    /// waits after it has loaded the version until the transaction ends. Disposing the gate closes its connection.
+    /// </summary>
+    private static async Task<VersionLock> LockVersionAsync(string connectionString, Guid id, CancellationToken cancellationToken)
+    {
+        var connection = new NpgsqlConnection(connectionString);
+        try
+        {
+            await connection.OpenAsync(cancellationToken);
+            var transaction = await connection.BeginTransactionAsync(cancellationToken);
+            await using (var version = new NpgsqlCommand("SELECT 1 FROM editorial.course_versions WHERE id = @id FOR UPDATE", connection, transaction))
+            {
+                version.Parameters.AddWithValue("id", id);
+                (await version.ExecuteScalarAsync(cancellationToken)).ShouldNotBeNull();
+            }
+
+            await using (var chapters = new NpgsqlCommand("SELECT 1 FROM editorial.course_version_chapters WHERE course_version_id = @id FOR UPDATE", connection, transaction))
+            {
+                chapters.Parameters.AddWithValue("id", id);
+                await chapters.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            return new VersionLock(connection, transaction);
+        }
+        catch
+        {
+            await connection.DisposeAsync();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Polls the editorial database until the given number of statements on course versions wait for a lock, and
+    /// fails the test when they do not within 30 seconds.
+    /// </summary>
+    private static async Task WaitUntilBlockedAsync(string connectionString, int expected, CancellationToken cancellationToken)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT count(*) FROM pg_stat_activity
+            WHERE wait_event_type = 'Lock' AND datname = current_database() AND pid <> pg_backend_pid()
+              AND query ILIKE '%course_version%'
+            """,
+            connection);
+
+        var blocked = 0L;
+        while (blocked < expected)
+        {
+            if (timeout.IsCancellationRequested)
+            {
+                blocked.ShouldBe(expected, "the concurrent requests never waited for the lock on the version");
+            }
+
+            blocked = (long)(await command.ExecuteScalarAsync(cancellationToken) ?? 0L);
+            if (blocked < expected)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken);
+            }
+        }
+
+        blocked.ShouldBe(expected);
+    }
+
     /// <summary>
     /// Publishing through the API needs submitting and publishing (#18), which need approved questions (#16) and a
     /// blueprint (#17). Until then the test publishes the version in its own database; #18 replaces this seed with
@@ -320,8 +466,7 @@ public class EditorialCourseVersionsTests(AspireFixture aspire)
     /// </summary>
     private async Task SeedPublishedAsync(Guid id, CancellationToken cancellationToken)
     {
-        var connectionString = await aspire.App.GetConnectionStringAsync("editorial-database", cancellationToken)
-            ?? throw new InvalidOperationException("The editorial database has no connection string.");
+        var connectionString = await EditorialConnectionStringAsync(cancellationToken);
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand("UPDATE editorial.course_versions SET status = 'Published' WHERE id = @id", connection);
