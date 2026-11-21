@@ -17,16 +17,33 @@ vi.mock('@/auth/UserMenu.vue', async () => {
   return { default: { render: () => h('p', 'The user menu') } };
 });
 
-// Each module's page stands in as its title, and beside the app's modules is one of the tests' own: a real module's
-// page needs the host, which these tests do not have. The audiences are the modules' own.
+// Each module's page, and each page below it, stands in as its title, and beside the app's modules is one of the tests'
+// own, with a page below it for every signed-in user and one for editors: a real module's page needs the host, which
+// these tests do not have. The audiences are the modules' own.
 vi.mock('@/modules', async (importOriginal) => {
   const { h } = await import('vue');
   const modules = await importOriginal<typeof import('@/modules')>();
   const page = (title: string) => ({ render: () => h('main', [h('h1', title)]) });
-  const reports = { path: 'reports', title: 'Reports', audience: 'employee' as const, component: page('Reports') };
+  const reports = {
+    path: 'reports',
+    title: 'Reports',
+    audience: 'employee' as const,
+    component: page('Reports'),
+    pages: [
+      { path: 'new', title: 'New report', audience: 'signed-in' as const, component: page('New report') },
+      { path: 'review', title: 'Review reports', audience: 'editor' as const, component: page('Review reports') },
+    ],
+  };
   return {
     ...modules,
-    moduleRoutes: [...modules.moduleRoutes.map((route) => ({ ...route, component: page(route.title) })), reports],
+    moduleRoutes: [
+      ...modules.moduleRoutes.map((route) => ({
+        ...route,
+        component: page(route.title),
+        pages: route.pages?.map((below) => ({ ...below, component: page(below.title) })),
+      })),
+      reports,
+    ],
   };
 });
 
@@ -122,26 +139,41 @@ test('the sidebar lists the start page and every module the user may see, from t
   expect(navigation.getByRole('link', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
 });
 
+// The pages below the modules each user may see, in the command palette after the modules: registering a pharmacy and
+// the tests' new report are for every signed-in user, the tests' review for editors, whatever their module's audience.
+const forEveryone = ['Register a pharmacy', 'New report'];
+const forEditors = [...forEveryone, 'Review reports'];
+
 const audiences = [
   {
     who: 'an employee',
     roles: [],
     memberships: [dom],
     pages: ['Home', 'Assessment', 'Certification', 'Compliance', 'Learning', 'Reports'],
+    below: forEveryone,
   },
   {
     who: 'a member who may manage the pharmacy',
     roles: [],
     memberships: [markt],
     pages: ['Home', 'Assessment', 'Catalog', 'Certification', 'Compliance', 'Learning', 'Organisation', 'Reports'],
+    below: forEveryone,
   },
-  { who: 'an editor of no pharmacy', roles: ['editor'], memberships: [], pages: ['Home', 'Editorial'] },
+  {
+    who: 'an editor of no pharmacy',
+    roles: ['editor'],
+    memberships: [],
+    pages: ['Home', 'Editorial'],
+    below: forEditors,
+  },
   {
     who: 'an editor who is an employee',
     roles: ['editor'],
     memberships: [dom],
     pages: ['Home', 'Assessment', 'Certification', 'Compliance', 'Editorial', 'Learning', 'Reports'],
+    below: forEditors,
   },
+  { who: 'a user of no pharmacy and no role', roles: [], memberships: [], pages: ['Home'], below: forEveryone },
 ];
 
 test.each(audiences)('the sidebar shows $who the pages for them', async ({ roles, memberships, pages }) => {
@@ -152,20 +184,24 @@ test.each(audiences)('the sidebar shows $who the pages for them', async ({ roles
   expect(sidebarLinks()).toEqual(pages);
 });
 
-test.each(audiences)('the command palette offers $who the pages for them', async ({ roles, memberships, pages }) => {
-  const user = userEvent.setup();
-  answer(memberships);
-  await renderAt('/', { roles });
+// The sidebar lists the modules only: a page below a module is reached from the palette, the breadcrumbs or a link.
+test.each(audiences)(
+  'the command palette offers $who the pages for them, the pages below the modules after the modules',
+  async ({ roles, memberships, pages, below }) => {
+    const user = userEvent.setup();
+    answer(memberships);
+    await renderAt('/', { roles });
 
-  await user.keyboard('{Control>}k{/Control}');
-  const palette = await screen.findByRole('dialog', { name: 'Go to' });
+    await user.keyboard('{Control>}k{/Control}');
+    const palette = await screen.findByRole('dialog', { name: 'Go to' });
 
-  expect(
-    within(palette)
-      .getAllByRole('option')
-      .map((option) => option.textContent.trim()),
-  ).toEqual(pages);
-});
+    expect(
+      within(palette)
+        .getAllByRole('option')
+        .map((option) => option.textContent.trim()),
+    ).toEqual([...pages, ...below]);
+  },
+);
 
 test('the start page is there for a user with no pharmacy and no role', async () => {
   answer([]);
@@ -372,7 +408,7 @@ test.each([
     within(palette)
       .getAllByRole('option')
       .map((option) => option.textContent.trim()),
-  ).toEqual(['Home', ...moduleRoutes.map((module) => module.title)]);
+  ).toEqual(['Home', ...moduleRoutes.map((module) => module.title), ...forEditors]);
 
   await user.keyboard('{Escape}');
   await vi.waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
@@ -403,4 +439,114 @@ test('typing narrows the command palette to the pages that match', async () => {
 
   await vi.waitFor(() => expect(screen.queryAllByRole('option')).toHaveLength(0));
   expect(screen.getByText('No page matches.')).toBeInTheDocument();
+});
+
+test('the command palette goes to a page below a module', async () => {
+  const user = userEvent.setup();
+  const { router } = await renderAt('/');
+
+  await user.keyboard('{Control>}k{/Control}');
+  const palette = await screen.findByRole('dialog', { name: 'Go to' });
+  await user.click(within(palette).getByRole('option', { name: 'New report' }));
+
+  await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/reports/new'));
+  expect(await screen.findByRole('heading', { name: 'New report', level: 1 })).toBeInTheDocument();
+});
+
+// A page below a module is governed by its own audience, not its module's: registering a pharmacy needs no pharmacy.
+test('a page for every signed-in user is there for a user of no pharmacy and no role', async () => {
+  answer([]);
+
+  await renderAt('/reports/new', { roles: [] });
+
+  expect(await screen.findByRole('heading', { name: 'New report', level: 1 })).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Not available' })).not.toBeInTheDocument();
+  expect(sidebarLinks()).toEqual(['Home']);
+});
+
+test('the page to register a pharmacy is there for a user of no pharmacy and no role', async () => {
+  answer([]);
+
+  await renderAt('/organisation/register', { roles: [] });
+
+  expect(await screen.findByRole('heading', { name: 'Register a pharmacy', level: 1 })).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Not available' })).not.toBeInTheDocument();
+});
+
+// Neither a skeleton nor "Not available": the page is the user's whatever their memberships turn out to be.
+test('while the memberships load a page for every signed-in user shows at once, without a skeleton', async () => {
+  await renderLoadingAt('/organisation/register', []);
+
+  expect(screen.getByRole('heading', { name: 'Register a pharmacy', level: 1 })).toBeInTheDocument();
+  expect(document.querySelector('[data-slot="sidebar-inset"] [data-slot="skeleton"]')).toBeNull();
+  expect(screen.getByRole('main')).not.toHaveAttribute('aria-busy');
+  expect(screen.queryByRole('heading', { name: 'Not available' })).not.toBeInTheDocument();
+});
+
+test('a page below a module for editors is refused to a user who is no editor, though the module is theirs', async () => {
+  answer([dom]);
+
+  await renderAt('/reports/review', { roles: [] });
+
+  const main = within(await screen.findByRole('main'));
+  expect(main.getByRole('heading', { name: 'Not available', level: 1 })).toBeInTheDocument();
+  expect(main.getByText('This page is not available to you.')).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Review reports' })).not.toBeInTheDocument();
+});
+
+test('a page below a module for editors is there for an editor of no pharmacy', async () => {
+  answer([]);
+
+  await renderAt('/reports/review', { roles: ['editor'] });
+
+  expect(await screen.findByRole('heading', { name: 'Review reports', level: 1 })).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Not available' })).not.toBeInTheDocument();
+});
+
+test("the breadcrumbs name a page below a module by its title, after the module's", async () => {
+  await renderAt('/organisation/register');
+
+  const breadcrumbs = within(screen.getByRole('navigation', { name: 'breadcrumb' }));
+  expect(breadcrumbs.getByRole('link', { name: 'Home' })).toHaveAttribute('href', '/');
+  expect(breadcrumbs.getByRole('link', { name: 'Organisation' })).toHaveAttribute('href', '/organisation');
+  expect(breadcrumbs.getByText('Register a pharmacy')).toHaveAttribute('aria-current', 'page');
+});
+
+test('the breadcrumbs name a page the user may see by its title, below a module they may not', async () => {
+  answer([]);
+
+  await renderAt('/organisation/register', { roles: [] });
+
+  const breadcrumbs = within(screen.getByRole('navigation', { name: 'breadcrumb' }));
+  expect(breadcrumbs.getByRole('link', { name: 'organisation' })).toHaveAttribute('href', '/organisation');
+  expect(breadcrumbs.getByText('Register a pharmacy')).toHaveAttribute('aria-current', 'page');
+});
+
+// A page the user may not see is an unknown segment of the address to the breadcrumbs, as a module is.
+test('the breadcrumbs name a page below a module by its title only where the user may see it', async () => {
+  answer([dom]);
+  const { router } = await renderAt('/reports/review', { roles: [] });
+
+  const breadcrumbs = within(screen.getByRole('navigation', { name: 'breadcrumb' }));
+  expect(breadcrumbs.getByRole('link', { name: 'Reports' })).toHaveAttribute('href', '/reports');
+  expect(breadcrumbs.getByText('review')).toHaveAttribute('aria-current', 'page');
+  expect(breadcrumbs.queryByText('Review reports')).not.toBeInTheDocument();
+
+  await router.push('/reports/new');
+
+  expect(await breadcrumbs.findByText('New report')).toHaveAttribute('aria-current', 'page');
+});
+
+// The way in for a user of no pharmacy: the switcher in the sidebar leads to the page that registers one.
+test("a user of no pharmacy follows the switcher's link to the page that registers one", async () => {
+  const user = userEvent.setup();
+  answer([]);
+  const { router } = await renderAt('/', { roles: [] });
+
+  await user.click(
+    within(screen.getByRole('region', { name: 'Pharmacy' })).getByRole('link', { name: 'Register a pharmacy' }),
+  );
+
+  await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/organisation/register'));
+  expect(await screen.findByRole('heading', { name: 'Register a pharmacy', level: 1 })).toBeInTheDocument();
 });
