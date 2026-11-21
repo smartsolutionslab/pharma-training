@@ -16,7 +16,7 @@ partial class OrganisationModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261118000000_CreateSamples";
+    public override string LastMigrationId => "20261121142518_AddPharmacies";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -27,6 +27,95 @@ partial class OrganisationModelSnapshot : ModelSnapshot
             .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
         NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies.Membership", b =>
+            {
+                b.Property<Guid>("Id")
+                    .HasColumnType("uuid")
+                    .HasColumnName("id");
+
+                b.Property<string>("Email")
+                    .IsRequired()
+                    .HasMaxLength(254)
+                    .HasColumnType("character varying(254)")
+                    .HasColumnName("email");
+
+                b.Property<DateTimeOffset?>("EndedAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("ended_at");
+
+                b.Property<DateTimeOffset?>("InvitationExpiresAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("invitation_expires_at");
+
+                b.Property<string>("JobFunction")
+                    .IsRequired()
+                    .HasMaxLength(20)
+                    .HasColumnType("character varying(20)")
+                    .HasColumnName("job_function");
+
+                b.Property<string>("Name")
+                    .HasMaxLength(100)
+                    .HasColumnType("character varying(100)")
+                    .HasColumnName("name");
+
+                b.Property<Guid?>("Person")
+                    .HasColumnType("uuid")
+                    .HasColumnName("person_id");
+
+                b.Property<Guid>("PharmacyId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("pharmacy_id");
+
+                b.Property<string>("Role")
+                    .IsRequired()
+                    .HasMaxLength(20)
+                    .HasColumnType("character varying(20)")
+                    .HasColumnName("role");
+
+                b.Property<DateTimeOffset?>("StartedAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("started_at");
+
+                b.Property<string>("Status")
+                    .IsRequired()
+                    .HasMaxLength(20)
+                    .HasColumnType("character varying(20)")
+                    .HasColumnName("status");
+
+                b.Property<string>("Token")
+                    .HasColumnType("text")
+                    .HasColumnName("token");
+
+                b.HasKey("Id");
+
+                b.HasIndex("Person");
+
+                b.HasIndex("PharmacyId");
+
+                b.ToTable("memberships", "organisation");
+            });
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies.Pharmacy", b =>
+            {
+                b.Property<Guid>("Id")
+                    .HasColumnType("uuid")
+                    .HasColumnName("id");
+
+                b.Property<string>("Name")
+                    .IsRequired()
+                    .HasMaxLength(120)
+                    .HasColumnType("character varying(120)")
+                    .HasColumnName("name");
+
+                b.Property<DateTimeOffset>("RegisteredAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("registered_at");
+
+                b.HasKey("Id");
+
+                b.ToTable("pharmacies", "organisation");
+            });
 
         modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Samples.Sample", b =>
             {
@@ -43,6 +132,20 @@ partial class OrganisationModelSnapshot : ModelSnapshot
                 b.HasKey("Id");
 
                 b.ToTable("samples", "organisation");
+            });
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies.Membership", b =>
+            {
+                b.HasOne("SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies.Pharmacy", null)
+                    .WithMany("Memberships")
+                    .HasForeignKey("PharmacyId")
+                    .OnDelete(DeleteBehavior.Cascade)
+                    .IsRequired();
+            });
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies.Pharmacy", b =>
+            {
+                b.Navigation("Memberships");
             });
 #pragma warning restore 612, 618
     }
