@@ -39,6 +39,66 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         return membership;
     }
 
+    /// <summary>
+    /// Writes an invitation row by hand, past the aggregate, as a second writer would: what the database itself refuses
+    /// is what these rows show.
+    /// </summary>
+    public async Task<Guid> InsertInvitationAsync(Guid pharmacy, string email, string tokenHash, string status, CancellationToken cancellationToken)
+    {
+        var membership = Guid.CreateVersion7();
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            """
+            INSERT INTO organisation.memberships (id, pharmacy_id, email, token_hash, invitation_expires_at, person_id, name, job_function, role, status, started_at, ended_at)
+            VALUES (@id, @pharmacy, @email, @tokenHash, now() + interval '14 days', NULL, NULL, 'Pta', 'Employee', @status, NULL, NULL)
+            """,
+            connection);
+        command.Parameters.AddWithValue("id", membership);
+        command.Parameters.AddWithValue("pharmacy", pharmacy);
+        command.Parameters.AddWithValue("email", email);
+        command.Parameters.AddWithValue("tokenHash", tokenHash);
+        command.Parameters.AddWithValue("status", status);
+        (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1);
+        return membership;
+    }
+
+    /// <summary>The membership's stored token hash, or null when it keeps none.</summary>
+    public async Task<string?> TokenHashAsync(Guid membership, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("SELECT token_hash FROM organisation.memberships WHERE id = @id", connection);
+        command.Parameters.AddWithValue("id", membership);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        (await reader.ReadAsync(cancellationToken)).ShouldBeTrue($"There is no membership {membership}.");
+        return await reader.IsDBNullAsync(0, cancellationToken) ? null : reader.GetString(0);
+    }
+
+    /// <summary>The statuses of the pharmacy's memberships of the address, oldest first.</summary>
+    public async Task<List<string>> StatusesOfAsync(Guid pharmacy, string email, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            "SELECT status FROM organisation.memberships WHERE pharmacy_id = @pharmacy AND email = @email ORDER BY id",
+            connection);
+        command.Parameters.AddWithValue("pharmacy", pharmacy);
+        command.Parameters.AddWithValue("email", email);
+        List<string> statuses = [];
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            statuses.Add(reader.GetString(0));
+        }
+
+        return statuses;
+    }
+
+    /// <summary>The realm user's address, as the domain stores it: trimmed and lower-case.</summary>
+    public async Task<string> EmailOfAsync(string user)
+    {
+        using var claims = await ClaimsOfAsync(user);
+        return (claims.RootElement.GetProperty("email").GetString() ?? throw new InvalidOperationException($"{user} has no email.")).Trim().ToLowerInvariant();
+    }
+
     /// <summary>The realm user's Keycloak subject: the person a membership belongs to.</summary>
     public async Task<Guid> SubjectOfAsync(string user)
     {
