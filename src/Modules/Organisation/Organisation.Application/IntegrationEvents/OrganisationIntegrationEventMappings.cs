@@ -27,4 +27,11 @@ public static class OrganisationIntegrationEventMappings
             started.Role.ToV1(),
             started.StartedAt.Value);
     }
+
+    public static MembershipEndedV1 ToIntegrationEvent(this MembershipEnded ended)
+    {
+        Ensure.That(ended).IsNotNull();
+
+        return new MembershipEndedV1(ended.Membership.Value, ended.Person.Value, ended.Pharmacy.Value, ended.EndedAt.Value);
+    }
 }
