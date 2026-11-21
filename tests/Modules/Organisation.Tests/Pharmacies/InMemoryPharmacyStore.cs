@@ -6,12 +6,14 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Tests.Pharmacies
 
 /// <summary>
 /// The pharmacies table in memory, and the module's unit of work over it: what is added is stored, and what is
-/// published is sent, only once committed.
+/// published is sent, only once committed. <see cref="LoseNextCommit"/> makes the next <see cref="TryCommitAsync"/>
+/// lose a race, as a save does whose pharmacy another save changed since it was loaded.
 /// </summary>
 internal sealed class InMemoryPharmacyStore : IPharmacyStore, IOrganisationUnitOfWork
 {
     private readonly List<Pharmacy> added = [];
     private readonly List<IntegrationEvent> queued = [];
+    private bool loseNextCommit;
 
     public List<Pharmacy> Stored { get; } = [];
 
@@ -51,5 +53,22 @@ internal sealed class InMemoryPharmacyStore : IPharmacyStore, IOrganisationUnitO
         queued.Clear();
         Commits++;
         return Task.CompletedTask;
+    }
+
+    /// <summary>The next <see cref="TryCommitAsync"/> answers <see langword="false"/> and stores and sends nothing.</summary>
+    public void LoseNextCommit() => loseNextCommit = true;
+
+    public async Task<bool> TryCommitAsync(CancellationToken cancellationToken)
+    {
+        if (loseNextCommit)
+        {
+            loseNextCommit = false;
+            added.Clear();
+            queued.Clear();
+            return false;
+        }
+
+        await CommitAsync(cancellationToken);
+        return true;
     }
 }
