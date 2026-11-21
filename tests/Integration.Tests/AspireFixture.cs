@@ -4,13 +4,15 @@ using System.Text.Json.Serialization;
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Testing;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 [assembly: AssemblyFixture(typeof(SmartSolutionsLab.PharmaTraining.Integration.Tests.AspireFixture))]
 
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 
 /// <summary>The whole application, started once per test run on empty containers.</summary>
-public sealed class AspireFixture : IAsyncLifetime
+public sealed partial class AspireFixture : IAsyncLifetime
 {
     private static readonly TimeSpan StartupTimeout = TimeSpan.FromMinutes(5);
 
@@ -21,6 +23,7 @@ public sealed class AspireFixture : IAsyncLifetime
     public async ValueTask InitializeAsync()
     {
         using var timeout = new CancellationTokenSource(StartupTimeout);
+        var started = TimeProvider.System.GetTimestamp();
         var builder = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AppHost>(timeout.Token);
 
         // Tests start from empty containers: never a developer's data, never a password a volume remembers.
@@ -40,6 +43,11 @@ public sealed class AspireFixture : IAsyncLifetime
         app = await builder.BuildAsync(timeout.Token);
         await app.StartAsync(timeout.Token);
         await app.ResourceNotifications.WaitForResourceHealthyAsync("host", timeout.Token);
+
+        // In the run's log, so a slow start shows how close it came to the limit before it ever reaches it.
+        var elapsed = TimeProvider.System.GetElapsedTime(started);
+        var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger<AspireFixture>();
+        LogStarted(logger, elapsed, StartupTimeout);
     }
 
     public HttpClient CreateHostClient() => App.CreateHttpClient("host");
@@ -79,6 +87,9 @@ public sealed class AspireFixture : IAsyncLifetime
             await app.DisposeAsync();
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "The application started in {Elapsed} (limit {StartupTimeout})")]
+    private static partial void LogStarted(ILogger logger, TimeSpan elapsed, TimeSpan startupTimeout);
 
     private sealed record TokenResponse([property: JsonPropertyName("access_token")] string AccessToken);
 }
