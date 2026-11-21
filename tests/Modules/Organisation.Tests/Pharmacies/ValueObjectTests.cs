@@ -5,6 +5,17 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Tests.Pharmacies
 public class ValueObjectTests
 {
     [Fact]
+    public void A_text_with_a_nul_character_is_no_name_and_no_address_because_the_database_cannot_hold_it()
+    {
+        PharmacyName.TryFrom("Stadt\0Apotheke", out _).ShouldBeFalse();
+        DisplayName.TryFrom("Olaf\0Owner", out _).ShouldBeFalse();
+        EmailAddress.TryFrom("owner\0@example.com", out _).ShouldBeFalse();
+        Should.Throw<GuardException>(() => PharmacyName.From("Stadt\0Apotheke"));
+        Should.Throw<GuardException>(() => DisplayName.From("Olaf\0Owner"));
+        Should.Throw<GuardException>(() => EmailAddress.From("owner\0@example.com"));
+    }
+
+    [Fact]
     public void A_pharmacy_name_is_trimmed()
     {
         var name = PharmacyName.From("  Stadt-Apotheke  ");
