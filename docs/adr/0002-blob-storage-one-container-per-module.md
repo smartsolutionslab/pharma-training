@@ -1,0 +1,27 @@
+# 0002: Blob storage, one container per module
+
+**Status:** Accepted
+
+## Context
+
+- Issue #3 asks for blob storage with short-lived upload and read URLs: course material (handouts, media) is uploaded by the browser and read back by it, without streaming files through a service host.
+- The topology is services: every module runs in its own host with its own database (AGENTS.md, "Topology: services"), and modules never reach into each other's storage. A storage account shared by all modules needs a rule for which service may sign for what.
+- The developer chose option (c) on #3: one container per module, and each service signs only for its own container. Signing uses the storage account's key, which the local emulator (Azurite) has; signing without a key (a user delegation key under a managed identity) is a separate decision.
+- Aspire's storage integration (`Aspire.Hosting.Azure.Storage` 13.6.5) runs Azurite and creates containers, but has no CORS setting, and a browser cannot use a signed URL on another origin without one.
+
+## Decision
+
+- **One storage account, a container per module.** `src/AppHost/AppHost.cs` adds the account `storage`, run on Azurite with a data volume, and in its loop over the services a container `<module>-blobs` named after the module. Each service reads its own container, and only its own, as the connection string `blobs` (the account's connection string with `ContainerName=<module>`). `AppHostBlobContainersTests` holds the model to it.
+- **A module takes `IBlobUrls`** (`src/BuildingBlocks/Storage`), registered for every module by `AddModuleInfrastructure` (`AddModuleBlobStorage`). It has no container parameter: a service signs for the container its configuration names and no other. `BlobName` (relative, at most 1024 characters, no empty, `.` or `..` segment) and `BlobUrlLifetime` (more than zero, at most 15 minutes) guard what is signed. No module names the Azure Storage SDK; `BlobStorageSdkStaysInBuildingBlocks` fails the build otherwise.
+- **The URLs are service SAS on one blob, signed with the account key** (`AzureBlobUrls`, `sr=b`): an upload URL has `Create` alone (`sp=c`: it creates its blob once, and cannot read, overwrite or delete it, or touch another), a read URL `Read` alone (`sp=r`). Both expire at most 15 minutes after signing, rounded down to the second, and carry no start time (`st`), so a clock behind the storage service's never makes a fresh URL fail. `BlobStorageTests` sends each kind to Azurite and checks what it may and may not do.
+- **A missing setting fails when the first URL is signed, not at startup**, naming it: the connection string `ConnectionStrings:blobs` (the AppHost's `<module>-blobs`), its `ContainerName`, or its `AccountKey` (keyless signing is a separate decision).
+- **The web app's origin may use the URLs from the browser, in run mode.** `src/AppHost/Wiring/BrowserUploads.cs` (`AllowBrowserAccessFrom`) sets, once Azurite is ready, one CORS rule on the blob service for `http://localhost:5173` (and the allocated origin where a test run randomizes ports): `GET`, `HEAD`, `PUT`, `OPTIONS`, any header allowed and exposed, max age an hour, keeping the account's other properties. The web app waits for storage, and nothing waiting for storage to be healthy goes on before the rule is set. Another origin's preflight is refused.
+
+## Consequences
+
+- The account key covers every container. One container per module is enforced by configuration (each service is given only its own container's connection string) and by `IBlobUrls` having no container parameter, not by the storage service: a service that built a client from its connection string's key could sign for another module's container. Keyless signing with a user delegation key and a role assignment scoped to the container would enforce it in the storage service; that is part of the keyless-signing decision.
+- Deployment needs that decision first. Storage accounts Aspire provisions in Azure disable shared-key access, so there is no account key to sign with; the deployed account also needs CORS rules for the deployed web origin, set where it is provisioned. Until then this design is for local runs and tests.
+- Under (c) a file another module needs is stored twice, once in each module's container.
+- How Learning reads a blob Editorial owns, to take its copy, is open, for #41. The options: the integration event carries a read URL (it must outlive 15 minutes until the consumer runs, and a bearer credential then sits in the outbox); Learning gets read access to Editorial's container (contradicts each service signing for its own container); Learning asks Editorial over HTTP (there are no service-to-service calls today); or Editorial writes the copy into Learning's container (Editorial would sign for a container not its own).
+- The integration fixture strips volumes, so tests start from an empty Azurite, as they do from empty databases. Azurite adds a container to every local run.
+- `fabric upgrade` regenerates files this decision changed and may conflict on them: `src/AppHost/AppHost.cs`, `src/AppHost/AppHost.csproj`, `src/BuildingBlocks/Modules/ModuleInfrastructure.cs`, `src/BuildingBlocks/BuildingBlocks.csproj`, `Directory.Packages.props` and `README.md`. Keep this decision's changes when resolving them.
