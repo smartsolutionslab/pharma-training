@@ -253,6 +253,7 @@ public class EditorialQuestionsTests(AspireFixture aspire)
             await client.PostAsJsonAsync(Questions(id), SingleChoice(stranger), cancellationToken),
             await client.PostAsJsonAsync(Questions(id), SingleChoice(Guid.Empty), cancellationToken),
             await client.PutAsJsonAsync(Question(id, question), SingleChoice(Guid.Empty), cancellationToken),
+            await client.PutAsJsonAsync(Question(id, question), SingleChoice(stranger), cancellationToken),
             await client.PostAsync(Questions(id), Json("{\"text\":\"Wann?\",\"type\":\"SingleChoice\",\"options\":[]}"), cancellationToken),
         ];
 
