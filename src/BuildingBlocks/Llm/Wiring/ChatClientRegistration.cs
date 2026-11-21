@@ -7,7 +7,8 @@ public static class ChatClientRegistration
     /// <summary>
     /// Registers the project's one <see cref="IChatClient"/>: the provider's client, which the chosen backend.llm pack
     /// creates, with logging and OpenTelemetry around it. Code depends on <see cref="IChatClient"/> and never names the
-    /// provider. Further middleware (<c>UseMcpTools</c>, say) chains on the builder this returns.
+    /// provider. Further middleware (<c>UseMcpTools</c>, say) chains on the builder this returns. A model the AppHost was
+    /// given no settings for answers <c>503</c> when a request needs it (<see cref="ModelNotConfiguredResponses"/>).
     /// </summary>
     /// <param name="services">The host's services.</param>
     /// <param name="providerClient">Creates the provider's client when it is first needed, from configuration the AppHost supplies.</param>
@@ -16,7 +17,8 @@ public static class ChatClientRegistration
         Ensure.That(services).IsNotNull();
         Ensure.That(providerClient).IsNotNull();
 
-        return services.AddChatClient(providerClient)
+        return services.AddModelNotConfiguredResponses()
+            .AddChatClient(providerClient)
             .UseLogging()
             .UseOpenTelemetry();
     }
