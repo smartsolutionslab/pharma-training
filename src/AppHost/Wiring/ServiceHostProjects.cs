@@ -12,14 +12,10 @@ namespace Aspire.Hosting;
 /// </summary>
 public static class ServiceHostProjects
 {
-    // ProjectResourceBuilderExtensions.AddProject<TProject>(builder, name), called with the type found at run time.
-    private static readonly MethodInfo AddProjectOfMetadata = typeof(ProjectResourceBuilderExtensions)
-        .GetMethods(BindingFlags.Public | BindingFlags.Static)
-        .Single(method => method.Name == nameof(ProjectResourceBuilderExtensions.AddProject)
-            && method.IsGenericMethodDefinition
-            && method.GetParameters() is [{ ParameterType: var first }, { ParameterType: var second }]
-            && first == typeof(IDistributedApplicationBuilder)
-            && second == typeof(string));
+    // AddBuilt<TProject>, made for the type found at run time. It calls Aspire's AddProject<TProject> directly, so a change
+    // to that signature fails the build here instead of at start-up.
+    private static readonly MethodInfo AddBuiltOfMetadata = typeof(ServiceHostProjects)
+        .GetMethod(nameof(AddBuilt), BindingFlags.NonPublic | BindingFlags.Static)!;
 
     public static IEnumerable<(string Module, string ProjectPath)> ServiceHosts(this IDistributedApplicationBuilder builder)
     {
@@ -46,8 +42,14 @@ public static class ServiceHostProjects
         ArgumentException.ThrowIfNullOrWhiteSpace(projectPath);
 
         var metadata = MetadataTypeOf(Path.GetFullPath(projectPath));
-        return (IResourceBuilder<ProjectResource>)AddProjectOfMetadata.MakeGenericMethod(metadata).Invoke(null, [builder, name])!;
+        // DoNotWrapExceptions: an exception Aspire throws arrives as itself, not wrapped in TargetInvocationException.
+        return (IResourceBuilder<ProjectResource>)AddBuiltOfMetadata.MakeGenericMethod(metadata)
+            .Invoke(null, BindingFlags.DoNotWrapExceptions, binder: null, [builder, name], culture: null)!;
     }
+
+    private static IResourceBuilder<ProjectResource> AddBuilt<TProject>(IDistributedApplicationBuilder builder, string name)
+        where TProject : IProjectMetadata, new() =>
+        builder.AddProject<TProject>(name);
 
     private static Type MetadataTypeOf(string projectPath)
     {
@@ -57,12 +59,9 @@ public static class ServiceHostProjects
                 && string.Equals(Path.GetFullPath(metadata.ProjectPath), projectPath, StringComparison.Ordinal))
             .ToList();
 
-        return matches switch
-        {
-            [var metadata] => metadata,
-            [] => throw new InvalidOperationException($"The AppHost's build generated no Projects.* type for {projectPath}; AppHost.csproj references every src/Services/*/Host/Host.csproj, so build the AppHost again."),
-            _ => throw new InvalidOperationException($"More than one Projects.* type names {projectPath}: {string.Join(", ", matches.Select(type => type.Name))}."),
-        };
+        // The SDK generates one type per referenced project, so a path names one type or, with a stale build, none.
+        return matches.SingleOrDefault()
+            ?? throw new InvalidOperationException($"The AppHost's build generated no Projects.* type for {projectPath}; AppHost.csproj references every src/Services/*/Host/Host.csproj, so build the AppHost again.");
     }
 
     private static string ModuleName(string projectPath) =>
