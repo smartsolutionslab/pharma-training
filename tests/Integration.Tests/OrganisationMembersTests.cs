@@ -2,9 +2,6 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
-using Aspire.Hosting.Testing;
-using RabbitMQ.Client;
-using RabbitMQ.Client.Exceptions;
 
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 
@@ -18,7 +15,6 @@ public class OrganisationMembersTests(AspireFixture aspire)
     private const string MembershipEndedExchange = "SmartSolutionsLab.PharmaTraining.Contracts.Organisation.MembershipEndedV1";
 
     private static readonly Uri Pharmacies = new("/organisation/pharmacies", UriKind.Relative);
-    private static readonly TimeSpan EventTimeout = TimeSpan.FromSeconds(30);
 
     private readonly OrganisationDatabase database = new(aspire);
 
@@ -171,23 +167,22 @@ public class OrganisationMembersTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var owner = await aspire.CreateHostClientAsync("owner");
-        var factory = new ConnectionFactory { Uri = new Uri(await aspire.App.GetConnectionStringAsync("messaging", cancellationToken) ?? throw new InvalidOperationException("The broker has no connection string.")) };
-        await using var connection = await factory.CreateConnectionAsync(cancellationToken);
+        await using var connection = await Broker.ConnectAsync(aspire, cancellationToken);
 
         // Wolverine declares an event's exchange when it first sends one: end one membership so it exists, then listen.
         var warmUp = await RegisterAsync(owner, cancellationToken);
         using var warmedUp = await owner.DeleteAsync(MemberUri(warmUp, await database.SeedMemberAsync(warmUp, "employee-b", "Employee", "Pta", cancellationToken)), cancellationToken);
         warmedUp.StatusCode.ShouldBe(HttpStatusCode.OK);
-        await WaitForExchangeAsync(connection, MembershipEndedExchange, cancellationToken);
+        await Broker.WaitForExchangeAsync(connection, MembershipEndedExchange, cancellationToken);
         await using var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
-        var queue = await BindQueueAsync(channel, MembershipEndedExchange, cancellationToken);
+        var queue = await Broker.BindQueueAsync(channel, MembershipEndedExchange, cancellationToken);
         var pharmacy = await RegisterAsync(owner, cancellationToken);
         var membership = await database.SeedMemberAsync(pharmacy, "employee-a", "Employee", "Pta", cancellationToken);
 
         using var ended = await owner.DeleteAsync(MemberUri(pharmacy, membership), cancellationToken);
 
         ended.StatusCode.ShouldBe(HttpStatusCode.OK);
-        var announced = await ReceiveAsync<MembershipEnded>(channel, queue, received => received.MembershipId == membership, cancellationToken);
+        var announced = await Broker.ReceiveAsync<MembershipEnded>(channel, queue, received => received.MembershipId == membership, cancellationToken);
         announced.PersonId.ShouldBe(await database.SubjectOfAsync("employee-a"));
         announced.PharmacyId.ShouldBe(pharmacy);
         var stored = await database.MembershipAsync(membership, cancellationToken);
@@ -424,58 +419,6 @@ public class OrganisationMembersTests(AspireFixture aspire)
         responses.Select(response => response.StatusCode).ShouldBe([HttpStatusCode.OK, HttpStatusCode.Conflict], ignoreOrder: true, described);
         var lost = responses.Single(response => response.StatusCode == HttpStatusCode.Conflict);
         await ShouldBeRefusedAsync(lost, HttpStatusCode.Conflict, "organisation.pharmacy-changed", cancellationToken);
-    }
-
-    /// <summary>Asks for the exchange without declaring it, so the test never conflicts with the arguments Wolverine gives it.</summary>
-    private static async Task WaitForExchangeAsync(IConnection connection, string exchange, CancellationToken cancellationToken)
-    {
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(EventTimeout);
-        while (true)
-        {
-            // A passive declare of a missing exchange closes its channel, so every attempt gets a channel of its own.
-            await using var channel = await connection.CreateChannelAsync(cancellationToken: timeout.Token);
-            try
-            {
-                await channel.ExchangeDeclarePassiveAsync(exchange, timeout.Token);
-                return;
-            }
-            catch (OperationInterruptedException)
-            {
-                await Task.Delay(TimeSpan.FromMilliseconds(250), timeout.Token);
-            }
-        }
-    }
-
-    /// <summary>A queue of the test's own, named by the broker and gone with the connection, bound to the event's exchange.</summary>
-    private static async Task<string> BindQueueAsync(IChannel channel, string exchange, CancellationToken cancellationToken)
-    {
-        var queue = await channel.QueueDeclareAsync(queue: string.Empty, durable: false, exclusive: true, autoDelete: true, cancellationToken: cancellationToken);
-
-        // Wolverine's exchanges fan out; "#" also matches every routing key should one be a topic exchange.
-        await channel.QueueBindAsync(queue.QueueName, exchange, routingKey: "#", cancellationToken: cancellationToken);
-        return queue.QueueName;
-    }
-
-    private static async Task<T> ReceiveAsync<T>(IChannel channel, string queue, Func<T, bool> wanted, CancellationToken cancellationToken)
-    {
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(EventTimeout);
-        while (true)
-        {
-            var delivery = await channel.BasicGetAsync(queue, autoAck: true, timeout.Token);
-            if (delivery is null)
-            {
-                await Task.Delay(TimeSpan.FromMilliseconds(250), timeout.Token);
-                continue;
-            }
-
-            var received = JsonSerializer.Deserialize<T>(delivery.Body.Span, JsonSerializerOptions.Web);
-            if (received is not null && wanted(received))
-            {
-                return received;
-            }
-        }
     }
 
     private sealed record MyPharmacy(Guid Id, string Name, Guid MembershipId, string Role, string JobFunction, bool CanManageMembers, bool CanAssignCourses);
