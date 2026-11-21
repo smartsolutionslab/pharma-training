@@ -4,32 +4,32 @@ import { RouterLink, useRoute } from 'vue-router';
 import { useHasRole } from '@/auth/useHasRole';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { canReach, moduleOf } from './audience';
+import { canReach, pageOf } from './audience';
 import { useCurrentPharmacy } from './useCurrentPharmacy';
 
 // The page at the address, if it is for the user; otherwise why not, and the way home. Hiding is a convenience, not
 // protection: the backend's policies decide. While the memberships load a pharmacy's page is a skeleton, so neither
-// the page nor "Not available" flashes.
+// the page nor "Not available" flashes. A page below a module is governed by its own audience, not its module's.
 const route = useRoute();
 const { status, memberships, current, retry } = useCurrentPharmacy();
 const isEditor = useHasRole('editor');
 
-const module = computed(() => moduleOf(route.path));
+const page = computed(() => pageOf(route.path));
 
 const state = computed<'page' | 'loading' | 'refused'>(() => {
-  if (module.value === undefined) {
+  if (page.value === undefined) {
     return 'page';
   }
-  if (canReach(module.value.audience, { current: current.value, isEditor: isEditor.value })) {
+  if (canReach(page.value.audience, { current: current.value, isEditor: isEditor.value })) {
     return 'page';
   }
-  return module.value.audience !== 'editor' && status.value === 'loading' ? 'loading' : 'refused';
+  return page.value.audience !== 'editor' && status.value === 'loading' ? 'loading' : 'refused';
 });
 
-const failed = computed(() => module.value?.audience !== 'editor' && status.value === 'failed');
+const failed = computed(() => page.value?.audience !== 'editor' && status.value === 'failed');
 
 const reason = computed(() => {
-  if (module.value?.audience === 'editor') {
+  if (page.value?.audience === 'editor') {
     return 'This page is not available to you.';
   }
   if (failed.value) {
