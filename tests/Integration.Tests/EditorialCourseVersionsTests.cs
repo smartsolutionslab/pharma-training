@@ -185,6 +185,36 @@ public class EditorialCourseVersionsTests(AspireFixture aspire)
     }
 
     [Fact]
+    public async Task An_empty_version_or_chapter_id_on_a_chapter_route_is_not_found()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var id = await CreateAsync(client, $"Hygiene {Guid.CreateVersion7()}", cancellationToken);
+        var chapter = await AddChapterAsync(client, id, "Händehygiene", "Vor und nach …", cancellationToken);
+
+        using var addedToNone = await client.PostAsJsonAsync(Chapters(Guid.Empty), new { title = "Neu", text = "Neu." }, cancellationToken);
+        using var replacedInNone = await client.PutAsJsonAsync(Chapter(Guid.Empty, chapter), new { title = "Neu", text = "Neu." }, cancellationToken);
+        using var removedFromNone = await client.DeleteAsync(Chapter(Guid.Empty, chapter), cancellationToken);
+        using var orderedInNone = await client.PutAsJsonAsync(Order(Guid.Empty), new { chapters = new[] { chapter } }, cancellationToken);
+        using var replacedNone = await client.PutAsJsonAsync(Chapter(id, Guid.Empty), new { title = "Neu", text = "Neu." }, cancellationToken);
+        using var removedNone = await client.DeleteAsync(Chapter(id, Guid.Empty), cancellationToken);
+
+        foreach (var response in new[] { addedToNone, replacedInNone, removedFromNone, orderedInNone })
+        {
+            response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+            (await CodeOfAsync(response, cancellationToken)).ShouldBe("editorial.course-version-not-found");
+        }
+
+        foreach (var response in new[] { replacedNone, removedNone })
+        {
+            response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+            (await CodeOfAsync(response, cancellationToken)).ShouldBe("editorial.chapter-not-found");
+        }
+
+        (await ReadAsync(client, id, cancellationToken)).Chapters.Select(read => read.Id).ShouldBe([chapter]);
+    }
+
+    [Fact]
     public async Task An_order_that_misses_a_chapter_is_a_conflict()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
