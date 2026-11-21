@@ -24,6 +24,9 @@ internal sealed class InMemoryPharmacyStore : IPharmacyStore, IOrganisationUnitO
     public Task<Option<Pharmacy>> FindAsync(PharmacyId id, CancellationToken cancellationToken) =>
         Task.FromResult(Stored.SingleOrDefault(pharmacy => pharmacy.Id == id) is { } pharmacy ? Option<Pharmacy>.Some(pharmacy) : Option<Pharmacy>.None);
 
+    /// <summary>The stored pharmacy itself, so what a command changes on it is what the next read finds once committed.</summary>
+    public Task<Option<Pharmacy>> LoadAsync(PharmacyId id, CancellationToken cancellationToken) => FindAsync(id, cancellationToken);
+
     public Task<PagedResult<Pharmacy>> ListWithActiveMemberAsync(PersonId person, Page page, PageSize pageSize, CancellationToken cancellationToken)
     {
         List<Pharmacy> members = [.. Stored
