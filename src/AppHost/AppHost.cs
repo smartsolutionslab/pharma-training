@@ -17,6 +17,8 @@ var keycloak = builder.AddContainer("keycloak", "quay.io/keycloak/keycloak", "26
     .WithBindMount("./realms", "/opt/keycloak/data/import", isReadOnly: true);
 keycloak.WithVolume(VolumeNameGenerator.Generate(keycloak, "data"), "/opt/keycloak/data");
 
+// The services send their own mail (the invitation, docs/adr/0004) to the connection string mail, from Mail:From.
+IResourceBuilder<IResourceWithConnectionString> mail;
 if (builder.ExecutionContext.IsRunMode)
 {
     // Keycloak's email (verification, reset password) lands in Mailpit, whose inbox is http://localhost:8025; the realm points SMTP at it.
@@ -25,7 +27,16 @@ if (builder.ExecutionContext.IsRunMode)
         .WithEndpoint(targetPort: 1025, name: "smtp")
         .WithHttpHealthCheck("/livez");
     keycloak.WaitFor(mailpit);
+    // The services run on the host, not in the containers' network: they send to Mailpit's allocated port, without credentials.
+    mail = builder.AddConnectionString("mail", ReferenceExpression.Create($"smtp://{mailpit.GetEndpoint("smtp").Property(EndpointProperty.HostAndPort)}"));
 }
+else
+{
+    // Deployed, ConnectionStrings:mail (smtp://user:password@host:587 or smtps://…) is a secret in the deployment's store.
+    mail = builder.AddConnectionString("mail");
+}
+
+var mailFrom = builder.AddParameter("mail-from", "noreply@example.com", publishValueAsDefault: true);
 // Blob storage on Azurite: one account, a container per module in the services' loop (docs/adr/0002). Each service signs
 // short-lived upload and read URLs for its own container only, with the account key.
 var storage = builder.AddAzureStorage("storage")
@@ -48,6 +59,21 @@ var host = builder.AddProject("host", "../Edge/Edge.csproj")
     .WithReference(keycloak.GetEndpoint("http"))
     .WaitFor(keycloak)
     .WithEnvironment("Authentication__Authority", ReferenceExpression.Create($"{keycloak.GetEndpoint("http")}/realms/pharma-training"));
+
+var web = builder.AddViteApp("web", "../../web/app")
+    .WithPnpm()
+    // OIDC redirect URIs name this port; the dev server proxies /api to the host.
+    .WithEndpoint("http", endpoint => endpoint.Port = 5173)
+    .WithReference(host)
+    .WaitFor(host)
+    .WaitFor(keycloak)
+    .WithEnvironment("VITE_OIDC_AUTHORITY", ReferenceExpression.Create($"{keycloak.GetEndpoint("http")}/realms/pharma-training"));
+
+// Links in mail lead into the web app: its dev server when run, its public address (the parameter frontend-url) deployed,
+// which no endpoint reference knows.
+var frontendUrl = builder.ExecutionContext.IsRunMode
+    ? ReferenceExpression.Create($"{web.GetEndpoint("http")}")
+    : ReferenceExpression.Create($"{builder.AddParameter("frontend-url")}");
 
 foreach (var (module, project) in builder.ServiceHosts())
 {
@@ -78,7 +104,10 @@ foreach (var (module, project) in builder.ServiceHosts())
         .WithReference(blobs, "blobs")
         .WithEnvironment("AzureOpenAI__Endpoint", azureOpenAIEndpoint)
         .WithEnvironment("AzureOpenAI__Deployment", azureOpenAIDeployment)
-        .WithEnvironment("AzureOpenAI__ApiKey", azureOpenAIApiKey);
+        .WithEnvironment("AzureOpenAI__ApiKey", azureOpenAIApiKey)
+        .WithReference(mail)
+        .WithEnvironment("Mail__From", mailFrom)
+        .WithEnvironment("Frontend__BaseUrl", frontendUrl);
 
     // The edge routes /<module>/... to the service it finds under the module's name, listed under Edge:Modules.
     host.WithReference(service)
@@ -86,14 +115,6 @@ foreach (var (module, project) in builder.ServiceHosts())
         .WaitFor(service);
 }
 
-var web = builder.AddViteApp("web", "../../web/app")
-    .WithPnpm()
-    // OIDC redirect URIs name this port; the dev server proxies /api to the host.
-    .WithEndpoint("http", endpoint => endpoint.Port = 5173)
-    .WithReference(host)
-    .WaitFor(host)
-    .WaitFor(keycloak)
-    .WithEnvironment("VITE_OIDC_AUTHORITY", ReferenceExpression.Create($"{keycloak.GetEndpoint("http")}/realms/pharma-training"));
 // The browser PUTs uploads and GETs files with the signed URLs, straight to blob storage, from the web app's origin alone.
 storage.AllowBrowserAccessFrom(web);
 
