@@ -17,7 +17,7 @@ public sealed class CourseVersionPublishedV1Consumer(ICourseVersionStore version
         Ensure.That(message).IsNotNull();
         Ensure.That(message.CourseId, nameof(message.CourseId)).IsNotEmpty();
         Ensure.That(message.CourseVersionId, nameof(message.CourseVersionId)).IsNotEmpty();
-        ConsumerGuards.IsText(message.Title, nameof(message.Title));
+        ConsumerGuards.IsText(message.Title, nameof(message.Title), CourseTitle.MaxLength);
         Ensure.That(message.VersionNumber, nameof(message.VersionNumber)).AtLeast(1);
         Ensure.That(message.ValidityMonths, nameof(message.ValidityMonths)).AtLeast(1);
 

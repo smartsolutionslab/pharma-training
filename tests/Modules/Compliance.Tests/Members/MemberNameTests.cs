@@ -19,8 +19,12 @@ public class MemberNameTests
         MemberName.From(" Ada ").Value.ShouldBe(" Ada ");
 
     [Fact]
-    public void A_name_longer_than_organisation_allows_today_is_still_a_name() =>
-        MemberName.From(new string('a', 500)).Value.Length.ShouldBe(500);
+    public void A_name_as_long_as_organisation_allows_is_a_name() =>
+        MemberName.From(new string('a', 100)).Value.Length.ShouldBe(100);
+
+    [Fact]
+    public void A_name_longer_than_organisation_allows_is_refused() =>
+        Should.Throw<GuardException>(() => MemberName.From(new string('a', 101)));
 
     [Theory]
     [InlineData(null)]

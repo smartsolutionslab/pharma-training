@@ -17,7 +17,7 @@ public sealed class MembershipStartedV1Consumer(IMemberStore members, IComplianc
         Ensure.That(message.MembershipId, nameof(message.MembershipId)).IsNotEmpty();
         Ensure.That(message.PersonId, nameof(message.PersonId)).IsNotEmpty();
         Ensure.That(message.PharmacyId, nameof(message.PharmacyId)).IsNotEmpty();
-        ConsumerGuards.IsText(message.DisplayName, nameof(message.DisplayName));
+        ConsumerGuards.IsText(message.DisplayName, nameof(message.DisplayName), MemberName.MaxLength);
         Ensure.That((int)message.JobFunction, nameof(message.JobFunction)).Satisfies(value => Enum.IsDefined((JobFunctionV1)value), "is no job function Compliance knows.");
         Ensure.That((int)message.Role, nameof(message.Role)).Satisfies(value => Enum.IsDefined((MembershipRoleV1)value), "is no role Compliance knows.");
 

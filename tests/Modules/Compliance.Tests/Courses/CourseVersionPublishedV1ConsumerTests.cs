@@ -117,6 +117,26 @@ public class CourseVersionPublishedV1ConsumerTests
     }
 
     [Fact]
+    public async Task A_title_as_long_as_editorial_allows_is_stored()
+    {
+        var store = new InMemoryCourseVersionStore();
+        var title = new string('a', 150);
+
+        await new CourseVersionPublishedV1Consumer(store, store).HandleAsync(CourseVersionEvents.Published(Guid.CreateVersion7(), Guid.CreateVersion7(), 1, title), TestContext.Current.CancellationToken);
+
+        store.Versions.ShouldHaveSingleItem().Title.ShouldBe(CourseTitle.From(title));
+    }
+
+    [Fact]
+    public async Task A_title_longer_than_editorial_allows_is_refused_by_its_name_and_nothing_stored()
+    {
+        var store = new InMemoryCourseVersionStore();
+        var published = CourseVersionEvents.Published(Guid.CreateVersion7(), Guid.CreateVersion7(), 1, new string('a', 151));
+
+        await RefusedAsync(store, published, nameof(CourseVersionPublishedV1.Title));
+    }
+
+    [Fact]
     public async Task A_version_number_below_one_is_refused_by_its_name_and_nothing_stored()
     {
         var store = new InMemoryCourseVersionStore();
