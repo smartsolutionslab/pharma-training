@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import type { MyPharmacyDto } from '@/api/generated';
-import { canReach, moduleOf } from './audience';
+import { canReach, moduleOf, pageOf } from './audience';
 
 // Memberships as GET /organisation/pharmacies/mine answers them: rights come from the capabilities, not the role's name.
 const membership = (overrides: Partial<MyPharmacyDto>): MyPharmacyDto => ({
@@ -39,6 +39,11 @@ test.each([
   ['editor', manager, true, true],
   ['editor', undefined, false, false],
   ['editor', manager, false, false],
+  // signed-in: every signed-in user, with or without a pharmacy or a role
+  ['signed-in', undefined, false, true],
+  ['signed-in', undefined, true, true],
+  ['signed-in', employee, false, true],
+  ['signed-in', manager, true, true],
 ] as const)(
   'the %s audience with membership %o and editor %s is reachable: %s',
   (audience, current, isEditor, reachable) => {
@@ -56,4 +61,25 @@ test('moduleOf finds no module for the start page or an address no module has', 
   expect(moduleOf('/')).toBeUndefined();
   expect(moduleOf('/nowhere')).toBeUndefined();
   expect(moduleOf('/organisations')).toBeUndefined();
+});
+
+// A module's own page below it (its routes.ts's pages) governs its address; any other address in the module is the module's.
+test("pageOf finds the module's page by the address's second segment", () => {
+  expect(pageOf('/organisation/register')).toMatchObject({
+    path: 'register',
+    title: 'Register a pharmacy',
+    audience: 'signed-in',
+  });
+});
+
+test('pageOf finds the module for an address in it that is none of its pages', () => {
+  expect(pageOf('/organisation')).toMatchObject({ path: 'organisation', title: 'Organisation', audience: 'manager' });
+  expect(pageOf('/organisation/members')).toMatchObject({ path: 'organisation', audience: 'manager' });
+  expect(pageOf('/learning/register')).toMatchObject({ path: 'learning', audience: 'employee' });
+});
+
+test('pageOf finds nothing for the start page or an address no module has', () => {
+  expect(pageOf('/')).toBeUndefined();
+  expect(pageOf('/nowhere')).toBeUndefined();
+  expect(pageOf('/nowhere/register')).toBeUndefined();
 });

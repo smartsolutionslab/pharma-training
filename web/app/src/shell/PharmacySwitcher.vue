@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ChevronsUpDownIcon } from '@lucide/vue';
 import { computed, useId } from 'vue';
+import { RouterLink } from 'vue-router';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -11,14 +12,23 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useSidebar } from '@/components/ui/sidebar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useCurrentPharmacy } from './useCurrentPharmacy';
 import { useMyPharmacies } from './useMyPharmacies';
 
 // The pharmacy the user works in, in the sidebar's header: with several, a menu to switch between them; with one, its
-// name; with none, a sentence saying so.
+// name; with none, a sentence saying so. Once they are known, a link to register another: below the tablet's width
+// the sidebar is a sheet, which closes once the link is followed.
 const { status, memberships, current, choose } = useCurrentPharmacy();
 const { refetch } = useMyPharmacies();
+const { isMobile, setOpenMobile } = useSidebar();
+
+function closeSheet() {
+  if (isMobile.value) {
+    setOpenMobile(false);
+  }
+}
 
 const labelId = useId();
 const trigger = computed(() => (current.value === undefined ? 'Choose a pharmacy' : `Pharmacy: ${current.value.name}`));
@@ -74,5 +84,13 @@ function pick(id: unknown) {
         </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>
+    <RouterLink
+      v-if="status === 'ready'"
+      to="/organisation/register"
+      class="mt-1 inline-block text-caption text-primary underline underline-offset-4"
+      @click="closeSheet"
+    >
+      Register a pharmacy
+    </RouterLink>
   </section>
 </template>
