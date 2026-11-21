@@ -18,6 +18,10 @@ public sealed partial class AspireFixture : IAsyncLifetime
 
     private DistributedApplication? app;
 
+    private ILogger? logger;
+
+    private TimeSpan startedIn;
+
     public DistributedApplication App => app ?? throw new InvalidOperationException("The application has not started.");
 
     public async ValueTask InitializeAsync()
@@ -45,9 +49,9 @@ public sealed partial class AspireFixture : IAsyncLifetime
         await app.ResourceNotifications.WaitForResourceHealthyAsync("host", timeout.Token);
 
         // In the run's log, so a slow start shows how close it came to the limit before it ever reaches it.
-        var elapsed = TimeProvider.System.GetElapsedTime(started);
-        var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger<AspireFixture>();
-        LogStarted(logger, elapsed, StartupTimeout);
+        startedIn = TimeProvider.System.GetElapsedTime(started);
+        logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger<AspireFixture>();
+        LogStarted(logger, startedIn, StartupTimeout);
     }
 
     public HttpClient CreateHostClient() => App.CreateHttpClient("host");
@@ -84,6 +88,12 @@ public sealed partial class AspireFixture : IAsyncLifetime
     {
         if (app is not null)
         {
+            // Again at the end, where a CI log's tail (all a job-log viewer may show) still has it.
+            if (logger is not null)
+            {
+                LogStarted(logger, startedIn, StartupTimeout);
+            }
+
             await app.DisposeAsync();
         }
     }
