@@ -26,3 +26,13 @@ test('every page below a module declares the audience it is for, and its title',
     ),
   ).toEqual([{ address: '/organisation/register', title: 'Register a pharmacy', audience: 'signed-in' }]);
 });
+
+// The router maps a page at /<module>/<page>, and the audience gate and the breadcrumbs find it by the address's second
+// segment: a page's path is that one segment, never empty and never two.
+test('every page below a module has a path of one segment', () => {
+  const paths = moduleRoutes.flatMap((route) => (route.pages ?? []).map((page) => page.path));
+  expect(paths.length).toBeGreaterThan(0);
+  for (const path of paths) {
+    expect(path).toMatch(/^[^/]+$/);
+  }
+});

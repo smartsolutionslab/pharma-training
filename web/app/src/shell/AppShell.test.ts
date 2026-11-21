@@ -512,13 +512,19 @@ test("the breadcrumbs name a page below a module by its title, after the module'
   expect(breadcrumbs.getByText('Register a pharmacy')).toHaveAttribute('aria-current', 'page');
 });
 
-test('the breadcrumbs name a page the user may see by its title, below a module they may not', async () => {
+// The module of a page the user may see is named by its title, but it is no link: it would lead to a page refused to
+// them ("Not available").
+test('the breadcrumbs name a page the user may see by its title, and its module as text, below a module they may not', async () => {
   answer([]);
 
   await renderAt('/organisation/register', { roles: [] });
 
   const breadcrumbs = within(screen.getByRole('navigation', { name: 'breadcrumb' }));
-  expect(breadcrumbs.getByRole('link', { name: 'organisation' })).toHaveAttribute('href', '/organisation');
+  expect(breadcrumbs.queryByRole('link', { name: /organisation/i })).not.toBeInTheDocument();
+  const module = breadcrumbs.getByText('Organisation');
+  expect(module.closest('a')).toBeNull();
+  expect(module).not.toHaveAttribute('aria-current');
+  expect(breadcrumbs.queryByText('organisation')).not.toBeInTheDocument();
   expect(breadcrumbs.getByText('Register a pharmacy')).toHaveAttribute('aria-current', 'page');
 });
 
