@@ -7,4 +7,6 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application;
 public static class EditorialPolicyNames
 {
     public const string Manage = "editorial.manage";
+
+    public const string Edit = "editorial.edit";
 }
