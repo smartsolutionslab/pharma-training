@@ -23,7 +23,7 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand(
             """
-            INSERT INTO organisation.memberships (id, pharmacy_id, email, token, invitation_expires_at, person_id, name, job_function, role, status, started_at, ended_at)
+            INSERT INTO organisation.memberships (id, pharmacy_id, email, token_hash, invitation_expires_at, person_id, name, job_function, role, status, started_at, ended_at)
             VALUES (@id, @pharmacy, @email, NULL, NULL, @person, @name, @jobFunction, @role, 'Active', now(), NULL)
             """,
             connection);

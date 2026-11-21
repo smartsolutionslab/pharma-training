@@ -57,7 +57,7 @@ public class PharmacyCoverageTests
         var membership = Invite(pharmacy, AnnaMail, token);
 
         pharmacy.DomainEvents.OfType<MemberInvited>().ShouldHaveSingleItem()
-            .ShouldBe(new MemberInvited(pharmacy.Id, membership, AnnaMail, token, Now.PlusDays(Pharmacy.InvitationValidityDays)));
+            .ShouldBe(new MemberInvited(pharmacy.Id, pharmacy.Name, membership, AnnaMail, token, Now.PlusDays(Pharmacy.InvitationValidityDays)));
         var invited = pharmacy.Memberships.Single(m => m.Id == membership);
         invited.Status.ShouldBe(MembershipStatus.Invited);
         invited.Person.ShouldBeNull();
@@ -88,7 +88,7 @@ public class PharmacyCoverageTests
 
         var revoked = pharmacy.Memberships.Single(m => m.Id == membership);
         revoked.Status.ShouldBe(MembershipStatus.Revoked);
-        revoked.Token.ShouldBeNull();
+        revoked.TokenHash.ShouldBeNull();
         pharmacy.DomainEvents.OfType<InvitationRevoked>().ShouldHaveSingleItem().ShouldBe(new InvitationRevoked(pharmacy.Id, membership));
         pharmacy.AcceptInvitation(token, Anna, AnnaName, AnnaMail, Now).Error.ShouldBeOfType<InvitationNotFound>();
     }
@@ -132,7 +132,7 @@ public class PharmacyCoverageTests
         pharmacy.RenewInvitation(membership, fresh, Now.PlusDays(20)).IsSuccess.ShouldBeTrue();
 
         pharmacy.DomainEvents.OfType<MemberInvited>().Last()
-            .ShouldBe(new MemberInvited(pharmacy.Id, membership, AnnaMail, fresh, Now.PlusDays(20 + Pharmacy.InvitationValidityDays)));
+            .ShouldBe(new MemberInvited(pharmacy.Id, pharmacy.Name, membership, AnnaMail, fresh, Now.PlusDays(20 + Pharmacy.InvitationValidityDays)));
     }
 
     [Fact]
