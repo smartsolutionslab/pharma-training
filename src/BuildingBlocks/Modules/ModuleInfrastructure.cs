@@ -18,6 +18,7 @@ public static class ModuleInfrastructure
         services.AddModuleDomainEventReactions<TModule>();
         services.AddModuleAdapters<TModule>();
         services.AddModulePolicies<TModule>();
+        services.AddModuleBlobStorage(configuration);
         return services;
     }
 }

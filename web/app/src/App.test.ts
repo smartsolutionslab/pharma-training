@@ -1,7 +1,9 @@
 import userEvent from '@testing-library/user-event';
 import { cleanup, render, screen, waitFor } from '@testing-library/vue';
 import { afterEach, expect, test, vi } from 'vitest';
+import { createPinia } from 'pinia';
 import { createMemoryHistory } from 'vue-router';
+import { signedInAsDeveloper } from './auth/signedInAsDeveloper';
 import App from './App.vue';
 import { createAppRouter } from './router';
 
@@ -9,6 +11,28 @@ import { createAppRouter } from './router';
 vi.mock('@/auth/UserMenu.vue', async () => {
   const { h } = await import('vue');
   return { default: { render: () => h('p', 'The user menu') } };
+});
+
+// The shell asks the host for the user's pharmacies; here the user belongs to one, at once.
+vi.mock('@/shell/useMyPharmacies', async () => {
+  const { ref } = await import('vue');
+  const pharmacy = {
+    id: '0198c1a0-0000-7000-8000-0000000000a1',
+    name: 'Apotheke am Markt',
+    membershipId: '0198c1a0-0000-7000-8000-0000000000b1',
+    role: 'Manager',
+    jobFunction: 'Pharmacist',
+    canManageMembers: true,
+    canAssignCourses: true,
+  };
+  return {
+    useMyPharmacies: () => ({
+      data: ref({ items: [pharmacy], totalCount: 1, page: 1, pageSize: 100 }),
+      isPending: ref(false),
+      isError: ref(false),
+      refetch: () => Promise.resolve(),
+    }),
+  };
 });
 
 // Without Vitest's globals, Testing Library does not unmount between tests by itself.
@@ -21,7 +45,7 @@ test('the start page names the application', async () => {
   const router = createAppRouter(createMemoryHistory());
   await router.push('/');
 
-  render(App, { global: { plugins: [router] } });
+  render(App, { global: { plugins: [router, createPinia(), signedInAsDeveloper] } });
 
   expect(screen.getByRole('heading', { name: 'pharma-training' })).toBeInTheDocument();
 });
@@ -30,7 +54,7 @@ test('the start page names the application', async () => {
 async function renderAwayFromHome() {
   const router = createAppRouter(createMemoryHistory());
   await router.push('/?from=elsewhere');
-  render(App, { global: { plugins: [router] } });
+  render(App, { global: { plugins: [router, createPinia(), signedInAsDeveloper] } });
   return router;
 }
 
