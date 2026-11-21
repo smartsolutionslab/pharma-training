@@ -30,6 +30,22 @@ public class EventSourcedEventsCarryNoPersonalDataTests
     }
 
     [Fact]
+    public void A_name_inside_a_listed_struct_fails_the_rule()
+    {
+        var violations = EventSourcedEventsCarryNoPersonalData.Violations([typeof(ProbeWithBadgesV1)]).ToList();
+
+        violations.ShouldHaveSingleItem().ShouldContain("HolderName");
+    }
+
+    [Fact]
+    public void A_name_inside_an_optional_struct_fails_the_rule()
+    {
+        var violations = EventSourcedEventsCarryNoPersonalData.Violations([typeof(ProbeWithOptionalBadgeV1)]).ToList();
+
+        violations.ShouldHaveSingleItem().ShouldContain("HolderName");
+    }
+
+    [Fact]
     public void An_event_with_only_ids_passes_the_rule()
     {
         EventSourcedEventsCarryNoPersonalData.Violations([typeof(ProbeWithIdsOnlyV1)]).ShouldBeEmpty();
