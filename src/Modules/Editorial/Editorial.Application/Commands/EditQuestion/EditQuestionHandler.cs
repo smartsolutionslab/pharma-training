@@ -16,14 +16,8 @@ public sealed class EditQuestionHandler(ICourseVersionStore versions, IEditorial
             return Failure(CourseVersionFailures.NotFound(command.Version.Value));
         }
 
-        // The version does not check the chapter of an edited question; the database would refuse it as a fault.
-        var version = found.Value;
-        if (version.Chapters.All(chapter => chapter.Id != command.Draft.Chapter))
-        {
-            return Failure(CourseVersionFailures.From(CourseVersionErrors.ChapterNotFound(version.Id, command.Draft.Chapter)));
-        }
-
-        var edited = version.EditQuestion(command.Question, command.Draft, AnswerOptionId.New);
+        // The version refuses a chapter it does not hold, after checking that it is a draft and holds the question.
+        var edited = found.Value.EditQuestion(command.Question, command.Draft, AnswerOptionId.New);
         if (edited.IsFailure)
         {
             return Failure(CourseVersionFailures.From(edited.Error));
