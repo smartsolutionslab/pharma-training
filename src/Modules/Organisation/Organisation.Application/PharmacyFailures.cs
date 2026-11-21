@@ -23,6 +23,9 @@ public static class PharmacyFailures
 
     public static ApiError Changed(Guid id) => new PharmacyChanged(id);
 
+    /// <summary>Stub for #9's red tests (T3).</summary>
+    public static ApiError InvalidEmail() => throw new NotImplementedException();
+
     /// <summary>
     /// The domain's refusals with the status each use case answers them with. An error no use case returns yet has no
     /// status here: it is mapped where it is first returned, never given a guessed one.
