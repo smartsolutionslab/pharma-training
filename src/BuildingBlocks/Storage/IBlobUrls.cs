@@ -7,7 +7,12 @@ namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Storage;
 /// </summary>
 public interface IBlobUrls
 {
-    /// <summary>A URL that creates <paramref name="name"/> once (PUT) and can do nothing else: not read, overwrite or delete it, nor touch another blob.</summary>
+    /// <summary>
+    /// A URL that creates <paramref name="name"/> (PUT) and cannot read, overwrite or delete it, nor touch another blob.
+    /// It carries the storage service's Create permission, which also allows what Create allows on that one blob
+    /// (snapshots, staged blocks, a server-side copy into it); size and content type are checked by the module that
+    /// accepts the upload, not by the URL (docs/adr/0002).
+    /// </summary>
     Task<BlobUrl> CreateUploadUrlAsync(BlobName name, BlobUrlLifetime lifetime, CancellationToken cancellationToken);
 
     /// <summary>A URL that reads <paramref name="name"/> (GET) and can do nothing else.</summary>
