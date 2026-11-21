@@ -32,9 +32,10 @@ public sealed class AspireFixture : IAsyncLifetime
             }
         }
 
-        // A resource that does not exist and a key-shaped value Azure does not accept: the integration tests never call the model.
-        builder.Configuration["Parameters:azure-openai-endpoint"] = "https://not-a-real-resource.openai.azure.com";
-        builder.Configuration["Parameters:azure-openai-api-key"] = "not-a-real-key";
+        // The integration tests run the application as a developer without a key does, with no model configured: the run
+        // shows the application starting that way, and never uses a developer's own endpoint or key from user secrets.
+        builder.Configuration["Parameters:azure-openai-endpoint"] = string.Empty;
+        builder.Configuration["Parameters:azure-openai-api-key"] = string.Empty;
 
         app = await builder.BuildAsync(timeout.Token);
         await app.StartAsync(timeout.Token);
@@ -45,6 +46,16 @@ public sealed class AspireFixture : IAsyncLifetime
 
     /// <summary>A client calling the host as a realm user; local users' passwords equal their names.</summary>
     public async Task<HttpClient> CreateHostClientAsync(string user)
+    {
+        var accessToken = await RequestAccessTokenAsync(user);
+
+        var client = CreateHostClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        return client;
+    }
+
+    /// <summary>The access token the realm issues to a local user, whose password equals their name.</summary>
+    public async Task<string> RequestAccessTokenAsync(string user)
     {
         using var identity = new HttpClient { BaseAddress = App.GetEndpoint("keycloak", "http") };
         using var form = new FormUrlEncodedContent(new Dictionary<string, string>
@@ -58,10 +69,7 @@ public sealed class AspireFixture : IAsyncLifetime
         response.EnsureSuccessStatusCode();
         var token = await response.Content.ReadFromJsonAsync<TokenResponse>()
             ?? throw new InvalidOperationException("The realm returned no token.");
-
-        var client = CreateHostClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.AccessToken);
-        return client;
+        return token.AccessToken;
     }
 
     public async ValueTask DisposeAsync()

@@ -13,7 +13,8 @@
   },
   "roles": {
     "realm": [
-      { "name": "manager", "description": "Sample role: each module's sample policy <module>.manage requires it." }
+      { "name": "manager", "description": "Sample role: each module's sample policy <module>.manage requires it." },
+      { "name": "editor", "description": "Platform editors, the Redaktion: they write and publish the training content. Separate from the pharmacy roles the Organisation module holds." }
     ]
   },
   "clients": [
@@ -77,6 +78,43 @@
       "firstName": "Local",
       "lastName": "Visitor",
       "credentials": [{ "type": "password", "value": "visitor", "temporary": false }]
+    },
+    {
+      "username": "editor",
+      "enabled": true,
+      "email": "editor@example.com",
+      "emailVerified": true,
+      "firstName": "Emma",
+      "lastName": "Editor",
+      "credentials": [{ "type": "password", "value": "editor", "temporary": false }],
+      "realmRoles": ["editor"]
+    },
+    {
+      "username": "owner",
+      "enabled": true,
+      "email": "owner@example.com",
+      "emailVerified": true,
+      "firstName": "Olaf",
+      "lastName": "Owner",
+      "credentials": [{ "type": "password", "value": "owner", "temporary": false }]
+    },
+    {
+      "username": "employee-a",
+      "enabled": true,
+      "email": "employee-a@example.com",
+      "emailVerified": true,
+      "firstName": "Anna",
+      "lastName": "Employee",
+      "credentials": [{ "type": "password", "value": "employee-a", "temporary": false }]
+    },
+    {
+      "username": "employee-b",
+      "enabled": true,
+      "email": "employee-b@example.com",
+      "emailVerified": true,
+      "firstName": "Ben",
+      "lastName": "Employee",
+      "credentials": [{ "type": "password", "value": "employee-b", "temporary": false }]
     }
   ]
 }

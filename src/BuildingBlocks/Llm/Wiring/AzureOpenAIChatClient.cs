@@ -2,6 +2,7 @@ using System.ClientModel;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using OpenAI;
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Llm;
 
 namespace Microsoft.Extensions.DependencyInjection;
 
@@ -14,7 +15,8 @@ public static class AzureOpenAIChatClient
     /// ends in <c>/v1</c>, as is. The endpoint, the deployment and the key come from the AppHost's parameters
     /// <c>azure-openai-endpoint</c>, <c>azure-openai-deployment</c> and <c>azure-openai-api-key</c>
     /// (<c>AzureOpenAI:Endpoint</c>, <c>AzureOpenAI:Deployment</c>, <c>AzureOpenAI:ApiKey</c>). They are read when the
-    /// client is first needed, and a missing one fails there, naming its parameter; registering sends nothing.
+    /// client is first needed, and a missing one fails there with a <see cref="ModelNotConfiguredException"/> naming its
+    /// parameter, which the host answers with <c>503</c>; registering sends nothing.
     /// </summary>
     public static ChatClientBuilder AddAzureOpenAIChatClient(this IServiceCollection services, IConfiguration configuration)
     {
@@ -45,5 +47,5 @@ public static class AzureOpenAIChatClient
     private static string Required(IConfiguration configuration, string key, string parameter) =>
         configuration[key] is { Length: > 0 } value
             ? value
-            : throw new InvalidOperationException($"{key} is not set. The AppHost supplies it from its parameter '{parameter}': set that with dotnet user-secrets (Parameters:{parameter}) or in the deployment's secret store.");
+            : throw new ModelNotConfiguredException(key, parameter);
 }

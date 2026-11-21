@@ -23,6 +23,22 @@ An agent that needs a decision, or fails a phase twice, escalates with `escalate
 `agent:blocked`), and the issue goes to its lane's owner in `docs/owners.yml`. Unassigning yourself after answering
 returns it to the board.
 
+## Interim review until 2026-12-01
+
+GitHub Copilot's usage limit postpones the cross-model review until 1 December. Until then:
+
+- A postponed review does not hold a pull request: `cross-model-review/verdict` turns `success` with "Not reviewed:
+  Copilot's limit". The cut-off is `REVIEW_OPTIONAL_UNTIL` in `.github/workflows/cross-model-review.yml` (the
+  repository variable of that name overrides it). From that date on, a postponed review is pending again.
+- A Claude Code session that wrote none of the code reviews instead, every three hours, with the `/review-prs` skill.
+  It posts its findings as a pull request review and labels the pull request `claude-review:passed` or
+  `claude-review:blocking` (cloud sessions cannot write commit statuses); the lane fixes what blocks on its next
+  wake. It is a same-family review, weaker than the cross-model one, and every verdict says so.
+- Merge when CI is green and the pull request is labelled `claude-review:passed` for its current head (the review names
+  the SHA it read).
+
+Both are hand-written stop-gaps. Remove them at the first `fabric upgrade` after 1 December.
+
 ## Dependencies
 
 `next.sh` reads the `## Depends on` section of an issue, up to the next heading, and skips the issue while any issue
