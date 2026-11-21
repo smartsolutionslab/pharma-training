@@ -14,6 +14,13 @@ public static class MembershipRoleMappings
         _ => throw new UnreachableException($"Undefined membership role {role}."),
     };
 
+    public static MembershipRole ToDomain(this OrganisationMembershipRole role) => role switch
+    {
+        OrganisationMembershipRole.Manager => MembershipRole.Manager,
+        OrganisationMembershipRole.Employee => MembershipRole.Employee,
+        _ => throw new UnreachableException($"Undefined membership role {role}."),
+    };
+
     public static MembershipRoleV1 ToV1(this MembershipRole role) => role switch
     {
         MembershipRole.Manager => MembershipRoleV1.Manager,

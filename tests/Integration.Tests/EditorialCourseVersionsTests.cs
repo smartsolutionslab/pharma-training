@@ -331,6 +331,137 @@ public class EditorialCourseVersionsTests(AspireFixture aspire)
     }
 
     [Fact]
+    public async Task Of_a_removal_and_a_replacement_of_one_chapter_at_once_one_succeeds_and_the_other_is_told_the_version_changed()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var id = await CreateAsync(client, $"Hygiene {Guid.CreateVersion7()}", cancellationToken);
+        var chapter = await AddChapterAsync(client, id, "Händehygiene", "Vor und nach …", cancellationToken);
+        var connectionString = await EditorialConnectionStringAsync(cancellationToken);
+
+        HttpResponseMessage[] responses;
+        await using (var gate = await LockVersionAsync(connectionString, id, cancellationToken))
+        {
+            var removed = client.DeleteAsync(Chapter(id, chapter), cancellationToken);
+            var replaced = client.PutAsJsonAsync(Chapter(id, chapter), new { title = "Händehygiene, überarbeitet", text = "Neu." }, cancellationToken);
+            await WaitUntilBlockedAsync(connectionString, 2, cancellationToken);
+            await gate.CommitAsync(cancellationToken);
+            responses = await Task.WhenAll(removed, replaced);
+        }
+
+        try
+        {
+            await ShouldBeOneWonAndOneChangedAsync(responses, cancellationToken);
+            var chapters = (await ReadAsync(client, id, cancellationToken)).Chapters;
+            if (responses[0].StatusCode == HttpStatusCode.OK)
+            {
+                chapters.ShouldBeEmpty("the removal won, so the replacement must not have been saved");
+            }
+            else
+            {
+                chapters.ShouldBe([new ChapterView(chapter, 1, "Händehygiene, überarbeitet", "Text", "Neu.")], "the replacement won, so the removal must not have been saved");
+            }
+        }
+        finally
+        {
+            foreach (var response in responses)
+            {
+                response.Dispose();
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Of_a_removal_and_an_order_at_once_one_succeeds_and_the_other_is_told_the_version_changed()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var id = await CreateAsync(client, $"Hygiene {Guid.CreateVersion7()}", cancellationToken);
+        var a = await AddChapterAsync(client, id, "Händehygiene", "Vor und nach …", cancellationToken);
+        var b = await AddChapterAsync(client, id, "Flächendesinfektion", "Wischen.", cancellationToken);
+        var c = await AddChapterAsync(client, id, "Instrumente", "Aufbereiten.", cancellationToken);
+        var connectionString = await EditorialConnectionStringAsync(cancellationToken);
+
+        // The removal writes only c's row and the order only a's and b's: no chapter row tells them apart, only the
+        // version's row version does.
+        HttpResponseMessage[] responses;
+        await using (var gate = await LockVersionAsync(connectionString, id, cancellationToken))
+        {
+            var removed = client.DeleteAsync(Chapter(id, c), cancellationToken);
+            var reordered = client.PutAsJsonAsync(Order(id), new { chapters = new[] { b, a, c } }, cancellationToken);
+            await WaitUntilBlockedAsync(connectionString, 2, cancellationToken);
+            await gate.CommitAsync(cancellationToken);
+            responses = await Task.WhenAll(removed, reordered);
+        }
+
+        try
+        {
+            await ShouldBeOneWonAndOneChangedAsync(responses, cancellationToken);
+            var chapters = (await ReadAsync(client, id, cancellationToken)).Chapters.Select(chapter => chapter.Id);
+            if (responses[0].StatusCode == HttpStatusCode.OK)
+            {
+                chapters.ShouldBe([a, b], "the removal won, so the order must not have been saved");
+            }
+            else
+            {
+                chapters.ShouldBe([b, a, c], "the order won, so the removal must not have been saved");
+            }
+        }
+        finally
+        {
+            foreach (var response in responses)
+            {
+                response.Dispose();
+            }
+        }
+    }
+
+    [Fact]
+    public async Task A_removal_and_an_order_that_write_the_chapters_in_opposite_orders_never_fail_the_server()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var connectionString = await EditorialConnectionStringAsync(cancellationToken);
+
+        // Removing c3 of [c3, c1, c2] deletes its row, then moves c1 and c2 up; the order [c2, c3, c1] writes c1, c2
+        // and c3. Each save locks its chapters' rows before the version's, so the two take c1 and c3 in opposite
+        // orders and PostgreSQL often ends one of them as a deadlock (40P01). Five rounds make sure some do.
+        for (var round = 0; round < 5; round++)
+        {
+            var id = await CreateAsync(client, $"Hygiene {Guid.CreateVersion7()}", cancellationToken);
+            var c1 = await AddChapterAsync(client, id, "Händehygiene", "Vor und nach …", cancellationToken);
+            var c2 = await AddChapterAsync(client, id, "Flächendesinfektion", "Wischen.", cancellationToken);
+            var c3 = await AddChapterAsync(client, id, "Instrumente", "Aufbereiten.", cancellationToken);
+            using (var first = await client.PutAsJsonAsync(Order(id), new { chapters = new[] { c3, c1, c2 } }, cancellationToken))
+            {
+                first.StatusCode.ShouldBe(HttpStatusCode.OK);
+            }
+
+            HttpResponseMessage[] responses;
+            await using (var gate = await LockVersionAsync(connectionString, id, cancellationToken))
+            {
+                var removed = client.DeleteAsync(Chapter(id, c3), cancellationToken);
+                var reordered = client.PutAsJsonAsync(Order(id), new { chapters = new[] { c2, c3, c1 } }, cancellationToken);
+                await WaitUntilBlockedAsync(connectionString, 2, cancellationToken);
+                await gate.CommitAsync(cancellationToken);
+                responses = await Task.WhenAll(removed, reordered);
+            }
+
+            try
+            {
+                await ShouldBeOneWonAndOneChangedAsync(responses, cancellationToken);
+            }
+            finally
+            {
+                foreach (var response in responses)
+                {
+                    response.Dispose();
+                }
+            }
+        }
+    }
+
+    [Fact]
     public async Task A_page_size_above_the_maximum_is_refused()
     {
         using var client = await aspire.CreateHostClientAsync("editor");
@@ -385,6 +516,19 @@ public class EditorialCourseVersionsTests(AspireFixture aspire)
         var problem = await response.Content.ReadFromJsonAsync<Problem>(cancellationToken);
         problem.ShouldNotBeNull();
         return problem.Code;
+    }
+
+    private static async Task ShouldBeOneWonAndOneChangedAsync(HttpResponseMessage[] responses, CancellationToken cancellationToken)
+    {
+        List<string> answers = [];
+        foreach (var response in responses)
+        {
+            answers.Add($"{(int)response.StatusCode} {await response.Content.ReadAsStringAsync(cancellationToken)}");
+        }
+
+        responses.Select(response => response.StatusCode).ShouldBe([HttpStatusCode.OK, HttpStatusCode.Conflict], ignoreOrder: true, string.Join(" | ", answers));
+        var lost = responses.Single(response => response.StatusCode == HttpStatusCode.Conflict);
+        (await CodeOfAsync(lost, cancellationToken)).ShouldBe("editorial.course-version-changed");
     }
 
     private async Task<string> EditorialConnectionStringAsync(CancellationToken cancellationToken) =>

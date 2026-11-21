@@ -16,7 +16,7 @@ partial class OrganisationModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261121142518_AddPharmacies";
+    public override string LastMigrationId => "20261121191155_AddPharmacyRowVersion";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -111,6 +111,12 @@ partial class OrganisationModelSnapshot : ModelSnapshot
                 b.Property<DateTimeOffset>("RegisteredAt")
                     .HasColumnType("timestamp with time zone")
                     .HasColumnName("registered_at");
+
+                b.Property<uint>("RowVersion")
+                    .IsConcurrencyToken()
+                    .ValueGeneratedOnAddOrUpdate()
+                    .HasColumnType("xid")
+                    .HasColumnName("xmin");
 
                 b.HasKey("Id");
 
