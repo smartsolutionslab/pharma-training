@@ -1,13 +1,14 @@
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query';
 import { cleanup, render, screen, waitFor } from '@testing-library/vue';
 import userEvent from '@testing-library/user-event';
-import { createPinia } from 'pinia';
+import { createPinia, type Pinia } from 'pinia';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { defineComponent, h } from 'vue';
 import { createMemoryHistory } from 'vue-router';
 import type { MyPharmacyDto } from '@/api/generated';
 import { createAppRouter } from '@/router';
 import { useCurrentPharmacy } from '@/shell/useCurrentPharmacy';
+import { useSelectedPharmacyStore } from '@/stores/selectedPharmacy';
 import RegisterPharmacyPage from './RegisterPharmacyPage.vue';
 
 const notify = vi.hoisted(() => ({ success: vi.fn(), failure: vi.fn() }));
@@ -69,12 +70,30 @@ const ShellStandIn = defineComponent({
   },
 });
 
-async function renderInShell() {
+async function renderInShell(pinia: Pinia = createPinia()) {
   const router = createAppRouter(createMemoryHistory());
   await router.push('/organisation/register');
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  render(ShellStandIn, { global: { plugins: [router, createPinia(), [VueQueryPlugin, { queryClient }]] } });
+  render(ShellStandIn, { global: { plugins: [router, pinia, [VueQueryPlugin, { queryClient }]] } });
   return { router };
+}
+
+/** Every pharmacy the store held as chosen, from now on. */
+function choicesOf(pinia: Pinia) {
+  const store = useSelectedPharmacyStore(pinia);
+  const choices: (string | null)[] = [];
+  store.$subscribe(() => choices.push(store.pharmacyId), { flush: 'sync' });
+  return choices;
+}
+
+/** Registers "Neue Apotheke" through the page, as the user does. */
+async function registerNeueApotheke() {
+  const user = userEvent.setup();
+  expect(await screen.findByText('Current pharmacy: Apotheke am Markt')).toBeInTheDocument();
+  await user.click(screen.getByRole('textbox', { name: 'Pharmacy name' }));
+  await user.paste('Neue Apotheke');
+  await user.selectOptions(screen.getByRole('combobox', { name: 'Your job function' }), 'Pharmacist');
+  await user.click(screen.getByRole('button', { name: 'Register pharmacy' }));
 }
 
 // The memberships are read again before the new pharmacy is chosen: chosen among memberships that do not hold it yet,
@@ -98,3 +117,41 @@ test('a registered pharmacy becomes the current one and stays, the user is told,
   const registration = host.mock.calls.findIndex(([, init]) => init?.method === 'POST');
   expect(host.mock.calls.slice(registration + 1).some(([, init]) => init?.method !== 'POST')).toBe(true);
 });
+
+// The pharmacy exists, but the page cannot open it: chosen among memberships that do not hold it, it would be
+// forgotten at once. It is not chosen; the user is told where to find it and sent to the start page.
+test.each([
+  ['the memberships cannot be read again', () => Response.json({ title: 'Broken.' }, { status: 500 })],
+  [
+    'the memberships read again do not hold it',
+    () => Response.json({ items: [markt], totalCount: 1, page: 1, pageSize: 100 }),
+  ],
+])(
+  'a registered pharmacy that cannot be opened because %s is not chosen, and the user is told to choose it',
+  async (_reason, readAfterRegistration) => {
+    let registered = false;
+    host.mockImplementation(async (_input, init) => {
+      if (init?.method === 'POST') {
+        registered = true;
+        return Response.json(founded.id, { status: 201 });
+      }
+      return registered
+        ? readAfterRegistration()
+        : Response.json({ items: [markt], totalCount: 1, page: 1, pageSize: 100 });
+    });
+    const pinia = createPinia();
+    const choices = choicesOf(pinia);
+    const { router } = await renderInShell(pinia);
+
+    await registerNeueApotheke();
+
+    await waitFor(() => expect(router.currentRoute.value.path).toBe('/'));
+    expect(notify.success).toHaveBeenCalledExactlyOnceWith(
+      'The pharmacy Neue Apotheke was registered, but it could not be opened. Choose it in the pharmacy switcher.',
+    );
+    expect(notify.failure).not.toHaveBeenCalled();
+    expect(choices).not.toContain(founded.id);
+    expect(localStorage.getItem('pharmacy')).not.toBe(founded.id);
+    expect(screen.getByText('Current pharmacy: Apotheke am Markt')).toBeInTheDocument();
+  },
+);

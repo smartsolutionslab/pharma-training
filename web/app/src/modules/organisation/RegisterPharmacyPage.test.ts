@@ -1,17 +1,22 @@
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/vue';
 import userEvent from '@testing-library/user-event';
-import { createPinia } from 'pinia';
+import { createPinia, type Pinia } from 'pinia';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { defineComponent, h } from 'vue';
 import { createMemoryHistory } from 'vue-router';
+import { getGetOrganisationPharmaciesMineQueryKey, type MyPharmacyDto } from '@/api/generated';
 import { createAppRouter } from '@/router';
+import { useMyPharmacies } from '@/shell/useMyPharmacies';
+import { useSelectedPharmacyStore } from '@/stores/selectedPharmacy';
 import RegisterPharmacyPage from './RegisterPharmacyPage.vue';
 
 const notify = vi.hoisted(() => ({ success: vi.fn(), failure: vi.fn() }));
 vi.mock('@/lib/notify', () => ({ notify }));
 
 // The host, as POST /organisation/pharmacies and GET /organisation/pharmacies/mine reach it through the API client:
-// the user belongs to no pharmacy, and a registration answers what the test says.
+// the user belongs to no pharmacy, and a registration answers what the test says. Once the host has registered one, the
+// next read of the memberships holds it (the founder's membership is saved with the pharmacy).
 const host = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>();
 vi.stubGlobal('fetch', host);
 
@@ -21,12 +26,33 @@ const registered = async () =>
   Response.json(created, { status: 201, headers: { Location: `/organisation/pharmacies/${created}` } });
 let registration: () => Promise<Response> = registered;
 
+/** The founder's membership of the new pharmacy, as the host answers it once the pharmacy is registered. */
+const founded: MyPharmacyDto = {
+  id: created,
+  name: 'Apotheke am Markt',
+  membershipId: '0198c1a0-0000-7000-8000-0000000000b9',
+  role: 'Manager',
+  jobFunction: 'Pharmacist',
+  canManageMembers: true,
+  canAssignCourses: true,
+};
+const membershipsOf = (items: MyPharmacyDto[]) =>
+  Response.json({ items, totalCount: items.length, page: 1, pageSize: 100 });
+
 beforeEach(() => {
   localStorage.clear();
   registration = registered;
-  host.mockImplementation(async (_input, init) =>
-    init?.method === 'POST' ? registration() : Response.json({ items: [], totalCount: 0, page: 1, pageSize: 100 }),
-  );
+  let memberships: MyPharmacyDto[] = [];
+  host.mockImplementation(async (_input, init) => {
+    if (init?.method === 'POST') {
+      const response = await registration();
+      if (response.status === 201) {
+        memberships = [founded];
+      }
+      return response;
+    }
+    return membershipsOf(memberships);
+  });
   notify.success.mockReset();
   notify.failure.mockReset();
 });
@@ -43,13 +69,37 @@ const posted = () =>
     .filter(([, init]) => init?.method === 'POST')
     .map(([input, init]) => ({ url: String(input), body: JSON.parse(String(init?.body)) as unknown }));
 
-/** The page at its address, with a query client of its own that does not retry, so a failure shows at once. */
-async function renderPage() {
+/** The reads of the memberships the host received after the registration, in order. */
+const membershipReadsAfterRegistration = () => {
+  const registration = host.mock.calls.findIndex(([, init]) => init?.method === 'POST');
+  return registration < 0
+    ? []
+    : host.mock.calls.slice(registration + 1).filter(([input, init]) => {
+        return init?.method !== 'POST' && String(input).includes('/api/organisation/pharmacies/mine');
+      });
+};
+
+// Stands in for the app shell, which always reads the memberships (the pharmacy switcher), beside the page.
+const ShellStandIn = defineComponent({
+  setup() {
+    useMyPharmacies();
+    return () => h(RegisterPharmacyPage);
+  },
+});
+
+/**
+ * The page at its address, alone or beside a stand-in for the shell, with a query client of its own that does not
+ * retry, so a failure shows at once.
+ */
+async function renderPage(options: { inShell?: boolean; pinia?: Pinia } = {}) {
   const router = createAppRouter(createMemoryHistory());
   await router.push('/organisation/register');
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  render(RegisterPharmacyPage, { global: { plugins: [router, createPinia(), [VueQueryPlugin, { queryClient }]] } });
-  return { router };
+  const pinia = options.pinia ?? createPinia();
+  render(options.inShell === true ? ShellStandIn : RegisterPharmacyPage, {
+    global: { plugins: [router, pinia, [VueQueryPlugin, { queryClient }]] },
+  });
+  return { router, queryClient, pinia };
 }
 
 const nameField = () => screen.getByRole('textbox', { name: 'Pharmacy name' });
@@ -91,6 +141,14 @@ test('the page says what registering means and asks for the pharmacy name and th
   expect(within(jobFunctionField()).getByRole('option', { name: 'Choose…' })).toBeDisabled();
   expect(submit()).toHaveAttribute('type', 'submit');
   expect(submit()).toBeEnabled();
+});
+
+// Both fields must be filled in; a screen reader says so before the user submits, not only after a refusal.
+test('both fields say they are required', async () => {
+  await renderPage();
+
+  expect(nameField()).toHaveAttribute('aria-required', 'true');
+  expect(jobFunctionField()).toHaveAttribute('aria-required', 'true');
 });
 
 test('an empty form is refused with a message below each field, and nothing is sent', async () => {
@@ -220,4 +278,91 @@ test('the button is disabled while the registration is on its way', async () => 
   await waitFor(() => expect(submit()).toBeDisabled());
   answer(Response.json(created, { status: 201 }));
   await waitFor(() => expect(router.currentRoute.value.path).toBe('/organisation'));
+});
+
+// The memberships are read again after the host registered the pharmacy, before the page moves on: until it has, the
+// button stays disabled, or a second click would register a second pharmacy of the same name.
+test('the button stays disabled until the page has moved on, also while the memberships are read again', async () => {
+  const user = userEvent.setup();
+  let memberships: MyPharmacyDto[] = [];
+  let answerRead: (response: Response) => void = () => undefined;
+  host.mockImplementation(async (_input, init) => {
+    if (init?.method === 'POST') {
+      memberships = [founded];
+      return registered();
+    }
+    if (memberships.length === 0) {
+      return membershipsOf(memberships);
+    }
+    // The read after the registration waits until the test answers it.
+    return new Promise<Response>((resolve) => {
+      answerRead = resolve;
+    });
+  });
+  const { router } = await renderPage({ inShell: true });
+  await fillIn(user, 'Apotheke am Markt', 'Pharmacist');
+
+  await user.click(submit());
+
+  await waitFor(() => expect(membershipReadsAfterRegistration()).toHaveLength(1));
+  expect(submit()).toBeDisabled();
+  await user.click(submit());
+  expect(posted()).toHaveLength(1);
+  expect(router.currentRoute.value.path).toBe('/organisation/register');
+
+  answerRead(membershipsOf([founded]));
+  await waitFor(() => expect(router.currentRoute.value.path).toBe('/organisation'));
+  expect(posted()).toHaveLength(1);
+});
+
+// 201 says the pharmacy exists, whatever the body: the page must not ask the user to register it again. Without its id
+// it cannot choose it, so the user is told it was registered and sent to the start page, where the switcher lists it.
+test('a registration the host answers with 201 but no id is reported as registered, and the user is sent home', async () => {
+  const user = userEvent.setup();
+  const markt: MyPharmacyDto = { ...founded, id: '0198c1a0-0000-7000-8000-0000000000a1', name: 'Apotheke im Dorf' };
+  localStorage.setItem('pharmacy', markt.id);
+  let memberships = [markt];
+  registration = async () => Response.json('x', { status: 201 });
+  host.mockImplementation(async (_input, init) => {
+    if (init?.method === 'POST') {
+      memberships = [markt, { ...founded, name: 'Neue Apotheke' }];
+      return registration();
+    }
+    return membershipsOf(memberships);
+  });
+  const pinia = createPinia();
+  const { router } = await renderPage({ inShell: true, pinia });
+  await waitFor(() => expect(host).toHaveBeenCalled());
+  await fillIn(user, 'Neue Apotheke', 'Pharmacist');
+
+  await user.click(submit());
+
+  await waitFor(() => expect(router.currentRoute.value.path).toBe('/'));
+  expect(notify.failure).not.toHaveBeenCalled();
+  expect(notify.success).toHaveBeenCalledExactlyOnceWith('The pharmacy Neue Apotheke was registered.');
+  expect(useSelectedPharmacyStore(pinia).pharmacyId).toBe(markt.id);
+  expect(localStorage.getItem('pharmacy')).toBe(markt.id);
+  // The memberships were invalidated: the shell read them again, and the new pharmacy is among them.
+  expect(membershipReadsAfterRegistration().length).toBeGreaterThan(0);
+});
+
+// Without the shell, nobody watches the memberships: the page reads them itself before it chooses the new pharmacy, so
+// the choice holds once the shell reads the memberships from the cache.
+test('a registered pharmacy is chosen and opened when nothing else reads the memberships', async () => {
+  const user = userEvent.setup();
+  const pinia = createPinia();
+  const { router, queryClient } = await renderPage({ pinia });
+  await fillIn(user, 'Apotheke am Markt', 'Pharmacist');
+
+  await user.click(submit());
+
+  await waitFor(() => expect(router.currentRoute.value.path).toBe('/organisation'));
+  expect(notify.success).toHaveBeenCalledExactlyOnceWith('The pharmacy Apotheke am Markt was registered.');
+  expect(notify.failure).not.toHaveBeenCalled();
+  expect(useSelectedPharmacyStore(pinia).pharmacyId).toBe(created);
+  expect(membershipReadsAfterRegistration().length).toBeGreaterThan(0);
+  const cached = queryClient
+    .getQueriesData<{ items: MyPharmacyDto[] }>({ queryKey: getGetOrganisationPharmaciesMineQueryKey() })
+    .flatMap(([, data]) => data?.items ?? []);
+  expect(cached.map((membership) => membership.id)).toContain(created);
 });

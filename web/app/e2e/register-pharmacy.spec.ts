@@ -15,7 +15,8 @@ async function signIn(page: Page) {
 test('a signed-in user registers a pharmacy and works in it, after a reload too', async ({ page }) => {
   const name = `E2E Apotheke ${Date.now()}`;
   await signIn(page);
-  const pharmacy = page.getByRole('region', { name: 'Pharmacy' });
+  // Exactly: the start page's region "No pharmacy yet" holds the word too, and a link of the same name.
+  const pharmacy = page.getByRole('region', { name: 'Pharmacy', exact: true });
 
   await pharmacy.getByRole('link', { name: 'Register a pharmacy' }).click();
   await expect(page).toHaveURL(/\/organisation\/register$/);

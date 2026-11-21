@@ -1,5 +1,6 @@
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query';
-import { cleanup, render } from '@testing-library/vue';
+import { cleanup, render, screen } from '@testing-library/vue';
+import userEvent from '@testing-library/user-event';
 import { createPinia } from 'pinia';
 import { afterEach, expect, test, vi } from 'vitest';
 import { axe } from 'vitest-axe';
@@ -162,6 +163,21 @@ test.runIf(Object.keys(emptyExamples).length > 0).each(themes)(
     switchOn();
     const container = await renderPage();
 
+    expect(await axe(container)).toHaveNoViolations();
+  },
+);
+
+// The page as it shows after an empty submit: both fields refused, each with its message below it.
+test.each([{ name: 'light', switchOn: () => undefined }, ...themes])(
+  'the Register a pharmacy page has no accessibility violations axe can find with both fields refused, in the $name theme',
+  async ({ switchOn }) => {
+    switchOn();
+    const user = userEvent.setup();
+    const container = await renderPage();
+
+    await user.click(screen.getByRole('button', { name: 'Register pharmacy' }));
+
+    expect(await screen.findAllByRole('alert')).toHaveLength(2);
     expect(await axe(container)).toHaveNoViolations();
   },
 );
