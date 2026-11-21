@@ -18,14 +18,14 @@ public sealed record PharmacyName : IValueObject<string>
     {
         Ensure.That(value).IsNotNullOrWhiteSpace();
         var trimmed = value.Trim();
-        Ensure.That(trimmed).HasMaxLength(MaxLength);
+        Ensure.That(trimmed).HasMaxLength(MaxLength).Satisfies(text => !text.Contains('\0', StringComparison.Ordinal), "A nul character cannot be stored.");
         return new PharmacyName(trimmed);
     }
 
     public static bool TryFrom(string? value, [NotNullWhen(true)] out PharmacyName? name)
     {
         var trimmed = value?.Trim();
-        name = string.IsNullOrEmpty(trimmed) || trimmed.Length > MaxLength ? null : new PharmacyName(trimmed);
+        name = string.IsNullOrEmpty(trimmed) || trimmed.Length > MaxLength || trimmed.Contains('\0', StringComparison.Ordinal) ? null : new PharmacyName(trimmed);
         return name is not null;
     }
 
