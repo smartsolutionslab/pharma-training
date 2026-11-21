@@ -19,6 +19,7 @@ public static class ModuleInfrastructure
         services.AddModuleAdapters<TModule>();
         services.AddModulePolicies<TModule>();
         services.AddModuleBlobStorage(configuration);
+        services.AddModuleMail(configuration);
         return services;
     }
 }
