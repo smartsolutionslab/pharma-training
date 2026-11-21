@@ -105,6 +105,6 @@ test('a pharmacy chosen on an earlier visit is not asked for again, where a visi
   localStorage.removeItem('pharmacy');
   const unchosen = renderHome();
 
-  expect(await unchosen.findByRole('heading', { name: 'Choose your pharmacy' })).toBeInTheDocument();
-  expect(chosen.queryByRole('heading', { name: 'Choose your pharmacy' })).not.toBeInTheDocument();
+  expect(await within(unchosen.container).findByRole('heading', { name: 'Choose your pharmacy' })).toBeInTheDocument();
+  expect(within(chosen.container).queryByRole('heading', { name: 'Choose your pharmacy' })).not.toBeInTheDocument();
 });
