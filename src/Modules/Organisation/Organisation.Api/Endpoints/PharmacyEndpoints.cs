@@ -37,7 +37,8 @@ public sealed class PharmacyEndpoints : IEndpoint
                 return Result<Guid, ApiError>.Failure(PharmacyFailures.InvalidName()).ToCreatedHttpResult(Location);
             }
 
-            if (request.JobFunction is not { } jobFunction)
+            // The enum's converter also reads numbers, so an undefined one is the caller's mistake too, not a bug.
+            if (request.JobFunction is not { } jobFunction || !Enum.IsDefined(jobFunction))
             {
                 return Result<Guid, ApiError>.Failure(PharmacyFailures.InvalidJobFunction()).ToCreatedHttpResult(Location);
             }

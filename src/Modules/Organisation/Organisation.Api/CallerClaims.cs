@@ -23,14 +23,14 @@ public static class CallerClaims
         return Option<PersonId>.None;
     }
 
-    /// <summary>The person with their name (or, without one, their user name) and a valid e-mail address.</summary>
+    /// <summary>The person with their name (or, without one that fits, their user name) and a valid e-mail address.</summary>
     public static Option<Caller> Of(ClaimsPrincipal user)
     {
         Ensure.That(user).IsNotNull();
 
         var person = PersonOf(user);
         if (person.HasValue
-            && DisplayName.TryFrom(First(user, "name", ClaimTypes.Name) ?? First(user, "preferred_username"), out var name)
+            && (DisplayName.TryFrom(First(user, "name", ClaimTypes.Name), out var name) || DisplayName.TryFrom(First(user, "preferred_username"), out name))
             && EmailAddress.TryFrom(First(user, "email", ClaimTypes.Email), out var email))
         {
             return Option<Caller>.Some(new Caller(person.Value, name, email));
