@@ -1,6 +1,7 @@
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Testing;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 
@@ -55,6 +56,40 @@ public class AppHostParametersTests
         key.ShouldBe("configured-key");
     }
 
+    [Fact]
+    public async Task The_mail_parameters_have_their_defaults_and_reach_every_service()
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(Timeout);
+        await using var builder = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AppHost>(timeout.Token);
+        Unconfigured(builder);
+
+        var mailFrom = builder.Resources.OfType<ParameterResource>().SingleOrDefault(parameter => parameter.Name == "mail-from");
+        mailFrom.ShouldNotBeNull("the AppHost has no parameter mail-from");
+        (await mailFrom.GetValueAsync(timeout.Token)).ShouldBe("noreply@example.com");
+        var mail = builder.Resources.OfType<IResourceWithConnectionString>().SingleOrDefault(resource => resource.Name == "mail");
+        mail.ShouldNotBeNull("the AppHost has no connection string mail");
+        mail.ConnectionStringExpression.ValueExpression.ShouldStartWith("smtp://", Case.Sensitive, "in run mode the services send to Mailpit's SMTP endpoint, without credentials");
+        mail.ConnectionStringExpression.ValueExpression.ShouldContain("{mailpit.bindings.smtp.", Case.Sensitive);
+
+        var services = Services(builder);
+        services.ShouldNotBeEmpty();
+        foreach (var service in services)
+        {
+            var configuration = await ExecutionConfigurationBuilder.Create(service)
+                .WithEnvironmentVariablesConfig()
+                .BuildAsync(new DistributedApplicationExecutionContext(DistributedApplicationOperation.Publish), NullLogger.Instance, timeout.Token);
+            var environment = configuration.EnvironmentVariables.ToDictionary(variable => variable.Key, variable => variable.Value, StringComparer.Ordinal);
+
+            environment.ShouldContainKey("ConnectionStrings__mail", $"{service.Name} does not read the connection string mail.");
+            environment["ConnectionStrings__mail"].ShouldBe("{mail.connectionString}");
+            environment.ShouldContainKey("Mail__From", $"{service.Name} does not read Mail:From.");
+            environment["Mail__From"].ShouldBe("{mail-from.value}");
+            environment.ShouldContainKey("Frontend__BaseUrl", $"{service.Name} does not read Frontend:BaseUrl.");
+            environment["Frontend__BaseUrl"].ShouldContain("{web.bindings.http.", Case.Sensitive);
+        }
+    }
+
     /// <summary>A developer's user secrets must not decide what these tests see.</summary>
     private static void Unconfigured(IDistributedApplicationTestingBuilder builder)
     {
@@ -64,4 +99,20 @@ public class AppHostParametersTests
 
     private static ParameterResource Parameter(IDistributedApplicationTestingBuilder builder, string name) =>
         builder.Resources.OfType<ParameterResource>().Single(parameter => parameter.Name == name);
+
+    /// <summary>Every module's service host, found as the AppHost finds them: src/Services/*/Host/Host.csproj.</summary>
+    private static List<ProjectResource> Services(IDistributedApplicationTestingBuilder builder) =>
+        [.. builder.Resources.OfType<ProjectResource>()
+            .Where(project => IsServiceHost(project.GetProjectMetadata().ProjectPath))
+            .OrderBy(project => project.Name, StringComparer.Ordinal)];
+
+    private static bool IsServiceHost(string projectPath)
+    {
+        var host = Path.GetDirectoryName(projectPath);
+        var service = Path.GetDirectoryName(host);
+        var services = Path.GetDirectoryName(service);
+        return Path.GetFileName(projectPath) == "Host.csproj"
+            && Path.GetFileName(host) == "Host"
+            && Path.GetFileName(services) == "Services";
+    }
 }
