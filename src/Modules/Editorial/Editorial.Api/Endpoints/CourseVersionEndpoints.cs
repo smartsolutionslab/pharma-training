@@ -17,10 +17,11 @@ public sealed class CourseVersionEndpoints : IEndpoint
     {
         Ensure.That(endpoints).IsNotNull();
 
-        endpoints.MapGet("/course-versions", async (EditorialCourseVersionStatus? status, Page? page, PageSize? pageSize, IDispatcher dispatcher, CancellationToken cancellationToken) =>
+        endpoints.MapGet("/course-versions", async (EditorialCourseVersionStatus? status, HttpRequest request, Page? page, PageSize? pageSize, IDispatcher dispatcher, CancellationToken cancellationToken) =>
         {
-            // The enum's converter also reads numbers, so an undefined one is the caller's mistake too, not a bug.
-            if (status is { } given && !Enum.IsDefined(given))
+            // The enum's converter also reads numbers, so an undefined one is the caller's mistake too, not a bug; and binding
+            // ORs a comma-separated list into one value, which may be another status, so a list is refused as well.
+            if ((status is { } given && !Enum.IsDefined(given)) || request.Query["status"].ToString().Contains(',', StringComparison.Ordinal))
             {
                 return Result<PagedResult<EditorialCourseVersionSummaryDto>, ApiError>.Failure(CourseVersionFailures.InvalidCourseVersionStatus()).ToHttpResult();
             }

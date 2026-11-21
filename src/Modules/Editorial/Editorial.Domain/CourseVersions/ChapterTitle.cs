@@ -16,14 +16,14 @@ public sealed record ChapterTitle : IValueObject<string>
 
     public static ChapterTitle From(string value)
     {
-        Ensure.That(value).IsNotNullOrWhiteSpace().HasMaxLength(MaxLength);
+        Ensure.That(value).IsNotNullOrWhiteSpace().HasMaxLength(MaxLength).Satisfies(text => !text.Contains('\0', StringComparison.Ordinal), "A nul character cannot be stored.");
         return new ChapterTitle(value.Trim());
     }
 
     /// <summary>Succeeds exactly when <see cref="From"/> would: the length counts before trimming.</summary>
     public static bool TryFrom(string? value, [NotNullWhen(true)] out ChapterTitle? result)
     {
-        result = string.IsNullOrWhiteSpace(value) || value.Length > MaxLength ? null : new ChapterTitle(value.Trim());
+        result = string.IsNullOrWhiteSpace(value) || value.Length > MaxLength || value.Contains('\0', StringComparison.Ordinal) ? null : new ChapterTitle(value.Trim());
         return result is not null;
     }
 

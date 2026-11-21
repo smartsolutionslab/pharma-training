@@ -16,14 +16,14 @@ public sealed record CourseTitle : IValueObject<string>
 
     public static CourseTitle From(string value)
     {
-        Ensure.That(value).IsNotNullOrWhiteSpace().HasMaxLength(MaxLength);
+        Ensure.That(value).IsNotNullOrWhiteSpace().HasMaxLength(MaxLength).Satisfies(text => !text.Contains('\0', StringComparison.Ordinal), "A nul character cannot be stored.");
         return new CourseTitle(value.Trim());
     }
 
     /// <summary>Succeeds exactly when <see cref="From"/> would: the length counts before trimming.</summary>
     public static bool TryFrom(string? value, [NotNullWhen(true)] out CourseTitle? result)
     {
-        result = string.IsNullOrWhiteSpace(value) || value.Length > MaxLength ? null : new CourseTitle(value.Trim());
+        result = string.IsNullOrWhiteSpace(value) || value.Length > MaxLength || value.Contains('\0', StringComparison.Ordinal) ? null : new CourseTitle(value.Trim());
         return result is not null;
     }
 
