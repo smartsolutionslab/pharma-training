@@ -39,15 +39,49 @@ public class PharmacyTests
         var pharmacy = Register();
         var token = Token();
         var membership = Invite(pharmacy, AnnaMail, token);
+        var anna = pharmacy.Memberships.Single(m => m.Id == membership);
+        anna.TokenHash.ShouldBe(InvitationTokenHash.Of(token));
 
         pharmacy.AcceptInvitation(token, Anna, DisplayName.From("Anna Berger"), AnnaMail, Now.PlusDays(2)).IsSuccess.ShouldBeTrue();
 
-        var anna = pharmacy.Memberships.Single(m => m.Id == membership);
         anna.Status.ShouldBe(MembershipStatus.Active);
         anna.Name.ShouldBe(DisplayName.From("Anna Berger"));
-        anna.Token.ShouldBeNull();
+        anna.TokenHash.ShouldBeNull();
         pharmacy.AcceptInvitation(token, Anna, DisplayName.From("Anna Berger"), AnnaMail, Now.PlusDays(2))
             .Error.ShouldBeOfType<InvitationNotFound>();
+    }
+
+    [Fact]
+    public void An_invitation_keeps_only_the_hash_of_its_token()
+    {
+        var pharmacy = Register();
+        var token = Token();
+        var membership = Invite(pharmacy, AnnaMail, token);
+
+        pharmacy.Memberships.Single(m => m.Id == membership).TokenHash.ShouldBe(InvitationTokenHash.Of(token));
+    }
+
+    [Fact]
+    public void The_invitation_carries_the_pharmacys_name_and_the_token_for_the_mail()
+    {
+        var pharmacy = Register();
+        var token = Token();
+        Invite(pharmacy, AnnaMail, token);
+
+        var invited = pharmacy.DomainEvents.OfType<MemberInvited>().ShouldHaveSingleItem();
+        invited.Name.ShouldBe(PharmacyName.From("Stadt-Apotheke Schwarzenfeld"));
+        invited.Token.ShouldBe(token);
+    }
+
+    [Fact]
+    public void Neither_the_token_nor_the_invitation_prints_the_secret()
+    {
+        var pharmacy = Register();
+        var token = Token();
+        Invite(pharmacy, AnnaMail, token);
+
+        token.ToString().ShouldNotContain(token.Value);
+        pharmacy.DomainEvents.OfType<MemberInvited>().ShouldHaveSingleItem().ToString().ShouldNotContain(token.Value);
     }
 
     [Fact]
@@ -71,8 +105,25 @@ public class PharmacyTests
 
         pharmacy.RenewInvitation(membership, fresh, Now.PlusDays(20));
 
+        pharmacy.Memberships.Single(m => m.Id == membership).TokenHash.ShouldBe(InvitationTokenHash.Of(fresh));
+        pharmacy.DomainEvents.OfType<MemberInvited>().Last().Name.ShouldBe(PharmacyName.From("Stadt-Apotheke Schwarzenfeld"));
         pharmacy.AcceptInvitation(old, Anna, DisplayName.From("Anna Berger"), AnnaMail, Now.PlusDays(21)).Error.ShouldBeOfType<InvitationNotFound>();
         pharmacy.AcceptInvitation(fresh, Anna, DisplayName.From("Anna Berger"), AnnaMail, Now.PlusDays(21)).IsSuccess.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void A_revoked_invitation_keeps_no_hash_and_its_link_is_refused()
+    {
+        var pharmacy = Register();
+        var token = Token();
+        var membership = Invite(pharmacy, AnnaMail, token);
+        var revoked = pharmacy.Memberships.Single(m => m.Id == membership);
+        revoked.TokenHash.ShouldBe(InvitationTokenHash.Of(token));
+
+        pharmacy.RevokeInvitation(membership).IsSuccess.ShouldBeTrue();
+
+        revoked.TokenHash.ShouldBeNull();
+        pharmacy.AcceptInvitation(token, Anna, DisplayName.From("Anna Berger"), AnnaMail, Now).Error.ShouldBeOfType<InvitationNotFound>();
     }
 
     [Fact]

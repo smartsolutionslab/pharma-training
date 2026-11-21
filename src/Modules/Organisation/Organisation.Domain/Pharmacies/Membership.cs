@@ -14,6 +14,9 @@ public sealed class Membership : Entity<MembershipId>
 
     public InvitationToken? Token { get; private set; }
 
+    /// <summary>Stub for #9's red tests (T1): the hash of the open invitation's token is not kept yet.</summary>
+    public InvitationTokenHash? TokenHash => Token is null ? null : default;
+
     public Timestamp? InvitationExpiresAt { get; private set; }
 
     public PersonId? Person { get; private set; }
