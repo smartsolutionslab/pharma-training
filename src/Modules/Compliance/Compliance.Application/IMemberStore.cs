@@ -4,7 +4,8 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application;
 
 /// <summary>
 /// Compliance's copies of Organisation's memberships and their endings; implemented in its Infrastructure project. What
-/// is added is saved when the module's unit of work commits, and nothing stored is ever changed.
+/// is added is saved when the module's unit of work commits. The consumers never change what they stored; a later
+/// erasure (DSGVO) or a change event would be a deliberate new path, not a breach of this store.
 /// </summary>
 public interface IMemberStore
 {

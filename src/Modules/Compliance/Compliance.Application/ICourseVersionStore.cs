@@ -4,7 +4,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application;
 
 /// <summary>
 /// Compliance's copies of Editorial's course versions and their retirements; implemented in its Infrastructure project.
-/// What is added is saved when the module's unit of work commits, and nothing stored is ever changed.
+/// What is added is saved when the module's unit of work commits; the consumers never change what they stored.
 /// </summary>
 public interface ICourseVersionStore
 {
