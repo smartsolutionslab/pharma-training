@@ -11,14 +11,20 @@ public sealed partial class EventSourcedEventsCarryNoPersonalData : IArchitectur
         "SmartSolutionsLab.PharmaTraining.Contracts.Assessment",
     ];
 
-    public string Description => "Integration events of Learning and Assessment carry no name or e-mail at any depth, only PersonId, so a person can be erased from the services that keep their names (docs/domain/README.md). Their internal domain events are not checked here.";
+    public string Description => "Integration events of Learning and Assessment, in their namespaces and below, have no member named like a name or an e-mail address (name, mail) at any depth, so a person can be erased from the services that keep their names (docs/domain/README.md). It checks member names only; their internal domain events are not checked here.";
 
-    public static IReadOnlyList<Type> EventsOfEventSourcedModules() =>
-        [.. Assembly.Load("Contracts")
-            .GetTypes()
-            .Where(type => type is { IsClass: true, IsAbstract: false }
-                && EventSourcedNamespaces.Contains(type.Namespace)
-                && type.GetInterfaces().Any(contract => contract.FullName == "SmartSolutionsLab.PharmaTraining.Contracts.IIntegrationEvent"))];
+    public static IReadOnlyList<Type> EventsOfEventSourcedModules() => EventsIn(Assembly.Load("Contracts").GetTypes(), EventSourcedNamespaces);
+
+    public static IReadOnlyList<Type> EventsIn(IEnumerable<Type> types, IEnumerable<string> namespaces)
+    {
+        Ensure.That(types).IsNotNull();
+        Ensure.That(namespaces).IsNotNull();
+
+        var roots = namespaces.ToList();
+        return [.. types.Where(type => type is { IsClass: true, IsAbstract: false }
+            && type.Namespace is { } ns && roots.Any(root => ns == root || ns.StartsWith(root + ".", StringComparison.Ordinal))
+            && type.GetInterfaces().Any(contract => contract.FullName == "SmartSolutionsLab.PharmaTraining.Contracts.IIntegrationEvent"))];
+    }
 
     public static IEnumerable<string> Violations(IEnumerable<Type> events)
     {
@@ -59,8 +65,7 @@ public sealed partial class EventSourcedEventsCarryNoPersonalData : IArchitectur
                 yield return $"{path}.{name} looks like personal data; events of Learning and Assessment carry only PersonId (docs/domain/README.md).";
             }
 
-            var walked = ElementType(memberType);
-            if (IsWalked(walked))
+            foreach (var walked in Reachable(memberType).Where(IsWalked))
             {
                 foreach (var violation in Walk(walked, $"{path}.{name}", visited))
                 {
@@ -87,6 +92,17 @@ public sealed partial class EventSourcedEventsCarryNoPersonalData : IArchitectur
             : type.GetInterfaces().FirstOrDefault(contract => contract.IsGenericType && contract.GetGenericTypeDefinition() == typeof(IEnumerable<>));
 
         return enumerable is null ? type : ElementType(enumerable.GetGenericArguments()[0]);
+    }
+
+    private static IEnumerable<Type> Reachable(Type type)
+    {
+        var element = ElementType(type);
+        if (element.IsGenericType && element.Namespace?.StartsWith("System", StringComparison.Ordinal) == true)
+        {
+            return element.GetGenericArguments().SelectMany(Reachable);
+        }
+
+        return [element];
     }
 
     private static bool IsWalked(Type type) =>
