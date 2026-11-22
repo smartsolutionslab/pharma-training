@@ -28,6 +28,12 @@ public static class ContentReviewer
     /// </summary>
     private const int ReasoningTokens = 16_384;
 
+    /// <summary>
+    /// The most output tokens a gpt-5 deployment accepts for one call; a larger <see cref="ChatOptions.MaxOutputTokens"/>
+    /// is refused with a 400, so the cap stops here, for versions of 21 text chapters and more.
+    /// </summary>
+    private const int OutputTokenCeiling = 128_000;
+
     /// <summary>Strict numbers; kinds by their names alone, read by <see cref="ContentReviewAnswerKindConverter"/>.</summary>
     private static readonly JsonSerializerOptions AnswerJson = Options(new ContentReviewAnswerKindConverter());
 
@@ -49,7 +55,9 @@ public static class ContentReviewer
         var options = new ChatOptions
         {
             ResponseFormat = ResponseFormat,
-            MaxOutputTokens = (ContentReviewAnswer.MaxHintsPerChapter * request.Chapters.Count * OutputTokensPerHint) + ReasoningTokens,
+            MaxOutputTokens = Math.Min(
+                (ContentReviewAnswer.MaxHintsPerChapter * request.Chapters.Count * OutputTokensPerHint) + ReasoningTokens,
+                OutputTokenCeiling),
         };
         var response = await model.GetResponseAsync(ContentReviewPrompt.Messages(request), options, cancellationToken);
         return Read(response.Text);
@@ -93,6 +101,11 @@ public static class ContentReviewer
         }
         catch (JsonException)
         {
+            return Unreadable();
+        }
+        catch (ArgumentException)
+        {
+            // A raw lone surrogate cannot be transcoded to UTF-8: another IChatClient than OpenAI's could return one.
             return Unreadable();
         }
 

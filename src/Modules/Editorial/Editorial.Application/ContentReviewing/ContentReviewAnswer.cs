@@ -53,7 +53,8 @@ public sealed record ContentReviewAnswer(IReadOnlyList<ContentReviewAnswerHint> 
 
     /// <summary>
     /// Not blank, not too long, no nul, no control character but a line break or a tab, and no format character (bidi
-    /// overrides and isolates, zero-width characters), so a text of zero-width characters alone is refused too.
+    /// overrides and isolates, zero-width characters), so a text of zero-width characters alone is refused too. Line and
+    /// paragraph separators, private-use and unassigned code points are refused as well: none belongs in a hint.
     /// </summary>
     private static bool IsShowable(string text) =>
         text.Length > 0
@@ -63,7 +64,11 @@ public sealed record ContentReviewAnswer(IReadOnlyList<ContentReviewAnswerHint> 
 
     private static bool IsShowable(Rune character) =>
         character.Value is '\n' or '\r' or '\t'
-        || (!Rune.IsControl(character) && Rune.GetUnicodeCategory(character) != UnicodeCategory.Format);
+        || (!Rune.IsControl(character) && Rune.GetUnicodeCategory(character) is not (UnicodeCategory.Format
+            or UnicodeCategory.LineSeparator
+            or UnicodeCategory.ParagraphSeparator
+            or UnicodeCategory.PrivateUse
+            or UnicodeCategory.OtherNotAssigned));
 
     private static ContentHintKind Kind(ContentReviewAnswerKind kind) => kind switch
     {
