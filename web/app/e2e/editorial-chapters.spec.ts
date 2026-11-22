@@ -102,3 +102,46 @@ test("the preview shows an editor's Markdown rendered, and a script in it as tex
   await expect(dialog.locator('.markdown a[href^="javascript:"]')).toHaveCount(0);
   expect(ran).toEqual([]);
 });
+
+/** The chapters' titles in the order the list shows them. */
+const titlesShown = async (page: Page, titles: string[]) =>
+  expect(chapters(page)).toHaveText(titles.map((title) => new RegExp(title)));
+
+test('an editor moves the third chapter to the top with its button; a reload keeps the order', async ({ page }) => {
+  await startCourse(page, `E2E Reihenfolge ${Date.now()}`);
+  for (const title of ['Erstes', 'Zweites', 'Drittes']) {
+    await addTextChapter(page, title, `# ${title}`);
+  }
+  await titlesShown(page, ['Erstes', 'Zweites', 'Drittes']);
+
+  const up = page.getByRole('button', { name: /^„Drittes. nach oben verschieben$/ });
+  await up.click();
+  await expect(page.getByText(/^„Drittes. steht jetzt an Position 2 von 3\.$/)).toBeAttached();
+  await titlesShown(page, ['Erstes', 'Drittes', 'Zweites']);
+  // The button keeps the focus, so a keyboard user presses it again.
+  await expect(up).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.getByText(/^„Drittes. steht jetzt an Position 1 von 3\.$/)).toBeAttached();
+  await titlesShown(page, ['Drittes', 'Erstes', 'Zweites']);
+  await expect(up).toBeDisabled();
+
+  await page.reload();
+  await titlesShown(page, ['Drittes', 'Erstes', 'Zweites']);
+  await expect(chapters(page).first()).toContainText('Kapitel 1');
+});
+
+test('an editor drags the first chapter by its handle onto the last; a reload keeps the order', async ({ page }) => {
+  await startCourse(page, `E2E Ziehen ${Date.now()}`);
+  for (const title of ['Erstes', 'Zweites', 'Drittes']) {
+    await addTextChapter(page, title, `# ${title}`);
+  }
+
+  await chapters(page)
+    .filter({ hasText: 'Erstes' })
+    .getByTitle('Zum Verschieben ziehen')
+    .dragTo(chapters(page).filter({ hasText: 'Drittes' }));
+
+  await titlesShown(page, ['Zweites', 'Drittes', 'Erstes']);
+  await page.reload();
+  await titlesShown(page, ['Zweites', 'Drittes', 'Erstes']);
+});

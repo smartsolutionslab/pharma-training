@@ -1,5 +1,5 @@
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query';
-import { cleanup, render, screen, waitFor, within } from '@testing-library/vue';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/vue';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { axe } from 'vitest-axe';
@@ -722,5 +722,126 @@ describe('deleting a chapter', () => {
       screen.queryByRole('button', { name: t('editorial.chapters.remove', { title: introduction.title }) }),
     ).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: t('editorial.chapters.add') })).not.toBeInTheDocument();
+  });
+});
+
+// Reordering (T8): the move buttons and dragging a chapter by its handle both send every chapter's id in the new order
+// (PUT .../chapters/order). The list shows the new order before the host answers, and the previous one again if it
+// refuses.
+
+/** The chapters' titles in the order the list shows them. */
+const shownOrder = () =>
+  within(chapterList())
+    .getAllByRole('listitem')
+    .map(
+      (listItem) =>
+        [introduction, handout, handwashing].find((each) => within(listItem).queryByText(each.title) !== null)?.title,
+    );
+
+/** The host's answer to the reorder, held until the test lets it go. */
+function holdReorder() {
+  let answer: (response: Response) => void = () => undefined;
+  const response = new Promise<Response>((resolve) => {
+    answer = resolve;
+  });
+  changing = (method, path) =>
+    method === 'PUT' && path.endsWith('/chapters/order')
+      ? response
+      : Promise.resolve(new Response(null, { status: 204 }));
+  return answer;
+}
+
+describe('reordering the chapters', () => {
+  test('a move button sends the new order and the list shows it before the host answers', async () => {
+    const user = userEvent.setup();
+    const answer = holdReorder();
+    await renderPage();
+
+    await user.click(
+      screen.getByRole('button', { name: t('editorial.chapters.moveUp', { title: handwashing.title }) }),
+    );
+
+    await waitFor(() => expect(shownOrder()).toEqual([introduction.title, handwashing.title, handout.title]));
+    expect(changes()).toEqual([
+      {
+        method: 'PUT',
+        path: `/editorial/course-versions/${versionId}/chapters/order`,
+        body: { chapters: [introduction.id, handwashing.id, handout.id] },
+      },
+    ]);
+    expect(
+      await screen.findByText(t('editorial.chapters.moved', { title: handwashing.title, position: 2, count: 3 })),
+    ).toBeInTheDocument();
+    // The button pressed keeps the focus once its chapter has moved.
+    expect(
+      screen.getByRole('button', { name: t('editorial.chapters.moveUp', { title: handwashing.title }) }),
+    ).toHaveFocus();
+
+    version = versionOf('Draft', [introduction, { ...handwashing, position: 2 }, { ...handout, position: 3 }]);
+    answer(Response.json({}));
+
+    await waitFor(() => expect(reads().length).toBeGreaterThan(1));
+    expect(shownOrder()).toEqual([introduction.title, handwashing.title, handout.title]);
+    expect(notify.failure).not.toHaveBeenCalled();
+  });
+
+  test('dragging a chapter by its handle onto another sends the new order', async () => {
+    await renderPage();
+
+    const transfer = { setData: () => undefined, getData: () => '', dropEffect: 'none', effectAllowed: 'all' };
+    const target = chapterItem(introduction) as HTMLElement;
+    await fireEvent.dragStart(
+      within(chapterItem(handwashing) as HTMLElement).getByTitle(t('editorial.chapters.dragHint')),
+      { dataTransfer: transfer },
+    );
+    await fireEvent.dragOver(target, { dataTransfer: transfer });
+    await fireEvent.drop(target, { dataTransfer: transfer });
+
+    await waitFor(() =>
+      expect(changes()).toEqual([
+        {
+          method: 'PUT',
+          path: `/editorial/course-versions/${versionId}/chapters/order`,
+          body: { chapters: [handwashing.id, introduction.id, handout.id] },
+        },
+      ]),
+    );
+    await waitFor(() => expect(shownOrder()).toEqual([handwashing.title, introduction.title, handout.title]));
+  });
+
+  test.each([
+    [
+      'a 409 of the module',
+      () =>
+        new Response(
+          JSON.stringify({
+            title: 'Conflict',
+            status: 409,
+            detail: 'Die Reihenfolge nennt nicht jedes Kapitel der Version genau einmal.',
+            code: 'editorial.order-does-not-match-chapters',
+          }),
+          { status: 409, headers: { 'Content-Type': 'application/problem+json' } },
+        ),
+      () => 'Die Reihenfolge nennt nicht jedes Kapitel der Version genau einmal.',
+    ],
+    [
+      'a 500',
+      () => new Response('', { status: 500 }),
+      () => 'Die Reihenfolge konnte nicht gespeichert werden. Die vorherige Reihenfolge ist wiederhergestellt.',
+    ],
+  ])('an order the host refuses with %s is undone on the page and reported', async (_answer, refusal, message) => {
+    const user = userEvent.setup();
+    const answer = holdReorder();
+    await renderPage();
+
+    await user.click(
+      screen.getByRole('button', { name: t('editorial.chapters.moveDown', { title: introduction.title }) }),
+    );
+    await waitFor(() => expect(shownOrder()).toEqual([handout.title, introduction.title, handwashing.title]));
+    answer(refusal());
+
+    await waitFor(() => expect(notify.failure).toHaveBeenCalledWith(message()));
+    await waitFor(() => expect(shownOrder()).toEqual([introduction.title, handout.title, handwashing.title]));
+    await waitFor(() => expect(reads().length).toBeGreaterThan(1));
   });
 });
