@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, useId } from 'vue';
+import { RouterLink } from 'vue-router';
 import { Button } from '@/components/ui/button';
 import { useCurrentPharmacy } from '@/shell/useCurrentPharmacy';
 
@@ -10,7 +11,10 @@ const { status, memberships, current, choose } = useCurrentPharmacy();
 const asksForPharmacy = computed(
   () => status.value === 'ready' && memberships.value.length > 1 && current.value === undefined,
 );
+// With none at all, it leads the user to register their pharmacy, or to ask its manager for an invitation.
+const hasNoPharmacy = computed(() => status.value === 'ready' && memberships.value.length === 0);
 const headingId = useId();
+const noPharmacyHeadingId = useId();
 const title = ref<HTMLHeadingElement | null>(null);
 
 // The chosen button goes away with the prompt: focus moves to the page's heading rather than falling to the body.
@@ -34,6 +38,15 @@ async function chooseAndFocus(id: string) {
           </Button>
         </li>
       </ul>
+    </section>
+    <section v-if="hasNoPharmacy" :aria-labelledby="noPharmacyHeadingId" class="flex flex-col items-start gap-2 p-4">
+      <h2 :id="noPharmacyHeadingId" class="text-body font-semibold">No pharmacy yet</h2>
+      <p class="text-body">
+        You are not a member of any pharmacy yet. Register your pharmacy, or ask its manager for an invitation.
+      </p>
+      <RouterLink to="/organisation/register" class="text-body text-primary underline underline-offset-4">
+        Register a pharmacy
+      </RouterLink>
     </section>
   </main>
 </template>

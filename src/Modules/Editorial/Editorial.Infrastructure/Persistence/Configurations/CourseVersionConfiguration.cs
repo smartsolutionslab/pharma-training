@@ -24,7 +24,7 @@ public sealed class CourseVersionConfiguration : IEntityTypeConfiguration<Course
         builder.Property(version => version.SubmittedBy).HasColumnName("submitted_by");
         builder.Property(version => version.PublishedBy).HasColumnName("published_by");
         builder.Property(version => version.PublishedAt).HasColumnName("published_at");
-        // The version is the consistency boundary: a save of it or of any of its chapters checks and moves this on.
+        // The version is the consistency boundary: a save of it or of any of its chapters, questions or options checks and moves this on.
         builder.HasRowVersion();
         builder.ComplexProperty(version => version.Blueprint, blueprint =>
         {
@@ -41,9 +41,13 @@ public sealed class CourseVersionConfiguration : IEntityTypeConfiguration<Course
             .HasField("chapters")
             .UsePropertyAccessMode(PropertyAccessMode.Field);
 
-        // Questions, their options and their order are mapped with the use cases that create them (#16); until then
-        // no version holds one.
-        builder.Ignore(version => version.Questions);
+        builder.HasMany(version => version.Questions)
+            .WithOne()
+            .HasForeignKey(QuestionConfiguration.CourseVersionId)
+            .OnDelete(DeleteBehavior.Cascade);
+        builder.Navigation(version => version.Questions)
+            .HasField("questions")
+            .UsePropertyAccessMode(PropertyAccessMode.Field);
 
         builder.HasIndex(version => version.Course);
         builder.HasIndex(version => version.Status);

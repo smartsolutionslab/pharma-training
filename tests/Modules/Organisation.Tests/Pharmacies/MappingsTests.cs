@@ -38,6 +38,20 @@ public class MappingsTests
         }
     }
 
+    public static TheoryData<OrganisationMembershipRole> RequestedRoles
+    {
+        get
+        {
+            var data = new TheoryData<OrganisationMembershipRole>();
+            foreach (var role in Enum.GetValues<OrganisationMembershipRole>())
+            {
+                data.Add(role);
+            }
+
+            return data;
+        }
+    }
+
     [Theory]
     [MemberData(nameof(JobFunctions))]
     public void A_job_function_travels_under_its_own_name_to_the_dto_and_back(JobFunction jobFunction)
@@ -52,6 +66,15 @@ public class MappingsTests
     [MemberData(nameof(MembershipRoles))]
     public void A_membership_role_travels_under_its_own_name_to_the_dto(MembershipRole role) =>
         role.ToDto().ToString().ShouldBe(role.ToString());
+
+    [Theory]
+    [MemberData(nameof(RequestedRoles))]
+    public void A_requested_membership_role_travels_under_its_own_name_to_the_domain(OrganisationMembershipRole role) =>
+        role.ToDomain().ToString().ShouldBe(role.ToString());
+
+    [Fact]
+    public void An_undefined_requested_membership_role_is_a_bug() =>
+        Should.Throw<System.Diagnostics.UnreachableException>(() => ((OrganisationMembershipRole)42).ToDomain());
 
     [Theory]
     [MemberData(nameof(JobFunctions))]
@@ -96,6 +119,16 @@ public class MappingsTests
             JobFunctionV1.Pka,
             MembershipRoleV1.Manager,
             Now.Value));
+    }
+
+    [Fact]
+    public void An_ended_membership_is_announced_with_every_field()
+    {
+        var ended = new MembershipEnded(PharmacyId.New(), MembershipId.New(), PersonId.From(Guid.CreateVersion7()), Now);
+
+        var announced = ended.ToIntegrationEvent();
+
+        announced.ShouldBe(new MembershipEndedV1(ended.Membership.Value, ended.Person.Value, ended.Pharmacy.Value, Now.Value));
     }
 
     private static MembershipStarted Started(JobFunction jobFunction, MembershipRole role) =>

@@ -12,7 +12,9 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// <summary>The whole application, started once per test run on empty containers.</summary>
 public sealed class AspireFixture : IAsyncLifetime
 {
-    private static readonly TimeSpan StartupTimeout = TimeSpan.FromMinutes(5);
+    // Everything starts at once: the containers, a migration runner and a host per module. On a 4-vCPU CI runner that took
+    // 3.5 to over 5 minutes on 2026-11-21, growing with every module; 5 minutes failed whole runs before any test ran.
+    private static readonly TimeSpan StartupTimeout = TimeSpan.FromMinutes(10);
 
     private DistributedApplication? app;
 

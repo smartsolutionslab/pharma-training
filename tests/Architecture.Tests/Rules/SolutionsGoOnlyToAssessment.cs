@@ -5,18 +5,18 @@ namespace SmartSolutionsLab.PharmaTraining.Architecture.Tests.Rules;
 
 public sealed class SolutionsGoOnlyToAssessment : IArchitectureRule
 {
-    public const string AllowedAssemblies = "SmartSolutionsLab.PharmaTraining.Modules.Assessment.Application";
+    public const string AllowedAssembly = "SmartSolutionsLab.PharmaTraining.Modules.Assessment.Application";
 
-    public string Description => $"Only Assessment consumes {nameof(TestDefinitionPublishedV1)}, which carries every question's solution; no other module and never the frontend (docs/domain/README.md).";
+    public string Description => $"Only Assessment's Application ({AllowedAssembly}, matched by its exact name) may have a *Consumer that takes {nameof(TestDefinitionPublishedV1)}, which carries every question's solution (docs/domain/README.md). It checks Wolverine consumers only: what an endpoint answers is not checked here.";
 
-    public static IEnumerable<string> Violations(IEnumerable<Type> types, string allowedAssemblyPrefix)
+    public static IEnumerable<string> Violations(IEnumerable<Type> types, string allowedAssembly)
     {
         Ensure.That(types).IsNotNull();
-        Ensure.That(allowedAssemblyPrefix).IsNotNullOrWhiteSpace();
+        Ensure.That(allowedAssembly).IsNotNullOrWhiteSpace();
 
         foreach (var type in types.Where(type => type.IsClass
             && type.Name.EndsWith("Consumer", StringComparison.Ordinal)
-            && type.Assembly.GetName().Name?.StartsWith(allowedAssemblyPrefix, StringComparison.Ordinal) != true))
+            && !string.Equals(type.Assembly.GetName().Name, allowedAssembly, StringComparison.Ordinal)))
         {
             var consumes = type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.FlattenHierarchy)
                 .Any(method => method.GetParameters().Any(parameter => parameter.ParameterType == typeof(TestDefinitionPublishedV1)));
@@ -31,6 +31,6 @@ public sealed class SolutionsGoOnlyToAssessment : IArchitectureRule
     {
         Ensure.That(model).IsNotNull();
 
-        return Violations(model.ModuleAssemblies.SelectMany(assembly => assembly.GetTypes()), AllowedAssemblies);
+        return Violations(model.ModuleAssemblies.SelectMany(assembly => assembly.GetTypes()), AllowedAssembly);
     }
 }

@@ -250,6 +250,12 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
             return Failure(CourseVersionErrors.QuestionNotFound(Id, id));
         }
 
+        // Checked last, as AddQuestion does: a version that is no draft or lacks the question says so first.
+        if (chapters.All(chapter => chapter.Id != draft.Chapter))
+        {
+            return Failure(CourseVersionErrors.ChapterNotFound(Id, draft.Chapter));
+        }
+
         question.Edit(draft, newOptionId);
         return Success(Unit.Value);
     }
