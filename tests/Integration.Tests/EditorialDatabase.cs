@@ -196,6 +196,22 @@ internal static class EditorialDatabase
         (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1);
     }
 
+    /// <summary>
+    /// Makes a version of a second, separately created course the next version of the first course, numbered as given,
+    /// until the API can draft one from a published version. #20 replaces this seed with <c>POST …/next</c>.
+    /// </summary>
+    public static async Task SeedAsNextVersionAsync(string connectionString, Guid versionId, Guid courseId, int number, CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("UPDATE editorial.course_versions SET course_id = @course, number = @number WHERE id = @id", connection);
+        command.Parameters.AddWithValue("course", courseId);
+        command.Parameters.AddWithValue("number", number);
+        command.Parameters.AddWithValue("id", versionId);
+
+        (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1);
+    }
+
     private static async Task<VersionLock> LockAsync(string connectionString, Guid id, string versionLock, string[] beneath, CancellationToken cancellationToken)
     {
         var connection = new NpgsqlConnection(connectionString);

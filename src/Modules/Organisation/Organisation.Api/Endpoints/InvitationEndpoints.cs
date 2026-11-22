@@ -2,6 +2,7 @@ using System.Security.Claims;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Api;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application;
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Commands.AcceptInvitation;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Commands.InviteMember;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Commands.RenewInvitation;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Commands.RevokeInvitation;
@@ -14,8 +15,9 @@ using Microsoft.AspNetCore.Routing;
 namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Api.Endpoints;
 
 /// <summary>
-/// Invite an address, renew an invitation with a fresh link, or revoke it. Any signed-in user may ask; whether they may
-/// is decided by their own membership in the pharmacy (managing members), not by a realm role.
+/// Invite an address, renew an invitation with a fresh link, or revoke it, and accept one with the link's token. Any
+/// signed-in user may ask; whether they may is decided by their own membership in the pharmacy (managing members), or,
+/// to accept, by the token and the account's verified address, not by a realm role.
 /// </summary>
 public sealed class InvitationEndpoints : IEndpoint
 {
@@ -35,6 +37,12 @@ public sealed class InvitationEndpoints : IEndpoint
                 return Result<Guid, ApiError>.Failure(PharmacyFailures.IdentityIncomplete()).ToCreatedHttpResult(Location);
             }
 
+            // An empty id names nothing: answered as not found before anything else, as renew and revoke do.
+            if (Unknown(id) is { } unknown)
+            {
+                return Result<Guid, ApiError>.Failure(unknown).ToCreatedHttpResult(Location);
+            }
+
             if (!EmailAddress.TryFrom(request.Email, out var email))
             {
                 return Result<Guid, ApiError>.Failure(PharmacyFailures.InvalidEmail()).ToCreatedHttpResult(Location);
@@ -49,12 +57,6 @@ public sealed class InvitationEndpoints : IEndpoint
             if (!Enum.IsDefined(request.Role))
             {
                 return Result<Guid, ApiError>.Failure(PharmacyFailures.InvalidMembershipRole()).ToCreatedHttpResult(Location);
-            }
-
-            // An empty id names nothing: answered as not found, as the other pharmacy endpoints do.
-            if (id == Guid.Empty)
-            {
-                return Result<Guid, ApiError>.Failure(PharmacyFailures.NotFound(id)).ToCreatedHttpResult(Location);
             }
 
             var command = new InviteMember(PharmacyId.From(id), person.Value, email, request.JobFunction.ToDomain(), request.Role.ToDomain());
@@ -94,14 +96,49 @@ public sealed class InvitationEndpoints : IEndpoint
             var command = new RevokeInvitation(PharmacyId.From(id), MembershipId.From(membershipId), person.Value);
             return (await dispatcher.SendAsync(command, cancellationToken)).ToHttpResult();
         }).RequireAuthorization();
+
+        endpoints.MapPost("/invitations/accept", async (AcceptOrganisationInvitationRequest request, ClaimsPrincipal user, IDispatcher dispatcher, CancellationToken cancellationToken) =>
+        {
+            // Who accepts comes from the token alone, never from the body.
+            var caller = CallerClaims.Of(user);
+            if (!caller.HasValue)
+            {
+                return Result<Guid, ApiError>.Failure(PharmacyFailures.IdentityIncomplete()).ToHttpResult();
+            }
+
+            // The verified address is the only proof that the caller is the invitee.
+            if (!CallerClaims.HasVerifiedEmail(user))
+            {
+                return Result<Guid, ApiError>.Failure(PharmacyFailures.EmailNotVerified()).ToHttpResult();
+            }
+
+            if (!InvitationToken.TryFrom(request.Token, out var token))
+            {
+                return Result<Guid, ApiError>.Failure(PharmacyFailures.InvalidInvitationToken()).ToHttpResult();
+            }
+
+            var command = new AcceptInvitation(token, caller.Value.Person, caller.Value.Name, caller.Value.Email);
+            return (await dispatcher.SendAsync(command, cancellationToken)).ToHttpResult();
+        }).RequireAuthorization();
+    }
+
+    /// <summary>An empty id names nothing: answered as not found before its factory would refuse it.</summary>
+    private static ApiError? Unknown(Guid pharmacy)
+    {
+        if (pharmacy == Guid.Empty)
+        {
+            return PharmacyFailures.NotFound(pharmacy);
+        }
+
+        return null;
     }
 
     /// <summary>An empty id names nothing: answered as not found before its factory would refuse it.</summary>
     private static ApiError? Unknown(Guid pharmacy, Guid membership)
     {
-        if (pharmacy == Guid.Empty)
+        if (Unknown(pharmacy) is { } unknown)
         {
-            return PharmacyFailures.NotFound(pharmacy);
+            return unknown;
         }
 
         if (membership == Guid.Empty)

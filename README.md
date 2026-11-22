@@ -61,6 +61,10 @@ Starting the AppHost builds every project it runs, once; the edge, the services 
 
 The AppHost runs Azurite, the Azure Storage emulator, as the resource `storage`, with a container per module (`<module>-blobs`, named after the module); each service reads only its own, as the connection string `blobs`, and signs short-lived upload and read URLs for it with the emulator's account key (`IBlobUrls`, docs/adr/0002). The web app's origin, `http://localhost:5173`, may `PUT` and `GET` with those URLs straight from the browser: the AppHost sets that CORS rule on the emulator when it starts. Signing in a deployed account, where Aspire disables the account key, is a separate decision (keyless signing).
 
+### Editorial settings
+
+Four eyes (a version is published by an editor other than the one who submitted it) is off by default; `Editorial__FourEyes=true` in the editorial service's environment turns it on (docs/adr/0007).
+
 ### Local users
 
 Keycloak imports these from `src/AppHost/realms/realm.json`, development only. Each one's password is its username.

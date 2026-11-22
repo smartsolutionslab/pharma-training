@@ -50,6 +50,15 @@ public sealed class CourseVersionStore(EditorialDbContext context) : ICourseVers
     }
 
     /// <summary>
+    /// Tracked and without their content: superseding changes only the version itself, and the row version loaded
+    /// with it makes a save that lost a race to another change of it fail.
+    /// </summary>
+    public async Task<IReadOnlyList<CourseVersion>> ListPublishedForUpdateAsync(CourseId course, CancellationToken cancellationToken) =>
+        await context.Set<CourseVersion>()
+            .Where(version => version.Course == course && version.Status == CourseVersionStatus.Published)
+            .ToListAsync(cancellationToken);
+
+    /// <summary>
     /// Runs the version's split queries in one REPEATABLE READ transaction, committed right after the load, so they read
     /// one snapshot: a change committed between them (a chapter added or removed, a question's options replaced) shows
     /// in none of them or in all, never in some, which EF Core would refuse with a concurrency exception.

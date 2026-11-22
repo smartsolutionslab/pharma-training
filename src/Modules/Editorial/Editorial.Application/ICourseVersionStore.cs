@@ -18,4 +18,7 @@ public interface ICourseVersionStore
 
     /// <summary>One page of the versions, of one status or of all, by title, then newest number first; without their chapters.</summary>
     Task<PagedResult<CourseVersion>> ListAsync(CourseVersionStatus? status, Page page, PageSize pageSize, CancellationToken cancellationToken);
+
+    /// <summary>The course's published versions, without their content, for a command: what changes on them is saved when the unit of work commits.</summary>
+    Task<IReadOnlyList<CourseVersion>> ListPublishedForUpdateAsync(CourseId course, CancellationToken cancellationToken);
 }
