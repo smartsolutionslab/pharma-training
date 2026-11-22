@@ -128,21 +128,26 @@ public class EditorialQuestionRacesTests(AspireFixture aspire)
         var connectionString = await EditorialDatabase.ConnectionStringAsync(aspire, cancellationToken);
         List<string> wrong = [];
 
-        // The addition saves INSERT question, UPDATE version, INSERT options and checks the deferred question->chapter
-        // key at commit; the removal saves DELETE chapter, UPDATE version. The gate holds the version's row FOR NO KEY
-        // UPDATE, which lets the question's key to the version check it, so the addition waits at its version UPDATE,
-        // first; the removal then deletes the chapter and waits behind it. Released, the addition updates the version
-        // first (the row's first waiter does), and its commit waits for the deleted chapter while the removal waits for
-        // the version: a deadlock (40P01) in every round, which the database's count shows. No timing decides it.
-        var deadlocksBefore = await EditorialDatabase.DeadlocksAsync(connectionString, cancellationToken);
+        // The addition saves INSERT question, UPDATE version, INSERT options, and checks the deferred question->chapter
+        // key at COMMIT (FOR KEY SHARE on the chapter); the removal saves DELETE chapter, UPDATE version. That is read
+        // from PostgreSQL's statement log, not assumed. Holding the version's row makes both wait on it, and once the
+        // gate ends, whichever backend gets there first updates it: often the removal, which then commits, and the
+        // addition loses on its row version without a deadlock. So the gate holds no row both need. It locks the
+        // options' table against writes (SHARE), which only the addition writes, and only after its version UPDATE:
+        //   1. the addition inserts the question, updates the version and waits to insert its options, for the gate;
+        //   2. the removal deletes the chapter and waits to update the version, for the addition, so behind the gate;
+        //   3. the gate rolls back: the addition inserts its options and, at COMMIT, waits for the deleted chapter,
+        //      for the removal, which waits for the addition.
+        // PostgreSQL then ends one of the two as a deadlock (40P01) every round, and the deadlock count rises each round.
         for (var round = 1; round <= DeadlockRounds; round++)
         {
             var id = await CreateAsync(client, cancellationToken);
             var chapter = await AddChapterAsync(client, id, cancellationToken);
 
+            var deadlocksBefore = await EditorialDatabase.DeadlocksAsync(connectionString, cancellationToken);
             Task<HttpResponseMessage> added;
             Task<HttpResponseMessage> removed;
-            await using (var gate = await EditorialDatabase.LockVersionRowAsync(connectionString, id, cancellationToken))
+            await using (var gate = await EditorialDatabase.LockAnswerOptionsAsync(connectionString, cancellationToken))
             {
                 added = client.PostAsJsonAsync(Questions(id), SingleChoice(chapter), cancellationToken);
                 await EditorialDatabase.WaitUntilBlockedAsync(connectionString, gate, 1, cancellationToken);
@@ -158,10 +163,12 @@ public class EditorialQuestionRacesTests(AspireFixture aspire)
             {
                 wrong.Add($"{described}; expected one success and the other 409 editorial.course-version-changed ({await CodesAsync(removal, addition, cancellationToken)}).");
             }
+
+            await EditorialDatabase.ShouldHaveDeadlockedSinceAsync(connectionString, deadlocksBefore, cancellationToken);
+            TestContext.Current.TestOutputHelper?.WriteLine($"{described}; deadlocks {deadlocksBefore} -> {await EditorialDatabase.DeadlocksAsync(connectionString, cancellationToken)}.");
         }
 
         wrong.ShouldBeEmpty();
-        await EditorialDatabase.ShouldHaveDeadlockedSinceAsync(connectionString, deadlocksBefore + DeadlockRounds - 1, cancellationToken);
     }
 
     [Fact]

@@ -86,6 +86,33 @@ internal static class EditorialDatabase
     }
 
     /// <summary>
+    /// Opens a transaction that locks the answer options' table against writes (SHARE): a request that adds or changes
+    /// options waits there, after everything it writes before them, until the transaction ends. Reads go on. It holds
+    /// every version's options, so only a test in <see cref="EditorialDrafts"/> may take it. Disposing the gate closes
+    /// its connection.
+    /// </summary>
+    public static async Task<VersionLock> LockAnswerOptionsAsync(string connectionString, CancellationToken cancellationToken)
+    {
+        var connection = new NpgsqlConnection(connectionString);
+        try
+        {
+            await connection.OpenAsync(cancellationToken);
+            var transaction = await connection.BeginTransactionAsync(cancellationToken);
+            await using (var locked = new NpgsqlCommand("LOCK TABLE editorial.course_version_answer_options IN SHARE MODE", connection, transaction))
+            {
+                await locked.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            return new VersionLock(connection, transaction);
+        }
+        catch
+        {
+            await connection.DisposeAsync();
+            throw;
+        }
+    }
+
+    /// <summary>
     /// Polls the editorial database until the given number of statements on course versions wait for a lock, and
     /// fails the test when they do not within 30 seconds. It counts every test's statements: prefer the overload that
     /// counts only those behind a gate.
