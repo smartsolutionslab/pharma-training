@@ -232,6 +232,11 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
             return Failure(CourseVersionErrors.ChapterNotFound(Id, draft.Chapter));
         }
 
+        if (questions.Count >= QuestionCount.Maximum)
+        {
+            return Failure(CourseVersionErrors.TooManyQuestions(Id));
+        }
+
         questions.Add(Question.From(id, draft, Provenance.Human, newOptionId));
         return Success(id);
     }
