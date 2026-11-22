@@ -238,6 +238,25 @@ public class EditorialQuestionsTests(AspireFixture aspire)
     }
 
     [Fact]
+    public async Task The_fifty_first_question_is_refused_as_too_many_and_the_version_keeps_fifty()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var id = await CreateAsync(client, cancellationToken);
+        var chapter = await AddChapterAsync(client, id, "Händehygiene", cancellationToken);
+        for (var added = 0; added < 50; added++)
+        {
+            await AddQuestionAsync(client, id, SingleChoice(chapter), cancellationToken);
+        }
+
+        using var refused = await client.PostAsJsonAsync(Questions(id), SingleChoice(chapter), cancellationToken);
+
+        refused.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await CodeOfAsync(refused, cancellationToken)).ShouldBe("editorial.too-many-questions");
+        (await QuestionsOfAsync(client, id, cancellationToken)).Count.ShouldBe(50);
+    }
+
+    [Fact]
     public async Task An_unknown_or_empty_version_question_or_chapter_is_not_found()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
