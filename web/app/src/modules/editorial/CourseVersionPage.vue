@@ -3,22 +3,37 @@ import { BookOpen } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { RouterLink, useRoute } from 'vue-router';
-import { useGetEditorialCourseVersionsId } from '@/api/generated';
+import {
+  type EditorialChapterDto,
+  type EditorialChapterRequest,
+  useGetEditorialCourseVersionsId,
+} from '@/api/generated';
 import { ApiError } from '@/api/baseApi';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
+import { t as translate } from '@/i18n';
+import { notify } from '@/lib/notify';
+import ChapterForm from './ChapterForm.vue';
 import ChapterList from './ChapterList.vue';
 import { inboxStatuses } from './inboxQuery';
+import RemoveChapterDialog from './RemoveChapterDialog.vue';
+import { useChapterMutations } from './useChapterMutations';
 
 // A course version (/editorial/versions/:id): its title, number and status, the way back to its inbox tab, and its
 // chapters. Only a draft can be changed; any other status says why not and shows its chapters read-only.
 const route = useRoute();
 const id = computed(() => String(route.params.id ?? ''));
 const { data: version, isPending, isError, error } = useGetEditorialCourseVersionsId(id);
+const { add, replace, remove, isSaving } = useChapterMutations(id);
 const { t } = useI18n();
-/** Whether the chapter form is open to add a chapter. */
-const adding = ref(false);
+
+/** The chapter form while it is open: with the chapter it replaces, or none to add one. */
+const form = ref<{ chapter?: EditorialChapterDto }>();
+/** The chapter whose deletion is being asked about. */
+const removing = ref<EditorialChapterDto>();
+const isRemoving = ref(false);
 
 const notFound = computed(() => error.value instanceof ApiError && error.value.status === 404);
 const editable = computed(() => version.value?.status === 'Draft');
@@ -27,6 +42,32 @@ const inbox = computed(() => {
   const status = version.value?.status;
   return inboxStatuses.some((each) => each === status) ? `/editorial?status=${status}` : '/editorial';
 });
+
+/** Saves the form's chapter; a refusal is reported, and the dialog stays open with what was entered. */
+async function save(request: EditorialChapterRequest) {
+  const chapter = form.value?.chapter;
+  const result = chapter === undefined ? await add(request) : await replace(chapter.id, request);
+  if (!result.ok) {
+    notify.failure(result.serverMessage ?? translate('editorial.chapters.saveFailed', { title: request.title }));
+    return false;
+  }
+  notify.success(translate('editorial.chapters.saved', { title: request.title }));
+  form.value = undefined;
+  return true;
+}
+
+/** Deletes the chapter asked about, and reports how that went. */
+async function confirmRemove(chapter: EditorialChapterDto) {
+  isRemoving.value = true;
+  const result = await remove(chapter.id);
+  isRemoving.value = false;
+  removing.value = undefined;
+  if (result.ok) {
+    notify.success(translate('editorial.chapters.removed', { title: chapter.title }));
+  } else {
+    notify.failure(result.serverMessage ?? translate('editorial.chapters.removeFailed', { title: chapter.title }));
+  }
+}
 </script>
 
 <template>
@@ -63,19 +104,56 @@ const inbox = computed(() => {
       <section aria-labelledby="course-version-chapters" class="flex flex-col gap-4">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <h2 id="course-version-chapters">{{ t('editorial.chapters.title') }}</h2>
-          <Button v-if="editable && version.chapters.length > 0" type="button" @click="adding = true">
+          <Button v-if="editable && version.chapters.length > 0" type="button" @click="form = {}">
             {{ t('editorial.chapters.add') }}
           </Button>
         </div>
-        <ChapterList v-if="version.chapters.length > 0" :chapters="version.chapters" :editable="editable" />
+        <ChapterList
+          v-if="version.chapters.length > 0"
+          :chapters="version.chapters"
+          :editable="editable"
+          @edit="(chapter) => (form = { chapter })"
+          @remove="(chapter) => (removing = chapter)"
+        />
         <EmptyState v-else>
           <template #icon><BookOpen /></template>
           {{ t('editorial.chapters.empty') }}
           <template v-if="editable" #action>
-            <Button type="button" variant="outline" @click="adding = true">{{ t('editorial.chapters.add') }}</Button>
+            <Button type="button" variant="outline" @click="form = {}">{{ t('editorial.chapters.add') }}</Button>
           </template>
         </EmptyState>
       </section>
+      <template v-if="editable">
+        <Dialog :open="form !== undefined" @update:open="(open) => !open && (form = undefined)">
+          <DialogContent class="sm:max-w-2xl" :aria-describedby="undefined">
+            <DialogHeader>
+              <DialogTitle>
+                {{ t(form?.chapter ? 'editorial.chapterForm.editTitle' : 'editorial.chapterForm.addTitle') }}
+              </DialogTitle>
+            </DialogHeader>
+            <ChapterForm
+              v-if="form !== undefined"
+              :chapter="form.chapter"
+              :questions="version.questions"
+              :on-save="save"
+              :saving="isSaving"
+            >
+              <template #actions>
+                <DialogClose as-child>
+                  <Button type="button" variant="outline">{{ t('editorial.cancel') }}</Button>
+                </DialogClose>
+              </template>
+            </ChapterForm>
+          </DialogContent>
+        </Dialog>
+        <RemoveChapterDialog
+          :chapter="removing"
+          :questions="version.questions"
+          :removing="isRemoving"
+          @confirm="confirmRemove"
+          @cancel="removing = undefined"
+        />
+      </template>
     </template>
   </main>
 </template>
