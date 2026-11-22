@@ -116,21 +116,28 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
     }
 
     /// <summary>
-    /// Polls the organisation database until the given number of statements on the module's tables wait for a lock,
-    /// and fails the test when they do not within 30 seconds.
+    /// Polls the organisation database until the given number of backends wait for the gate, directly or behind each
+    /// other, and fails the test when they do not within 30 seconds. Other tests run against the same database at the
+    /// same time, so a backend counts only when its wait leads back to the gate's own backend: a second request that
+    /// waits for a row behind the first is blocked by the first, not by the gate.
     /// </summary>
-    public async Task WaitUntilBlockedAsync(int expected, CancellationToken cancellationToken)
+    public async Task WaitUntilBlockedAsync(PharmacyLock gate, int expected, CancellationToken cancellationToken)
     {
+        Ensure.That(gate).IsNotNull();
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(30));
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand(
             """
-            SELECT count(*) FROM pg_stat_activity
-            WHERE wait_event_type = 'Lock' AND datname = current_database() AND pid <> pg_backend_pid()
-              AND query ILIKE '%organisation.%'
+            WITH RECURSIVE behind(pid) AS (
+                SELECT activity.pid FROM pg_stat_activity activity WHERE @gate = ANY(pg_blocking_pids(activity.pid))
+                UNION
+                SELECT activity.pid FROM pg_stat_activity activity JOIN behind ON behind.pid = ANY(pg_blocking_pids(activity.pid))
+            )
+            SELECT count(*) FROM behind
             """,
             connection);
+        command.Parameters.AddWithValue("gate", gate.ProcessId);
 
         var blocked = 0L;
         while (blocked < expected)

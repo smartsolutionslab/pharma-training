@@ -423,12 +423,19 @@ public class EditorialCourseVersionsTests(AspireFixture aspire)
         using var client = await aspire.CreateHostClientAsync("editor");
         var connectionString = await EditorialConnectionStringAsync(cancellationToken);
 
-        // Removing c3 of [c3, c1, c2] deletes its row, then moves c1 and c2 up; the order [c2, c3, c1] writes c1, c2
-        // and c3. Each save locks its chapters' rows before the version's, so the two take c1 and c3 in opposite
-        // orders and PostgreSQL often ends one of them as a deadlock (40P01). Five rounds make sure some do, and the
-        // database's deadlock count shows that some did.
-        var deadlocksBefore = await DeadlocksAsync(connectionString, cancellationToken);
-        for (var round = 0; round < 5; round++)
+        // Removing c3 of [c3, c1, c2] sends DELETE c3, UPDATE c1, UPDATE c2, then the version's UPDATE; the order
+        // [c2, c3, c1] sends UPDATE c1, UPDATE c2, UPDATE c3, then the version's (EF Core writes a table's deletes
+        // before its updates, and its updates by key; the chapters' keys ascend in the order they were added). That is
+        // read from PostgreSQL's statement log, not assumed. So each takes c1 and c3 in the other's order, and the test
+        // makes them meet every round instead of hoping they do. Holding both first rows and letting both go at once is
+        // not enough: a row whose holder has ended is free to whoever gets there first, so the removal can write c1
+        // before the order's woken backend takes it, finish, and leave the order to fail on its row version without a
+        // deadlock. So the gate holds c2 alone, the order's second row and the last the removal would write:
+        //   1. the order writes c1 and waits on c2, for the gate;
+        //   2. the removal deletes c3 and waits on c1, for the order, and so behind the gate;
+        //   3. the gate rolls back: the order writes c2 and waits on c3, for the removal, which waits for the order.
+        // PostgreSQL then ends one of the two as a deadlock (40P01) every round, and the deadlock count rises each round.
+        for (var round = 0; round < 2; round++)
         {
             var id = await CreateAsync(client, $"Hygiene {Guid.CreateVersion7()}", cancellationToken);
             var c1 = await AddChapterAsync(client, id, "Händehygiene", "Vor und nach …", cancellationToken);
@@ -439,13 +446,15 @@ public class EditorialCourseVersionsTests(AspireFixture aspire)
                 first.StatusCode.ShouldBe(HttpStatusCode.OK);
             }
 
+            var deadlocksBefore = await DeadlocksAsync(connectionString, cancellationToken);
             HttpResponseMessage[] responses;
-            await using (var gate = await LockVersionAsync(connectionString, id, cancellationToken))
+            await using (var gate = await LockChaptersAsync(connectionString, [c2], cancellationToken))
             {
-                var removed = client.DeleteAsync(Chapter(id, c3), cancellationToken);
                 var reordered = client.PutAsJsonAsync(Order(id), new { chapters = new[] { c2, c3, c1 } }, cancellationToken);
-                await WaitUntilBlockedAsync(connectionString, 2, cancellationToken);
-                await gate.CommitAsync(cancellationToken);
+                await WaitUntilBlockedAsync(connectionString, gate, 1, cancellationToken);
+                var removed = client.DeleteAsync(Chapter(id, c3), cancellationToken);
+                await WaitUntilBlockedAsync(connectionString, gate, 2, cancellationToken);
+                await gate.RollbackAsync(cancellationToken);
                 responses = await Task.WhenAll(removed, reordered);
             }
 
@@ -460,9 +469,11 @@ public class EditorialCourseVersionsTests(AspireFixture aspire)
                     response.Dispose();
                 }
             }
-        }
 
-        await ShouldHaveDeadlockedSinceAsync(connectionString, deadlocksBefore, cancellationToken);
+            await ShouldHaveDeadlockedSinceAsync(connectionString, deadlocksBefore, cancellationToken);
+            TestContext.Current.TestOutputHelper?.WriteLine(
+                $"Round {round + 1}: {(int)responses[0].StatusCode} for the removal, {(int)responses[1].StatusCode} for the order; deadlocks {deadlocksBefore} -> {await DeadlocksAsync(connectionString, cancellationToken)}.");
+        }
     }
 
     [Fact]

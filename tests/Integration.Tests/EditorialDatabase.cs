@@ -60,6 +60,32 @@ internal static class EditorialDatabase
         LockAsync(connectionString, id, "FOR NO KEY UPDATE", [], cancellationToken);
 
     /// <summary>
+    /// Opens a transaction that holds the given chapters' rows alone, so a request that writes one of them waits on it
+    /// until the transaction ends, after it has written what it writes before. Disposing the gate closes its connection.
+    /// </summary>
+    public static async Task<VersionLock> LockChaptersAsync(string connectionString, Guid[] chapters, CancellationToken cancellationToken)
+    {
+        var connection = new NpgsqlConnection(connectionString);
+        try
+        {
+            await connection.OpenAsync(cancellationToken);
+            var transaction = await connection.BeginTransactionAsync(cancellationToken);
+            await using (var rows = new NpgsqlCommand("SELECT count(*) FROM (SELECT 1 FROM editorial.course_version_chapters WHERE id = ANY(@ids) FOR UPDATE) AS locked", connection, transaction))
+            {
+                rows.Parameters.AddWithValue("ids", chapters);
+                (await rows.ExecuteScalarAsync(cancellationToken)).ShouldBe((long)chapters.Length);
+            }
+
+            return new VersionLock(connection, transaction);
+        }
+        catch
+        {
+            await connection.DisposeAsync();
+            throw;
+        }
+    }
+
+    /// <summary>
     /// Polls the editorial database until the given number of statements on course versions wait for a lock, and
     /// fails the test when they do not within 30 seconds. It counts every test's statements: prefer the overload that
     /// counts only those behind a gate.
