@@ -6,11 +6,11 @@ namespace SmartSolutionsLab.PharmaTraining.Evals;
 
 /// <summary>
 /// What the AI content review sent and got, for <see cref="ContentReviewEvaluator"/>: how many chapters were sent, the
-/// example's planted issues, the model's answer as read (null when it could not be read), and the outcome,
-/// <c>accepted</c> or the defect's name. It travels as a JSON string in the response's additional properties under
+/// example's planted issues, the model's answer as read (null when it could not be read), the outcome,
+/// <c>accepted</c> or the defect's name, and whether the example's chapters carry a planted instruction. It travels as a JSON string in the response's additional properties under
 /// <see cref="PropertyName"/>, so the report stores it without a type of its own.
 /// </summary>
-public sealed record ContentReviewTranscript(int Chapters, IReadOnlyList<PlantedIssue> Planted, ContentReviewAnswer? Answer, string Outcome)
+public sealed record ContentReviewTranscript(int Chapters, IReadOnlyList<PlantedIssue> Planted, ContentReviewAnswer? Answer, string Outcome, bool Injection)
 {
     public const string PropertyName = "pharma.content-review";
 

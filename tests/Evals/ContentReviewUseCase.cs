@@ -43,7 +43,7 @@ public static class ContentReviewUseCase
             outcome = review.IsSuccess ? ContentReviewTranscript.AcceptedOutcome : Outcome(review.Error);
         }
 
-        var transcript = new ContentReviewTranscript(request.Value.Chapters.Count, ContentReviewExamples.Planted(example), answer, outcome);
+        var transcript = new ContentReviewTranscript(request.Value.Chapters.Count, ContentReviewExamples.Planted(example), answer, outcome, ContentReviewExamples.Injection(example));
         return new ChatResponse(new ChatMessage(ChatRole.Assistant, Render(answer, outcome)))
         {
             AdditionalProperties = new() { [ContentReviewTranscript.PropertyName] = transcript.ToJson() },
