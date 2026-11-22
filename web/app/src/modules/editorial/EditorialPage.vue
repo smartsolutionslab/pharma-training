@@ -12,20 +12,22 @@ import {
   DialogClose,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { i18n, t as translate } from '@/i18n';
+import { notify } from '@/lib/notify';
+import CreateCourseForm from './CreateCourseForm.vue';
 import { inboxStatuses, parseInboxQuery, type InboxQuery } from './inboxQuery';
 import { titleKey } from './titleKey';
 import { useCourseVersions } from './useCourseVersions';
+import { useCreateCourse } from './useCreateCourse';
 
 // The editors' inbox: the course versions of a status, Draft, InReview or Published, a page at a time, each a link to
 // its page. Its state is the address's (?status&page), read through parseInboxQuery, so an invalid value never reaches
-// the host. "Neue Schulung" starts a course in a dialog.
+// the host. "Neue Schulung" starts a course in a dialog and opens its first version.
 const versions = columnsOf<EditorialCourseVersionSummaryDto>();
 const columns = versions.columns([
   versions.accessor('title', {
@@ -53,7 +55,21 @@ const router = useRouter();
 const query = computed(() => parseInboxQuery(route.query));
 const { versions: rows, page, isPending, isError } = useCourseVersions(query);
 const creating = ref(false);
+const { create, isSaving } = useCreateCourse();
 const { t } = useI18n();
+
+/** Starts a course and opens its first version; a refusal is reported, and the dialog stays open with the title. */
+async function onCreate(title: string) {
+  const result = await create(title);
+  if (!result.ok) {
+    notify.failure(result.serverMessage ?? translate('editorial.course.createFailed', { title }));
+    return false;
+  }
+  notify.success(translate('editorial.course.created', { title }));
+  creating.value = false;
+  await router.push(`/editorial/versions/${result.id}`);
+  return true;
+}
 
 /** Shows a status from its first page. */
 function choose(status: string | number) {
@@ -113,11 +129,13 @@ function turnTo(next: InboxQuery['page']) {
           <DialogTitle>{{ t('editorial.course.form.label') }}</DialogTitle>
           <DialogDescription>{{ t('editorial.course.form.description') }}</DialogDescription>
         </DialogHeader>
-        <DialogFooter>
-          <DialogClose as-child>
-            <Button type="button" variant="outline">{{ t('editorial.cancel') }}</Button>
-          </DialogClose>
-        </DialogFooter>
+        <CreateCourseForm :on-create="onCreate" :saving="isSaving">
+          <template #actions>
+            <DialogClose as-child>
+              <Button type="button" variant="outline">{{ t('editorial.cancel') }}</Button>
+            </DialogClose>
+          </template>
+        </CreateCourseForm>
       </DialogContent>
     </Dialog>
   </main>
