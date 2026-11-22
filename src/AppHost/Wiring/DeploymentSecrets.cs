@@ -7,7 +7,8 @@ namespace Aspire.Hosting;
 /// Where the AppHost's secrets live once it is published (docs/adr/0005): the Key Vault <c>secrets</c>, in publish mode
 /// alone. There every secret is a parameter the deployment sets, with neither a generated value nor a published default,
 /// and every Container App reads it as a Key Vault reference, never as a plain secret value of its own. In run mode there
-/// is no vault: Aspire's generated passwords stay in the AppHost's user secrets, as they always were.
+/// is no vault: Aspire's generated passwords stay in the AppHost's user secrets, as they always were. No app gets Aspire's
+/// default role on the whole vault; each reads the secrets it references alone (<see cref="SecretAccess"/>).
 /// </summary>
 public sealed class DeploymentSecrets
 {
@@ -36,7 +37,7 @@ public sealed class DeploymentSecrets
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        return new DeploymentSecrets(builder, builder.ExecutionContext.IsPublishMode ? builder.AddAzureKeyVault(VaultName) : null);
+        return new DeploymentSecrets(builder, builder.ExecutionContext.IsPublishMode ? builder.AddAzureKeyVault(VaultName).ClearDefaultRoleAssignments() : null);
     }
 
     /// <summary>

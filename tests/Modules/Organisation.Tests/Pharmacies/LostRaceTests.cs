@@ -51,7 +51,7 @@ public class LostRaceTests
     }
 
     [Fact]
-    public async Task An_accept_that_lost_the_race_is_told_the_pharmacy_changed_and_nothing_is_announced()
+    public async Task An_accept_that_lost_the_race_is_a_conflict_that_names_no_pharmacy_and_nothing_is_announced()
     {
         var token = InvitationToken.From(Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(32)));
         var email = EmailAddress.From("bert@example.org");
@@ -61,10 +61,16 @@ public class LostRaceTests
 
         var accepted = await new AcceptInvitationHandler(store, store, new FakeTimeProvider(TestPharmacies.RegisteredAt.Value))
             .HandleAsync(
-                new AcceptInvitation(token, PersonId.From(Guid.CreateVersion7()), DisplayName.From("Bert Klein"), email),
+                new AcceptInvitation(token, PersonId.From(Guid.CreateVersion7()), DisplayName.From("Bert Klein"), AccountEmail.From(email, verified: true)),
                 TestContext.Current.CancellationToken);
 
-        ShouldBeChanged(accepted);
+        accepted.IsSuccess.ShouldBeFalse("the lost commit was answered as a success");
+        var error = accepted.Error;
+        error.ShouldBe(PharmacyFailures.InvitationChanged());
+        error.Code.ShouldBe("organisation.invitation-changed");
+        error.Status.ShouldBe(HttpStatusCode.Conflict);
+        error.Message.ShouldNotContain(pharmacy.Id.Value.ToString(), Case.Insensitive);
+        error.Message.ShouldNotContain(pharmacy.Id.Value.ToString("N"), Case.Insensitive);
         store.Commits.ShouldBe(0);
         store.Published.ShouldBeEmpty();
     }

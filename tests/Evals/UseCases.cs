@@ -9,5 +9,6 @@ public static class UseCases
     public static IReadOnlyList<EvalUseCase> All { get; } =
     [
         new(TestDraftUseCase.Name, TestDraftUseCase.AnswerAsync, TestDraftExamples.All),
+        new(ContentReviewUseCase.Name, ContentReviewUseCase.AnswerAsync, ContentReviewExamples.All),
     ];
 }
