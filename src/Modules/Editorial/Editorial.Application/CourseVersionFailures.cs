@@ -64,7 +64,8 @@ public static class CourseVersionFailures
     {
         ChapterNotFound or QuestionNotFound => ApiError.From(error, HttpStatusCode.NotFound),
         TooFewOptions or SingleChoiceNeedsOneCorrect or MultipleChoiceNeedsACorrect => ApiError.From(error, HttpStatusCode.UnprocessableEntity),
-        NotADraft or OrderDoesNotMatchChapters => ApiError.From(error, HttpStatusCode.Conflict),
+        NotADraft or OrderDoesNotMatchChapters or NotInReview or NoChapters or TestIncomplete
+            => ApiError.From(error, HttpStatusCode.Conflict),
         _ => ApiError.From(error, HttpStatusCode.Conflict),
     };
 }
