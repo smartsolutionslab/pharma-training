@@ -15,6 +15,11 @@ public sealed class PharmacyStore(OrganisationDbContext context) : IPharmacyStor
             ? Option<Pharmacy>.Some(pharmacy)
             : Option<Pharmacy>.None;
 
+    public async Task<Option<Pharmacy>> LoadAsync(PharmacyId id, CancellationToken cancellationToken) =>
+        await context.Set<Pharmacy>().Include(pharmacy => pharmacy.Memberships).SingleOrDefaultAsync(pharmacy => pharmacy.Id == id, cancellationToken) is { } pharmacy
+            ? Option<Pharmacy>.Some(pharmacy)
+            : Option<Pharmacy>.None;
+
     public async Task<PagedResult<Pharmacy>> ListWithActiveMemberAsync(PersonId person, Page page, PageSize pageSize, CancellationToken cancellationToken)
     {
         Ensure.That(person).IsNotNull();

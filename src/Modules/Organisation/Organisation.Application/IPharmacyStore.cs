@@ -13,6 +13,9 @@ public interface IPharmacyStore
     /// <summary>The pharmacy with its memberships as it is stored, for a query: nothing that changes it is saved.</summary>
     Task<Option<Pharmacy>> FindAsync(PharmacyId id, CancellationToken cancellationToken);
 
+    /// <summary>The pharmacy with its memberships, for a command: what it changes is saved when the unit of work commits.</summary>
+    Task<Option<Pharmacy>> LoadAsync(PharmacyId id, CancellationToken cancellationToken);
+
     /// <summary>One page of the pharmacies where the person is an active member, by name, with their memberships.</summary>
     Task<PagedResult<Pharmacy>> ListWithActiveMemberAsync(PersonId person, Page page, PageSize pageSize, CancellationToken cancellationToken);
 }

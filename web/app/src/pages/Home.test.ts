@@ -2,7 +2,9 @@ import { cleanup, render, screen, within } from '@testing-library/vue';
 import userEvent from '@testing-library/user-event';
 import { createPinia } from 'pinia';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { createMemoryHistory } from 'vue-router';
 import type { MyPharmacyDto, PagedResultOfMyPharmacyDto } from '@/api/generated';
+import { createAppRouter } from '@/router';
 import Home from './Home.vue';
 
 // GET /organisation/pharmacies/mine as useMyPharmacies answers it: TanStack Query's refs, which a test sets.
@@ -53,7 +55,11 @@ afterEach(() => {
   localStorage.clear();
 });
 
-const renderHome = () => render(Home, { global: { plugins: [createPinia()] } });
+let router = createAppRouter(createMemoryHistory());
+const renderHome = () => {
+  router = createAppRouter(createMemoryHistory());
+  return render(Home, { global: { plugins: [router, createPinia()] } });
+};
 
 const prompt = () => screen.queryByRole('heading', { name: 'Choose your pharmacy' });
 
@@ -125,4 +131,50 @@ test('after choosing a pharmacy the focus is on the start page heading, not lost
   await vi.waitFor(() => expect(prompt()).not.toBeInTheDocument());
   await vi.waitFor(() => expect(screen.getByRole('heading', { name: 'pharma-training', level: 1 })).toHaveFocus());
   expect(document.activeElement).not.toBe(document.body);
+});
+
+const noPharmacy = () => screen.queryByRole('region', { name: 'No pharmacy yet' });
+
+// A user who belongs to no pharmacy learns the two ways in: registering their own, or an invitation from its manager.
+test('a user of no pharmacy is led to register one, or to ask for an invitation', async () => {
+  const user = userEvent.setup();
+  answer([]);
+  renderHome();
+
+  const section = within(await screen.findByRole('region', { name: 'No pharmacy yet' }));
+  expect(section.getByRole('heading', { name: 'No pharmacy yet' })).toBeInTheDocument();
+  expect(
+    section.getByText(
+      'You are not a member of any pharmacy yet. Register your pharmacy, or ask its manager for an invitation.',
+    ),
+  ).toBeInTheDocument();
+  const link = section.getByRole('link', { name: 'Register a pharmacy' });
+  expect(link).toHaveAttribute('href', '/organisation/register');
+
+  await user.click(link);
+
+  await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/organisation/register'));
+});
+
+// Until the memberships are known to be none (still loading, failed to load, or some), nobody is told they have none.
+test.each([
+  ['load', () => undefined],
+  [
+    'could not be loaded',
+    () => {
+      pharmacies.isPending.value = false;
+      pharmacies.isError.value = true;
+    },
+  ],
+  ['are one pharmacy', () => answer([dom])],
+  ['are several pharmacies', () => answer([markt, dom])],
+])('while the memberships %s the start page does not say there are none, until there are', async (_, before) => {
+  before();
+  renderHome();
+  expect(noPharmacy()).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: 'Register a pharmacy' })).not.toBeInTheDocument();
+
+  answer([]);
+
+  expect(await screen.findByRole('region', { name: 'No pharmacy yet' })).toBeInTheDocument();
 });

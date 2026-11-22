@@ -16,7 +16,7 @@ partial class CatalogModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261118000000_CreateSamples";
+    public override string LastMigrationId => "20261121180902_AddCourseVersions";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -27,6 +27,98 @@ partial class CatalogModelSnapshot : ModelSnapshot
             .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
         NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Catalog.Domain.CourseVersions.CourseChapter", b =>
+            {
+                b.Property<Guid>("CourseVersionId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("course_version_id");
+
+                b.Property<Guid>("ChapterId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("chapter_id");
+
+                b.Property<string>("File")
+                    .HasColumnType("text")
+                    .HasColumnName("file");
+
+                b.Property<string>("Kind")
+                    .IsRequired()
+                    .HasMaxLength(16)
+                    .HasColumnType("character varying(16)")
+                    .HasColumnName("kind");
+
+                b.Property<int>("Position")
+                    .HasColumnType("integer")
+                    .HasColumnName("position");
+
+                b.Property<string>("Text")
+                    .HasColumnType("text")
+                    .HasColumnName("text");
+
+                b.Property<string>("Title")
+                    .IsRequired()
+                    .HasColumnType("text")
+                    .HasColumnName("title");
+
+                b.Property<int?>("VideoDurationSeconds")
+                    .HasColumnType("integer")
+                    .HasColumnName("video_duration_seconds");
+
+                b.HasKey("CourseVersionId", "ChapterId")
+                    .HasName("pk_course_chapters");
+
+                b.ToTable("course_chapters", "catalog");
+            });
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Catalog.Domain.CourseVersions.CourseVersion", b =>
+            {
+                b.Property<Guid>("Id")
+                    .HasColumnType("uuid")
+                    .HasColumnName("id");
+
+                b.Property<Guid>("CourseId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("course_id");
+
+                b.Property<string>("Title")
+                    .IsRequired()
+                    .HasColumnType("text")
+                    .HasColumnName("title");
+
+                b.Property<int>("ValidityMonths")
+                    .HasColumnType("integer")
+                    .HasColumnName("validity_months");
+
+                b.Property<int>("VersionNumber")
+                    .HasColumnType("integer")
+                    .HasColumnName("version_number");
+
+                b.HasKey("Id")
+                    .HasName("pk_course_versions");
+
+                b.HasIndex("CourseId", "VersionNumber")
+                    .IsUnique()
+                    .HasDatabaseName("ix_course_versions_course_id_version_number");
+
+                b.ToTable("course_versions", "catalog");
+            });
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Catalog.Domain.CourseVersions.CourseVersionRetirement", b =>
+            {
+                b.Property<Guid>("CourseVersionId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("course_version_id");
+
+                b.Property<Guid>("CourseId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("course_id");
+
+                b.HasKey("CourseVersionId")
+                    .HasName("pk_course_version_retirements");
+
+                b.ToTable("course_version_retirements", "catalog");
+            });
 
         modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Catalog.Domain.Samples.Sample", b =>
             {
@@ -43,6 +135,21 @@ partial class CatalogModelSnapshot : ModelSnapshot
                 b.HasKey("Id");
 
                 b.ToTable("samples", "catalog");
+            });
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Catalog.Domain.CourseVersions.CourseChapter", b =>
+            {
+                b.HasOne("SmartSolutionsLab.PharmaTraining.Modules.Catalog.Domain.CourseVersions.CourseVersion", null)
+                    .WithMany("Chapters")
+                    .HasForeignKey("CourseVersionId")
+                    .OnDelete(DeleteBehavior.Cascade)
+                    .IsRequired()
+                    .HasConstraintName("fk_course_chapters_course_versions_course_version_id");
+            });
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Catalog.Domain.CourseVersions.CourseVersion", b =>
+            {
+                b.Navigation("Chapters");
             });
 #pragma warning restore 612, 618
     }

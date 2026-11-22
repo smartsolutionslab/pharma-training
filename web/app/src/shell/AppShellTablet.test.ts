@@ -17,15 +17,18 @@ vi.mock('@/auth/UserMenu.vue', async () => {
   return { default: { render: () => h('p', 'The user menu') } };
 });
 
-// Each module's page stands in as its title: a real module's page needs the host, which this test does not have.
+// Each module's page, and each page below it, stands in as its title: a real module's page needs the host, which this
+// test does not have.
 vi.mock('@/modules', async (importOriginal) => {
   const { h } = await import('vue');
   const modules = await importOriginal<typeof import('@/modules')>();
+  const page = (title: string) => ({ render: () => h('main', [h('h1', title)]) });
   return {
     ...modules,
     moduleRoutes: modules.moduleRoutes.map((route) => ({
       ...route,
-      component: { render: () => h('main', [h('h1', route.title)]) },
+      component: page(route.title),
+      pages: route.pages?.map((below) => ({ ...below, component: page(below.title) })),
     })),
   };
 });
@@ -151,4 +154,20 @@ test('below 768 px tapping the link of the page the user is on closes the sheet 
 
   await vi.waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   expect(router.currentRoute.value.path).toBe('/');
+});
+
+test("below 768 px the switcher's link to register a pharmacy closes the sheet once followed", async () => {
+  const typing = userEvent.setup();
+  viewportOf(767);
+  const router = await renderShell();
+
+  await typing.click(within(screen.getByRole('banner')).getByRole('button', { name: 'Toggle Sidebar' }));
+  const sheet = await screen.findByRole('dialog', { name: 'Sidebar' });
+  await typing.click(
+    within(within(sheet).getByRole('region', { name: 'Pharmacy' })).getByRole('link', { name: 'Register a pharmacy' }),
+  );
+
+  await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/organisation/register'));
+  await vi.waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  expect(await screen.findByRole('heading', { name: 'Register a pharmacy', level: 1 })).toBeInTheDocument();
 });
