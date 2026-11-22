@@ -62,26 +62,26 @@ describe('the language the browser prefers', () => {
   });
 });
 
-// Some webviews and older browsers have navigator.language but no navigator.languages; the app must still start.
+// Some webviews and older browsers have navigator.language but no navigator.languages; the app must still start, and
+// index.html's script must answer as the app does, or <html lang> changes once the app loads.
+const withoutLanguages: [string, Record<string, unknown>, Language][] = [
+  ['its one language decides', { language: 'en-US' }, 'en-GB'],
+  ['with neither it falls back to German', {}, 'de-DE'],
+];
+
 describe('a browser without navigator.languages', () => {
-  test('its one language decides', () => {
-    vi.stubGlobal('navigator', { language: 'en-US' });
+  test.each(withoutLanguages)('%s', (_, browser, expected) => {
+    vi.stubGlobal('navigator', browser);
 
-    expect(preferredLanguage()).toBe('en-GB');
+    expect(preferredLanguage()).toBe(expected);
   });
 
-  test('with neither it falls back to German', () => {
-    vi.stubGlobal('navigator', {});
-
-    expect(preferredLanguage()).toBe('de-DE');
-  });
-
-  test("index.html's script agrees", () => {
-    vi.stubGlobal('navigator', { language: 'en-US' });
+  test.each(withoutLanguages)("index.html's script agrees: %s", (_, browser, expected) => {
+    vi.stubGlobal('navigator', browser);
 
     runScript();
 
-    expect(document.documentElement.lang).toBe('en-GB');
+    expect(document.documentElement.lang).toBe(expected);
   });
 });
 
