@@ -208,6 +208,20 @@ public class EditorialChapterUploadsTests(AspireFixture aspire)
     }
 
     [Fact]
+    public async Task An_upload_request_in_a_charset_the_host_does_not_know_is_refused_not_a_server_error()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var id = await CreateAsync(client, cancellationToken);
+        using var body = Json("""{"kind":"Pdf"}""");
+        body.Headers.ContentType = MediaTypeHeaderValue.Parse("application/json; charset=bogus");
+
+        using var requested = await client.PostAsync(Uploads(id), body, cancellationToken);
+
+        await ShouldBeRefusedAsync(requested, HttpStatusCode.BadRequest, "editorial.invalid-upload-kind", cancellationToken);
+    }
+
+    [Fact]
     public async Task A_chapter_of_an_undefined_kind_is_refused()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
