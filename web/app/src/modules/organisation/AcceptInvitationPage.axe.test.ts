@@ -8,17 +8,28 @@ import { createMemoryHistory, type RouteLocationNormalizedLoaded, RouterView } f
 import { signedInAsDeveloper } from '@/auth/signedInAsDeveloper';
 import { languages, setLanguage, t } from '@/i18n';
 import { createAppRouter } from '@/router';
+import { refusals } from './AcceptInvitationPage.data';
 
 // The screen's axe check. It asks nothing of what the screen shows, only that axe finds no violations in it: what the
 // screen does is its own tests' (AcceptInvitationPage.test.ts). AcceptInvitationPage.data.ts has no example: the page
-// calls no query hook of the generated client. It is checked in each of the states it shows: without a token, and
-// while the invitation is accepted.
+// calls no query hook of the generated client. It is checked in each of the states it shows: without a token, while
+// the invitation is accepted, and refused as the data file's refusals say (expired, for another address).
 
 // The invitation mail's link: its route keeps the token for this tab and the page posts it.
 const token = 'k7Yq2_Lm-9XwPz4RtV8sNc1HjD6bFgUe0OiA5yQrTmW';
 
-// The host does not answer: a posted token stays on its way.
-vi.stubGlobal('fetch', () => new Promise<Response>(() => undefined));
+// The host answers a posted token with the refusal the test names; otherwise it does not answer, and a posted token
+// stays on its way.
+const answered = vi.hoisted(() => ({
+  refusal: undefined as { status: number; body: Record<string, unknown> } | undefined,
+}));
+vi.stubGlobal('fetch', async (_input: RequestInfo | URL, init?: RequestInit) => {
+  const refusal = answered.refusal;
+  if (init?.method === 'POST' && refusal !== undefined) {
+    return Response.json(refusal.body, { status: refusal.status });
+  }
+  return new Promise<Response>(() => undefined);
+});
 
 // Without Vitest's globals, Testing Library does not unmount between tests by itself.
 afterEach(cleanup);
@@ -37,6 +48,7 @@ const themes = [
 ];
 
 afterEach(() => {
+  answered.refusal = undefined;
   document.documentElement.removeAttribute('class');
   localStorage.clear();
   sessionStorage.clear();
@@ -78,6 +90,18 @@ const states = [
     address: `/invitations/accept#token=${token}`,
     shown: () => screen.findByText(t('organisation.accept.accepting')),
   },
+  {
+    state: 'for an expired invitation',
+    address: `/invitations/accept#token=${token}`,
+    refusal: refusals.expired,
+    shown: () => screen.findByRole('heading', { level: 1, name: t('organisation.accept.expired.title') }),
+  },
+  {
+    state: 'for an invitation to another address',
+    address: `/invitations/accept#token=${token}`,
+    refusal: refusals.anotherAddress,
+    shown: () => screen.findByRole('heading', { level: 1, name: t('organisation.accept.anotherAddress.title') }),
+  },
 ];
 
 // Each language in turn: the texts differ, and so may what axe finds in them.
@@ -89,7 +113,8 @@ describe.each(languages)('in %s', (language) => {
   describe.each(themes)('in the $name theme', ({ switchOn }) => {
     test.each(states)(
       'the Accept an invitation page has no accessibility violations axe can find $state',
-      async ({ address, shown }) => {
+      async ({ address, refusal, shown }) => {
+        answered.refusal = refusal;
         switchOn();
         const container = await renderPage(address);
 
