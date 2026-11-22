@@ -149,6 +149,51 @@ public class ReplaceFileChapterTests
     }
 
     [Fact]
+    public async Task A_chapter_of_a_published_version_with_a_name_nothing_was_uploaded_under_is_not_a_draft_without_asking_the_storage()
+    {
+        var version = Published(out var chapter);
+        store.Stored.Add(version);
+
+        var replaced = await Handler().HandleAsync(Command(version.Id, chapter, ChapterKind.Pdf, IssuedName(version.Id, ".pdf")), TestContext.Current.CancellationToken);
+
+        ShouldBeRefused(replaced.IsFailure ? replaced.Error : null, "editorial.not-a-draft", HttpStatusCode.Conflict);
+        blobs.Lookups.ShouldBe(0);
+        version.Chapters.Single().Kind.ShouldBe(ChapterKind.Text);
+        store.Commits.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task A_chapter_of_a_published_version_with_a_name_issued_for_another_version_is_not_a_draft_without_asking_the_storage()
+    {
+        var version = Published(out var chapter);
+        var other = Draft();
+        store.Stored.AddRange([version, other]);
+        var file = IssuedName(other.Id, ".pdf");
+        blobs.Upload(file, "application/pdf", 1024);
+
+        var replaced = await Handler().HandleAsync(Command(version.Id, chapter, ChapterKind.Pdf, file), TestContext.Current.CancellationToken);
+
+        ShouldBeRefused(replaced.IsFailure ? replaced.Error : null, "editorial.not-a-draft", HttpStatusCode.Conflict);
+        blobs.Lookups.ShouldBe(0);
+        version.Chapters.Single().Kind.ShouldBe(ChapterKind.Text);
+        store.Commits.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task A_chapter_the_draft_does_not_hold_is_not_found_before_its_file_is_checked_and_without_asking_the_storage()
+    {
+        var version = DraftWithChapter(out _);
+        var other = Draft();
+        store.Stored.AddRange([version, other]);
+
+        var replaced = await Handler().HandleAsync(Command(version.Id, ChapterId.New(), ChapterKind.Pdf, IssuedName(other.Id, ".pdf")), TestContext.Current.CancellationToken);
+
+        ShouldBeRefused(replaced.IsFailure ? replaced.Error : null, "editorial.chapter-not-found", HttpStatusCode.NotFound);
+        blobs.Lookups.ShouldBe(0);
+        store.Commits.ShouldBe(0);
+    }
+
+    [Fact]
     public async Task A_version_that_does_not_exist_is_not_found()
     {
         var unknown = CourseVersionId.New();

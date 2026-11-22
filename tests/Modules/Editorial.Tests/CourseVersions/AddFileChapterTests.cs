@@ -164,6 +164,37 @@ public class AddFileChapterTests
     }
 
     [Fact]
+    public async Task A_published_version_with_a_name_nothing_was_uploaded_under_is_not_a_draft_without_asking_the_storage()
+    {
+        var version = Published(out var chapter);
+        store.Stored.Add(version);
+
+        var added = await Handler().HandleAsync(Command(version.Id, ChapterKind.Pdf, IssuedName(version.Id, ".pdf")), TestContext.Current.CancellationToken);
+
+        ShouldBeRefused(added.IsFailure ? added.Error : null, "editorial.not-a-draft", HttpStatusCode.Conflict);
+        blobs.Lookups.ShouldBe(0);
+        version.Chapters.ShouldHaveSingleItem().Id.ShouldBe(chapter);
+        store.Commits.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task A_published_version_with_a_name_issued_for_another_version_is_not_a_draft_without_asking_the_storage()
+    {
+        var version = Published(out var chapter);
+        var other = Draft();
+        store.Stored.AddRange([version, other]);
+        var file = IssuedName(other.Id, ".pdf");
+        blobs.Upload(file, "application/pdf", 1024);
+
+        var added = await Handler().HandleAsync(Command(version.Id, ChapterKind.Pdf, file), TestContext.Current.CancellationToken);
+
+        ShouldBeRefused(added.IsFailure ? added.Error : null, "editorial.not-a-draft", HttpStatusCode.Conflict);
+        blobs.Lookups.ShouldBe(0);
+        version.Chapters.ShouldHaveSingleItem().Id.ShouldBe(chapter);
+        store.Commits.ShouldBe(0);
+    }
+
+    [Fact]
     public async Task A_version_that_does_not_exist_is_not_found()
     {
         var unknown = CourseVersionId.New();
