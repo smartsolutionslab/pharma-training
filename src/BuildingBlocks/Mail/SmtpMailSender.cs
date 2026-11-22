@@ -48,14 +48,22 @@ public sealed class SmtpMailSender : IMailSender
         var settings = SmtpSettings.From(configuration);
         using var bound = new CancellationTokenSource(Bound, time);
         using var client = new SmtpClient { Timeout = (int)Bound.TotalMilliseconds };
-        await client.ConnectAsync(settings.Host, settings.Port, settings.Security, bound.Token);
-        if (settings.User is { } user)
+        try
         {
-            await client.AuthenticateAsync(user, settings.Password ?? string.Empty, bound.Token);
-        }
+            await client.ConnectAsync(settings.Host, settings.Port, settings.Security, bound.Token);
+            if (settings.User is { } user)
+            {
+                await client.AuthenticateAsync(user, settings.Password ?? string.Empty, bound.Token);
+            }
 
-        await client.SendAsync(message, bound.Token);
-        await client.DisconnectAsync(quit: true, bound.Token);
+            await client.SendAsync(message, bound.Token);
+            await client.DisconnectAsync(quit: true, bound.Token);
+        }
+        catch (SmtpCommandException refused)
+        {
+            // The server's text (550 5.1.1 <anna@example.org>: ...) stays out of the exception, its logs and dead letters.
+            throw new MailNotSentException($"The SMTP server refused the mail at {refused.ErrorCode} with {(int)refused.StatusCode} {refused.StatusCode}.");
+        }
     }
 
     /// <summary>
