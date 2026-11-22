@@ -17,3 +17,13 @@ test('every module screen has an axe check beside it', () => {
 
   expect(unchecked, 'module screens without <Name>Page.axe.test.ts checking them with axe').toEqual([]);
 });
+
+// The app speaks German and English (ADR 0007): each screen's axe check runs in both, since the texts differ and so may
+// what axe finds in them.
+test('every module screen is checked with axe in each language', () => {
+  const monolingual = Object.entries(checks)
+    .filter(([, check]) => !check.includes('describe.each(languages)'))
+    .map(([check]) => check);
+
+  expect(monolingual, '<Name>Page.axe.test.ts without describe.each(languages)').toEqual([]);
+});

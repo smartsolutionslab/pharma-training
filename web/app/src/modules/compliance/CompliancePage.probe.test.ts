@@ -1,6 +1,8 @@
 import { cleanup, render, screen } from '@testing-library/vue';
 import { afterEach, expect, test, vi } from 'vitest';
+import { setLanguage, t } from '@/i18n';
 import CompliancePage from './CompliancePage.vue';
+import { route } from './routes';
 import type { ManagePermission } from './useCanManage';
 
 // The page's samples come through useComplianceSamples, which the page's own test reads; here they are still loading.
@@ -18,26 +20,43 @@ vi.mock('./useCanManage', () => ({ useCanManage: () => probe.permission }));
 // Without Vitest's globals, Testing Library does not unmount between tests by itself.
 afterEach(cleanup);
 
+/** The failed probe's alert, naming the module by its title in the language of the moment. */
+const probeFailed = () => t('samples.permissionsFailed', { module: t(route.titleKey) });
+
 test('the Compliance page offers Manage when the probe answers 200', () => {
   probe.permission = 'granted';
   render(CompliancePage);
 
-  expect(screen.getByRole('heading', { name: 'Manage' })).toBeInTheDocument();
-  expect(screen.queryByText('Permissions for compliance could not be loaded.')).toBeNull();
+  expect(screen.getByRole('heading', { name: t('samples.manage') })).toBeInTheDocument();
+  expect(screen.queryByText(probeFailed())).toBeNull();
 });
 
 test('the Compliance page offers no Manage when the probe refuses', () => {
   probe.permission = 'refused';
   render(CompliancePage);
 
-  expect(screen.queryByRole('heading', { name: 'Manage' })).toBeNull();
-  expect(screen.queryByText('Permissions for compliance could not be loaded.')).toBeNull();
+  expect(screen.queryByRole('heading', { name: t('samples.manage') })).toBeNull();
+  expect(screen.queryByText(probeFailed())).toBeNull();
 });
 
 test('the Compliance page shows that its probe failed, not a refusal', () => {
   probe.permission = 'failed';
   render(CompliancePage);
 
-  expect(screen.getByText('Permissions for compliance could not be loaded.')).toHaveAttribute('role', 'alert');
-  expect(screen.queryByRole('heading', { name: 'Manage' })).toBeNull();
+  expect(screen.getByText(probeFailed())).toHaveAttribute('role', 'alert');
+  expect(screen.queryByRole('heading', { name: t('samples.manage') })).toBeNull();
+});
+
+test('the Compliance page names Manage and a failed probe in English once switched', async () => {
+  probe.permission = 'granted';
+  setLanguage('en-GB', { remember: false });
+  render(CompliancePage);
+
+  expect(screen.getByRole('heading', { name: t('samples.manage') })).toBeInTheDocument();
+
+  probe.permission = 'failed';
+  cleanup();
+  render(CompliancePage);
+
+  expect(await screen.findByText(probeFailed())).toHaveAttribute('role', 'alert');
 });

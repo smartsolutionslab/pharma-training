@@ -38,6 +38,27 @@ public class EditorialCourseVersionRoleTests(AspireFixture aspire)
         response.IsSuccessStatusCode.ShouldBeTrue($"{method} {request.RequestUri} answered {(int)response.StatusCode}.");
     }
 
+    /// <summary>
+    /// The workflow's routes cannot succeed on a fresh empty draft, so an editor reaching one gets the domain's answer:
+    /// the policy let them through and the handler ran.
+    /// </summary>
+    [Theory]
+    [InlineData("submit", "editorial.no-chapters")]
+    [InlineData("return", "editorial.not-in-review")]
+    [InlineData("publish", "editorial.not-in-review")]
+    [InlineData("retire", "editorial.not-published")]
+    public async Task An_editor_reaches_the_workflow_route(string step, string code)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var id = await CreateAsync(client, cancellationToken);
+
+        using var response = await EditorialWorkflow.StepAsync(client, id, step, cancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict, $"POST /editorial/course-versions/{id}/{step} answered {(int)response.StatusCode}.");
+        (await EditorialWorkflow.CodeOfAsync(response, cancellationToken)).ShouldBe(code);
+    }
+
     [Theory]
     [InlineData("POST", "courses")]
     [InlineData("GET", "course-versions")]
@@ -52,6 +73,10 @@ public class EditorialCourseVersionRoleTests(AspireFixture aspire)
     [InlineData("POST", "course-versions/{id}/questions/{questionId}/approve")]
     [InlineData("POST", "course-versions/{id}/uploads")]
     [InlineData("PUT", "course-versions/{id}/blueprint")]
+    [InlineData("POST", "course-versions/{id}/submit")]
+    [InlineData("POST", "course-versions/{id}/return")]
+    [InlineData("POST", "course-versions/{id}/publish")]
+    [InlineData("POST", "course-versions/{id}/retire")]
     public async Task A_pharmacy_owner_is_forbidden(string method, string route)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -77,6 +102,10 @@ public class EditorialCourseVersionRoleTests(AspireFixture aspire)
     [InlineData("POST", "course-versions/{id}/questions/{questionId}/approve")]
     [InlineData("POST", "course-versions/{id}/uploads")]
     [InlineData("PUT", "course-versions/{id}/blueprint")]
+    [InlineData("POST", "course-versions/{id}/submit")]
+    [InlineData("POST", "course-versions/{id}/return")]
+    [InlineData("POST", "course-versions/{id}/publish")]
+    [InlineData("POST", "course-versions/{id}/retire")]
     public async Task An_anonymous_caller_is_unauthorized(string method, string route)
     {
         var cancellationToken = TestContext.Current.CancellationToken;

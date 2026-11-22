@@ -20,7 +20,7 @@ for (const theme of ['light', 'dark'] as const) {
     await page.getByLabel('Username or email').fill('developer');
     await page.getByLabel('Password', { exact: true }).fill('developer');
     await page.getByRole('button', { name: 'Sign In' }).click();
-    await expect(page.getByText('Signed in as developer')).toBeVisible();
+    await expect(page.getByText('Angemeldet als developer')).toBeVisible();
     const html = page.locator('html');
     if (theme === 'dark') {
       await expect(html).toHaveClass(/\bdark\b/);

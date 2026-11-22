@@ -4,7 +4,7 @@ import { moduleRoutes } from '@/modules';
 import Home from '@/pages/Home.vue';
 
 /**
- * The start page, then every module's route and the pages below it; tests pass createMemoryHistory(), the app
+ * The start page, then every module's route, the pages below it and its detail pages; tests pass createMemoryHistory(), the app
  * createWebHistory().
  */
 export function createAppRouter(history: RouterHistory) {
@@ -16,6 +16,10 @@ export function createAppRouter(history: RouterHistory) {
         ...moduleRoutes.flatMap((route) => [
           { path: `/${route.path}`, component: route.component },
           ...(route.pages ?? []).map((page) => ({ path: `/${route.path}/${page.path}`, component: page.component })),
+          ...(route.details ?? []).map((detail) => ({
+            path: `/${route.path}/${detail.path}`,
+            component: detail.component,
+          })),
         ]),
       ],
     }),

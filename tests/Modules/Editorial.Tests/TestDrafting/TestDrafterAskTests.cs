@@ -110,6 +110,25 @@ public partial class TestDrafterAskTests
     }
 
     [Fact]
+    public async Task Pdf_and_video_chapters_are_never_sent_to_the_model()
+    {
+        var version = TestDraftVersions.WithTextPdfAndVideoChapters(2);
+        using var model = new FakeChatClient(Sound(1, 2));
+
+        await AskAsync(model, version);
+
+        var messages = model.Requests.ShouldHaveSingleItem();
+        var user = messages.Where(message => message.Role == ChatRole.User).ShouldHaveSingleItem().Text;
+        Chapters(user).EnumerateArray().Select(chapter => chapter.GetProperty("title").GetString()).ShouldBe(["Händehygiene", "Flächen"]);
+        var sent = string.Join("\n", messages.Select(message => message.Text));
+        foreach (var chapter in version.Chapters.Where(chapter => chapter.Kind != ChapterKind.Text))
+        {
+            sent.ShouldNotContain(chapter.Title.Value);
+            sent.ShouldNotContain(chapter.File.ShouldNotBeNull().Value);
+        }
+    }
+
+    [Fact]
     public async Task The_request_asks_for_the_answers_json_schema_without_temperature()
     {
         var version = TestDraftVersions.WithTextChapters(2, "Händehygiene");
@@ -126,6 +145,34 @@ public partial class TestDrafterAskTests
         schema.ShouldContain("options");
         options.Temperature.ShouldBeNull();
         options.TopP.ShouldBeNull();
+    }
+
+    /// <summary>
+    /// The answer's length is bounded by the questions asked for, so a runaway answer is cut off instead of billed in
+    /// full (review 6013588614 on #171). The ceiling for <see cref="QuestionCount.Maximum"/> questions is 64,000 tokens,
+    /// 1,280 a question: a sound question with four options is some 150 to 250 tokens of JSON, and gpt-5-mini counts its
+    /// reasoning against the same limit, so that leaves ample room, yet it is half the model's own output ceiling. The
+    /// floor, 256 tokens a question, keeps a full answer from being cut off.
+    /// </summary>
+    [Fact]
+    public async Task The_request_bounds_the_answers_output_tokens_by_the_question_count()
+    {
+        const int Ceiling = 64_000;
+        const int FloorPerQuestion = 256;
+        var most = TestDraftVersions.WithTextChapters(QuestionCount.Maximum, "Händehygiene");
+        var one = TestDraftVersions.WithTextChapters(1, "Händehygiene");
+        using var mostModel = new FakeChatClient(Sound([.. Enumerable.Repeat(1, QuestionCount.Maximum)]));
+        using var oneModel = new FakeChatClient(Sound(1));
+
+        await AskAsync(mostModel, most);
+        await AskAsync(oneModel, one);
+
+        var forMost = mostModel.Options.ShouldHaveSingleItem().ShouldNotBeNull().MaxOutputTokens.ShouldNotBeNull();
+        var forOne = oneModel.Options.ShouldHaveSingleItem().ShouldNotBeNull().MaxOutputTokens.ShouldNotBeNull();
+        forMost.ShouldBeLessThanOrEqualTo(Ceiling);
+        forMost.ShouldBeGreaterThanOrEqualTo(QuestionCount.Maximum * FloorPerQuestion);
+        forOne.ShouldBeGreaterThanOrEqualTo(FloorPerQuestion);
+        forOne.ShouldBeLessThan(forMost, "the bound is derived from the question count");
     }
 
     [Fact]
@@ -173,6 +220,9 @@ public partial class TestDrafterAskTests
     [InlineData("""{"questions":[null]}""")]
     [InlineData("""{"questions":[{"type":"SingleChoice","text":"Frage?","options":[]}]}""")]
     [InlineData("""{"questions":[{"chapter":null,"type":"SingleChoice","text":"Frage?","options":[]}]}""")]
+    [InlineData("""{"questions":[{"chapter":1.0,"type":"SingleChoice","text":"Frage?","options":[]}]}""")]
+    [InlineData("""{"questions":[{"chapter":2e0,"type":"SingleChoice","text":"Frage?","options":[]}]}""")]
+    [InlineData("""{"questions":[{"chapter":2147483648,"type":"SingleChoice","text":"Frage?","options":[]}]}""")]
     [InlineData("""{"questions":[{"chapter":1,"text":"Frage?","options":[]}]}""")]
     [InlineData("""{"questions":[{"chapter":1,"type":"TrueFalse","text":"Frage?","options":[]}]}""")]
     [InlineData("""{"questions":[{"chapter":1,"type":"SingleChoice","options":[]}]}""")]

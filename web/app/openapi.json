@@ -1185,6 +1185,36 @@
         }
       }
     },
+    "/editorial/course-versions/{id}/test-draft": {
+      "post": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorialTestDraftDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/editorial/course-versions/{id}/uploads": {
       "post": {
         "tags": [
@@ -1218,6 +1248,126 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/EditorialChapterUploadDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/editorial/course-versions/{id}/submit": {
+      "post": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Unit"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/editorial/course-versions/{id}/return": {
+      "post": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Unit"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/editorial/course-versions/{id}/publish": {
+      "post": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Unit"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/editorial/course-versions/{id}/retire": {
+      "post": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Unit"
                 }
               }
             }
@@ -1474,6 +1624,36 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Unit"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organisation/invitations/accept": {
+      "post": {
+        "tags": [
+          "Host"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptOrganisationInvitationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
                 }
               }
             }
@@ -1770,6 +1950,20 @@
   },
   "components": {
     "schemas": {
+      "AcceptOrganisationInvitationRequest": {
+        "required": [
+          "token"
+        ],
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "AssessmentSampleDto": {
         "required": [
           "id",
@@ -2227,7 +2421,11 @@
       },
       "EditorialChapterRequest": {
         "required": [
-          "title"
+          "title",
+          "kind",
+          "text",
+          "file",
+          "durationSeconds"
         ],
         "type": "object",
         "properties": {
@@ -2265,8 +2463,7 @@
           "Text",
           "Pdf",
           "Video"
-        ],
-        "default": "Text"
+        ]
       },
       "EditorialChapterUploadDto": {
         "required": [
@@ -2557,11 +2754,28 @@
           }
         }
       },
-      "EditorialUploadKind": {
-        "enum": [
-          "Pdf",
-          "Video"
-        ]
+      "EditorialTestDraftDto": {
+        "required": [
+          "draftedQuestionIds",
+          "leftOutChapterIds"
+        ],
+        "type": "object",
+        "properties": {
+          "draftedQuestionIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "leftOutChapterIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        }
       },
       "EditorialUploadRequest": {
         "required": [
@@ -2570,7 +2784,7 @@
         "type": "object",
         "properties": {
           "kind": {
-            "$ref": "#/components/schemas/EditorialUploadKind"
+            "$ref": "#/components/schemas/EditorialChapterRequestKind"
           }
         }
       },

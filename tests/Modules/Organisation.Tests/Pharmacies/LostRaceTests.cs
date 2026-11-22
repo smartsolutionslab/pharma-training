@@ -1,6 +1,9 @@
+using System.Buffers.Text;
 using System.Net;
+using System.Security.Cryptography;
 using Microsoft.Extensions.Time.Testing;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application;
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Commands.AcceptInvitation;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Commands.ChangeMembership;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Commands.EndMembership;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
@@ -48,6 +51,25 @@ public class LostRaceTests
     }
 
     [Fact]
+    public async Task An_accept_that_lost_the_race_is_told_the_pharmacy_changed_and_nothing_is_announced()
+    {
+        var token = InvitationToken.From(Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(32)));
+        var email = EmailAddress.From("bert@example.org");
+        var invitation = pharmacy.Invite(MembershipId.New(), email, JobFunction.Pta, MembershipRole.Employee, TestPharmacies.RegisteredAt).Value;
+        pharmacy.IssueInvitationLink(invitation, token, TestPharmacies.RegisteredAt).IsSuccess.ShouldBeTrue();
+        pharmacy.ClearDomainEvents();
+
+        var accepted = await new AcceptInvitationHandler(store, store, new FakeTimeProvider(TestPharmacies.RegisteredAt.Value))
+            .HandleAsync(
+                new AcceptInvitation(token, PersonId.From(Guid.CreateVersion7()), DisplayName.From("Bert Klein"), email),
+                TestContext.Current.CancellationToken);
+
+        ShouldBeChanged(accepted);
+        store.Commits.ShouldBe(0);
+        store.Published.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task A_unit_of_work_that_did_not_lose_a_race_commits_and_says_so()
     {
         var unitOfWork = new InMemoryPharmacyStore();
@@ -58,7 +80,8 @@ public class LostRaceTests
         unitOfWork.Commits.ShouldBe(1);
     }
 
-    private void ShouldBeChanged(Result<Unit, ApiError> result)
+    private void ShouldBeChanged<TValue>(Result<TValue, ApiError> result)
+        where TValue : notnull
     {
         result.IsSuccess.ShouldBeFalse("the lost commit was answered as a success");
         var error = result.Error;

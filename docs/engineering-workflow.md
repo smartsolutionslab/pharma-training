@@ -34,8 +34,10 @@ GitHub Copilot's usage limit postpones the cross-model review until 1 December. 
   It posts its findings as a pull request review and labels the pull request `claude-review:passed` or
   `claude-review:blocking` (cloud sessions cannot write commit statuses); the lane fixes what blocks on its next
   wake. It is a same-family review, weaker than the cross-model one, and every verdict says so.
-- Merge when CI is green and the pull request is labelled `claude-review:passed` for its current head (the review names
-  the SHA it read).
+- Side PRs (`claude/*` branches the lanes open for review follow-ups and fixes) are reviewed the same way.
+- Merge when CI is green and the pull request is labelled `claude-review:passed`, and not `claude-review:blocking`, for
+  its current head (the review names the SHA it read). A blocking finding you judge wrong is lifted by removing the
+  `claude-review:blocking` label yourself; no session lifts it.
 
 Both are hand-written stop-gaps. Remove them at the first `fabric upgrade` after 1 December.
 

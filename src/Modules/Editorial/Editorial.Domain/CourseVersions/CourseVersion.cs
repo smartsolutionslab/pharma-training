@@ -238,9 +238,9 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
 
     /// <summary>
     /// Takes the LLM's draft of the whole test. Approved questions stay; the unreviewed ones are replaced, so a new
-    /// draft never throws away work an editor has signed off.
+    /// draft never throws away work an editor has signed off. Answers the drafted questions' new ids, in the draft's order.
     /// </summary>
-    public Result<Unit, DomainError> ApplyAiTestDraft(IReadOnlyList<DraftedQuestion> drafted, Func<QuestionId> newQuestionId, Func<AnswerOptionId> newOptionId)
+    public Result<IReadOnlyList<QuestionId>, DomainError> ApplyAiTestDraft(IReadOnlyList<DraftedQuestion> drafted, Func<QuestionId> newQuestionId, Func<AnswerOptionId> newOptionId)
     {
         Ensure.That(drafted).IsNotNull();
         Ensure.That(newQuestionId).IsNotNull();
@@ -260,10 +260,12 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
             return Failure(CourseVersionErrors.TooManyQuestions(Id));
         }
 
+        List<Question> added = [.. drafted.Select(draft => Question.From(newQuestionId(), draft, Provenance.AiDrafted, newOptionId))];
         questions.RemoveAll(question => question.Review == ReviewState.Unreviewed);
-        questions.AddRange(drafted.Select(draft => Question.From(newQuestionId(), draft, Provenance.AiDrafted, newOptionId)));
+        questions.AddRange(added);
         Raise(new AiTestDraftApplied(Id, QuestionCount.From(drafted.Count)));
-        return Success(Unit.Value);
+        IReadOnlyList<QuestionId> ids = [.. added.Select(question => question.Id)];
+        return Success(ids);
     }
 
     public Result<QuestionId, DomainError> AddQuestion(QuestionId id, DraftedQuestion draft, Func<AnswerOptionId> newOptionId)
@@ -365,6 +367,11 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
             return Failure(CourseVersionErrors.NoChapters(Id));
         }
 
+        if (questions.Count > QuestionCount.Maximum)
+        {
+            return Failure(CourseVersionErrors.TooManyQuestions(Id));
+        }
+
         if (questions.Count != Blueprint.Questions.Value)
         {
             return Failure(CourseVersionErrors.TestIncomplete(Id, Blueprint.Questions, QuestionCount.From(questions.Count)));
@@ -389,7 +396,8 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
 
     /// <summary>
     /// Publishes the version. Every question is approved and sound, and with <see cref="ReviewPolicy.FourEyes"/> the
-    /// publishing editor is not the one who submitted it. The Application supersedes the course's previous version.
+    /// publishing editor is neither the one who submitted it nor one who approved any of its questions, a question copied
+    /// from the previous version included. The Application supersedes the course's previous version.
     /// </summary>
     public Result<Unit, DomainError> Publish(PersonId editor, ReviewPolicy policy, Timestamp now)
     {
@@ -401,6 +409,11 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         if (policy == ReviewPolicy.FourEyes && editor == SubmittedBy)
         {
             return Failure(CourseVersionErrors.FourEyesRequired(Id));
+        }
+
+        if (policy == ReviewPolicy.FourEyes && questions.Any(question => question.ReviewedBy == editor))
+        {
+            return Failure(CourseVersionErrors.PublisherApprovedQuestions(Id));
         }
 
         if (questions.FirstOrDefault(question => question.Review != ReviewState.Approved) is { } unreviewed)

@@ -29,6 +29,8 @@ public static class CourseVersionErrors
 
     public static DomainError FourEyesRequired(CourseVersionId version) => new FourEyesRequired(version);
 
+    public static DomainError PublisherApprovedQuestions(CourseVersionId version) => new PublisherApprovedQuestions(version);
+
     public static DomainError TooFewOptions(QuestionId question) => new TooFewOptions(question);
 
     public static DomainError SingleChoiceNeedsOneCorrect(QuestionId question) => new SingleChoiceNeedsOneCorrect(question);

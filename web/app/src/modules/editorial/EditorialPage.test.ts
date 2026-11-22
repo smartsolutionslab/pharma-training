@@ -1,0 +1,451 @@
+import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/vue';
+import userEvent from '@testing-library/user-event';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { createMemoryHistory } from 'vue-router';
+import type { EditorialCourseVersionSummaryDto } from '@/api/generated';
+import { setLanguage, t } from '@/i18n';
+import { createAppRouter } from '@/router';
+import EditorialPage from './EditorialPage.vue';
+
+const notify = vi.hoisted(() => ({ success: vi.fn(), failure: vi.fn() }));
+vi.mock('@/lib/notify', () => ({ notify }));
+
+// The host, as GET /editorial/course-versions reaches it through the generated client: each status answers the versions
+// the test gives it, a page of 20 at a time, and the total the test says (the whole list by default).
+const host = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>();
+vi.stubGlobal('fetch', host);
+
+type Status = 'Draft' | 'InReview' | 'Published';
+
+const hygiene: EditorialCourseVersionSummaryDto = {
+  id: '0198c1a0-0000-7000-8000-0000000000c1',
+  courseId: '0198c1a0-0000-7000-8000-0000000000d1',
+  number: 2,
+  title: 'Hygiene in der Apotheke',
+  status: 'Draft',
+};
+const labelling: EditorialCourseVersionSummaryDto = {
+  id: '0198c1a0-0000-7000-8000-0000000000c2',
+  courseId: '0198c1a0-0000-7000-8000-0000000000d2',
+  number: 1,
+  title: 'Kennzeichnung von Rezepturen',
+  status: 'InReview',
+};
+
+let lists: Record<Status, EditorialCourseVersionSummaryDto[]>;
+let totals: Partial<Record<Status, number>>;
+let listing: (status: string | null) => Promise<Response>;
+
+/** The new course's first version, as POST /editorial/courses answers it: 201 with the version's id. */
+const started = '0198c1a0-0000-7000-8000-0000000000c9';
+const created = async () =>
+  Response.json(started, { status: 201, headers: { Location: `/editorial/course-versions/${started}` } });
+let creation: () => Promise<Response>;
+
+const listed = async (status: string | null) => {
+  const items = lists[status as Status] ?? [];
+  return Response.json({ items, totalCount: totals[status as Status] ?? items.length, page: 1, pageSize: 20 });
+};
+
+beforeEach(() => {
+  lists = { Draft: [hygiene], InReview: [labelling], Published: [] };
+  totals = {};
+  listing = listed;
+  creation = created;
+  host.mockImplementation(async (input, init) => {
+    const url = new URL(String(input), 'http://localhost');
+    if (init?.method === 'POST' && url.pathname === '/api/editorial/courses') {
+      return creation();
+    }
+    if ((init?.method ?? 'GET') === 'GET' && url.pathname === '/api/editorial/course-versions') {
+      return listing(url.searchParams.get('status'));
+    }
+    return new Response('', { status: 404 });
+  });
+  notify.success.mockReset();
+  notify.failure.mockReset();
+});
+afterEach(() => host.mockReset());
+// Without Vitest's globals, Testing Library does not unmount between tests by itself.
+afterEach(cleanup);
+
+/** The inbox lists the host was asked for, by their query. */
+const listsAsked = () =>
+  host.mock.calls
+    .map(([input]) => new URL(String(input), 'http://localhost'))
+    .filter((url) => url.pathname === '/api/editorial/course-versions')
+    .map((url) => Object.fromEntries(url.searchParams));
+
+/** The page at its address, with a query client of its own that does not retry, so a failure shows at once. */
+async function renderAt(path = '/editorial') {
+  const router = createAppRouter(createMemoryHistory());
+  await router.push(path);
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  render(EditorialPage, { global: { plugins: [router, [VueQueryPlugin, { queryClient }]] } });
+  return { router, queryClient };
+}
+
+const tabs = () => screen.getByRole('tablist', { name: t('editorial.inbox.statuses') });
+const tab = (status: Status) => within(tabs()).getByRole('tab', { name: t(`glossary.courseVersionStatus.${status}`) });
+
+test('the page is headed by the module, names its inbox and offers the three statuses, drafts first', async () => {
+  await renderAt();
+
+  expect(screen.getByRole('heading', { level: 1, name: t('modules.editorial.title') })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { level: 2, name: t('editorial.inbox.title') })).toBeInTheDocument();
+  expect(
+    within(tabs())
+      .getAllByRole('tab')
+      .map((each) => each.textContent.trim()),
+  ).toEqual([
+    t('glossary.courseVersionStatus.Draft'),
+    t('glossary.courseVersionStatus.InReview'),
+    t('glossary.courseVersionStatus.Published'),
+  ]);
+  expect(tab('Draft')).toHaveAttribute('aria-selected', 'true');
+  expect(tab('InReview')).toHaveAttribute('aria-selected', 'false');
+  expect(screen.getByRole('button', { name: t('editorial.course.new') })).toBeInTheDocument();
+});
+
+// The generated web sample is dropped from the editorial module (spec 2.2): no samples, no form for them and no Manage
+// probe, whose manager role an editor does not hold.
+test('the page shows no samples and no Manage section', async () => {
+  await renderAt();
+
+  await screen.findByRole('tablist', { name: t('editorial.inbox.statuses') });
+  expect(screen.queryByRole('heading', { name: t('samples.title') })).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: t('samples.manage') })).not.toBeInTheDocument();
+  expect(screen.queryByRole('form', { name: t('samples.form.label') })).not.toBeInTheDocument();
+  expect(host.mock.calls.map(([input]) => String(input))).not.toContainEqual(
+    expect.stringContaining('/editorial/samples'),
+  );
+  expect(host.mock.calls.map(([input]) => String(input))).not.toContainEqual(
+    expect.stringContaining('/editorial/permissions'),
+  );
+});
+
+test('the drafts tab lists the versions by title, each a link to its page, with its number and status', async () => {
+  await renderAt();
+
+  const link = await screen.findByRole('link', { name: hygiene.title });
+  expect(link).toHaveAttribute('href', `/editorial/versions/${hygiene.id}`);
+  expect(screen.getByRole('columnheader', { name: t('editorial.inbox.columns.title') })).toBeInTheDocument();
+  expect(screen.getByRole('columnheader', { name: t('editorial.inbox.columns.number') })).toBeInTheDocument();
+  expect(screen.getByRole('columnheader', { name: t('editorial.inbox.columns.status') })).toBeInTheDocument();
+  const row = within(link.closest('tr') ?? document.body);
+  expect(row.getByRole('cell', { name: '2' })).toBeInTheDocument();
+  expect(row.getByRole('cell', { name: t('glossary.courseVersionStatus.Draft') })).toBeInTheDocument();
+  expect(listsAsked()).toEqual([{ status: 'Draft', page: '1', pageSize: '20' }]);
+});
+
+test('choosing "In Prüfung" asks for the versions in review and puts the status in the address', async () => {
+  const user = userEvent.setup();
+  const { router } = await renderAt('/editorial?status=Draft&page=2');
+  await screen.findByRole('tablist', { name: t('editorial.inbox.statuses') });
+
+  await user.click(tab('InReview'));
+
+  await waitFor(() => expect(router.currentRoute.value.query.status).toBe('InReview'));
+  // Switching a tab starts at its first page.
+  expect(router.currentRoute.value.query.page ?? '1').toBe('1');
+  expect(tab('InReview')).toHaveAttribute('aria-selected', 'true');
+  expect(await screen.findByRole('link', { name: labelling.title })).toHaveAttribute(
+    'href',
+    `/editorial/versions/${labelling.id}`,
+  );
+  expect(screen.queryByRole('link', { name: hygiene.title })).not.toBeInTheDocument();
+  expect(listsAsked()).toContainEqual({ status: 'InReview', page: '1', pageSize: '20' });
+});
+
+test('the address chooses the tab and the page', async () => {
+  await renderAt('/editorial?status=Published&page=2');
+
+  await waitFor(() => expect(tab('Published')).toHaveAttribute('aria-selected', 'true'));
+  await waitFor(() => expect(listsAsked()).toEqual([{ status: 'Published', page: '2', pageSize: '20' }]));
+});
+
+test.each([['/editorial?status=Bogus'], ['/editorial?status=Superseded&page=abc'], ['/editorial?status=Draft&page=0']])(
+  'at %s the inbox falls back to the first page of the drafts, and the host never sees the invalid value',
+  async (path) => {
+    await renderAt(path);
+
+    await waitFor(() => expect(tab('Draft')).toHaveAttribute('aria-selected', 'true'));
+    expect(await screen.findByRole('link', { name: hygiene.title })).toBeInTheDocument();
+    expect(listsAsked()).toEqual([{ status: 'Draft', page: '1', pageSize: '20' }]);
+  },
+);
+
+test("the pager's next page puts the page in the address and asks the host for it", async () => {
+  const user = userEvent.setup();
+  totals = { Draft: 45 };
+  const { router } = await renderAt();
+  await screen.findByRole('link', { name: hygiene.title });
+
+  await user.click(screen.getByRole('button', { name: t('dataTable.next') }));
+
+  await waitFor(() => expect(router.currentRoute.value.query.page).toBe('2'));
+  expect(router.currentRoute.value.query.status ?? 'Draft').toBe('Draft');
+  await waitFor(() => expect(listsAsked()).toContainEqual({ status: 'Draft', page: '2', pageSize: '20' }));
+});
+
+test('while the versions load the table is busy and shows skeleton rows', async () => {
+  listing = () => new Promise<Response>(() => undefined);
+
+  await renderAt();
+
+  const table = await screen.findByRole('table', { name: t('dataTable.loading'), busy: true });
+  expect(within(table).getByRole('columnheader', { name: t('editorial.inbox.columns.title') })).toBeInTheDocument();
+  expect(table.querySelector('[data-slot="skeleton"]')).not.toBeNull();
+  expect(listsAsked()).toEqual([{ status: 'Draft', page: '1', pageSize: '20' }]);
+  expect(screen.queryByText(t('editorial.inbox.empty.Draft'))).not.toBeInTheDocument();
+});
+
+test('without drafts the inbox says so, and its action opens the form that starts a course', async () => {
+  const user = userEvent.setup();
+  lists.Draft = [];
+  await renderAt();
+
+  const sentence = await screen.findByText(t('editorial.inbox.empty.Draft'));
+  const emptyState = within(sentence.closest('[data-slot="empty-state"]') as HTMLElement);
+  await user.click(emptyState.getByRole('button', { name: t('editorial.course.new') }));
+
+  expect(await screen.findByRole('dialog', { name: t('editorial.course.form.label') })).toBeInTheDocument();
+});
+
+test.each([['InReview' as const], ['Published' as const]])(
+  'without versions in %s the inbox says so, with no action',
+  async (status) => {
+    lists[status] = [];
+    await renderAt(`/editorial?status=${status}`);
+
+    const sentence = await screen.findByText(t(`editorial.inbox.empty.${status}`));
+    const emptyState = within(sentence.closest('[data-slot="empty-state"]') as HTMLElement);
+    expect(emptyState.queryByRole('button')).not.toBeInTheDocument();
+  },
+);
+
+test('an inbox the host cannot give is reported', async () => {
+  listing = async () => new Response('', { status: 500 });
+
+  await renderAt();
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(t('editorial.inbox.loadFailed'));
+  expect(screen.queryByText(t('editorial.inbox.empty.Draft'))).not.toBeInTheDocument();
+});
+
+// The German texts themselves, not only their keys: a key that resolved to the wrong text would pass the t() queries.
+test('the inbox speaks German by default', async () => {
+  lists.Draft = [];
+  await renderAt();
+
+  expect(screen.getByRole('heading', { level: 2, name: 'Eingang' })).toBeInTheDocument();
+  const statuses = screen.getByRole('tablist', { name: 'Status' });
+  expect(
+    within(statuses)
+      .getAllByRole('tab')
+      .map((each) => each.textContent.trim()),
+  ).toEqual(['Entwurf', 'In Prüfung', 'Veröffentlicht']);
+  expect(await screen.findByText('Keine Entwürfe.')).toBeVisible();
+  expect(screen.getAllByRole('button', { name: 'Neue Schulung' }).length).toBeGreaterThan(0);
+});
+
+test('the inbox names its columns and a failure in German', async () => {
+  await renderAt();
+
+  expect(await screen.findByRole('columnheader', { name: 'Schulung' })).toBeInTheDocument();
+  expect(screen.getByRole('columnheader', { name: 'Version' })).toBeInTheDocument();
+  expect(screen.getByRole('columnheader', { name: 'Status' })).toBeInTheDocument();
+  cleanup();
+
+  listing = async () => new Response('', { status: 500 });
+  await renderAt();
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('Der Eingang konnte nicht geladen werden.');
+});
+
+test('switched to English, the inbox, its tabs and its empty state speak English', async () => {
+  lists.Published = [];
+  await renderAt('/editorial?status=Published');
+  await screen.findByText(t('editorial.inbox.empty.Published'));
+
+  setLanguage('en-GB', { remember: false });
+
+  expect(await screen.findByRole('heading', { level: 2, name: 'Inbox' })).toBeInTheDocument();
+  expect(
+    within(screen.getByRole('tablist', { name: 'Status' }))
+      .getAllByRole('tab')
+      .map((each) => each.textContent.trim()),
+  ).toEqual(['Draft', 'In review', 'Published']);
+  expect(screen.getByText('No published versions.')).toBeVisible();
+});
+
+// Starting a course (T4): "Neue Schulung" opens a dialog with the form; the host's 201 is the new version's id, and the
+// editor lands on its page.
+
+/** What the page posted, as the host received it. */
+const posted = () =>
+  host.mock.calls
+    .filter(([, init]) => init?.method === 'POST')
+    .map(([input, init]) => ({ url: String(input), body: JSON.parse(String(init?.body)) as unknown }));
+
+/** Opens the dialog from the section's button and enters a title (pasted, so a long one is quick). */
+async function startCourse(user: ReturnType<typeof userEvent.setup>, title: string) {
+  await screen.findByRole('link', { name: hygiene.title });
+  await user.click(screen.getByRole('button', { name: t('editorial.course.new') }));
+  const dialog = within(await screen.findByRole('dialog', { name: t('editorial.course.form.label') }));
+  await user.click(dialog.getByRole('textbox', { name: t('editorial.course.form.title') }));
+  await user.paste(title);
+  await user.click(dialog.getByRole('button', { name: t('editorial.course.form.submit') }));
+  return dialog;
+}
+
+test('"Neue Schulung" opens a dialog that says what starting a course means, and Abbrechen closes it', async () => {
+  const user = userEvent.setup();
+  await renderAt();
+  await screen.findByRole('link', { name: hygiene.title });
+
+  await user.click(screen.getByRole('button', { name: 'Neue Schulung' }));
+
+  const dialog = await screen.findByRole('dialog', { name: 'Neue Schulung anlegen' });
+  expect(dialog).toHaveAccessibleDescription('Die Schulung beginnt mit Version 1 als Entwurf.');
+  expect(within(dialog).getByRole('textbox', { name: 'Titel' })).toBeInTheDocument();
+  expect(within(dialog).getByRole('button', { name: 'Anlegen' })).toBeInTheDocument();
+  await user.click(within(dialog).getByRole('button', { name: 'Abbrechen' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  expect(posted()).toEqual([]);
+});
+
+test('a course started from the inbox is posted, reported, and its first version opens', async () => {
+  const user = userEvent.setup();
+  const { router } = await renderAt();
+
+  await startCourse(user, '  Hygiene II  ');
+
+  await waitFor(() => expect(router.currentRoute.value.path).toBe(`/editorial/versions/${started}`));
+  expect(posted()).toEqual([{ url: '/api/editorial/courses', body: { title: 'Hygiene II' } }]);
+  expect(notify.success).toHaveBeenCalledWith(t('editorial.course.created', { title: 'Hygiene II' }));
+  expect(notify.success).toHaveBeenCalledWith('Die Schulung Hygiene II wurde angelegt.');
+  expect(notify.failure).not.toHaveBeenCalled();
+  // The inbox is asked again: the new draft is in it.
+  await waitFor(() => expect(listsAsked().length).toBeGreaterThan(1));
+});
+
+// A module's own words are shown as the host sent them (ApiError.serverMessage); the catalog speaks when it sent none.
+test.each([
+  [
+    400,
+    () =>
+      new Response(
+        JSON.stringify({
+          title: 'Bad Request',
+          status: 400,
+          detail: 'Der Titel ist ungültig.',
+          code: 'editorial.invalid-course-title',
+        }),
+        { status: 400, headers: { 'Content-Type': 'application/problem+json' } },
+      ),
+    () => 'Der Titel ist ungültig.',
+  ],
+  [500, () => new Response('', { status: 500 }), () => 'Die Schulung Hygiene II konnte nicht angelegt werden.'],
+])(
+  'a course the host answers with %i is reported, and the dialog stays open with the title entered',
+  async (_status, answer, message) => {
+    const user = userEvent.setup();
+    creation = async () => answer();
+    const { router } = await renderAt();
+
+    const dialog = await startCourse(user, 'Hygiene II');
+
+    await waitFor(() => expect(notify.failure).toHaveBeenCalledWith(message()));
+    expect(notify.failure).toHaveBeenCalledOnce();
+    expect(notify.success).not.toHaveBeenCalled();
+    expect(router.currentRoute.value.path).toBe('/editorial');
+    expect(screen.getByRole('dialog', { name: t('editorial.course.form.label') })).toBeInTheDocument();
+    expect(dialog.getByRole('textbox', { name: t('editorial.course.form.title') })).toHaveValue('Hygiene II');
+  },
+);
+
+test('a blank title is refused in the dialog before anything is sent', async () => {
+  const user = userEvent.setup();
+  await renderAt();
+
+  const dialog = await startCourse(user, '   ');
+
+  expect(await dialog.findByRole('alert')).toHaveTextContent('Geben Sie der Schulung einen Titel.');
+  expect(posted()).toEqual([]);
+});
+
+// 45 drafts, three pages of 20: the host answers the page asked for as it would, an empty page past the last one.
+const drafts: EditorialCourseVersionSummaryDto[] = Array.from({ length: 45 }, (_, index) => ({
+  id: `0198c1a0-0000-7000-8000-${String(index + 1).padStart(12, '0')}`,
+  courseId: `0198c1a0-0000-7000-8001-${String(index + 1).padStart(12, '0')}`,
+  number: 1,
+  title: `Schulung ${String(index + 1).padStart(2, '0')}`,
+  status: 'Draft',
+}));
+
+/** The drafts' page the address asks for; a page held while the test says so. */
+function pagingDrafts(hold?: string) {
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  host.mockImplementation(async (input) => {
+    const url = new URL(String(input), 'http://localhost');
+    if (url.pathname !== '/api/editorial/course-versions') {
+      return new Response('', { status: 404 });
+    }
+    const page = Number(url.searchParams.get('page') ?? '1');
+    if (url.searchParams.get('page') === hold) {
+      await held;
+    }
+    const items = drafts.slice((page - 1) * 20, page * 20);
+    return Response.json({ items, totalCount: drafts.length, page, pageSize: 20 });
+  });
+  return release;
+}
+
+test('paging with the keyboard keeps the focus on "Nächste Seite" while the next page loads and once it shows', async () => {
+  const user = userEvent.setup();
+  const release = pagingDrafts('2');
+  const { router } = await renderAt();
+  await screen.findByRole('link', { name: 'Schulung 01' });
+  const pager = screen.getByRole('navigation', { name: t('dataTable.pagination') });
+  within(pager)
+    .getByRole('button', { name: t('dataTable.next') })
+    .focus();
+
+  await user.keyboard('{Enter}');
+
+  await waitFor(() => expect(router.currentRoute.value.query.page).toBe('2'));
+  await waitFor(() => expect(listsAsked()).toContainEqual({ status: 'Draft', page: '2', pageSize: '20' }));
+  // While the next page loads, the pager stays, and so does the focus.
+  expect(screen.getByRole('navigation', { name: t('dataTable.pagination') })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: t('dataTable.next') })).toHaveFocus();
+  expect(screen.getByRole('button', { name: 'Nächste Seite' })).toHaveFocus();
+
+  release();
+
+  expect(await screen.findByRole('link', { name: 'Schulung 21' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: t('dataTable.next') })).toHaveFocus();
+});
+
+test('a page past the last one shows the last page and puts it in the address in its place', async () => {
+  pagingDrafts();
+  const router = createAppRouter(createMemoryHistory());
+  await router.push('/');
+  await router.push('/editorial?status=Draft&page=99');
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(EditorialPage, { global: { plugins: [router, [VueQueryPlugin, { queryClient }]] } });
+
+  expect(await screen.findByRole('link', { name: 'Schulung 41' })).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Schulung 45' })).toBeInTheDocument();
+  expect(router.currentRoute.value.query.page).toBe('3');
+  expect(router.currentRoute.value.query.status ?? 'Draft').toBe('Draft');
+  expect(screen.queryByText(t('editorial.inbox.empty.Draft'))).not.toBeInTheDocument();
+  expect(listsAsked()).toContainEqual({ status: 'Draft', page: '3', pageSize: '20' });
+  // Replaced, not pushed: Back leaves the inbox instead of returning to the page that does not exist.
+  router.back();
+  await waitFor(() => expect(router.currentRoute.value.path).toBe('/'));
+});
