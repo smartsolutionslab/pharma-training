@@ -43,16 +43,19 @@ public class CourseVersionWorkflowErrorTests
     [Fact]
     public void The_workflow_steps_fail_with_the_workflow_union()
     {
-        Result<Unit, CourseVersionWorkflowError> submitted = Draft().SubmitForReview(Author);
-        Result<Unit, CourseVersionWorkflowError> returned = Draft().ReturnToDraft(Reviewer, Now);
-        Result<Unit, CourseVersionWorkflowError> published = Draft().Publish(Reviewer, ReviewPolicy.SingleEditor, Now);
-        Result<Unit, CourseVersionWorkflowError> retired = Draft().Retire(Reviewer, Now);
+        var submitted = Draft().SubmitForReview(Author);
+        var returned = Draft().ReturnToDraft(Reviewer, Now);
+        var published = Draft().Publish(Reviewer, ReviewPolicy.SingleEditor, Now);
+        var retired = Draft().Retire(Reviewer, Now);
 
-        CourseVersionFailures.From(submitted.Error).Code.ShouldBe("editorial.no-chapters");
-        CourseVersionFailures.From(returned.Error).Code.ShouldBe("editorial.not-in-review");
-        CourseVersionFailures.From(published.Error).Code.ShouldBe("editorial.not-in-review");
-        CourseVersionFailures.From(retired.Error).Code.ShouldBe("editorial.not-published");
+        CourseVersionFailures.From(WorkflowError(submitted)).Code.ShouldBe("editorial.no-chapters");
+        CourseVersionFailures.From(WorkflowError(returned)).Code.ShouldBe("editorial.not-in-review");
+        CourseVersionFailures.From(WorkflowError(published)).Code.ShouldBe("editorial.not-in-review");
+        CourseVersionFailures.From(WorkflowError(retired)).Code.ShouldBe("editorial.not-published");
     }
+
+    /// <summary>Compiles only for a step that returns the workflow union: <see cref="Result{TValue, TError}"/> is invariant.</summary>
+    private static CourseVersionWorkflowError WorkflowError(Result<Unit, CourseVersionWorkflowError> result) => result.Error;
 
     private static CourseVersionWorkflowError Case(string name) => name switch
     {
