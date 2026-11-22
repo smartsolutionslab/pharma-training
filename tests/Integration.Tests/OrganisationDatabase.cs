@@ -338,12 +338,32 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
     /// The message's JSON inside a stored envelope. Wolverine stores the whole envelope in <c>body</c>
     /// (<c>EnvelopeSerializer</c>: length-prefixed headers, then the message's bytes), so it is no UTF-8 text as a whole.
     /// </summary>
+    /// <summary>
+    /// The JSON message inside Wolverine's binary envelope: the first "{" from which the bytes up to the last "}" parse as
+    /// one JSON object. The headers before it are binary, and a byte of a Guid or timestamp may be "{" too, so the first
+    /// "{" alone is not the message's start.
+    /// </summary>
     private static string MessageJson(byte[] envelope)
     {
-        var start = Array.IndexOf(envelope, (byte)'{');
         var end = Array.LastIndexOf(envelope, (byte)'}');
-        (start >= 0 && end > start).ShouldBeTrue("the stored envelope holds no JSON message");
-        return Encoding.UTF8.GetString(envelope, start, end - start + 1);
+        for (var start = Array.IndexOf(envelope, (byte)'{'); start >= 0 && start < end; start = Array.IndexOf(envelope, (byte)'{', start + 1))
+        {
+            var candidate = envelope.AsMemory(start, end - start + 1);
+            try
+            {
+                using var parsed = JsonDocument.Parse(candidate);
+                if (parsed.RootElement.ValueKind == JsonValueKind.Object)
+                {
+                    return Encoding.UTF8.GetString(candidate.Span);
+                }
+            }
+            catch (JsonException)
+            {
+                // A "{" inside the binary headers; the message starts later.
+            }
+        }
+
+        throw new ShouldAssertException("the stored envelope holds no JSON message");
     }
 
     private async Task<JsonDocument> ClaimsOfAsync(string user)
