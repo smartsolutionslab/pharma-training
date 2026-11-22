@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import { RouterView } from 'vue-router';
 import { Separator } from '@/components/ui/separator';
 import {
@@ -22,6 +23,7 @@ import UserMenu from '@/auth/UserMenu.vue';
 
 // The app shell: a sidebar with the pharmacy switcher and every module's page the user may see (each module's routes.ts
 // adds its own), the breadcrumbs and the command palette above the page, the page if it is for the user, and the toasts.
+const { t } = useI18n();
 </script>
 
 <template>
@@ -51,6 +53,6 @@ import UserMenu from '@/auth/UserMenu.vue';
         <RouterView />
       </AudienceGate>
     </SidebarInset>
-    <Toaster />
+    <Toaster :container-aria-label="t('toasts.region')" :toast-options="{ closeButtonAriaLabel: t('toasts.close') }" />
   </SidebarProvider>
 </template>

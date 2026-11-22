@@ -31,4 +31,44 @@ export const en: MessageSchema = {
     signingIn: 'Signing in…',
     signingOut: 'Signing out…',
   },
+  samples: {
+    form: {
+      name: 'Name',
+    },
+  },
+  shell: {
+    pharmacy: {
+      region: 'Pharmacy',
+    },
+  },
+  toasts: {
+    region: 'Notifications',
+    close: 'Close notification',
+  },
+  dataTable: {
+    density: 'Density',
+    comfortable: 'Comfortable',
+    compact: 'Compact',
+    columns: 'Columns',
+    visibleColumns: 'Visible columns',
+    loading: 'Loading…',
+    actions: 'Actions',
+    showing: 'Showing {first}–{last} of {total}',
+  },
+  ui: {
+    close: 'Close',
+    sidebar: {
+      toggle: 'Toggle sidebar',
+      title: 'Sidebar',
+      description: 'Shows the sidebar on small screens.',
+    },
+    command: {
+      title: 'Command palette',
+      description: 'Search for a command.',
+    },
+    breadcrumb: {
+      label: 'Breadcrumb',
+      more: 'More',
+    },
+  },
 };

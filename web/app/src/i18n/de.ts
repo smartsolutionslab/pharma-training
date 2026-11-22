@@ -32,6 +32,46 @@ export const de = {
     signingIn: 'Anmeldung läuft…',
     signingOut: 'Abmeldung läuft…',
   },
+  samples: {
+    form: {
+      name: 'Name',
+    },
+  },
+  shell: {
+    pharmacy: {
+      region: 'Apotheke',
+    },
+  },
+  toasts: {
+    region: 'Benachrichtigungen',
+    close: 'Benachrichtigung schließen',
+  },
+  dataTable: {
+    density: 'Zeilenabstand',
+    comfortable: 'Normal',
+    compact: 'Kompakt',
+    columns: 'Spalten',
+    visibleColumns: 'Sichtbare Spalten',
+    loading: 'Wird geladen…',
+    actions: 'Aktionen',
+    showing: 'Einträge {first}–{last} von {total}',
+  },
+  ui: {
+    close: 'Schließen',
+    sidebar: {
+      toggle: 'Seitenleiste ein- oder ausblenden',
+      title: 'Seitenleiste',
+      description: 'Zeigt die Seitenleiste auf kleinen Bildschirmen.',
+    },
+    command: {
+      title: 'Befehlspalette',
+      description: 'Suchen Sie einen Befehl.',
+    },
+    breadcrumb: {
+      label: 'Navigationspfad',
+      more: 'Mehr',
+    },
+  },
 };
 
 /** The catalogs' shape: every key with its message. en.ts is typed by it, so a missing or extra key fails vue-tsc. */
