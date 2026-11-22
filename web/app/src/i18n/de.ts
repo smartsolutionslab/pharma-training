@@ -78,9 +78,21 @@ export const de = {
     },
   },
   samples: {
+    manage: 'Verwalten',
+    permissionsFailed: 'Die Berechtigungen für {module} konnten nicht geladen werden.',
+    title: 'Beispiele',
+    loadFailed: 'Die Beispiele konnten nicht geladen werden.',
+    empty: 'Noch keine Beispiele.',
+    createFirst: 'Erstes Beispiel anlegen',
     form: {
+      label: 'Neues Beispiel',
       name: 'Name',
+      submit: 'Anlegen',
+      nameRequired: 'Geben Sie dem Beispiel einen Namen.',
+      nameTooLong: 'Der Name eines Beispiels hat höchstens 100 Zeichen.',
     },
+    created: 'Das Beispiel {name} wurde angelegt.',
+    createFailed: 'Das Beispiel {name} konnte nicht angelegt werden.',
   },
   shell: {
     home: 'Startseite',

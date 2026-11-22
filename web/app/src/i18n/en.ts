@@ -77,9 +77,21 @@ export const en: MessageSchema = {
     },
   },
   samples: {
+    manage: 'Manage',
+    permissionsFailed: 'Permissions for {module} could not be loaded.',
+    title: 'Samples',
+    loadFailed: 'The samples could not be loaded.',
+    empty: 'No samples yet.',
+    createFirst: 'Create a sample',
     form: {
+      label: 'New sample',
       name: 'Name',
+      submit: 'Create sample',
+      nameRequired: 'Give the sample a name.',
+      nameTooLong: "A sample's name is at most 100 characters.",
     },
+    created: 'The sample {name} was created.',
+    createFailed: 'The sample {name} could not be created.',
   },
   shell: {
     home: 'Home',

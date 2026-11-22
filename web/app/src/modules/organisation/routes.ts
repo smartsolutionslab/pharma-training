@@ -1,10 +1,11 @@
 import type { ModuleRoute } from '@/modules';
 import OrganisationPage from './OrganisationPage.vue';
+import { titleKey } from './titleKey';
 import RegisterPharmacyPage from './RegisterPharmacyPage.vue';
 
 export const route: ModuleRoute = {
   path: 'organisation',
-  titleKey: 'modules.organisation.title',
+  titleKey,
   audience: 'manager',
   component: OrganisationPage,
   pages: [
