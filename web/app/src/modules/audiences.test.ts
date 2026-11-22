@@ -136,3 +136,13 @@ test("every entry page's title is in the catalogs, in German and in English", ()
   setLanguage('en-GB', { remember: false });
   expect(keys.map((key) => t(key))).toEqual(['Accept an invitation']);
 });
+
+// An entry page is at an address of its own, outside every module's: under a module's address the audience gate and
+// the breadcrumbs would take it for one of that module's pages.
+test("no entry page's address starts with a module's own path", () => {
+  const modulePaths = new Set(moduleRoutes.map((route) => route.path));
+  const entries = moduleRoutes.flatMap((route) => (route.entries ?? []).map((entry) => entry.path));
+
+  expect(entries.length).toBeGreaterThan(0);
+  expect(entries.filter((path) => modulePaths.has(path.split('/')[1] ?? ''))).toEqual([]);
+});
