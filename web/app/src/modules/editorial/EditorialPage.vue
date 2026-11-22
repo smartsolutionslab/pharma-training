@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { Inbox } from '@lucide/vue';
 import { useTemplateRef } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { EditorialSampleDto } from '@/api/generated';
 import { Button } from '@/components/ui/button';
 import DataTable from '@/components/ui/DataTable.vue';
-import { columnsOf } from '@/components/ui/data-table-columns';
+import { columnsOf, translatedHeader } from '@/components/ui/data-table-columns';
 import { EmptyState } from '@/components/ui/empty-state';
+import { t as translate } from '@/i18n';
 import { notify } from '@/lib/notify';
 import CreateEditorialSampleForm from './CreateEditorialSampleForm.vue';
+import { titleKey } from './titleKey';
 import { useCanManage } from './useCanManage';
 import { useCreateEditorialSample, useEditorialSamples } from './useEditorialSamples';
 
@@ -15,20 +18,21 @@ import { useCreateEditorialSample, useEditorialSamples } from './useEditorialSam
 // one, shown in the table at once and taken out again if the host refuses it; the result is a toast. "Manage"
 // shows only to a caller its permission probe answers with 200, and any failure but a 403 shows as an alert.
 const samples = columnsOf<EditorialSampleDto>();
-const columns = samples.columns([samples.accessor('name', { header: 'Name' })]);
+const columns = samples.columns([samples.accessor('name', translatedHeader('samples.form.name'))]);
 const none: EditorialSampleDto[] = [];
 
 const { samples: rows, page, isLoading, isError } = useEditorialSamples();
 const { create, isSaving } = useCreateEditorialSample();
 const permission = useCanManage();
 const form = useTemplateRef('form');
+const { t } = useI18n();
 
 async function onCreate(name: string) {
   const created = await create(name);
   if (created) {
-    notify.success(`The sample ${name} was created.`);
+    notify.success(translate('samples.created', { name }));
   } else {
-    notify.failure(`The sample ${name} could not be created.`);
+    notify.failure(translate('samples.createFailed', { name }));
   }
   return created;
 }
@@ -36,20 +40,22 @@ async function onCreate(name: string) {
 
 <template>
   <main class="flex flex-col gap-6">
-    <h1>Editorial</h1>
-    <h2 v-if="permission === 'granted'">Manage</h2>
-    <p v-if="permission === 'failed'" role="alert">Permissions for editorial could not be loaded.</p>
+    <h1>{{ t(titleKey) }}</h1>
+    <h2 v-if="permission === 'granted'">{{ t('samples.manage') }}</h2>
+    <p v-if="permission === 'failed'" role="alert">
+      {{ t('samples.permissionsFailed', { module: t(titleKey) }) }}
+    </p>
     <section aria-labelledby="editorial-samples" class="flex flex-col gap-4">
-      <h2 id="editorial-samples">Samples</h2>
+      <h2 id="editorial-samples">{{ t('samples.title') }}</h2>
       <CreateEditorialSampleForm ref="form" :on-create="onCreate" :saving="isSaving" />
-      <p v-if="isError" role="alert">The samples could not be loaded.</p>
+      <p v-if="isError" role="alert">{{ t('samples.loadFailed') }}</p>
       <DataTable v-else :columns="columns" :data="rows ?? none" :loading="isLoading" :paging="page">
         <template #empty>
           <EmptyState>
             <template #icon><Inbox /></template>
-            No samples yet.
+            {{ t('samples.empty') }}
             <template #action>
-              <Button type="button" variant="outline" @click="form?.focus()">Create a sample</Button>
+              <Button type="button" variant="outline" @click="form?.focus()">{{ t('samples.createFirst') }}</Button>
             </template>
           </EmptyState>
         </template>

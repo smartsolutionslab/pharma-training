@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { SearchIcon } from '@lucide/vue';
 import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 import { Button } from '@/components/ui/button';
 import {
@@ -20,6 +21,7 @@ const open = ref(false);
 const router = useRouter();
 const modules = useVisibleModules();
 const pages = useVisiblePages();
+const { t } = useI18n();
 
 function onKeyDown(event: KeyboardEvent) {
   if (event.key.toLowerCase() === 'k' && (event.metaKey || event.ctrlKey)) {
@@ -46,20 +48,25 @@ function go(to: string) {
     @click="open = true"
   >
     <SearchIcon />
-    Go to…
-    <CommandShortcut>Ctrl K</CommandShortcut>
+    {{ t('shell.palette.open') }}
+    <CommandShortcut>{{ t('shell.palette.shortcut') }}</CommandShortcut>
   </Button>
-  <CommandDialog v-model:open="open" title="Go to" description="Pick a page to go to.">
-    <CommandInput placeholder="Go to…" aria-label="Go to" />
-    <CommandList aria-label="Pages">
-      <CommandEmpty>No page matches.</CommandEmpty>
-      <CommandGroup heading="Pages">
-        <CommandItem value="Home" @select="go('/')">Home</CommandItem>
-        <CommandItem v-for="route in modules" :key="route.path" :value="route.title" @select="go(`/${route.path}`)">
-          {{ route.title }}
+  <CommandDialog v-model:open="open" :title="t('shell.palette.title')" :description="t('shell.palette.description')">
+    <CommandInput :placeholder="t('shell.palette.open')" :aria-label="t('shell.palette.title')" />
+    <CommandList :aria-label="t('shell.palette.pages')">
+      <CommandEmpty>{{ t('shell.palette.empty') }}</CommandEmpty>
+      <CommandGroup :heading="t('shell.palette.pages')">
+        <CommandItem :value="t('shell.home')" @select="go('/')">{{ t('shell.home') }}</CommandItem>
+        <CommandItem
+          v-for="route in modules"
+          :key="route.path"
+          :value="t(route.titleKey)"
+          @select="go(`/${route.path}`)"
+        >
+          {{ t(route.titleKey) }}
         </CommandItem>
-        <CommandItem v-for="page in pages" :key="page.to" :value="page.title" @select="go(page.to)">
-          {{ page.title }}
+        <CommandItem v-for="page in pages" :key="page.to" :value="t(page.titleKey)" @select="go(page.to)">
+          {{ t(page.titleKey) }}
         </CommandItem>
       </CommandGroup>
     </CommandList>

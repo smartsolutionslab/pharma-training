@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import { RouterLink, useRoute } from 'vue-router';
 import {
   SidebarGroup,
@@ -16,6 +17,7 @@ import { useVisibleModules } from './useVisibleModules';
 const route = useRoute();
 const modules = useVisibleModules();
 const { isMobile, setOpenMobile } = useSidebar();
+const { t } = useI18n();
 
 /** Whether the address is the page's or below it. */
 const isAt = (path: string) => route.path === path || route.path.startsWith(`${path}/`);
@@ -30,18 +32,18 @@ function closeSheet() {
 
 <template>
   <SidebarGroup>
-    <SidebarGroupLabel>Modules</SidebarGroupLabel>
+    <SidebarGroupLabel>{{ t('shell.navigation.label') }}</SidebarGroupLabel>
     <SidebarGroupContent>
-      <nav aria-label="Modules">
+      <nav :aria-label="t('shell.navigation.label')">
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton as-child :is-active="route.path === '/'">
-              <RouterLink to="/" @click="closeSheet">Home</RouterLink>
+              <RouterLink to="/" @click="closeSheet">{{ t('shell.home') }}</RouterLink>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem v-for="module in modules" :key="module.path">
             <SidebarMenuButton as-child :is-active="isAt(`/${module.path}`)">
-              <RouterLink :to="`/${module.path}`" @click="closeSheet">{{ module.title }}</RouterLink>
+              <RouterLink :to="`/${module.path}`" @click="closeSheet">{{ t(module.titleKey) }}</RouterLink>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

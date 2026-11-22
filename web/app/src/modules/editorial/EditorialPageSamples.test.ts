@@ -1,7 +1,9 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/vue';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { i18n, setLanguage, t } from '@/i18n';
 import EditorialPage from './EditorialPage.vue';
+import { route } from './routes';
 
 // The page's data comes through useEditorialSamples, whose own test reads the host and the optimistic update; here the
 // samples, and what creating one answers, are the test's.
@@ -34,12 +36,24 @@ beforeEach(() => {
 // Without Vitest's globals, Testing Library does not unmount between tests by itself.
 afterEach(cleanup);
 
+const nameField = () => screen.getByRole('textbox', { name: t('samples.form.name') });
+const submit = () => screen.getByRole('button', { name: t('samples.form.submit') });
+
+test('the page is headed by its title in the language of the moment, and names its samples section', () => {
+  render(EditorialPage);
+
+  expect(screen.getByRole('heading', { level: 1, name: t(route.titleKey) })).toBeInTheDocument();
+  expect(screen.getByRole('region', { name: t('samples.title') })).toBeInTheDocument();
+  expect(screen.getByRole('form', { name: t('samples.form.label') })).toBeInTheDocument();
+  expect(screen.getByRole('columnheader', { name: t('samples.form.name') })).toBeInTheDocument();
+});
+
 test('the page lists the samples by name', async () => {
   render(EditorialPage);
 
   expect(await screen.findByText('Ada')).toBeInTheDocument();
   expect(await screen.findByText('Bea')).toBeInTheDocument();
-  expect(screen.queryByText('No samples yet.')).not.toBeInTheDocument();
+  expect(screen.queryByText(t('samples.empty'))).not.toBeInTheDocument();
 });
 
 test('below the samples the page says which of how many it shows, from the page the host answered', () => {
@@ -51,7 +65,10 @@ test('below the samples the page says which of how many it shows, from the page 
   };
   render(EditorialPage);
 
-  expect(screen.getByRole('table')).toHaveAccessibleDescription('Showing 1–2 of 42');
+  const { n } = i18n.global;
+  expect(screen.getByRole('table')).toHaveAccessibleDescription(
+    t('dataTable.showing', { first: n(1, 'integer'), last: n(2, 'integer'), total: n(42, 'integer') }),
+  );
 });
 
 test('while the samples load the page shows skeleton rows', () => {
@@ -61,49 +78,96 @@ test('while the samples load the page shows skeleton rows', () => {
 
   expect(container.querySelector('[aria-busy="true"]')).not.toBeNull();
   expect(container.querySelector('[data-slot="skeleton"]')).not.toBeNull();
-  expect(screen.getByText('Loading…')).toBeInTheDocument();
-  expect(screen.queryByText('No samples yet.')).not.toBeInTheDocument();
+  expect(screen.getByText(t('dataTable.loading'))).toBeInTheDocument();
+  expect(screen.queryByText(t('samples.empty'))).not.toBeInTheDocument();
+});
+
+test('samples that cannot be loaded are reported', () => {
+  samples.list = { samples: undefined, page: undefined, isLoading: false, isError: true };
+  render(EditorialPage);
+
+  expect(screen.getByRole('alert')).toHaveTextContent(t('samples.loadFailed'));
 });
 
 test('without samples the page says so and its action leads to the form', async () => {
   samples.list = { samples: [], page: undefined, isLoading: false, isError: false };
   render(EditorialPage);
 
-  expect(screen.getByText('No samples yet.')).toBeVisible();
-  await userEvent.click(screen.getByRole('button', { name: 'Create a sample' }));
+  expect(screen.getByText(t('samples.empty'))).toBeVisible();
+  await userEvent.click(screen.getByRole('button', { name: t('samples.createFirst') }));
 
-  expect(screen.getByRole('textbox', { name: 'Name' })).toHaveFocus();
+  expect(nameField()).toHaveFocus();
 });
 
 test('a created sample is reported', async () => {
   samples.create.mockResolvedValue(true);
   render(EditorialPage);
 
-  await userEvent.type(screen.getByRole('textbox', { name: 'Name' }), 'Cleo');
-  await userEvent.click(screen.getByRole('button', { name: 'Create sample' }));
+  await userEvent.type(nameField(), 'Cleo');
+  await userEvent.click(submit());
 
-  await waitFor(() => expect(notify.success).toHaveBeenCalledWith('The sample Cleo was created.'));
+  await waitFor(() => expect(notify.success).toHaveBeenCalledWith(t('samples.created', { name: 'Cleo' })));
   expect(samples.create).toHaveBeenCalledWith('Cleo');
-  await waitFor(() => expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue(''));
+  await waitFor(() => expect(nameField()).toHaveValue(''));
 });
 
 test('a sample the server refuses is reported as a failure', async () => {
   samples.create.mockResolvedValue(false);
   render(EditorialPage);
 
-  await userEvent.type(screen.getByRole('textbox', { name: 'Name' }), 'Cleo');
-  await userEvent.click(screen.getByRole('button', { name: 'Create sample' }));
+  await userEvent.type(nameField(), 'Cleo');
+  await userEvent.click(submit());
 
-  await waitFor(() => expect(notify.failure).toHaveBeenCalledWith('The sample Cleo could not be created.'));
-  expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue('Cleo');
+  await waitFor(() => expect(notify.failure).toHaveBeenCalledWith(t('samples.createFailed', { name: 'Cleo' })));
+  expect(nameField()).toHaveValue('Cleo');
 });
 
 test('a blank name is refused before anything is sent', async () => {
   render(EditorialPage);
 
-  await userEvent.type(screen.getByRole('textbox', { name: 'Name' }), '   ');
-  await userEvent.click(screen.getByRole('button', { name: 'Create sample' }));
+  await userEvent.type(nameField(), '   ');
+  await userEvent.click(submit());
 
-  expect(await screen.findByRole('alert')).toHaveTextContent('Give the sample a name.');
+  expect(await screen.findByRole('alert')).toHaveTextContent(t('samples.form.nameRequired'));
   expect(samples.create).not.toHaveBeenCalled();
+});
+
+test('a name of 101 characters is refused before anything is sent', async () => {
+  render(EditorialPage);
+
+  await userEvent.click(nameField());
+  await userEvent.paste('A'.repeat(101));
+  await userEvent.click(submit());
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(t('samples.form.nameTooLong'));
+  expect(samples.create).not.toHaveBeenCalled();
+});
+
+// The page follows a switch of the language while it is shown, and zod's messages are resolved when the form
+// validates, not when the module loads: a refusal shown after the switch speaks the new language.
+test('switched to English, the page, its form and its refusals speak English', async () => {
+  render(EditorialPage);
+  expect(screen.getByRole('heading', { level: 1, name: t(route.titleKey) })).toBeInTheDocument();
+
+  setLanguage('en-GB', { remember: false });
+
+  expect(await screen.findByRole('heading', { level: 1, name: t(route.titleKey) })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { level: 2, name: t('samples.title') })).toBeInTheDocument();
+  await userEvent.click(submit());
+  expect(await screen.findByRole('alert')).toHaveTextContent(t('samples.form.nameRequired'));
+  expect(t('samples.form.nameRequired')).not.toBe(i18n.global.t('samples.form.nameRequired', {}, { locale: 'de-DE' }));
+});
+
+// The German texts themselves, not only their keys: a key that resolved to the wrong text would pass the t() queries.
+test('the page speaks German by default', async () => {
+  samples.list = { samples: [], page: undefined, isLoading: false, isError: false };
+  render(EditorialPage);
+
+  expect(screen.getByRole('heading', { level: 2, name: 'Beispiele' })).toBeInTheDocument();
+  expect(screen.getByText('Noch keine Beispiele.')).toBeVisible();
+  expect(screen.getByRole('form', { name: 'Neues Beispiel' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Anlegen' })).toBe(submit());
+  await userEvent.click(screen.getByRole('button', { name: 'Erstes Beispiel anlegen' }));
+
+  expect(screen.getByRole('textbox', { name: 'Name' })).toHaveFocus();
 });

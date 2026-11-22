@@ -1,9 +1,10 @@
-import { render } from '@testing-library/vue';
-import { expect, test, vi } from 'vitest';
+import { render, screen } from '@testing-library/vue';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { createPinia } from 'pinia';
 import { createMemoryHistory } from 'vue-router';
 import { signedInAsDeveloper } from './auth/signedInAsDeveloper';
+import { languages, setLanguage, t } from '@/i18n';
 import App from './App.vue';
 import { createAppRouter } from './router';
 
@@ -35,11 +36,20 @@ vi.mock('@/shell/useMyPharmacies', async () => {
   };
 });
 
-test('the start page has no accessibility violations axe can find', async () => {
-  const router = createAppRouter(createMemoryHistory());
-  await router.push('/');
+// Each language in turn: the texts differ, and so may what axe finds in them.
+describe.each(languages)('in %s', (language) => {
+  beforeEach(() => {
+    setLanguage(language, { remember: false });
+  });
 
-  const { container } = render(App, { global: { plugins: [router, createPinia(), signedInAsDeveloper] } });
+  test('the start page has no accessibility violations axe can find', async () => {
+    const router = createAppRouter(createMemoryHistory());
+    await router.push('/');
 
-  expect(await axe(container)).toHaveNoViolations();
+    const { container } = render(App, { global: { plugins: [router, createPinia(), signedInAsDeveloper] } });
+    // The start page axe checks is the one in this language.
+    expect(screen.getByRole('region', { name: t('shell.pharmacy.region') })).toBeInTheDocument();
+
+    expect(await axe(container)).toHaveNoViolations();
+  });
 });

@@ -4,6 +4,7 @@ import { createPinia } from 'pinia';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { createMemoryHistory } from 'vue-router';
 import type { MyPharmacyDto, PagedResultOfMyPharmacyDto } from '@/api/generated';
+import { setLanguage, t } from '@/i18n';
 import { createAppRouter } from '@/router';
 import Home from './Home.vue';
 
@@ -61,7 +62,7 @@ const renderHome = () => {
   return render(Home, { global: { plugins: [router, createPinia()] } });
 };
 
-const prompt = () => screen.queryByRole('heading', { name: 'Choose your pharmacy' });
+const prompt = () => screen.queryByRole('heading', { name: t('home.choosePharmacy') });
 
 test('with several pharmacies and none chosen the start page asks the user to choose one', async () => {
   const user = userEvent.setup();
@@ -69,36 +70,43 @@ test('with several pharmacies and none chosen the start page asks the user to ch
   renderHome();
 
   // A section labelled by its heading, so a screen reader lists it as a region.
-  const choices = within(await screen.findByRole('region', { name: 'Choose your pharmacy' }));
-  expect(choices.getByRole('heading', { name: 'Choose your pharmacy' })).toBeInTheDocument();
+  const choices = within(await screen.findByRole('region', { name: t('home.choosePharmacy') }));
+  expect(choices.getByRole('heading', { name: t('home.choosePharmacy') })).toBeInTheDocument();
   expect(choices.getAllByRole('button').map((button) => button.textContent.trim())).toEqual([
     expect.stringContaining('Apotheke am Markt'),
     expect.stringContaining('Apotheke am Dom'),
   ]);
+  // Each with the role it has there, as the glossary names it.
+  expect(choices.getByRole('button', { name: /Apotheke am Markt/ })).toHaveTextContent(
+    t('glossary.membershipRole.Manager'),
+  );
+  expect(choices.getByRole('button', { name: /Apotheke am Dom/ })).toHaveTextContent(
+    t('glossary.membershipRole.Employee'),
+  );
 
   await user.click(choices.getByRole('button', { name: /Apotheke am Dom/ }));
 
   await vi.waitFor(() => expect(prompt()).not.toBeInTheDocument());
   expect(localStorage.getItem('pharmacy')).toBe(dom.id);
-  expect(screen.getByRole('heading', { name: 'pharma-training', level: 1 })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: t('app.name'), level: 1 })).toBeInTheDocument();
 });
 
 // The prompt is there only while the user has several pharmacies and none chosen; it asks nothing otherwise.
 test('the start page stops asking once the memberships no longer call for a choice', async () => {
   answer([markt, dom]);
   renderHome();
-  expect(await screen.findByRole('heading', { name: 'Choose your pharmacy' })).toBeInTheDocument();
+  expect(await screen.findByRole('heading', { name: t('home.choosePharmacy') })).toBeInTheDocument();
 
   answer([dom]);
   await vi.waitFor(() => expect(prompt()).not.toBeInTheDocument());
 
   answer([markt, dom]);
-  expect(await screen.findByRole('heading', { name: 'Choose your pharmacy' })).toBeInTheDocument();
+  expect(await screen.findByRole('heading', { name: t('home.choosePharmacy') })).toBeInTheDocument();
   answer([]);
   await vi.waitFor(() => expect(prompt()).not.toBeInTheDocument());
 
   answer([markt, dom]);
-  expect(await screen.findByRole('heading', { name: 'Choose your pharmacy' })).toBeInTheDocument();
+  expect(await screen.findByRole('heading', { name: t('home.choosePharmacy') })).toBeInTheDocument();
   pharmacies.data.value = undefined;
   pharmacies.isPending.value = true;
   await vi.waitFor(() => expect(prompt()).not.toBeInTheDocument());
@@ -112,10 +120,10 @@ test('a pharmacy chosen on an earlier visit is not asked for again, where a visi
   const unchosen = renderHome();
 
   expect(
-    await within(unchosen.container as HTMLElement).findByRole('heading', { name: 'Choose your pharmacy' }),
+    await within(unchosen.container as HTMLElement).findByRole('heading', { name: t('home.choosePharmacy') }),
   ).toBeInTheDocument();
   expect(
-    within(chosen.container as HTMLElement).queryByRole('heading', { name: 'Choose your pharmacy' }),
+    within(chosen.container as HTMLElement).queryByRole('heading', { name: t('home.choosePharmacy') }),
   ).not.toBeInTheDocument();
 });
 
@@ -124,16 +132,16 @@ test('after choosing a pharmacy the focus is on the start page heading, not lost
   const user = userEvent.setup();
   answer([markt, dom]);
   renderHome();
-  const choices = within(await screen.findByRole('region', { name: 'Choose your pharmacy' }));
+  const choices = within(await screen.findByRole('region', { name: t('home.choosePharmacy') }));
 
   await user.click(choices.getByRole('button', { name: /Apotheke am Markt/ }));
 
   await vi.waitFor(() => expect(prompt()).not.toBeInTheDocument());
-  await vi.waitFor(() => expect(screen.getByRole('heading', { name: 'pharma-training', level: 1 })).toHaveFocus());
+  await vi.waitFor(() => expect(screen.getByRole('heading', { name: t('app.name'), level: 1 })).toHaveFocus());
   expect(document.activeElement).not.toBe(document.body);
 });
 
-const noPharmacy = () => screen.queryByRole('region', { name: 'No pharmacy yet' });
+const noPharmacy = () => screen.queryByRole('region', { name: t('home.noPharmacy.title') });
 
 // A user who belongs to no pharmacy learns the two ways in: registering their own, or an invitation from its manager.
 test('a user of no pharmacy is led to register one, or to ask for an invitation', async () => {
@@ -141,14 +149,10 @@ test('a user of no pharmacy is led to register one, or to ask for an invitation'
   answer([]);
   renderHome();
 
-  const section = within(await screen.findByRole('region', { name: 'No pharmacy yet' }));
-  expect(section.getByRole('heading', { name: 'No pharmacy yet' })).toBeInTheDocument();
-  expect(
-    section.getByText(
-      'You are not a member of any pharmacy yet. Register your pharmacy, or ask its manager for an invitation.',
-    ),
-  ).toBeInTheDocument();
-  const link = section.getByRole('link', { name: 'Register a pharmacy' });
+  const section = within(await screen.findByRole('region', { name: t('home.noPharmacy.title') }));
+  expect(section.getByRole('heading', { name: t('home.noPharmacy.title') })).toBeInTheDocument();
+  expect(section.getByText(t('home.noPharmacy.text'))).toBeInTheDocument();
+  const link = section.getByRole('link', { name: t('shell.pharmacy.register') });
   expect(link).toHaveAttribute('href', '/organisation/register');
 
   await user.click(link);
@@ -172,9 +176,42 @@ test.each([
   before();
   renderHome();
   expect(noPharmacy()).not.toBeInTheDocument();
-  expect(screen.queryByRole('link', { name: 'Register a pharmacy' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: t('shell.pharmacy.register') })).not.toBeInTheDocument();
 
   answer([]);
 
-  expect(await screen.findByRole('region', { name: 'No pharmacy yet' })).toBeInTheDocument();
+  expect(await screen.findByRole('region', { name: t('home.noPharmacy.title') })).toBeInTheDocument();
+});
+
+test('the start page speaks German by default', async () => {
+  answer([markt, dom]);
+  const { unmount } = renderHome();
+
+  const choices = within(await screen.findByRole('region', { name: 'Wählen Sie Ihre Apotheke' }));
+  expect(choices.getByRole('button', { name: /Apotheke am Markt/ })).toHaveTextContent('Apothekenleiter');
+  expect(choices.getByRole('button', { name: /Apotheke am Dom/ })).toHaveTextContent('Mitarbeiter');
+  unmount();
+
+  answer([]);
+  renderHome();
+  const section = within(await screen.findByRole('region', { name: 'Noch keine Apotheke' }));
+  expect(
+    section.getByText(
+      'Sie sind noch in keiner Apotheke Mitglied. Registrieren Sie Ihre Apotheke, oder bitten Sie deren Apothekenleiter um eine Einladung.',
+    ),
+  ).toBeInTheDocument();
+  expect(section.getByRole('link', { name: 'Apotheke registrieren' })).toHaveAttribute(
+    'href',
+    '/organisation/register',
+  );
+});
+
+test('in English the start page asks for a pharmacy in English and names the roles as the glossary does', async () => {
+  setLanguage('en-GB', { remember: false });
+  answer([markt, dom]);
+  renderHome();
+
+  const choices = within(await screen.findByRole('region', { name: 'Choose your pharmacy' }));
+  expect(choices.getByRole('button', { name: /Apotheke am Markt/ })).toHaveTextContent('Pharmacy manager');
+  expect(choices.getByRole('button', { name: /Apotheke am Dom/ })).toHaveTextContent('Employee');
 });

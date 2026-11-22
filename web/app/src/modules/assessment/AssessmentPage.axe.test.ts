@@ -1,11 +1,13 @@
-import { cleanup, render } from '@testing-library/vue';
-import { afterEach, expect, test, vi } from 'vitest';
+import { cleanup, render, screen } from '@testing-library/vue';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { createMemoryHistory } from 'vue-router';
 import { signedInAsDeveloper } from '@/auth/signedInAsDeveloper';
+import { languages, setLanguage, t } from '@/i18n';
 import { createAppRouter } from '@/router';
 import * as data from './AssessmentPage.data';
 import AssessmentPage from './AssessmentPage.vue';
+import { route } from './routes';
 
 // The screen's axe check, generated with it. It runs whatever the screen's own component test does, so a check skipped
 // or commented out there never leaves the screen unchecked. It asks nothing of what the screen shows, only that axe
@@ -96,64 +98,74 @@ async function renderPage() {
   const router = createAppRouter(createMemoryHistory());
   await router.push('/assessment');
 
-  return render(AssessmentPage, {
+  const { container } = render(AssessmentPage, {
     global: { plugins: [router, signedInAsDeveloper] },
-  }).container;
+  });
+  // The screen speaks the language of the moment: axe checks what that language's user hears.
+  expect(screen.getByRole('heading', { level: 1, name: t(route.titleKey) })).toBeInTheDocument();
+  return container;
 }
 
-test('the Assessment page has no accessibility violations axe can find', async () => {
-  const container = await renderPage();
+// Each language in turn: the texts differ, and so may what axe finds in them.
+describe.each(languages)('in %s', (language) => {
+  beforeEach(() => {
+    setLanguage(language, { remember: false });
+  });
 
-  expect(await axe(container)).toHaveNoViolations();
-});
-
-test.each(themes)(
-  'the Assessment page has no accessibility violations axe can find in the $name theme',
-  async ({ switchOn }) => {
-    switchOn();
+  test('the Assessment page has no accessibility violations axe can find', async () => {
     const container = await renderPage();
 
     expect(await axe(container)).toHaveNoViolations();
-  },
-);
+  });
 
-// Until AssessmentPage.data.ts has an example (AGENTS.md), the page is checked only as it loads.
-test.runIf(Object.keys(examples).length > 0)('the Assessment page passes axe with its example data', async () => {
-  shown.examples = examples;
-  const container = await renderPage();
+  test.each(themes)(
+    'the Assessment page has no accessibility violations axe can find in the $name theme',
+    async ({ switchOn }) => {
+      switchOn();
+      const container = await renderPage();
 
-  expect(await axe(container)).toHaveNoViolations();
-});
+      expect(await axe(container)).toHaveNoViolations();
+    },
+  );
 
-test.runIf(Object.keys(examples).length > 0).each(themes)(
-  'the Assessment page passes axe with its example data in the $name theme',
-  async ({ switchOn }) => {
+  // Until AssessmentPage.data.ts has an example (AGENTS.md), the page is checked only as it loads.
+  test.runIf(Object.keys(examples).length > 0)('the Assessment page passes axe with its example data', async () => {
     shown.examples = examples;
-    switchOn();
     const container = await renderPage();
 
     expect(await axe(container)).toHaveNoViolations();
-  },
-);
+  });
 
-// Until AssessmentPage.data.ts has an empty example (AGENTS.md), the page is not checked with nothing to show.
-test.runIf(Object.keys(emptyExamples).length > 0)(
-  'the Assessment page passes axe when it has nothing to show',
-  async () => {
-    shown.examples = emptyExamples;
-    const container = await renderPage();
+  test.runIf(Object.keys(examples).length > 0).each(themes)(
+    'the Assessment page passes axe with its example data in the $name theme',
+    async ({ switchOn }) => {
+      shown.examples = examples;
+      switchOn();
+      const container = await renderPage();
 
-    expect(await axe(container)).toHaveNoViolations();
-  },
-);
+      expect(await axe(container)).toHaveNoViolations();
+    },
+  );
 
-test.runIf(Object.keys(emptyExamples).length > 0).each(themes)(
-  'the Assessment page passes axe when it has nothing to show in the $name theme',
-  async ({ switchOn }) => {
-    shown.examples = emptyExamples;
-    switchOn();
-    const container = await renderPage();
+  // Until AssessmentPage.data.ts has an empty example (AGENTS.md), the page is not checked with nothing to show.
+  test.runIf(Object.keys(emptyExamples).length > 0)(
+    'the Assessment page passes axe when it has nothing to show',
+    async () => {
+      shown.examples = emptyExamples;
+      const container = await renderPage();
 
-    expect(await axe(container)).toHaveNoViolations();
-  },
-);
+      expect(await axe(container)).toHaveNoViolations();
+    },
+  );
+
+  test.runIf(Object.keys(emptyExamples).length > 0).each(themes)(
+    'the Assessment page passes axe when it has nothing to show in the $name theme',
+    async ({ switchOn }) => {
+      shown.examples = emptyExamples;
+      switchOn();
+      const container = await renderPage();
+
+      expect(await axe(container)).toHaveNoViolations();
+    },
+  );
+});
