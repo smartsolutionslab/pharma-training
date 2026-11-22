@@ -16,7 +16,7 @@ partial class ComplianceModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261121190235_AddLocalCopies";
+    public override string LastMigrationId => "20261121204810_BoundMemberNamesAndCourseTitles";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -44,7 +44,8 @@ partial class ComplianceModelSnapshot : ModelSnapshot
 
                 b.Property<string>("Title")
                     .IsRequired()
-                    .HasColumnType("text")
+                    .HasMaxLength(150)
+                    .HasColumnType("character varying(150)")
                     .HasColumnName("title");
 
                 b.Property<int>("Validity")
@@ -94,7 +95,8 @@ partial class ComplianceModelSnapshot : ModelSnapshot
 
                 b.Property<string>("Name")
                     .IsRequired()
-                    .HasColumnType("text")
+                    .HasMaxLength(100)
+                    .HasColumnType("character varying(100)")
                     .HasColumnName("display_name");
 
                 b.Property<Guid>("Person")

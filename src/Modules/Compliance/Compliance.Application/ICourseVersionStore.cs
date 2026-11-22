@@ -10,6 +10,9 @@ public interface ICourseVersionStore
 {
     Task<bool> ExistsAsync(CourseVersionId version, CancellationToken cancellationToken);
 
+    /// <summary>The version stored with that number for the course, whatever its id; none while there is none.</summary>
+    Task<Option<CourseVersionId>> FindByNumberAsync(CourseId course, VersionNumber number, CancellationToken cancellationToken);
+
     void Add(CourseVersion version);
 
     Task<bool> IsRetiredAsync(CourseVersionId version, CancellationToken cancellationToken);

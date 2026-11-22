@@ -54,6 +54,14 @@ public class CourseValueObjectTests
     public void A_missing_or_blank_title_or_one_holding_a_nul_character_is_refused(string? value) =>
         Should.Throw<GuardException>(() => CourseTitle.From(value!));
 
+    [Fact]
+    public void A_title_as_long_as_editorial_allows_is_a_title() =>
+        CourseTitle.From(new string('a', 150)).Value.Length.ShouldBe(150);
+
+    [Fact]
+    public void A_title_longer_than_editorial_allows_is_refused() =>
+        Should.Throw<GuardException>(() => CourseTitle.From(new string('a', 151)));
+
     [Theory]
     [InlineData(1)]
     [InlineData(42)]

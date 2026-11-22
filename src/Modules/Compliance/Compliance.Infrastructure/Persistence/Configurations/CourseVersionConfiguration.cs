@@ -16,8 +16,8 @@ public sealed class CourseVersionConfiguration : IEntityTypeConfiguration<Course
         builder.Property(version => version.Id).HasColumnName("id").ValueGeneratedNever();
         builder.Property(version => version.Course).HasColumnName("course_id").IsRequired();
         builder.Property(version => version.Number).HasColumnName("version_number").IsRequired();
-        // Whatever Editorial accepted, without a length of Compliance's own.
-        builder.Property(version => version.Title).HasColumnName("title").HasColumnType("text").IsRequired();
+        // As long as Editorial allows a course title to be.
+        builder.Property(version => version.Title).HasColumnName("title").HasMaxLength(CourseTitle.MaxLength).IsRequired();
         builder.Property(version => version.Validity).HasColumnName("validity_months").IsRequired();
 
         // One version number per course; it also backs reading a course's versions.
