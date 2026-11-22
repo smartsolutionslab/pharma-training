@@ -21,10 +21,17 @@ public sealed class EvalGateTests : IDisposable
 
     private readonly DirectoryInfo results = Directory.CreateTempSubdirectory("evals-");
 
+    /// <summary>
+    /// Runs the fixture: the stand-in's answer is an invoice, which every module use case reads as no answer at all, so
+    /// their own metrics score 1 by design. Each use case's own pass case is in its own eval tests.
+    /// </summary>
     [Fact]
     public async Task High_scores_pass_and_the_run_writes_its_results_for_the_report()
     {
-        var scores = await RunAsync(judgeScore: 5);
+        using var model = new FakeChatClient(Answer);
+        using var judge = new FakeJudge(5);
+
+        var scores = await EvalRun.RunAsync([Fixture()], model, judge, results.FullName, "gate", TestContext.Current.CancellationToken);
 
         scores.BelowThreshold(Threshold).ShouldBeEmpty();
         scores.All.ShouldNotBeEmpty();
