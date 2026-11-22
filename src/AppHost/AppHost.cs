@@ -81,6 +81,9 @@ else
     frontendUrl = ReferenceExpression.Create($"{frontendUrlParameter}");
 }
 
+// Published, the MigrationRunner's image, which every service runs as its init container; nothing in run mode.
+var migrations = builder.AddMigrations();
+
 foreach (var (module, project) in builder.ServiceHosts())
 {
     // The service's own database on the one server, named after its module.
@@ -88,19 +91,14 @@ foreach (var (module, project) in builder.ServiceHosts())
     // The service's own blob container on the one storage account, named after its module; it reads it as the
     // connection string blobs and signs URLs for it alone.
     var blobs = storage.AddBlobContainer($"{module}-blobs", module);
-    // The module's migrations, in its database alone, before the service starts.
-    var migrations = builder.AddProject<Projects.MigrationRunner>($"{module}-migrations")
-        .WithConnectionStringsOnly(secrets)
-        .WithReference(database, "database")
-        .WithEnvironment("Migrations__Module", module)
-        .WaitFor(database);
-
     // Every service's launch profile names the same port; under the AppHost each gets one of its own.
     var service = builder.AddServiceHost(module, project)
         .WithEndpoint("http", endpoint => endpoint.Port = null)
         .WithHttpHealthCheck("/health")
         .WithConnectionStringsOnly(secrets)
-        .WaitForCompletion(migrations)
+        // The module's migrations, in its database alone, before the service starts: a project of its own in run mode,
+        // the service's init container once published (Wiring/Migrations.cs).
+        .RunsMigrationsFirst(module, database, migrations, secrets)
         .WithReference(database, "database")
         .WaitFor(database)
         .WithReference(keycloak.GetEndpoint("http"))

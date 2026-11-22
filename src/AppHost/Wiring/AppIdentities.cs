@@ -28,4 +28,19 @@ public static class AppIdentities
         app.WithAzureUserAssignedIdentity(identity);
         return identity.Resource;
     }
+
+    /// <summary>
+    /// A further identity of an app's, <c>&lt;app&gt;-&lt;purpose&gt;-identity</c>, which is not the one it runs under: the
+    /// app's Bicep names it where it is needed (an init container's Key Vault references, <see cref="Migrations"/>).
+    /// </summary>
+    public static AzureUserAssignedIdentityResource AdditionalIdentity<T>(this IResourceBuilder<T> app, string purpose)
+        where T : IComputeResource
+    {
+        ArgumentNullException.ThrowIfNull(app);
+        ArgumentException.ThrowIfNullOrWhiteSpace(purpose);
+
+        var name = $"{app.Resource.Name}-{purpose}-identity";
+        return app.ApplicationBuilder.Resources.OfType<AzureUserAssignedIdentityResource>().SingleOrDefault(identity => identity.Name == name)
+            ?? app.ApplicationBuilder.AddResource(new AzureUserAssignedIdentityResource(name)).Resource;
+    }
 }

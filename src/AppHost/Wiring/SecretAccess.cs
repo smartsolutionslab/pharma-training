@@ -15,7 +15,10 @@ namespace Aspire.Hosting;
 /// after the grants are registered, is granted, and nothing is listed by hand. A secret another resource writes into the
 /// vault (the Flexible Server its connection strings) is granted once that resource is deployed: the module takes the
 /// writer's name, so main.bicep deploys it after the writer. Each app is deployed on its own and takes the module's output
-/// <c>grants</c> as a parameter, so it starts only once its identity may read what it references.
+/// <c>grants</c> as a parameter, so it starts only once its identity may read what it references. An init container that
+/// reads secrets under an identity of its own (<see cref="InitContainerAnnotation"/>) has that identity granted those
+/// secrets alone, in a module of its own, <c>&lt;app&gt;-&lt;init container&gt;-roles-secrets</c>, whose output the app
+/// takes as well.
 /// </summary>
 public static class SecretAccess
 {
@@ -53,27 +56,59 @@ public static class SecretAccess
         foreach (var app in builder.Resources.OfType<IComputeResource>().ToList())
         {
             var names = await SecretsReadByAsync(app, vault, builder.ExecutionContext, cancellationToken);
-            if (names.Count == 0)
+            if (names.Count > 0)
             {
-                continue;
+                var identity = builder.CreateResourceBuilder(app).IdentityOf();
+                AddGrants(builder, app, app.Name, app.Name, identity, names, vault, GrantsTag);
             }
 
-            var identity = builder.CreateResourceBuilder(app).IdentityOf();
-            // Added as a resource alone: AddAzureInfrastructure would register Azure provisioning again, which the Key Vault
-            // has done, and the services cannot change once the model is built.
-            var grants = builder.AddResource(new AzureProvisioningResource($"{app.Name}-roles-secrets", infrastructure => Grant(infrastructure, app.Name, names)))
-                .WithParameter(RoleAssignments.PrincipalId, identity.PrincipalId)
-                .WithParameter(VaultName, vault.NameOutputReference);
-            foreach (var writer in names.Values.OfType<AzureBicepResource>().Distinct())
+            // An init container reads its secrets under an identity of its own (Migrations), held to those alone, in a
+            // module of its own, <app>-<init container>-roles-secrets, which the app waits for too.
+            foreach (var init in app.Annotations.OfType<InitContainerAnnotation>().ToList())
             {
-                grants.WithParameter(WriterName(writer), new BicepOutputReference("name", writer));
-            }
+                SortedDictionary<string, IResource?> read = [with(StringComparer.Ordinal)];
+                HashSet<object> seen = [with(ReferenceEqualityComparer.Instance)];
+                foreach (var value in init.Environment.Values)
+                {
+                    Collect(value, vault, read, seen);
+                }
 
-            var granted = new BicepOutputReference(GrantsOutput, grants.Resource);
-            // As PublishAsAzureContainerApp would, for a project, a container or an executable alike.
-            app.Annotations.Add(new AzureContainerAppCustomizationAnnotation((infrastructure, containerApp) =>
-                containerApp.Tags[GrantsTag] = granted.AsProvisioningParameter(infrastructure)));
+                if (read.Count > 0)
+                {
+                    AddGrants(builder, app, $"{app.Name}-{init.Name}", $"{app.Name}'s init container {init.Name}", init.Identity, read, vault, $"{GrantsTag}-{init.Name}");
+                }
+            }
         }
+    }
+
+    /// <summary>
+    /// The module <c>&lt;<paramref name="name"/>&gt;-roles-secrets</c>, which grants <paramref name="identity"/> each secret
+    /// in <paramref name="names"/>, and the app's tag that takes its output, so the app deploys after it.
+    /// </summary>
+    private static void AddGrants(
+        IDistributedApplicationBuilder builder,
+        IComputeResource app,
+        string name,
+        string reader,
+        AzureUserAssignedIdentityResource identity,
+        IReadOnlyDictionary<string, IResource?> names,
+        AzureKeyVaultResource vault,
+        string tag)
+    {
+        // Added as a resource alone: AddAzureInfrastructure would register Azure provisioning again, which the Key Vault
+        // has done, and the services cannot change once the model is built.
+        var grants = builder.AddResource(new AzureProvisioningResource($"{name}-roles-secrets", infrastructure => Grant(infrastructure, reader, names)))
+            .WithParameter(RoleAssignments.PrincipalId, identity.PrincipalId)
+            .WithParameter(VaultName, vault.NameOutputReference);
+        foreach (var writer in names.Values.OfType<AzureBicepResource>().Distinct())
+        {
+            grants.WithParameter(WriterName(writer), new BicepOutputReference("name", writer));
+        }
+
+        var granted = new BicepOutputReference(GrantsOutput, grants.Resource);
+        // As PublishAsAzureContainerApp would, for a project, a container or an executable alike.
+        app.Annotations.Add(new AzureContainerAppCustomizationAnnotation((infrastructure, containerApp) =>
+            containerApp.Tags[tag] = granted.AsProvisioningParameter(infrastructure)));
     }
 
     /// <summary>
@@ -149,7 +184,7 @@ public static class SecretAccess
         }
     }
 
-    private static void Grant(AzureResourceInfrastructure infrastructure, string app, IReadOnlyDictionary<string, IResource?> names)
+    private static void Grant(AzureResourceInfrastructure infrastructure, string reader, IReadOnlyDictionary<string, IResource?> names)
     {
         var principalId = new ProvisioningParameter(RoleAssignments.PrincipalId, typeof(string));
         var vaultName = new ProvisioningParameter(VaultName, typeof(string));
@@ -184,7 +219,7 @@ public static class SecretAccess
 
                 // The writer's name, which only its deployment outputs, orders this assignment after the secret exists.
                 grant.Description = new InterpolatedStringExpression(
-                    [new StringLiteralExpression($"{app} reads {name}, which "), new IdentifierExpression(writerName.BicepIdentifier), new StringLiteralExpression(" writes")]);
+                    [new StringLiteralExpression($"{reader} reads {name}, which "), new IdentifierExpression(writerName.BicepIdentifier), new StringLiteralExpression(" writes")]);
             }
 
             infrastructure.Add(grant);
