@@ -22,6 +22,23 @@ public class SmtpSettingsTests
         settings.Security.ShouldBe(SecureSocketOptions.StartTlsWhenAvailable);
     }
 
+    [Theory]
+    [InlineData("smtp://mail.example")]
+    [InlineData("smtp://mail.example:1025")]
+    [InlineData("smtp://10.0.0.5:25")]
+    [InlineData("smtp://192.168.1.20")]
+    [InlineData("smtp://localhost.mail.example")]
+    [InlineData("smtp://mailpit")]
+    public void A_server_that_is_not_loopback_requires_starttls_even_without_credentials(string value) =>
+        SmtpSettings.From(Settings.Of((Key, value))).Security.ShouldBe(SecureSocketOptions.StartTls);
+
+    [Theory]
+    [InlineData("smtp://localhost:1025")]
+    [InlineData("smtp://127.0.0.1:1025")]
+    [InlineData("smtp://[::1]:1025")]
+    public void A_loopback_server_without_credentials_uses_tls_only_when_it_offers_it(string value) =>
+        SmtpSettings.From(Settings.Of((Key, value))).Security.ShouldBe(SecureSocketOptions.StartTlsWhenAvailable);
+
     [Fact]
     public void A_server_with_credentials_requires_starttls_and_its_credentials_are_url_decoded()
     {

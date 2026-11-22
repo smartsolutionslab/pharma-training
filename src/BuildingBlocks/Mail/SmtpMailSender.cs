@@ -26,6 +26,13 @@ public sealed class SmtpMailSender : IMailSender
         server = new Lazy<SmtpSettings>(() => SmtpSettings.From(configuration));
     }
 
+    /// <summary>Stub for the red tests of issue #9 (R5): the clock the whole send's bound is measured on, not used yet.</summary>
+    public SmtpMailSender(IConfiguration configuration, TimeProvider time)
+        : this(configuration)
+    {
+        Ensure.That(time).IsNotNull();
+    }
+
     public async Task SendAsync(OutgoingMail mail, CancellationToken cancellationToken)
     {
         Ensure.That(mail).IsNotNull();
