@@ -425,7 +425,9 @@ public class EditorialCourseVersionsTests(AspireFixture aspire)
 
         // Removing c3 of [c3, c1, c2] deletes its row, then moves c1 and c2 up; the order [c2, c3, c1] writes c1, c2
         // and c3. Each save locks its chapters' rows before the version's, so the two take c1 and c3 in opposite
-        // orders and PostgreSQL often ends one of them as a deadlock (40P01). Five rounds make sure some do.
+        // orders and PostgreSQL often ends one of them as a deadlock (40P01). Five rounds make sure some do, and the
+        // database's deadlock count shows that some did.
+        var deadlocksBefore = await DeadlocksAsync(connectionString, cancellationToken);
         for (var round = 0; round < 5; round++)
         {
             var id = await CreateAsync(client, $"Hygiene {Guid.CreateVersion7()}", cancellationToken);
@@ -459,6 +461,8 @@ public class EditorialCourseVersionsTests(AspireFixture aspire)
                 }
             }
         }
+
+        await ShouldHaveDeadlockedSinceAsync(connectionString, deadlocksBefore, cancellationToken);
     }
 
     [Fact]
@@ -601,6 +605,32 @@ public class EditorialCourseVersionsTests(AspireFixture aspire)
         }
 
         blocked.ShouldBe(expected);
+    }
+
+    /// <summary>The deadlocks PostgreSQL has detected in the editorial database since its statistics were reset.</summary>
+    private static async Task<long> DeadlocksAsync(string connectionString, CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("SELECT deadlocks FROM pg_stat_database WHERE datname = current_database()", connection);
+        return (long)(await command.ExecuteScalarAsync(cancellationToken) ?? 0L);
+    }
+
+    /// <summary>
+    /// Polls the editorial database's deadlock count until it rose above the given one, and fails the test when it does
+    /// not within 30 seconds. A backend reports its statistics when it goes idle, up to about ten seconds late.
+    /// </summary>
+    private static async Task ShouldHaveDeadlockedSinceAsync(string connectionString, long before, CancellationToken cancellationToken)
+    {
+        var started = TimeProvider.System.GetTimestamp();
+        var deadlocks = await DeadlocksAsync(connectionString, cancellationToken);
+        while (deadlocks <= before && TimeProvider.System.GetElapsedTime(started) < TimeSpan.FromSeconds(30))
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken);
+            deadlocks = await DeadlocksAsync(connectionString, cancellationToken);
+        }
+
+        deadlocks.ShouldBeGreaterThan(before, "no round ended in a deadlock, so the test never exercised the path it guards");
     }
 
     /// <summary>
