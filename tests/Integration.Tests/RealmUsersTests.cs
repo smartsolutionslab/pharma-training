@@ -1,12 +1,25 @@
 using System.Buffers.Text;
+using System.Net;
+using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
+using Aspire.Hosting.Testing;
 
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 
-/// <summary>The realm's local users sign in with their names as passwords, and their access tokens carry a verified email and a name.</summary>
-public class RealmUsersTests(AspireFixture aspire)
+/// <summary>
+/// The realm's local users sign in with their names as passwords, and their access tokens carry a verified email and a
+/// name. A visitor without an account registers through Keycloak's own form and verifies the address before signing in.
+/// </summary>
+public partial class RealmUsersTests(AspireFixture aspire)
 {
+    private const string WebClient = "pharma-training-web";
+
+    private const string WebApp = "http://localhost:5173/";
+
+    private readonly Mailpit mailpit = new(aspire);
+
     [Theory]
     [InlineData("editor", "editor@example.com", "Emma Editor")]
     [InlineData("owner", "owner@example.com", "Olaf Owner")]
@@ -49,6 +62,120 @@ public class RealmUsersTests(AspireFixture aspire)
         RealmRoles(editor).ShouldContain("editor");
         RealmRoles(owner).ShouldNotContain("editor");
     }
+
+    [Fact]
+    public async Task The_realm_offers_a_visitor_its_registration_form()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var browser = Browser();
+
+        using var response = await browser.GetAsync(RegistrationForm(), cancellationToken);
+
+        var page = await response.Content.ReadAsStringAsync(cancellationToken);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, page);
+        page.ShouldContain("id=\"kc-register-form\"");
+    }
+
+    [Fact]
+    public async Task A_visitor_who_registers_verifies_the_address_before_signing_in()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var username = $"invitee-{Guid.CreateVersion7():N}";
+        var email = $"{username}@example.com";
+        using var browser = Browser();
+
+        using var registered = await RegisterAsync(browser, username, email, cancellationToken);
+
+        var verifyPage = await registered.Content.ReadAsStringAsync(cancellationToken);
+        registered.StatusCode.ShouldBe(HttpStatusCode.OK, verifyPage);
+        var mails = await mailpit.MessagesToAsync(email, 1, cancellationToken);
+        using var beforeVerifying = await PasswordGrantAsync(username, cancellationToken);
+        var refusal = await beforeVerifying.Content.ReadAsStringAsync(cancellationToken);
+        beforeVerifying.StatusCode.ShouldBe(HttpStatusCode.BadRequest, refusal);
+        refusal.ShouldContain("invalid_grant");
+
+        var link = VerificationLink().Match(mails[^1].Text);
+        link.Success.ShouldBeTrue($"no verification link in: {mails[^1].Text}");
+        using var verified = await FollowWithinKeycloakAsync(browser, new Uri(WebUtility.HtmlDecode(link.Value)), cancellationToken);
+        verified.Headers.Location?.ToString().ShouldStartWith(WebApp);
+
+        using var afterVerifying = await PasswordGrantAsync(username, cancellationToken);
+        afterVerifying.StatusCode.ShouldBe(HttpStatusCode.OK, await afterVerifying.Content.ReadAsStringAsync(cancellationToken));
+        var token = await afterVerifying.Content.ReadFromJsonAsync<JsonElement>(cancellationToken);
+        using var payload = Payload(token.GetProperty("access_token").GetString() ?? string.Empty);
+        payload.RootElement.GetProperty("email").GetString().ShouldBe(email);
+        payload.RootElement.GetProperty("email_verified").ValueKind.ShouldBe(JsonValueKind.True);
+    }
+
+    private static Uri RegistrationForm() =>
+        new($"/realms/pharma-training/protocol/openid-connect/registrations?client_id={WebClient}&response_type=code&scope=openid&redirect_uri={Uri.EscapeDataString(WebApp)}", UriKind.Relative);
+
+    /// <summary>Fills in Keycloak's registration form as a browser does, with the cookies of the page that showed it.</summary>
+    private static async Task<HttpResponseMessage> RegisterAsync(HttpClient browser, string username, string email, CancellationToken cancellationToken)
+    {
+        using var form = await browser.GetAsync(RegistrationForm(), cancellationToken);
+        var page = await form.Content.ReadAsStringAsync(cancellationToken);
+        form.StatusCode.ShouldBe(HttpStatusCode.OK, page);
+        var action = FormAction().Match(page);
+        action.Success.ShouldBeTrue($"no registration form in: {page}");
+
+        using var fields = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["firstName"] = "Ina",
+            ["lastName"] = "Invitee",
+            ["email"] = email,
+            ["username"] = username,
+            ["password"] = username,
+            ["password-confirm"] = username,
+        });
+        return await browser.PostAsync(new Uri(WebUtility.HtmlDecode(action.Groups["action"].Value)), fields, cancellationToken);
+    }
+
+    /// <summary>Follows redirects while they stay on Keycloak, and answers the first that leaves it, or the last page.</summary>
+    private static async Task<HttpResponseMessage> FollowWithinKeycloakAsync(HttpClient browser, Uri address, CancellationToken cancellationToken)
+    {
+        var response = await browser.GetAsync(address, cancellationToken);
+        for (var hops = 0; hops < 10; hops++)
+        {
+            var location = response.Headers.Location;
+            if (location is null || location.ToString().StartsWith(WebApp, StringComparison.Ordinal))
+            {
+                return response;
+            }
+
+            var next = location.IsAbsoluteUri ? location : new Uri(browser.BaseAddress ?? address, location);
+            response.Dispose();
+            response = await browser.GetAsync(next, cancellationToken);
+        }
+
+        return response;
+    }
+
+    private async Task<HttpResponseMessage> PasswordGrantAsync(string username, CancellationToken cancellationToken)
+    {
+        using var identity = new HttpClient { BaseAddress = aspire.App.GetEndpoint("keycloak", "http") };
+        using var form = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["grant_type"] = "password",
+            ["client_id"] = WebClient,
+            ["username"] = username,
+            ["password"] = username,
+        });
+        return await identity.PostAsync(new Uri("/realms/pharma-training/protocol/openid-connect/token", UriKind.Relative), form, cancellationToken);
+    }
+
+    /// <summary>A client that keeps Keycloak's cookies as a browser does and stops at every redirect.</summary>
+    private HttpClient Browser() =>
+        new(new HttpClientHandler { AllowAutoRedirect = false, CookieContainer = new CookieContainer() })
+        {
+            BaseAddress = aspire.App.GetEndpoint("keycloak", "http"),
+        };
+
+    [GeneratedRegex("<form(?=[^>]*id=\"kc-register-form\")[^>]*action=\"(?<action>[^\"]+)\"")]
+    private static partial Regex FormAction();
+
+    [GeneratedRegex("https?://[^\\s\"<>]+/login-actions/action-token\\?[^\\s\"<>]+")]
+    private static partial Regex VerificationLink();
 
     private static JsonDocument Payload(string token)
     {
