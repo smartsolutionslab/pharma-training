@@ -3,12 +3,14 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersio
 /// <summary>What the test of this version must look like; the AI draft is made to it and Publish checks against it.</summary>
 public sealed record TestBlueprint
 {
+    public const int MinimumQuestions = 1;
+
     public TestBlueprint(QuestionCount questions, ScorePercent passingScore, RecurrenceInterval validity)
     {
         Ensure.That(questions).IsNotNull();
         Ensure.That(passingScore).IsNotNull();
         Ensure.That(validity).IsNotNull();
-        Ensure.That(questions.Value).AtLeast(1);
+        Ensure.That(questions.Value).AtLeast(MinimumQuestions);
         Questions = questions;
         PassingScore = passingScore;
         Validity = validity;

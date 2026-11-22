@@ -126,7 +126,7 @@ public sealed class QuestionEndpoints : IEndpoint
             return Failure(CourseVersionFailures.InvalidQuestionType());
         }
 
-        if (request.Options is not { } options || options.Any(option => option is null))
+        if (request.Options is not { } options || options.Count > DraftedQuestion.MaxOptions || options.Any(option => option is null))
         {
             return Failure(CourseVersionFailures.InvalidAnswerOptions());
         }

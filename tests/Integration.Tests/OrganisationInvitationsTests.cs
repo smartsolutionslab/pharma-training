@@ -308,7 +308,7 @@ public partial class OrganisationInvitationsTests(AspireFixture aspire)
         {
             var first = owner.PostAsJsonAsync(InvitationsUri(pharmacy), new { email = address, jobFunction = "Pta", role = "Employee" }, cancellationToken);
             var second = owner.PostAsJsonAsync(InvitationsUri(pharmacy), new { email = address, jobFunction = "Pka", role = "Employee" }, cancellationToken);
-            await database.WaitUntilBlockedAsync(2, cancellationToken);
+            await database.WaitUntilBlockedAsync(gate, 2, cancellationToken);
             await gate.CommitAsync(cancellationToken);
             responses = await Task.WhenAll(first, second);
         }
@@ -344,7 +344,7 @@ public partial class OrganisationInvitationsTests(AspireFixture aspire)
         {
             var renew = owner.PostAsync(RenewUri(pharmacy, membership), content: null, cancellationToken);
             var revoke = owner.DeleteAsync(InvitationUri(pharmacy, membership), cancellationToken);
-            await database.WaitUntilBlockedAsync(2, cancellationToken);
+            await database.WaitUntilBlockedAsync(gate, 2, cancellationToken);
             await gate.CommitAsync(cancellationToken);
             responses = await Task.WhenAll(renew, revoke);
         }

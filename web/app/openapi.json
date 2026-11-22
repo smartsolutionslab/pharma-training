@@ -567,6 +567,46 @@
         }
       }
     },
+    "/editorial/course-versions/{id}/blueprint": {
+      "put": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditorialBlueprintRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Unit"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/editorial/permissions/edit": {
       "get": {
         "tags": [
@@ -2048,6 +2088,43 @@
           }
         }
       },
+      "EditorialBlueprintRequest": {
+        "required": [
+          "questions",
+          "passingScorePercent",
+          "validityMonths"
+        ],
+        "type": "object",
+        "properties": {
+          "questions": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "passingScorePercent": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "validityMonths": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "EditorialChapterDto": {
         "required": [
           "id",
@@ -2099,7 +2176,8 @@
           "title",
           "status",
           "chapters",
-          "questions"
+          "questions",
+          "blueprint"
         ],
         "type": "object",
         "properties": {
@@ -2136,6 +2214,9 @@
             "items": {
               "$ref": "#/components/schemas/EditorialQuestionDto"
             }
+          },
+          "blueprint": {
+            "$ref": "#/components/schemas/EditorialTestBlueprintDto"
           }
         }
       },
@@ -2305,6 +2386,40 @@
           },
           "name": {
             "type": "string"
+          }
+        }
+      },
+      "EditorialTestBlueprintDto": {
+        "required": [
+          "questions",
+          "passingScorePercent",
+          "validityMonths"
+        ],
+        "type": "object",
+        "properties": {
+          "questions": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "passingScorePercent": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "validityMonths": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           }
         }
       },

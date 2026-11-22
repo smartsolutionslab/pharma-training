@@ -21,7 +21,7 @@ public class QuestionMappingsTests
         var version = DraftWithApprovedQuestion(out var chapter, out var id);
         var question = version.Questions.ShouldHaveSingleItem();
 
-        var dto = question.ToEditorialQuestionDto(1);
+        var dto = question.ToDto(1);
 
         dto.Id.ShouldBe(id.Value);
         dto.Position.ShouldBe(1);
@@ -44,7 +44,7 @@ public class QuestionMappingsTests
     {
         var version = DraftWithQuestion(out _, out _);
 
-        var dto = version.Questions.ShouldHaveSingleItem().ToEditorialQuestionDto(3);
+        var dto = version.Questions.ShouldHaveSingleItem().ToDto(3);
 
         dto.Position.ShouldBe(3);
         dto.Review.ShouldBe(EditorialQuestionReview.Unreviewed);
@@ -58,7 +58,7 @@ public class QuestionMappingsTests
         var version = DraftWithChapter(out var chapter);
         version.ApplyAiTestDraft([MultipleChoice(chapter)], QuestionId.New, AnswerOptionId.New).IsSuccess.ShouldBeTrue();
 
-        var dto = version.Questions.ShouldHaveSingleItem().ToEditorialQuestionDto(1);
+        var dto = version.Questions.ShouldHaveSingleItem().ToDto(1);
 
         dto.Provenance.ShouldBe(EditorialQuestionProvenance.AiDrafted);
         dto.Type.ShouldBe(EditorialQuestionType.MultipleChoice);
@@ -71,7 +71,7 @@ public class QuestionMappingsTests
         var version = DraftWithQuestion(out _, out _);
         var option = version.Questions.ShouldHaveSingleItem().Options[1];
 
-        option.ToEditorialAnswerOptionDto().ShouldBe(new EditorialAnswerOptionDto(option.Id.Value, "Einmal am Tag", false));
+        option.ToDto().ShouldBe(new EditorialAnswerOptionDto(option.Id.Value, "Einmal am Tag", false));
     }
 
     [Fact]

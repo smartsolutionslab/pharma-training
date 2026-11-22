@@ -5,11 +5,11 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.DTOs;
 /// <summary>A question as the module's endpoints answer it, at the place in its version it is given.</summary>
 public static class QuestionMappings
 {
-    public static EditorialQuestionDto ToEditorialQuestionDto(this Question question, int position)
+    public static EditorialQuestionDto ToDto(this Question question, int position)
     {
         Ensure.That(question).IsNotNull();
 
-        List<EditorialAnswerOptionDto> options = [.. question.Options.Select(option => option.ToEditorialAnswerOptionDto())];
+        List<EditorialAnswerOptionDto> options = [.. question.Options.Select(option => option.ToDto())];
         return new EditorialQuestionDto(
             question.Id.Value,
             position,
