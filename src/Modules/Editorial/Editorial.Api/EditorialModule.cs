@@ -12,7 +12,7 @@ public sealed class EditorialModule : IModule
     {
         services.AddModuleInfrastructure<EditorialModule>(configuration);
 
-        // Read once, here: a value the host cannot read stops it at startup, never on a publish (ADR 0005).
+        // Read once, here: a value the host cannot read stops it at startup, never on a publish (ADR 0007).
         services.AddSingleton(EditorialSettings.ReviewFrom(configuration));
     }
 

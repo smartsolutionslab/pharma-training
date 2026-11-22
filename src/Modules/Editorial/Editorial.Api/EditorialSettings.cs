@@ -5,7 +5,7 @@ using Microsoft.Extensions.Configuration;
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Api;
 
 /// <summary>
-/// The module's settings from the host's configuration (ADR 0005). Four eyes is <c>Editorial:FourEyes</c>, off when
+/// The module's settings from the host's configuration (ADR 0007). Four eyes is <c>Editorial:FourEyes</c>, off when
 /// it is absent or blank; a value that is no boolean stops the host at startup, naming the key.
 /// </summary>
 public static class EditorialSettings

@@ -63,7 +63,7 @@ The AppHost runs Azurite, the Azure Storage emulator, as the resource `storage`,
 
 ### Editorial settings
 
-Four eyes (a version is published by an editor other than the one who submitted it) is off by default; `Editorial__FourEyes=true` in the editorial service's environment turns it on (docs/adr/0005).
+Four eyes (a version is published by an editor other than the one who submitted it) is off by default; `Editorial__FourEyes=true` in the editorial service's environment turns it on (docs/adr/0007).
 
 ### Local users
 

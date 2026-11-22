@@ -4,7 +4,7 @@ using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.PublishCourseVersion;
 
 /// <summary>
-/// Publishes the version and supersedes the course's published versions in one save (ADR 0005), so a course never
+/// Publishes the version and supersedes the course's published versions in one save (ADR 0007), so a course never
 /// keeps two: a predecessor changed by another save since it was loaded makes the commit lose its race, and nothing
 /// is saved. Only a publish that succeeds supersedes anything.
 /// </summary>

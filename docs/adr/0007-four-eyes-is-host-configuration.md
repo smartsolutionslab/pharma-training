@@ -1,4 +1,4 @@
-# 0005: Four eyes is host configuration
+# 0007: Four eyes is host configuration
 
 **Status:** Accepted
 
