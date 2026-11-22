@@ -227,6 +227,57 @@ public class ValueObjectTests
         Should.Throw<GuardException>(() => BlobReference.From("  "));
     }
 
+    public static TheoryData<string?> NoBlobNames { get; } =
+        [(string?)null, "", "   ", new string('a', 1025), "https://store.example/editorial/hygiene.pdf?sig=key", "course-versions/hand\0out.pdf", "course-versions/hand\u0001out.pdf"];
+
+    public static TheoryData<int?> NoDurations { get; } = [(int?)null, 0, -1, (4 * 60 * 60) + 1];
+
+    [Fact]
+    public void A_blob_reference_never_holds_a_nul_or_control_character()
+    {
+        Should.Throw<GuardException>(() => BlobReference.From("course-versions/hand\0out.pdf"));
+        Should.Throw<GuardException>(() => BlobReference.From("course-versions/hand\u0001out.pdf"));
+    }
+
+    [Fact]
+    public void A_callers_blob_name_becomes_a_reference_as_written()
+    {
+        var name = $"course-versions/{Guid.CreateVersion7():D}/{Guid.CreateVersion7():D}.pdf";
+
+        BlobReference.TryFrom(name, out var reference).ShouldBeTrue();
+        reference.ShouldBe(BlobReference.From(name));
+        BlobReference.TryFrom(new string('a', 1024), out _).ShouldBeTrue("1024 characters are a name");
+    }
+
+    [Theory]
+    [MemberData(nameof(NoBlobNames))]
+    public void A_callers_file_that_is_no_blob_name_is_no_reference_and_no_exception(string? value)
+    {
+        BlobReference.TryFrom("course-versions/hygiene.pdf", out _).ShouldBeTrue("a blob name beside it is a reference");
+
+        BlobReference.TryFrom(value, out var reference).ShouldBeFalse();
+        reference.ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(4 * 60 * 60)]
+    public void A_callers_seconds_from_one_to_four_hours_are_a_video_duration(int seconds)
+    {
+        VideoDuration.TryFrom(seconds, out var duration).ShouldBeTrue();
+        duration.ShouldBe(VideoDuration.From(seconds));
+    }
+
+    [Theory]
+    [MemberData(nameof(NoDurations))]
+    public void A_callers_seconds_outside_one_to_four_hours_are_no_duration_and_no_exception(int? seconds)
+    {
+        VideoDuration.TryFrom(90, out _).ShouldBeTrue("90 seconds beside it are a duration");
+
+        VideoDuration.TryFrom(seconds, out var duration).ShouldBeFalse();
+        duration.ShouldBeNull();
+    }
+
     [Fact]
     public void A_video_lasts_from_one_second_to_four_hours()
     {

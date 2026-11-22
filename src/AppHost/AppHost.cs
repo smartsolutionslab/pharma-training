@@ -49,7 +49,7 @@ var azureOpenAIApiKey = secrets.IsPublishing
     ? secrets.Secret("azure-openai-api-key")
     : builder.AddParameter("azure-openai-api-key", () => builder.Configuration["Parameters:azure-openai-api-key"] ?? string.Empty, publishValueAsDefault: false, secret: true);
 
-var host = builder.AddProject("host", "../Edge/Edge.csproj")
+var host = builder.AddProject<Projects.Edge>("host")
     // The one entry from outside once published; the services, Keycloak and the broker stay inside the environment.
     .WithExternalHttpEndpoints()
     .WithHttpHealthCheck("/health")
@@ -72,7 +72,7 @@ foreach (var (module, project) in builder.ServiceHosts())
         .WaitFor(database);
 
     // Every service's launch profile names the same port; under the AppHost each gets one of its own.
-    var service = builder.AddProject(module, project)
+    var service = builder.AddServiceHost(module, project)
         .WithEndpoint("http", endpoint => endpoint.Port = null)
         .WithHttpHealthCheck("/health")
         .WithConnectionStringsOnly(secrets)

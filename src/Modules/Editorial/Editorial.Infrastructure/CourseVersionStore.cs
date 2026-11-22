@@ -1,3 +1,4 @@
+using System.Data;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Infrastructure.Persistence;
@@ -11,8 +12,22 @@ public sealed class CourseVersionStore(EditorialDbContext context) : ICourseVers
 {
     public void Add(CourseVersion version) => context.Add(version);
 
+    /// <summary>
+    /// The version as it is read back: its split queries run in one REPEATABLE READ transaction, so they read one
+    /// snapshot, and a change committed between them (a chapter removed, a question's options replaced) shows in none
+    /// of them or in all. A write loads with <see cref="FindForUpdateAsync"/>, whose row version comes from its first
+    /// query.
+    /// </summary>
     public Task<Option<CourseVersion>> FindAsync(CourseVersionId id, CancellationToken cancellationToken) =>
-        FindAsync(WithContent().AsNoTracking(), id, cancellationToken);
+        context.Database.CreateExecutionStrategy().ExecuteAsync(
+            async cancellation =>
+            {
+                await using var snapshot = await context.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellation);
+                var found = await FindAsync(WithContent().AsNoTracking(), id, cancellation);
+                await snapshot.CommitAsync(cancellation);
+                return found;
+            },
+            cancellationToken);
 
     public Task<Option<CourseVersion>> FindForUpdateAsync(CourseVersionId id, CancellationToken cancellationToken) =>
         FindAsync(WithContent(), id, cancellationToken);

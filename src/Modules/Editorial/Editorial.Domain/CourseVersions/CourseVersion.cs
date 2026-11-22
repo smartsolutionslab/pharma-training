@@ -90,6 +90,17 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
 
     // ── Content ──
 
+    /// <summary>Whether a chapter's file may be uploaded for the version: only while it is a draft, which alone takes chapters.</summary>
+    public Result<Unit, DomainError> AcceptsUploads()
+    {
+        if (!IsDraft)
+        {
+            return Failure(CourseVersionErrors.NotADraft(Id, Status));
+        }
+
+        return Success(Unit.Value);
+    }
+
     public Result<ChapterId, DomainError> AddChapter(Chapter chapter)
     {
         Ensure.That(chapter).IsNotNull();
