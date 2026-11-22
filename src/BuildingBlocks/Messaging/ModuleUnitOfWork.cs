@@ -42,10 +42,10 @@ public abstract partial class ModuleUnitOfWork<TContext>(IServiceProvider servic
     /// owns, where it wraps it in <see cref="DbUpdateConcurrencyException"/>; and, once a handler publishes, at the commit
     /// of Wolverine's envelope transaction through <c>Database.CommitTransactionAsync</c>, where it arrives as a bare
     /// <see cref="PostgresException"/> or inside another exception. Each is logged as a warning naming its SqlState, with
-    /// the <see cref="PostgresException"/> attached so its stack shows where the deadlock happened (Npgsql leaves
-    /// PostgreSQL's detail, which names the locked rows, out unless <c>Include Error Detail</c> is set; keep it off), so a
-    /// deadlock that keeps happening (two handlers taking locks in opposite orders) shows in the telemetry, not only as
-    /// 409s; a row version that moved on is ordinary and is not logged. The filter also covers Wolverine's flush after
+    /// the <see cref="PostgresException"/> attached so its stack shows where the deadlock happened (Npgsql redacts
+    /// PostgreSQL's Detail unless <c>Include Error Detail</c> is set, so keep it off; Where names the relation and tuple,
+    /// never values), so a deadlock that keeps happening (two handlers taking locks in opposite orders) shows in the
+    /// telemetry, not only as 409s; a row version that moved on is ordinary and is not logged. The filter also covers Wolverine's flush after
     /// the commit, but that flush catches each envelope's send failure itself (Wolverine 6.64.0, outside
     /// <c>DurabilityMode.ServerlessWithOutbox</c>, which deletes the sent envelopes' outbox rows after the commit with no
     /// such catch), so a 40P01 or 40001 cannot come from a write that already committed; recheck both when upgrading
