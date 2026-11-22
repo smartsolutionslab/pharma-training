@@ -20,7 +20,7 @@ public class TestDrafterDraftTests
     [InlineData("too much content", "editorial.too-much-content-to-draft")]
     public async Task Draft_refuses_before_asking_the_model_when_the_version_cannot_be_drafted(string state, string code)
     {
-        var version = Undraftable(state);
+        var version = TestDraftVersions.Undraftable(state);
         using var model = new FakeChatClient(Sound(1));
 
         var result = await TestDrafter.DraftAsync(model, version, TestContext.Current.CancellationToken);
@@ -123,31 +123,5 @@ public class TestDrafterDraftTests
         var added = version.Questions.Where(question => question.Id != approved && question.Id != otherApproved).ToList();
         added.Count.ShouldBe(3);
         added.ShouldAllBe(question => question.Provenance == Provenance.AiDrafted && question.Review == ReviewState.Unreviewed);
-    }
-
-    private static CourseVersion Undraftable(string state) => state switch
-    {
-        "not a draft" => InReview(),
-        "no text chapters" => Draft(),
-        "nothing to draft" => Full(),
-        "too much content" => TooLong(),
-        _ => throw new System.Diagnostics.UnreachableException(state),
-    };
-
-    private static CourseVersion Full()
-    {
-        var version = TestDraftVersions.WithTextChapters(1, "Händehygiene");
-        var chapter = TestDraftVersions.TextChapterIds(version)[0];
-        var question = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
-        version.ApproveQuestion(question, Author, Now).IsSuccess.ShouldBeTrue();
-        return version;
-    }
-
-    private static CourseVersion TooLong()
-    {
-        var version = Draft();
-        version.AddChapter(TextChapter(ChapterId.New(), "A", new string('a', MarkdownText.MaxLength))).IsSuccess.ShouldBeTrue();
-        version.AddChapter(TextChapter(ChapterId.New(), "B", new string('b', MarkdownText.MaxLength))).IsSuccess.ShouldBeTrue();
-        return version;
     }
 }

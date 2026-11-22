@@ -61,4 +61,34 @@ internal static class TestDraftVersions
 
     public static IReadOnlyList<ChapterId> TextChapterIds(CourseVersion version) =>
         [.. version.Chapters.Where(chapter => chapter.Kind == ChapterKind.Text).Select(chapter => chapter.Id)];
+
+    /// <summary>
+    /// A version the drafter refuses before it asks the model, in the <paramref name="state"/> a test names: "not a draft",
+    /// "no text chapters", "nothing to draft" or "too much content".
+    /// </summary>
+    public static CourseVersion Undraftable(string state) => state switch
+    {
+        "not a draft" => InReview(),
+        "no text chapters" => Draft(),
+        "nothing to draft" => Full(),
+        "too much content" => TooLong(),
+        _ => throw new System.Diagnostics.UnreachableException(state),
+    };
+
+    private static CourseVersion Full()
+    {
+        var version = WithTextChapters(1, "Händehygiene");
+        var chapter = TextChapterIds(version)[0];
+        var question = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
+        version.ApproveQuestion(question, Author, Now).IsSuccess.ShouldBeTrue();
+        return version;
+    }
+
+    private static CourseVersion TooLong()
+    {
+        var version = Draft();
+        version.AddChapter(TextChapter(ChapterId.New(), "A", new string('a', MarkdownText.MaxLength))).IsSuccess.ShouldBeTrue();
+        version.AddChapter(TextChapter(ChapterId.New(), "B", new string('b', MarkdownText.MaxLength))).IsSuccess.ShouldBeTrue();
+        return version;
+    }
 }
