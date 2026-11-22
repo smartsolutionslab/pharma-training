@@ -625,7 +625,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/EditorialTextChapterRequest"
+                "$ref": "#/components/schemas/EditorialChapterRequest"
               }
             }
           },
@@ -675,7 +675,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/EditorialTextChapterRequest"
+                "$ref": "#/components/schemas/EditorialChapterRequest"
               }
             }
           },
@@ -1138,6 +1138,46 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/EditorialSampleDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/editorial/course-versions/{id}/uploads": {
+      "post": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditorialUploadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorialChapterUploadDto"
                 }
               }
             }
@@ -1935,7 +1975,9 @@
           "position",
           "title",
           "kind",
-          "text"
+          "text",
+          "file",
+          "durationSeconds"
         ],
         "type": "object",
         "properties": {
@@ -1962,6 +2004,21 @@
               "null",
               "string"
             ]
+          },
+          "file": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "durationSeconds": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           }
         }
       },
@@ -1969,8 +2026,89 @@
         "enum": [
           "Text",
           "Pdf",
-          "Video"
+          "Video",
+          null
         ]
+      },
+      "EditorialChapterRequest": {
+        "required": [
+          "title",
+          "kind",
+          "text",
+          "file",
+          "durationSeconds"
+        ],
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "kind": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EditorialChapterKind"
+              }
+            ]
+          },
+          "text": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "file": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "durationSeconds": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "EditorialChapterUploadDto": {
+        "required": [
+          "blobName",
+          "uploadUrl",
+          "expiresAt",
+          "contentType",
+          "maxBytes"
+        ],
+        "type": "object",
+        "properties": {
+          "blobName": {
+            "type": "string"
+          },
+          "uploadUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "contentType": {
+            "type": "string"
+          },
+          "maxBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
       },
       "EditorialCourseVersionDto": {
         "required": [
@@ -2189,18 +2327,21 @@
           }
         }
       },
-      "EditorialTextChapterRequest": {
+      "EditorialUploadRequest": {
         "required": [
-          "title",
-          "text"
+          "kind"
         ],
         "type": "object",
         "properties": {
-          "title": {
-            "type": "string"
-          },
-          "text": {
-            "type": "string"
+          "kind": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EditorialChapterKind"
+              }
+            ]
           }
         }
       },
