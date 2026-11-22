@@ -136,6 +136,7 @@ async function confirmRemove(chapter: EditorialChapterDto) {
             </DialogHeader>
             <ChapterForm
               v-if="form !== undefined"
+              :version-id="id"
               :chapter="form.chapter"
               :questions="version.questions"
               :on-save="save"

@@ -6,6 +6,7 @@ const dateTime: Intl.DateTimeFormatOptions = { ...date, hour: '2-digit', minute:
 
 const integer: Intl.NumberFormatOptions = { maximumFractionDigits: 0 };
 const percent: Intl.NumberFormatOptions = { style: 'percent', maximumFractionDigits: 0 };
+const megabytes: Intl.NumberFormatOptions = { style: 'unit', unit: 'megabyte', maximumFractionDigits: 0 };
 
 /** d(value, 'date') gives 22.11.2026 and 22/11/2026; 'dateTime' adds hour and minute. */
 export const datetimeFormats = {
@@ -13,10 +14,10 @@ export const datetimeFormats = {
   'en-GB': { date, dateTime },
 } satisfies Record<Language, Record<string, Intl.DateTimeFormatOptions>>;
 
-/** n(value, 'integer') gives 1.312 and 1,312; n(share, 'percent') gives 80 % and 80%. */
+/** n(value, 'integer') gives 1.312 and 1,312; n(share, 'percent') gives 80 % and 80%; n(size, 'megabytes') 2.048 MB and 2,048 MB. */
 export const numberFormats = {
-  'de-DE': { integer, percent },
-  'en-GB': { integer, percent },
+  'de-DE': { integer, percent, megabytes },
+  'en-GB': { integer, percent, megabytes },
 } satisfies Record<Language, Record<string, Intl.NumberFormatOptions>>;
 
 const calendarDateFormat = /^(\d{4})-(\d{2})-(\d{2})$/;
