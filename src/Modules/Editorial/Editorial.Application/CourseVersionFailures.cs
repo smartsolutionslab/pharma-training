@@ -68,6 +68,8 @@ public static class CourseVersionFailures
         TooFewOptions or SingleChoiceNeedsOneCorrect or MultipleChoiceNeedsACorrect => ApiError.From(error, HttpStatusCode.UnprocessableEntity),
         TooFewQuestions => ApiError.From(error, HttpStatusCode.BadRequest),
         FourEyesRequired or PublisherApprovedQuestions => ApiError.From(error, HttpStatusCode.Forbidden),
+        // This arm documents the rule that these refusals are conflicts with the version's state; it does not enforce it,
+        // since the discard arm below answers 409 for them all the same.
         NotADraft or OrderDoesNotMatchChapters or TooManyQuestions or NotInReview or NotPublished or NoChapters or TestIncomplete
             or QuestionNotApproved => ApiError.From(error, HttpStatusCode.Conflict),
         _ => ApiError.From(error, HttpStatusCode.Conflict),
