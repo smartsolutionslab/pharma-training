@@ -148,6 +148,40 @@ public class AddFileChapterTests
         store.Commits.ShouldBe(0);
     }
 
+    [Theory]
+    [InlineData(ChapterKind.Pdf, ".pdf", "application/pdf")]
+    [InlineData(ChapterKind.Video, ".mp4", "video/mp4")]
+    public async Task A_file_another_chapter_of_the_version_holds_is_in_use_and_nothing_is_committed(ChapterKind kind, string extension, string contentType)
+    {
+        var version = Draft();
+        store.Stored.Add(version);
+        var file = IssuedName(version.Id, extension);
+        blobs.Upload(file, contentType, 1024);
+        var first = await Handler().HandleAsync(Command(version.Id, kind, file, Duration(kind)), TestContext.Current.CancellationToken);
+        first.IsSuccess.ShouldBeTrue(first.IsFailure ? first.Error.Code : string.Empty);
+
+        var second = await Handler().HandleAsync(Command(version.Id, kind, file, Duration(kind)), TestContext.Current.CancellationToken);
+
+        ShouldBeRefused(second.IsFailure ? second.Error : null, "editorial.file-in-use", HttpStatusCode.Conflict, "one blob is the file of one chapter of a version");
+        version.Chapters.ShouldHaveSingleItem().Id.Value.ShouldBe(first.Value);
+        store.Commits.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task Html_declared_as_a_pdf_is_refused_and_nothing_is_committed()
+    {
+        var version = Draft();
+        store.Stored.Add(version);
+        var file = IssuedName(version.Id, ".pdf");
+        blobs.Upload(file, "application/pdf", 1024, content: InMemoryStoredBlobs.HtmlStart);
+
+        var added = await Handler().HandleAsync(Command(version.Id, ChapterKind.Pdf, file), TestContext.Current.CancellationToken);
+
+        ShouldBeRefused(added.IsFailure ? added.Error : null, "editorial.upload-not-accepted", HttpStatusCode.BadRequest, "the declared content type is the uploader's word, not the file's");
+        version.Chapters.ShouldBeEmpty();
+        store.Commits.ShouldBe(0);
+    }
+
     [Fact]
     public async Task A_published_version_gets_no_file_chapter_and_nothing_is_committed()
     {

@@ -95,4 +95,60 @@ public class ChapterUploadsTests
         AddFileChapterTests.ShouldBeRefused(accepted.IsFailure ? accepted.Error : null, "editorial.upload-not-accepted", HttpStatusCode.BadRequest, "a copy was not put through the upload URL the module signed");
         blobs.Lookups.ShouldBe(1);
     }
+
+    public static TheoryData<ChapterKind, string, string, byte[], string> BytesThatAreNotTheKind { get; } = new()
+    {
+        { ChapterKind.Pdf, ".pdf", "application/pdf", InMemoryStoredBlobs.HtmlStart, "html declared as a pdf is no pdf" },
+        { ChapterKind.Pdf, ".pdf", "application/pdf", InMemoryStoredBlobs.Mp4Start, "an mp4 declared as a pdf is no pdf" },
+        { ChapterKind.Pdf, ".pdf", "application/pdf", "%PDF"u8.ToArray(), "a pdf's header needs its dash: %PDF-" },
+        { ChapterKind.Pdf, ".pdf", "application/pdf", " %PDF-1.7\n"u8.ToArray(), "the header must start the file" },
+        { ChapterKind.Pdf, ".pdf", "application/pdf", "%pdf-1.7\n"u8.ToArray(), "the header is upper case" },
+        { ChapterKind.Video, ".mp4", "video/mp4", InMemoryStoredBlobs.HtmlStart, "html declared as a video is no mp4" },
+        { ChapterKind.Video, ".mp4", "video/mp4", InMemoryStoredBlobs.PdfStart, "a pdf declared as a video is no mp4" },
+        { ChapterKind.Video, ".mp4", "video/mp4", [.. "ftypisom"u8, 0, 0, 0, 24], "ftyp at offset 0, not at bytes 4 to 7" },
+        { ChapterKind.Video, ".mp4", "video/mp4", [0, 0, 0, 24, .. "moov"u8, 0, 0, 0, 0], "a box that is not ftyp first" },
+        { ChapterKind.Video, ".mp4", "video/mp4", [0, 0, 0, 24, .. "fty"u8], "a file that ends inside the box type" },
+        { ChapterKind.Video, ".mp4", "video/mp4", [0, 0, 0, 24, .. "FTYP"u8, 0, 0, 0, 0], "a box type is case-sensitive" },
+    };
+
+    [Theory]
+    [MemberData(nameof(BytesThatAreNotTheKind))]
+    public async Task An_upload_whose_bytes_are_not_the_kind_is_not_accepted_whatever_content_type_it_declares(
+        ChapterKind kind, string extension, string contentType, byte[] content, string because)
+    {
+        var blobs = new InMemoryStoredBlobs();
+        var file = AddFileChapterTests.IssuedName(Version, extension);
+        blobs.Upload(file, contentType, 1024, content: content);
+
+        var accepted = await ChapterUploads.AcceptAsync(blobs, BlobReference.From(file), Version, kind, TestContext.Current.CancellationToken);
+
+        AddFileChapterTests.ShouldBeRefused(accepted.IsFailure ? accepted.Error : null, "editorial.upload-not-accepted", HttpStatusCode.BadRequest, because);
+    }
+
+    [Fact]
+    public async Task A_pdf_is_accepted_once_its_leading_bytes_are_read_and_start_with_the_pdf_header()
+    {
+        var blobs = new InMemoryStoredBlobs();
+        var file = AddFileChapterTests.IssuedName(Version, ".pdf");
+        blobs.Upload(file, "application/pdf", 1024, content: "%PDF-1.4\n%%EOF\n"u8.ToArray());
+
+        var accepted = await ChapterUploads.AcceptAsync(blobs, BlobReference.From(file), Version, ChapterKind.Pdf, TestContext.Current.CancellationToken);
+
+        accepted.IsSuccess.ShouldBeTrue(accepted.IsFailure ? accepted.Error.Code : string.Empty);
+        blobs.StartReads.ShouldBe(1, "what the uploader declared is not trusted: the module reads the blob's own leading bytes");
+    }
+
+    [Fact]
+    public async Task A_video_is_accepted_once_its_leading_bytes_are_read_and_bytes_4_to_7_are_ftyp()
+    {
+        var blobs = new InMemoryStoredBlobs();
+        var file = AddFileChapterTests.IssuedName(Version, ".mp4");
+        // The smallest ftyp box: a size of 16, its type, a major brand and a minor version, and nothing after it.
+        blobs.Upload(file, "video/mp4", 1024, content: [0, 0, 0, 16, .. "ftypmp42"u8, 0, 0, 0, 0]);
+
+        var accepted = await ChapterUploads.AcceptAsync(blobs, BlobReference.From(file), Version, ChapterKind.Video, TestContext.Current.CancellationToken);
+
+        accepted.IsSuccess.ShouldBeTrue(accepted.IsFailure ? accepted.Error.Code : string.Empty);
+        blobs.StartReads.ShouldBe(1, "what the uploader declared is not trusted: the module reads the blob's own leading bytes");
+    }
 }

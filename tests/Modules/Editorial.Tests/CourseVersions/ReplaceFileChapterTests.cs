@@ -76,6 +76,60 @@ public class ReplaceFileChapterTests
     }
 
     [Fact]
+    public async Task A_chapter_given_the_file_another_chapter_of_the_version_holds_is_refused_as_in_use()
+    {
+        var version = DraftWithChapter(out var text);
+        store.Stored.Add(version);
+        var file = IssuedName(version.Id, ".pdf");
+        blobs.Upload(file, "application/pdf", 1024);
+        var pdf = ChapterId.New();
+        version.AddChapter(Chapter.OfPdf(pdf, ChapterTitle.From("Hygieneplan"), BlobReference.From(file))).IsSuccess.ShouldBeTrue();
+
+        var replaced = await Handler().HandleAsync(Command(version.Id, text, ChapterKind.Pdf, file), TestContext.Current.CancellationToken);
+
+        ShouldBeRefused(replaced.IsFailure ? replaced.Error : null, "editorial.file-in-use", HttpStatusCode.Conflict, "one blob is the file of one chapter of a version");
+        version.Chapters.Single(chapter => chapter.Id == text).Kind.ShouldBe(ChapterKind.Text);
+        version.Chapters.Single(chapter => chapter.Id == pdf).File.ShouldBe(BlobReference.From(file));
+        store.Commits.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task A_chapter_that_keeps_its_own_uploaded_file_is_replaced_although_it_holds_that_file()
+    {
+        var version = Draft();
+        store.Stored.Add(version);
+        var file = IssuedName(version.Id, ".pdf");
+        blobs.Upload(file, "application/pdf", 1024);
+        var pdf = ChapterId.New();
+        version.AddChapter(Chapter.OfPdf(pdf, ChapterTitle.From("Hygieneplan"), BlobReference.From(file))).IsSuccess.ShouldBeTrue();
+
+        var replaced = await Handler().HandleAsync(
+            new ReplaceFileChapter(version.Id, pdf, ChapterTitle.From("Hygieneplan 2028"), ChapterKind.Pdf, BlobReference.From(file), null),
+            TestContext.Current.CancellationToken);
+
+        replaced.IsSuccess.ShouldBeTrue(replaced.IsFailure ? replaced.Error.Code : string.Empty);
+        var stored = version.Chapters.ShouldHaveSingleItem();
+        stored.Title.ShouldBe(ChapterTitle.From("Hygieneplan 2028"));
+        stored.File.ShouldBe(BlobReference.From(file));
+        store.Commits.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task Html_declared_as_a_pdf_is_refused_and_the_chapter_stays_as_it_was()
+    {
+        var version = DraftWithChapter(out var chapter);
+        store.Stored.Add(version);
+        var file = IssuedName(version.Id, ".pdf");
+        blobs.Upload(file, "application/pdf", 1024, content: InMemoryStoredBlobs.HtmlStart);
+
+        var replaced = await Handler().HandleAsync(Command(version.Id, chapter, ChapterKind.Pdf, file), TestContext.Current.CancellationToken);
+
+        ShouldBeRefused(replaced.IsFailure ? replaced.Error : null, "editorial.upload-not-accepted", HttpStatusCode.BadRequest, "the declared content type is the uploader's word, not the file's");
+        version.Chapters.Single().Kind.ShouldBe(ChapterKind.Text);
+        store.Commits.ShouldBe(0);
+    }
+
+    [Fact]
     public async Task A_name_issued_for_another_version_than_the_chapters_current_file_is_refused()
     {
         var (next, chapter, _) = NextOfPublishedWithPdf();
