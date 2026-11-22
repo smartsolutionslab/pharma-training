@@ -1,6 +1,6 @@
 # 0008: AI test draft: what the model sees and what it may return
 
-**Status:** Accepted, with D1 awaiting the owner's confirmation (see "Open for the owner").
+**Status:** Accepted. The owner confirmed D1 on 2026-11-22.
 
 ## Context
 
@@ -11,26 +11,27 @@
 
 ## Decision
 
-- **D1. Only text chapters are drafted from, and only their title and Markdown are sent.** PDF and video chapters are left out; "distributed evenly" applies to the text chapters. The editor adds questions about PDF and video chapters by hand. A version without a text chapter is refused before the model is called (`editorial.no-text-chapters`, 409).
+- **D1. Only text chapters are drafted from, and only their title and Markdown are sent.** PDF and video chapters are left out; "distributed evenly" applies to the text chapters. The editor adds questions about PDF and video chapters by hand. A version without a text chapter is refused before the model is called (`editorial.no-text-chapters`, 409). The draft's result names the chapters it left out (`TestDraft.LeftOutChapters`, in the version's order), so the editor knows; the UI shows them later.
 - **D2. The draft asks for the blueprint's count less the approved questions.** Applied, the test then holds exactly the blueprint's count, as `SubmitForReview` requires, and can never exceed `QuestionCount.Maximum`. When the approved questions already fill the blueprint, the draft is refused before the model is called (`editorial.nothing-to-draft`, 409).
 - **D3. The even split is computed in code.** The requested count is split over the text chapters in the version's order, the remainder going to the first chapters (10 over 4 is 3, 3, 2, 2). The model is told each chapter's quota.
 - **D4. Chapters are referenced by position.** The model sees the text chapters numbered 1…n and answers with that number; code maps it back to the chapter's id. No identifier of any kind (version, course, chapter, question) and no person is sent, and neither is the course's title.
 - **D5. "No PII" means no data about persons.** Chapter titles and Markdown are editorial content written for every pharmacy and are sent as written. A unit test checks that a request carries no GUID and no person's id.
 - **D6. Prompt placement.** The system message holds the instruction alone (`TestDraftPrompt.Instruction`, English, asking for output in the chapters' language). The user message holds the chapters as a JSON array between `<chapters>` and `</chapters>`, then the count and per-chapter quotas. JSON string escaping keeps a chapter's text from closing the delimiter, and the instruction says the chapters are data, never instructions. Content over `TestDraftRequest.MaxCharacters` (400 000 characters of titles and texts) is refused before the model is called (`editorial.too-much-content-to-draft`, 422).
 - **D7. Structured output through Abstractions, checked by the module.** `GetResponseAsync<T>` lives in `Microsoft.Extensions.AI`, which Application may not reference, so the drafter sets `ChatOptions.ResponseFormat = ChatResponseFormat.ForJsonSchema<TestDraftAnswer>(…, "test_draft")` itself, deserializes the answer with `System.Text.Json` and checks it. This is the deliberate deviation from AGENTS.md's "use `GetResponseAsync<T>`". No temperature or top-p is set, since gpt-5 models refuse them.
-- **D7 (continued): what rejects and what is accepted.** An answer that cannot be read (not JSON, a null, a missing property, an unknown type), has the wrong count, names a chapter that was not sent, or has a question or option text the value objects refuse, or more than `DraftedQuestion.MaxOptions` options, is rejected and nothing is returned to apply. Too few options or the wrong correct ones are accepted: the version reports them when the question is approved, and the editor fixes them. A per-chapter split that differs from the quotas, with the right total, is accepted and measured by the evals.
+- **D7 (continued): what rejects and what is accepted.** An answer that cannot be read (not JSON, a null, a missing property, an unknown type), has the wrong count, names a chapter that was not sent, or has a question or option text the value objects refuse, or more than `DraftedQuestion.MaxOptions` options, is rejected and nothing is returned to apply. A number written as a string (`"chapter":"2"`) is unreadable: numbers are read strictly. Too few options or the wrong correct ones are accepted: the version reports them when the question is approved, and the editor fixes them. A per-chapter split that differs from the quotas, with the right total, is accepted and measured by the evals.
 - **D7 (continued): one code for a rejected answer, `editorial.ai-draft-malformed`, 502.** The model, upstream, gave an unusable answer; the caller's request was fine. It has one constant English message; the defect (`TestDraftDefect`) travels on the failure value for tests and the eval transcript and is not shown to the caller.
 - **D8. Provider failures are not wrapped.** An exception from the client (HTTP error, timeout, content filter) propagates and answers `500`, and a missing model setting `503`, as ADR 0001 says.
 - **D9. The drafter is a static Application class taking `IChatClient` as a parameter.** `TestDrafter.DraftAsync(model, version, cancellationToken)` is what #22's handler calls with the `IChatClient` it takes by constructor; the evals call the same entry points. Nothing is registered by hand.
 - **Evals.** The fabric sample use case `ask-the-model` is replaced in `tests/Evals/UseCases.cs` by `ai-test-draft`, whose examples are real course versions answered through the module's drafter, each with its chapters as grounding context. `TestDraftEvaluator` adds five metrics without a judge (chapter referenced, count matches blueprint, single choice has one correct, evenly distributed, accepted) and is added to `EvalRun`'s evaluators. The editorial module's own `AskTheModel` sample is removed.
 
-## Open for the owner
+## Decided by the owner
 
-- **Confirm D1:** only text chapters are drafted from. The alternatives are (a) to refuse an AI draft for a version with PDF or video chapters, or (b) to wait for PDF text extraction (a new issue) before PDF chapters get AI questions. Until the owner confirms, D1 stands as written.
+- **D1 confirmed (2026-11-22).** Only text chapters are drafted from. Drafting from a PDF or video chapter's title alone was rejected: questions are drafted only from content the model read.
+- PDF chapters join through their extracted text in #157. Video chapters wait for transcripts.
 
 ## Consequences
 
-- PDF and video chapters get no AI questions; the editor writes theirs.
+- PDF and video chapters get no AI questions until #157 (PDF) and transcripts (video); the editor writes theirs. The draft names them.
 - A rejected answer costs a model call and changes nothing; the editor tries again.
 - `fabric upgrade` may conflict on `tests/Evals/UseCases.cs`, `tests/Evals/EvalRun.cs`, `tests/Evals.Tests/EvalGateTests.cs` and `tests/Fakes/FakeChatClient.cs` (which now records each request's options). Keep this project's changes when resolving.
 - Calling the drafter, its endpoint and its latency are #22's.
