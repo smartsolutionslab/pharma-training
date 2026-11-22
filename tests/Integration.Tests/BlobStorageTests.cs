@@ -223,7 +223,8 @@ public class BlobStorageTests(AspireFixture aspire)
 
         put.StatusCode.ShouldBe(HttpStatusCode.Created);
         stored.HasValue.ShouldBeTrue("an uploaded blob is found");
-        stored.Value.ShouldBe(new StoredBlob(name, "application/pdf", 300, IsBlockBlob: true));
+        stored.Value.ETag.ShouldNotBeNullOrWhiteSpace("the version of the blob found, which reading its start must match");
+        stored.Value.ShouldBe(new StoredBlob(name, "application/pdf", 300, IsBlockBlob: true, ETag: stored.Value.ETag));
     }
 
     [Fact]
@@ -242,6 +243,47 @@ public class BlobStorageTests(AspireFixture aspire)
         put.StatusCode.ShouldBe(HttpStatusCode.Created);
         found.HasValue.ShouldBeTrue("the blob uploaded beside it is found");
         missing.HasValue.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task Stored_blobs_throw_for_a_container_that_does_not_exist_rather_than_find_nothing()
+    {
+        // The editorial container's own connection string, naming a container the AppHost never created.
+        var parts = (await ConnectionStringAsync("editorial")).Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var elsewhere = string.Join(';', [.. parts.Where(part => !part.StartsWith("ContainerName=", StringComparison.OrdinalIgnoreCase)), $"ContainerName=missing-{Guid.CreateVersion7():N}"]);
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:blobs"] = elsewhere })
+            .Build();
+        var blobs = new AzureStoredBlobs(configuration);
+
+        var thrown = await Should.ThrowAsync<Azure.RequestFailedException>(() => blobs.FindAsync(NewName(), TestContext.Current.CancellationToken));
+
+        thrown.ErrorCode.ShouldBe("ContainerNotFound", "a module whose container is missing is misconfigured; no upload is merely late");
+    }
+
+    [Fact]
+    public async Task Stored_blobs_read_the_first_bytes_of_a_blob_or_all_of_a_shorter_one()
+    {
+        var urls = await UrlsAsync("editorial", TimeProvider.System.GetUtcNow());
+        var blobs = await StoredBlobsAsync("editorial");
+        var longer = NewName();
+        var shorter = NewName();
+        var longerContent = RandomNumberGenerator.GetBytes(300);
+        var shorterContent = RandomNumberGenerator.GetBytes(5);
+
+        using var putLonger = await PutAsync((await urls.CreateUploadUrlAsync(longer, FiveMinutes, TestContext.Current.CancellationToken)).Url, longerContent);
+        using var putShorter = await PutAsync((await urls.CreateUploadUrlAsync(shorter, FiveMinutes, TestContext.Current.CancellationToken)).Url, shorterContent);
+        var foundLonger = await blobs.FindAsync(longer, TestContext.Current.CancellationToken);
+        var foundShorter = await blobs.FindAsync(shorter, TestContext.Current.CancellationToken);
+        foundLonger.HasValue.ShouldBeTrue("the longer blob was uploaded");
+        foundShorter.HasValue.ShouldBeTrue("the shorter blob was uploaded");
+        var startOfLonger = await blobs.ReadStartAsync(foundLonger.Value, 8, TestContext.Current.CancellationToken);
+        var startOfShorter = await blobs.ReadStartAsync(foundShorter.Value, 8, TestContext.Current.CancellationToken);
+
+        putLonger.StatusCode.ShouldBe(HttpStatusCode.Created);
+        putShorter.StatusCode.ShouldBe(HttpStatusCode.Created);
+        startOfLonger.ToArray().ShouldBe(longerContent[..8], "a ranged read answers the first bytes asked for, and no more");
+        startOfShorter.ToArray().ShouldBe(shorterContent, "a blob shorter than the range answers what it has");
     }
 
     [Fact]
@@ -266,7 +308,7 @@ public class BlobStorageTests(AspireFixture aspire)
         uploaded.HasValue.ShouldBeTrue("the uploaded blob is found");
         uploaded.Value.IsCopy.ShouldBeFalse("a blob put directly is no copy");
         copied.HasValue.ShouldBeTrue("the copied blob is found");
-        copied.Value.ShouldBe(new StoredBlob(copy, "application/pdf", 300, IsBlockBlob: true, IsCopy: true));
+        copied.Value.ShouldBe(new StoredBlob(copy, "application/pdf", 300, IsBlockBlob: true, IsCopy: true, ETag: copied.Value.ETag));
     }
 
     /// <summary>

@@ -1,4 +1,5 @@
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.IntegrationEvents;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.PublishCourseVersion;
@@ -6,7 +7,9 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Command
 /// <summary>
 /// Publishes the version and supersedes the course's published versions in one save (ADR 0007), so a course never
 /// keeps two: a predecessor changed by another save since it was loaded makes the commit lose its race, and nothing
-/// is saved. Only a publish that succeeds supersedes anything.
+/// is saved. Only a publish that succeeds supersedes anything. In the same save it announces the version
+/// (<c>CourseVersionPublishedV1</c>, without questions) and its test (<c>TestDefinitionPublishedV1</c>, with the
+/// solutions, for Assessment only) through the unit of work, so a refused or lost publish sends nothing (ADR 0002).
 /// </summary>
 public sealed class PublishCourseVersionHandler(ICourseVersionStore versions, IEditorialUnitOfWork unitOfWork, ReviewSettings review, TimeProvider time)
     : ICommandHandler<PublishCourseVersion, Result<Unit, ApiError>>
@@ -34,6 +37,9 @@ public sealed class PublishCourseVersionHandler(ICourseVersionStore versions, IE
         {
             predecessor.Supersede();
         }
+
+        await unitOfWork.PublishAsync(version.ToCourseVersionPublishedV1());
+        await unitOfWork.PublishAsync(version.ToTestDefinitionPublishedV1());
 
         if (!await unitOfWork.TryCommitAsync(cancellationToken))
         {

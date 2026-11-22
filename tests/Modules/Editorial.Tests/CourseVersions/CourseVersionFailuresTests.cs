@@ -41,6 +41,21 @@ public class CourseVersionFailuresTests
     }
 
     [Fact]
+    public void A_refused_upload_says_what_it_is_not_without_naming_the_signatures_checked()
+    {
+        string[] checkedDetails = ["%PDF", "ftyp", "byte", "isom", "iso2", "mp41", "mp42", "avc1", "M4V", "dash"];
+
+        var refused = CourseVersionFailures.UploadNotAccepted();
+
+        refused.Code.ShouldBe("editorial.upload-not-accepted");
+        refused.Status.ShouldBe(HttpStatusCode.BadRequest);
+        refused.Message.ShouldNotBeNullOrWhiteSpace();
+        checkedDetails
+            .Where(detail => refused.Message.Contains(detail, StringComparison.OrdinalIgnoreCase))
+            .ShouldBeEmpty($"the message tells the uploader the file was refused, not how to forge one that passes: \"{refused.Message}\"");
+    }
+
+    [Fact]
     public void A_file_not_uploaded_yet_is_a_conflict_the_caller_may_retry()
     {
         CourseVersionFailures.UploadNotFound().Code.ShouldBe("editorial.upload-not-found");

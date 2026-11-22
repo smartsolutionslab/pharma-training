@@ -49,6 +49,15 @@ public class MappingsTests
     public void A_chapter_kind_travels_under_its_own_name_to_the_dto(ChapterKind kind) =>
         kind.ToDto().ToString().ShouldBe(kind.ToString());
 
+    [Theory]
+    [MemberData(nameof(Kinds))]
+    public void A_chapter_kind_travels_under_its_own_name_in_the_integration_events(ChapterKind kind) =>
+        kind.ToV1().ToString().ShouldBe(kind.ToString());
+
+    [Fact]
+    public void An_undefined_chapter_kind_is_a_bug_in_the_integration_events() =>
+        Should.Throw<System.Diagnostics.UnreachableException>(() => ((ChapterKind)99).ToV1());
+
     [Fact]
     public void An_undefined_status_or_kind_is_a_bug()
     {

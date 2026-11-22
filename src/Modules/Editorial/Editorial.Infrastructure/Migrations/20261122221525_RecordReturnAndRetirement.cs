@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Infrastructure.Migrations;
 
 /// <inheritdoc />
-public partial class _20261122190724_RecordReturnAndRetirement : Migration
+public partial class _20261122221525_RecordReturnAndRetirement : Migration
 {
     /// <inheritdoc />
     protected override void Up(MigrationBuilder migrationBuilder)

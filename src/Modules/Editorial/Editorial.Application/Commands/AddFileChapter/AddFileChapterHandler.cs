@@ -18,8 +18,10 @@ public sealed class AddFileChapterHandler(ICourseVersionStore versions, IEditori
             return Failure(CourseVersionFailures.NotFound(command.Version.Value));
         }
 
-        // The version is checked before the storage is asked: a version that takes no chapter needs no look at a blob.
-        var accepts = found.Value.AcceptsUploads();
+        // The version is checked before the storage is asked: a version that takes no chapter, or a file another chapter
+        // of it already holds, needs no look at a blob.
+        var chapter = ChapterId.New();
+        var accepts = found.Value.AcceptsFile(chapter, command.File);
         if (accepts.IsFailure)
         {
             return Failure(CourseVersionFailures.From(accepts.Error));
@@ -31,7 +33,7 @@ public sealed class AddFileChapterHandler(ICourseVersionStore versions, IEditori
             return Failure(accepted.Error);
         }
 
-        var changed = found.Value.AddChapter(FileChapters.Of(ChapterId.New(), command.Title, command.Kind, command.File, command.Duration));
+        var changed = found.Value.AddChapter(FileChapters.Of(chapter, command.Title, command.Kind, command.File, command.Duration));
         if (changed.IsFailure)
         {
             return Failure(CourseVersionFailures.From(changed.Error));

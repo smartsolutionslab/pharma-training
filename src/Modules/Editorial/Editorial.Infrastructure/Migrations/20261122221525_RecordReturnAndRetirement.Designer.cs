@@ -13,8 +13,8 @@ using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Infrastructure.Persiste
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Infrastructure.Migrations;
 
 [DbContext(typeof(EditorialDbContext))]
-[Migration("20261122190724_RecordReturnAndRetirement")]
-partial class _20261122190724_RecordReturnAndRetirement
+[Migration("20261122221525_RecordReturnAndRetirement")]
+partial class _20261122221525_RecordReturnAndRetirement
 {
     /// <inheritdoc />
     protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -102,6 +102,9 @@ partial class _20261122190724_RecordReturnAndRetirement
                 b.HasKey("Id");
 
                 b.HasIndex("CourseVersionId");
+
+                b.HasIndex("CourseVersionId", "File")
+                    .IsUnique();
 
                 b.ToTable("course_version_chapters", "editorial");
             });
