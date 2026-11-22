@@ -179,11 +179,15 @@ public class EditorialQuestionRacesTests(AspireFixture aspire)
         var connectionString = await EditorialDatabase.ConnectionStringAsync(aspire, cancellationToken);
         List<string> wrong = [];
 
-        // The same gate as above, held past deadlock_timeout (1 s) once the removal waits. PostgreSQL checks a lock wait
+        // The same gate as above, held well past deadlock_timeout once the removal waits. PostgreSQL checks a lock wait
         // for a deadlock once, deadlock_timeout after it starts: the removal's check runs while the addition still waits
         // for the gate, finds no cycle and is not repeated. Once the gate rolls back, the addition closes the cycle at
         // COMMIT (its deferred question->chapter key check waits for the deleted chapter) and is the one ended, every
-        // round. The removal then updates the version and commits; the addition lost the race on the version.
+        // round. The removal then updates the version and commits; the addition lost the race on the version. The gate
+        // holds three times the database's own deadlock_timeout, read rather than assumed, so the removal's check has run
+        // before the gate ends on a loaded runner or under a higher setting too; held only just past it, the removal's
+        // check could still be due once the addition closes the cycle, and the removal would be the one ended.
+        var held = await EditorialDatabase.DeadlockTimeoutAsync(connectionString, cancellationToken) * 3;
         for (var round = 1; round <= DeadlockRounds; round++)
         {
             var id = await CreateAsync(client, cancellationToken);
@@ -198,7 +202,7 @@ public class EditorialQuestionRacesTests(AspireFixture aspire)
                 await EditorialDatabase.WaitUntilBlockedAsync(connectionString, gate, 1, cancellationToken);
                 removed = client.DeleteAsync(Chapter(id, chapter), cancellationToken);
                 await EditorialDatabase.WaitUntilBlockedAsync(connectionString, gate, 2, cancellationToken);
-                await Task.Delay(TimeSpan.FromSeconds(1.5), cancellationToken);
+                await Task.Delay(held, cancellationToken);
                 await gate.RollbackAsync(cancellationToken);
             }
 

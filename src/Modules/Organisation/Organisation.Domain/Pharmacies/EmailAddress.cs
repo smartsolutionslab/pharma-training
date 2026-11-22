@@ -34,6 +34,8 @@ public sealed partial record EmailAddress : IValueObject<string>
 
     public override string ToString() => Value;
 
-    [GeneratedRegex(@"^[^@\s\0]+@[^@\s\0]+\.[^@\s\0]+$")]
+    // No character mail reads as syntax (RFC 5322 specials: < > " , ; ( ) [ ] \ :), so the address stored is the one
+    // the mail goes to, and never a display name, a comment, a list or a route that reaches another mailbox.
+    [GeneratedRegex(@"^[^@\s\0<>""(),;:\[\]\\]+@[^@\s\0<>""(),;:\[\]\\]+\.[^@\s\0<>""(),;:\[\]\\]+$")]
     private static partial Regex Shape();
 }

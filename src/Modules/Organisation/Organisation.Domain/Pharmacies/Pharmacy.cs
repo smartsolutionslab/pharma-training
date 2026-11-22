@@ -54,17 +54,14 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
         return pharmacy;
     }
 
-    public Result<MembershipId, DomainError> Invite(
-        MembershipId id,
-        EmailAddress email,
-        InvitationToken token,
-        JobFunction jobFunction,
-        MembershipRole role,
-        Timestamp now)
+    /// <summary>
+    /// Invites the address, valid for 14 days from now. The invitation holds no link yet: its mail issues one
+    /// (<see cref="IssueInvitationLink"/>), so no token exists before the mail is sent.
+    /// </summary>
+    public Result<MembershipId, DomainError> Invite(MembershipId id, EmailAddress email, JobFunction jobFunction, MembershipRole role, Timestamp now)
     {
         Ensure.That(id).IsNotNull();
         Ensure.That(email).IsNotNull();
-        Ensure.That(token).IsNotNull();
         Ensure.That(now).IsNotNull();
 
         if (memberships.Any(m => m.Email == email && m.Status is MembershipStatus.Invited or MembershipStatus.Active))
@@ -73,16 +70,18 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
         }
 
         var expiresAt = now.PlusDays(InvitationValidityDays);
-        memberships.Add(Membership.Invited(id, email, token, jobFunction, role, expiresAt));
-        Raise(new MemberInvited(Id, id, email, token, expiresAt));
+        memberships.Add(Membership.Invited(id, email, jobFunction, role, expiresAt));
+        Raise(new MemberInvited(Id, id, expiresAt));
         return Success(id);
     }
 
-    /// <summary>Sends a fresh link for an invitation that is still open or has run out.</summary>
-    public Result<Unit, DomainError> RenewInvitation(MembershipId membership, InvitationToken token, Timestamp now)
+    /// <summary>
+    /// Renews an invitation that is still open or has run out: valid for 14 days from now, and the old link stops
+    /// working at once. Its new mail issues the new link.
+    /// </summary>
+    public Result<Unit, DomainError> RenewInvitation(MembershipId membership, Timestamp now)
     {
         Ensure.That(membership).IsNotNull();
-        Ensure.That(token).IsNotNull();
         Ensure.That(now).IsNotNull();
 
         if (Find(membership) is not { Status: MembershipStatus.Invited } invited)
@@ -91,9 +90,32 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
         }
 
         var expiresAt = now.PlusDays(InvitationValidityDays);
-        invited.RenewInvitation(token, expiresAt);
-        Raise(new MemberInvited(Id, membership, invited.Email, token, expiresAt));
+        invited.RenewInvitation(expiresAt);
+        Raise(new MemberInvited(Id, membership, expiresAt));
         return Success(Unit.Value);
+    }
+
+    /// <summary>Issues the link of an open invitation that has not run out: the token's hash replaces any earlier one. Answers its expiry.</summary>
+    public Result<Timestamp, DomainError> IssueInvitationLink(MembershipId membership, InvitationToken token, Timestamp now)
+    {
+        Ensure.That(membership).IsNotNull();
+        Ensure.That(token).IsNotNull();
+        Ensure.That(now).IsNotNull();
+
+        if (Find(membership) is not { Status: MembershipStatus.Invited, InvitationExpiresAt: { } expiresAt } invited)
+        {
+            return Failure(PharmacyErrors.NoOpenInvitation(Id, membership));
+        }
+
+        // A link that would be dead on arrival is never issued; the manager renews a lapsed invitation.
+        if (expiresAt < now)
+        {
+            return Failure(PharmacyErrors.InvitationExpired(Id, membership));
+        }
+
+        invited.IssueLink(InvitationTokenHash.Of(token));
+        Raise(new InvitationLinkIssued(Id, membership));
+        return Success(expiresAt);
     }
 
     /// <param name="token">The secret from the invitation link.</param>
@@ -114,7 +136,8 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
         Ensure.That(email).IsNotNull();
         Ensure.That(now).IsNotNull();
 
-        if (memberships.SingleOrDefault(m => m.Status == MembershipStatus.Invited && m.Token == token) is not { } invited)
+        var hash = InvitationTokenHash.Of(token);
+        if (memberships.SingleOrDefault(m => m.Status == MembershipStatus.Invited && m.TokenHash == hash) is not { } invited)
         {
             return Failure(PharmacyErrors.InvitationNotFound(Id));
         }

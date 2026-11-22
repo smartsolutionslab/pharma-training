@@ -59,6 +59,33 @@ public class ValueObjectTests
     public void A_callers_pharmacy_name_of_121_characters_is_no_name() =>
         PharmacyName.TryFrom(new string('a', 121), out _).ShouldBeFalse();
 
+    [Theory]
+    [InlineData("\r")]
+    [InlineData("\n")]
+    [InlineData("\r\n")]
+    [InlineData("\t")]
+    [InlineData("\u0007")]
+    [InlineData("\u001B")]
+    [InlineData("\u007F")]
+    [InlineData("\u0085")]
+    [InlineData("\u202A")]
+    [InlineData("\u202B")]
+    [InlineData("\u202C")]
+    [InlineData("\u202D")]
+    [InlineData("\u202E")]
+    [InlineData("\u2066")]
+    [InlineData("\u2067")]
+    [InlineData("\u2068")]
+    [InlineData("\u2069")]
+    public void A_pharmacy_name_with_a_control_or_bidi_character_is_refused_because_a_mail_or_screen_would_show_another_name(string character)
+    {
+        var value = $"Stadt{character}Apotheke";
+
+        Should.Throw<GuardException>(() => PharmacyName.From(value));
+        PharmacyName.TryFrom(value, out var name).ShouldBeFalse();
+        name.ShouldBeNull();
+    }
+
     [Fact]
     public void An_email_address_is_kept_lower_case_and_trimmed()
     {
@@ -90,6 +117,42 @@ public class ValueObjectTests
     {
         EmailAddress.TryFrom(value, out var address).ShouldBeFalse();
         address.ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData("a<b@example.com")]
+    [InlineData("a>b@example.com")]
+    [InlineData("\"evil\"<a@b.c>")]
+    [InlineData("a\"b@example.com")]
+    [InlineData("a,b@example.com")]
+    [InlineData("x@example.com,")]
+    [InlineData("a;b@example.com")]
+    [InlineData("a@example.com;b")]
+    [InlineData("a(b)@example.com")]
+    [InlineData("a@exam(ple.com")]
+    [InlineData("a)b@example.com")]
+    [InlineData("a[b]@example.com")]
+    [InlineData("a@[example].com")]
+    [InlineData("a\\b@example.com")]
+    [InlineData("a:b@example.com")]
+    [InlineData("a@example.com:25")]
+    public void An_address_with_a_character_mail_reads_as_syntax_is_refused_because_it_would_reach_another_mailbox_or_none(string value)
+    {
+        Should.Throw<GuardException>(() => EmailAddress.From(value));
+        EmailAddress.TryFrom(value, out var address).ShouldBeFalse();
+        address.ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData("anna+kurse@example.org")]
+    [InlineData("anna.maria.schmidt@example.org")]
+    [InlineData("anna@mail.apotheke.example.co.uk")]
+    [InlineData("a.b-c_d+e@sub-domain.example")]
+    public void An_address_with_plus_addressing_dots_or_subdomains_is_an_address(string value)
+    {
+        EmailAddress.From(value).Value.ShouldBe(value);
+        EmailAddress.TryFrom(value, out var address).ShouldBeTrue();
+        address.ShouldBe(EmailAddress.From(value));
     }
 
     [Fact]
