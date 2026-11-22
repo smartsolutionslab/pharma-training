@@ -112,6 +112,34 @@ public class EditorialNextVersionTests(AspireFixture aspire)
         }
     }
 
+    /// <summary>
+    /// Another writer took number 2 for the course and has not committed: the handler's check does not see it, the
+    /// INSERT waits on the unique index, and once the writer commits the index refuses it. Neither the unit of work nor
+    /// the handler catches that; the host answers 409 <c>already-exists</c>.
+    /// </summary>
+    [Fact]
+    public async Task A_next_version_that_loses_the_race_at_the_index_answers_already_exists_never_a_server_error()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var connectionString = await EditorialDatabase.ConnectionStringAsync(aspire, cancellationToken);
+        var first = await PublishedAsync(client, cancellationToken);
+
+        await using (var gate = await EditorialDatabase.HoldVersionNumberAsync(connectionString, first.CourseId, 2, cancellationToken))
+        {
+            var pending = client.PostAsync(NextOf(first.Id), null, cancellationToken);
+            await EditorialDatabase.WaitUntilBlockedAsync(connectionString, gate, 1, cancellationToken);
+            await gate.CommitAsync(cancellationToken);
+
+            using var response = await pending;
+
+            response.StatusCode.ShouldBe(HttpStatusCode.Conflict, await response.Content.ReadAsStringAsync(cancellationToken));
+            (await CodeOfAsync(response, cancellationToken)).ShouldBe("already-exists");
+        }
+
+        (await EditorialDatabase.CountVersionsNumberedAsync(connectionString, first.CourseId, 2, cancellationToken)).ShouldBe(1L);
+    }
+
     private static Uri NextOf(Guid id) => new($"/editorial/course-versions/{id}/next", UriKind.Relative);
 
     private static async Task<Guid> CreateAsync(HttpClient client, CancellationToken cancellationToken)
