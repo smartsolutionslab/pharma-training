@@ -21,27 +21,43 @@ internal static class TestDraftVersions
 
     /// <summary>
     /// A draft whose blueprint asks for <paramref name="questions"/>, with chapters in this order: text "Händehygiene",
-    /// PDF "Merkblatt Hautschutz", text "Flächen", video "Lehrvideo Händedesinfektion".
+    /// video "Lehrvideo Händedesinfektion", PDF "Merkblatt Hautschutz", text "Flächen", PDF "Merkblatt Flächendesinfektion".
+    /// The three file chapters' ids are handed out so that the version's order (video, PDF, PDF), their ascending id
+    /// order (second PDF, first PDF, video) and their kind order (first PDF, second PDF, video) all differ: a drafter that
+    /// sorts the chapters it left out by id or by kind does not name them in <paramref name="leftOutInOrder"/>.
     /// </summary>
-    public static CourseVersion WithTextPdfAndVideoChapters(int questions)
+    /// <param name="questions">The questions the blueprint asks for.</param>
+    /// <param name="leftOutInOrder">The PDF and video chapters' ids in the version's order, written down as they were added.</param>
+    public static CourseVersion WithTextPdfAndVideoChapters(int questions, out IReadOnlyList<ChapterId> leftOutInOrder)
     {
+        ChapterId[] created = [ChapterId.New(), ChapterId.New(), ChapterId.New()];
+        List<ChapterId> fileIds = [.. created.OrderBy(id => id.Value)];
+        var video = fileIds[2];
+        var firstPdf = fileIds[1];
+        var secondPdf = fileIds[0];
         var version = Draft("Kurs-Unikat 4711");
         version.AddChapter(TextChapter(ChapterId.New(), "Händehygiene", "Hände vor und nach der Rezeptur desinfizieren.")).IsSuccess.ShouldBeTrue();
-        version.AddChapter(PdfChapter("Merkblatt Hautschutz")).IsSuccess.ShouldBeTrue();
+        version.AddChapter(VideoChapter(video, "Lehrvideo Händedesinfektion")).IsSuccess.ShouldBeTrue();
+        version.AddChapter(PdfChapter(firstPdf, "Merkblatt Hautschutz")).IsSuccess.ShouldBeTrue();
         version.AddChapter(TextChapter(ChapterId.New(), "Flächen", "Rezepturtisch und Waage täglich desinfizieren.")).IsSuccess.ShouldBeTrue();
-        version.AddChapter(VideoChapter("Lehrvideo Händedesinfektion")).IsSuccess.ShouldBeTrue();
+        version.AddChapter(PdfChapter(secondPdf, "Merkblatt Flächendesinfektion")).IsSuccess.ShouldBeTrue();
         version.SetBlueprint(new TestBlueprint(QuestionCount.From(questions), ScorePercent.From(80), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
+        leftOutInOrder = [video, firstPdf, secondPdf];
         return version;
     }
 
-    public static Chapter PdfChapter(string title) =>
-        Chapter.OfPdf(ChapterId.New(), ChapterTitle.From(title), BlobReference.From($"chapters/{Guid.CreateVersion7()}.pdf"));
+    /// <inheritdoc cref="WithTextPdfAndVideoChapters(int, out IReadOnlyList{ChapterId})"/>
+    public static CourseVersion WithTextPdfAndVideoChapters(int questions) => WithTextPdfAndVideoChapters(questions, out _);
 
-    public static Chapter VideoChapter(string title) =>
-        Chapter.OfVideo(ChapterId.New(), ChapterTitle.From(title), BlobReference.From($"chapters/{Guid.CreateVersion7()}.mp4"), VideoDuration.From(90));
+    public static Chapter PdfChapter(string title) => PdfChapter(ChapterId.New(), title);
 
-    public static IReadOnlyList<ChapterId> FileChapterIds(CourseVersion version) =>
-        [.. version.Chapters.Where(chapter => chapter.Kind != ChapterKind.Text).Select(chapter => chapter.Id)];
+    public static Chapter PdfChapter(ChapterId id, string title) =>
+        Chapter.OfPdf(id, ChapterTitle.From(title), BlobReference.From($"chapters/{Guid.CreateVersion7()}.pdf"));
+
+    public static Chapter VideoChapter(string title) => VideoChapter(ChapterId.New(), title);
+
+    public static Chapter VideoChapter(ChapterId id, string title) =>
+        Chapter.OfVideo(id, ChapterTitle.From(title), BlobReference.From($"chapters/{Guid.CreateVersion7()}.mp4"), VideoDuration.From(90));
 
     public static IReadOnlyList<ChapterId> TextChapterIds(CourseVersion version) =>
         [.. version.Chapters.Where(chapter => chapter.Kind == ChapterKind.Text).Select(chapter => chapter.Id)];

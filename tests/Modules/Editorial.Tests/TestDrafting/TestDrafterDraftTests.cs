@@ -47,9 +47,8 @@ public class TestDrafterDraftTests
     [Fact]
     public async Task Draft_names_the_pdf_and_video_chapters_it_left_out_in_the_versions_order()
     {
-        var version = TestDraftVersions.WithTextPdfAndVideoChapters(2);
+        var version = TestDraftVersions.WithTextPdfAndVideoChapters(2, out var leftOutInOrder);
         var texts = TestDraftVersions.TextChapterIds(version);
-        var files = TestDraftVersions.FileChapterIds(version);
         using var model = new FakeChatClient(Sound(1, 2));
 
         var result = await TestDrafter.DraftAsync(model, version, TestContext.Current.CancellationToken);
@@ -57,8 +56,8 @@ public class TestDrafterDraftTests
         result.IsSuccess.ShouldBeTrue();
         var draft = result.Value.ShouldBeOfType<TestDraft>();
         draft.Questions.Select(question => question.Chapter).ShouldBe([texts[0], texts[1]]);
-        draft.LeftOutChapters.ShouldBe(files);
-        files.Count.ShouldBe(2);
+        draft.LeftOutChapters.ShouldBe(leftOutInOrder);
+        leftOutInOrder.Count.ShouldBe(3);
     }
 
     [Fact]
