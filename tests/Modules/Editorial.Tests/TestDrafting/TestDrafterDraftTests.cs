@@ -40,8 +40,38 @@ public class TestDrafterDraftTests
         var result = await TestDrafter.DraftAsync(model, version, TestContext.Current.CancellationToken);
 
         result.IsSuccess.ShouldBeTrue();
-        result.Value.Select(question => question.Chapter).ShouldBe([chapters[0], chapters[1], chapters[0]]);
+        result.Value.Questions.Select(question => question.Chapter).ShouldBe([chapters[0], chapters[1], chapters[0]]);
         model.Requests.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task Draft_names_the_pdf_and_video_chapters_it_left_out_in_the_versions_order()
+    {
+        var version = TestDraftVersions.WithTextPdfAndVideoChapters(2);
+        var texts = TestDraftVersions.TextChapterIds(version);
+        var files = TestDraftVersions.FileChapterIds(version);
+        using var model = new FakeChatClient(Sound(1, 2));
+
+        var result = await TestDrafter.DraftAsync(model, version, TestContext.Current.CancellationToken);
+
+        result.IsSuccess.ShouldBeTrue();
+        var draft = result.Value.ShouldBeOfType<TestDraft>();
+        draft.Questions.Select(question => question.Chapter).ShouldBe([texts[0], texts[1]]);
+        draft.LeftOutChapters.ShouldBe(files);
+        files.Count.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task Draft_of_a_version_with_text_chapters_only_leaves_no_chapter_out()
+    {
+        var version = TestDraftVersions.WithTextChapters(2, "Händehygiene", "Flächen");
+        using var model = new FakeChatClient(Sound(1, 2));
+
+        var result = await TestDrafter.DraftAsync(model, version, TestContext.Current.CancellationToken);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.Questions.Count.ShouldBe(2);
+        result.Value.LeftOutChapters.ShouldBeEmpty();
     }
 
     [Theory]
@@ -59,6 +89,20 @@ public class TestDrafterDraftTests
     }
 
     [Fact]
+    public async Task Draft_refuses_a_chapter_number_written_as_a_string_as_malformed_and_returns_no_questions()
+    {
+        var version = TestDraftVersions.WithTextChapters(2, "Händehygiene", "Flächen");
+        var quoted = SingleChoice(2);
+        quoted["chapter"] = "2";
+        using var model = new FakeChatClient(Answer(SingleChoice(1), quoted));
+
+        var result = await TestDrafter.DraftAsync(model, version, TestContext.Current.CancellationToken);
+
+        Malformed(result, TestDraftDefect.Unreadable);
+        version.Questions.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task The_drafted_questions_apply_to_their_version_and_fill_its_blueprint()
     {
         var version = TestDraftVersions.WithTextChapters(5, "Händehygiene", "Flächen");
@@ -71,7 +115,7 @@ public class TestDrafterDraftTests
         using var model = new FakeChatClient(DraftAnswers.Sound(1, 1, 2));
 
         var drafted = (await TestDrafter.DraftAsync(model, version, TestContext.Current.CancellationToken)).Value;
-        var applied = version.ApplyAiTestDraft(drafted, QuestionId.New, AnswerOptionId.New);
+        var applied = version.ApplyAiTestDraft(drafted.Questions, QuestionId.New, AnswerOptionId.New);
 
         applied.IsSuccess.ShouldBeTrue();
         version.Questions.Count.ShouldBe(version.Blueprint.Questions.Value);
