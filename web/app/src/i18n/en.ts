@@ -266,6 +266,37 @@ export const en: MessageSchema = {
           confirm: 'Delete',
         },
       },
+      draft: {
+        explain:
+          'The AI drafts the missing questions from the text chapters. You approve each question before it counts.',
+        start: 'Draft with AI',
+        noTextChapters: 'The AI drafts from text chapters only. Add a text chapter first.',
+        nothingToDraft: 'The approved questions already meet the blueprint; there is nothing to draft.',
+        confirm: {
+          title: 'Draft with AI?',
+          requested:
+            'The AI drafts one question. Approved questions stay. | The AI drafts {count} questions. Approved questions stay.',
+          replaces:
+            'One unreviewed question will be replaced, even if it was written by hand. | {count} unreviewed questions will be replaced, including those written by hand.',
+          leftOut: 'The AI does not read PDF and video chapters; write their questions by hand.',
+          submit: 'Draft',
+        },
+        running: 'The AI is drafting the test. This can take a few minutes; please keep the page open.',
+        done: 'The AI drafted one question. Please review it. | The AI drafted {count} questions. Please review them.',
+        leftOut: 'The AI drafted no questions for these chapters; write them by hand:',
+        dismiss: 'Dismiss the note',
+        errors: {
+          modelNotConfigured: "No language model is set up for AI drafts. Contact the platform's operators.",
+          tooManyRequests: 'You have asked for too many AI drafts in a short time. Try again later.',
+          malformed: "The AI's answer could not be used; nothing was changed. Try again.",
+          tooMuchContent:
+            'The text chapters are too long for an AI draft. Shorten them or write the questions by hand.',
+          changed: 'The version changed in the meantime; the draft was discarded. Try again.',
+          notADraft: 'This version is no longer a draft; its test cannot be drafted again.',
+          timedOut: 'The AI draft took too long. The questions are reloaded; check whether it was applied.',
+          failed: 'The AI draft failed. Try again.',
+        },
+      },
       questionForm: {
         addTitle: 'New question',
         editTitle: 'Edit the question',

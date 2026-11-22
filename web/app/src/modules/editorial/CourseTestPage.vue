@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ListChecks } from '@lucide/vue';
+import { ListChecks, LoaderCircle, Sparkles, X } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { RouterLink, useRoute } from 'vue-router';
@@ -11,14 +11,17 @@ import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from '@
 import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { EditorialQuestionDto, EditorialQuestionRequest } from '@/api/generated';
-import { t as translate } from '@/i18n';
+import { type MessageKey, t as translate } from '@/i18n';
 import { notify } from '@/lib/notify';
 import QuestionCard from './QuestionCard.vue';
 import QuestionForm from './QuestionForm.vue';
 import RemoveQuestionDialog from './RemoveQuestionDialog.vue';
 import TestBlueprintSection from './TestBlueprintSection.vue';
+import TestDraftDialog from './TestDraftDialog.vue';
 import { testCounts } from './testCounts';
+import { draftFailure } from './testDraftErrors';
 import { useQuestionMutations } from './useQuestionMutations';
+import { useTestDraft } from './useTestDraft';
 
 /** The most questions a test holds (Test.MaxQuestions). */
 const maxQuestions = 50;
@@ -74,6 +77,49 @@ async function save(request: EditorialQuestionRequest) {
   notify.success(translate('editorial.test.questions.saved'));
   form.value = undefined;
   return true;
+}
+
+const { draft, isDrafting } = useTestDraft(id);
+/** Whether nothing else may change for now: a change while the AI drafts makes the draft's save lose the race. */
+const locked = computed(() => isDrafting.value || isApproving.value);
+/** Whether the AI draft is being confirmed. */
+const confirmingDraft = ref(false);
+/** The chapters the last draft left out, by id, until the note is dismissed; never stored. */
+const leftOutIds = ref<string[]>([]);
+/** Their titles, in the draft's order: an id the version does not have is skipped. */
+const leftOutTitles = computed(() =>
+  leftOutIds.value.flatMap((chapterId) => {
+    const chapter = chapters.value.get(chapterId);
+    return chapter === undefined ? [] : [chapter.title];
+  }),
+);
+/** Why the host would refuse a draft, when the page can tell without asking the model. */
+const draftRefusal = computed((): MessageKey | undefined => {
+  if (!(version.value?.chapters ?? []).some((chapter) => chapter.kind === 'Text')) {
+    return 'editorial.test.draft.noTextChapters';
+  }
+  return counts.value?.toDraft === 0 ? 'editorial.test.draft.nothingToDraft' : undefined;
+});
+const hasFileChapters = computed(() => (version.value?.chapters ?? []).some((chapter) => chapter.kind !== 'Text'));
+
+/** Asks for the draft once confirmed; it cannot be cancelled, since the model's call would go on. */
+async function startDraft() {
+  confirmingDraft.value = false;
+  leftOutIds.value = [];
+  const outcome = await draft();
+  switch (outcome.status) {
+    case 'drafted':
+      notify.success(translate('editorial.test.draft.done', { count: outcome.drafted }, outcome.drafted));
+      leftOutIds.value = outcome.leftOutChapterIds;
+      break;
+    case 'unreadable':
+      // The host's answer is not the draft's shape: nothing of it is shown, and the version is read again.
+      notify.failure(translate('editorial.test.draft.errors.failed'));
+      break;
+    case 'failed':
+      notify.failure(draftFailure(outcome.error));
+      break;
+  }
 }
 
 async function approveQuestion(question: EditorialQuestionDto) {
@@ -133,11 +179,53 @@ async function confirmRemove(question: EditorialQuestionDto) {
       <p v-if="version.status !== 'Draft'" class="text-body bg-muted rounded-md p-3">
         {{ t(`editorial.version.readOnly.${version.status}`) }}
       </p>
-      <TestBlueprintSection :version-id="id" :blueprint="version.blueprint" :editable="editable" />
+      <TestBlueprintSection :version-id="id" :blueprint="version.blueprint" :editable="editable" :locked="locked">
+        <div v-if="editable" class="flex flex-col gap-3 border-t pt-4">
+          <p class="text-body text-muted-foreground">{{ t('editorial.test.draft.explain') }}</p>
+          <Button
+            type="button"
+            class="self-start"
+            :disabled="isDrafting || draftRefusal !== undefined"
+            :aria-describedby="draftRefusal === undefined ? undefined : 'course-test-draft-refusal'"
+            @click="confirmingDraft = true"
+          >
+            <LoaderCircle v-if="isDrafting" class="motion-safe:animate-spin" aria-hidden="true" />
+            <Sparkles v-else aria-hidden="true" />
+            {{ t('editorial.test.draft.start') }}
+          </Button>
+          <p
+            v-if="draftRefusal !== undefined"
+            id="course-test-draft-refusal"
+            class="text-caption text-muted-foreground"
+          >
+            {{ t(draftRefusal) }}
+          </p>
+          <p role="status" class="text-body">
+            <template v-if="isDrafting">{{ t('editorial.test.draft.running') }}</template>
+          </p>
+          <div v-if="leftOutTitles.length > 0" class="bg-muted flex items-start justify-between gap-2 rounded-md p-3">
+            <div class="text-body flex flex-col gap-2">
+              <p>{{ t('editorial.test.draft.leftOut') }}</p>
+              <ul class="list-disc pl-5">
+                <li v-for="(title, index) in leftOutTitles" :key="index">{{ title }}</li>
+              </ul>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              :aria-label="t('editorial.test.draft.dismiss')"
+              @click="leftOutIds = []"
+            >
+              <X aria-hidden="true" />
+            </Button>
+          </div>
+        </div>
+      </TestBlueprintSection>
       <section aria-labelledby="course-test-questions" class="flex flex-col gap-4">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <h2 id="course-test-questions">{{ t('editorial.test.questions.title') }}</h2>
-          <Button v-if="canAdd && questions.length > 0" type="button" @click="form = {}">
+          <Button v-if="canAdd && questions.length > 0" type="button" :disabled="locked" @click="form = {}">
             {{ t('editorial.test.questions.add') }}
           </Button>
         </div>
@@ -176,7 +264,7 @@ async function confirmRemove(question: EditorialQuestionDto) {
             :chapter="chapters.get(question.chapterId)"
             :editable="editable"
             :approvable="approvable"
-            :locked="isApproving"
+            :locked="locked"
             @edit="(each) => (form = { question: each })"
             @remove="(each) => (removing = each)"
             @approve="approveQuestion"
@@ -186,7 +274,13 @@ async function confirmRemove(question: EditorialQuestionDto) {
           <template #icon><ListChecks /></template>
           {{ t('editorial.test.questions.empty') }}
           <template v-if="editable" #action>
-            <Button v-if="version.chapters.length > 0" type="button" variant="outline" @click="form = {}">
+            <Button
+              v-if="version.chapters.length > 0"
+              type="button"
+              variant="outline"
+              :disabled="locked"
+              @click="form = {}"
+            >
               {{ t('editorial.test.questions.add') }}
             </Button>
             <p v-else class="text-body">{{ t('editorial.test.questions.noChapters') }}</p>
@@ -218,6 +312,14 @@ async function confirmRemove(question: EditorialQuestionDto) {
             </QuestionForm>
           </DialogContent>
         </Dialog>
+        <TestDraftDialog
+          :open="confirmingDraft"
+          :to-draft="counts?.toDraft ?? 0"
+          :unreviewed="counts?.unreviewed ?? 0"
+          :has-file-chapters="hasFileChapters"
+          @confirm="startDraft"
+          @cancel="confirmingDraft = false"
+        />
         <RemoveQuestionDialog
           :question="removing"
           :removing="isRemoving"

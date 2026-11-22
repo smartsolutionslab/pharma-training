@@ -279,6 +279,38 @@ export const de = {
           confirm: 'Löschen',
         },
       },
+      draft: {
+        explain: 'Die KI entwirft die fehlenden Fragen aus den Textkapiteln. Sie prüfen jede Frage, bevor sie gilt.',
+        start: 'KI-Entwurf erstellen',
+        noTextChapters: 'Die KI entwirft nur aus Textkapiteln. Legen Sie zuerst ein Textkapitel an.',
+        nothingToDraft: 'Die geprüften Fragen erfüllen die Vorgaben bereits; es gibt nichts zu entwerfen.',
+        confirm: {
+          title: 'KI-Entwurf erstellen?',
+          requested:
+            'Die KI entwirft eine Frage. Geprüfte Fragen bleiben erhalten. | Die KI entwirft {count} Fragen. Geprüfte Fragen bleiben erhalten.',
+          replaces:
+            'Eine ungeprüfte Frage wird ersetzt, auch wenn sie von Hand geschrieben ist. | {count} ungeprüfte Fragen werden ersetzt, auch von Hand geschriebene.',
+          leftOut: 'PDF- und Videokapitel liest die KI nicht; Fragen dazu schreiben Sie von Hand.',
+          submit: 'Entwurf erstellen',
+        },
+        running: 'Die KI entwirft den Test. Das kann einige Minuten dauern; bitte lassen Sie die Seite geöffnet.',
+        done: 'Die KI hat eine Frage entworfen. Bitte prüfen Sie sie. | Die KI hat {count} Fragen entworfen. Bitte prüfen Sie sie.',
+        leftOut: 'Zu diesen Kapiteln hat die KI keine Fragen entworfen; schreiben Sie sie von Hand:',
+        dismiss: 'Hinweis schließen',
+        errors: {
+          modelNotConfigured:
+            'Für KI-Entwürfe ist kein Sprachmodell eingerichtet. Wenden Sie sich an den Betrieb der Plattform.',
+          tooManyRequests: 'Sie haben in kurzer Zeit zu viele KI-Entwürfe angefordert. Versuchen Sie es später erneut.',
+          malformed: 'Die Antwort der KI war unbrauchbar; es wurde nichts geändert. Versuchen Sie es erneut.',
+          tooMuchContent:
+            'Die Textkapitel sind zu lang für einen KI-Entwurf. Kürzen Sie sie oder schreiben Sie die Fragen von Hand.',
+          changed: 'Die Version wurde inzwischen geändert; der Entwurf wurde verworfen. Versuchen Sie es erneut.',
+          notADraft: 'Diese Version ist kein Entwurf mehr; ihr Test kann nicht neu entworfen werden.',
+          timedOut:
+            'Der KI-Entwurf hat zu lange gedauert. Die Fragen werden neu geladen; prüfen Sie, ob er übernommen wurde.',
+          failed: 'Der KI-Entwurf ist fehlgeschlagen. Versuchen Sie es erneut.',
+        },
+      },
       questionForm: {
         addTitle: 'Neue Frage',
         editTitle: 'Frage bearbeiten',

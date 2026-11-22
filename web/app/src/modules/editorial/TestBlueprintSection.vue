@@ -15,9 +15,13 @@ interface TestBlueprintSectionProps {
   blueprint: EditorialTestBlueprintDto;
   /** Whether the blueprint may be changed: in a draft only. */
   editable: boolean;
+  /** Whether nothing may change for now, such as while the AI drafts the test. */
+  locked?: boolean;
 }
 
-const { versionId, blueprint, editable } = defineProps<TestBlueprintSectionProps>();
+const { versionId, blueprint, editable, locked = false } = defineProps<TestBlueprintSectionProps>();
+// What else belongs to the blueprint, such as the AI draft, shown while the blueprint is not being changed.
+defineSlots<{ default?: () => unknown }>();
 const { save, isSaving } = useTestBlueprint(() => versionId);
 const { t, n } = useI18n();
 
@@ -45,7 +49,7 @@ async function saveBlueprint(values: TestBlueprint) {
   <section aria-labelledby="course-test-blueprint" class="flex flex-col gap-4">
     <div class="flex flex-wrap items-center justify-between gap-2">
       <h2 id="course-test-blueprint">{{ t('editorial.test.blueprint.title') }}</h2>
-      <Button v-if="editable && !editing" type="button" variant="outline" @click="editing = true">
+      <Button v-if="editable && !editing" type="button" variant="outline" :disabled="locked" @click="editing = true">
         {{ t('editorial.test.blueprint.edit') }}
       </Button>
     </div>
@@ -68,5 +72,6 @@ async function saveBlueprint(values: TestBlueprint) {
         }}
       </dd>
     </dl>
+    <slot v-if="!editing" />
   </section>
 </template>
