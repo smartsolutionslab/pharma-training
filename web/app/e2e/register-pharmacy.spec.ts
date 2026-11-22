@@ -20,12 +20,12 @@ test('a signed-in user registers a pharmacy and works in it, after a reload too'
 
   await pharmacy.getByRole('link', { name: 'Apotheke registrieren' }).click();
   await expect(page).toHaveURL(/\/organisation\/register$/);
-  await expect(page.getByRole('heading', { name: 'Register a pharmacy', level: 1 })).toBeVisible();
-  await page.getByRole('textbox', { name: 'Pharmacy name' }).fill(name);
-  await page.getByRole('combobox', { name: 'Your job function' }).selectOption({ label: 'Pharmacist' });
-  await page.getByRole('button', { name: 'Register pharmacy' }).click();
+  await expect(page.getByRole('heading', { name: 'Apotheke registrieren', level: 1 })).toBeVisible();
+  await page.getByRole('textbox', { name: 'Name der Apotheke' }).fill(name);
+  await page.getByRole('combobox', { name: 'Ihre Tätigkeit' }).selectOption({ label: 'Apotheker' });
+  await page.getByRole('button', { name: 'Registrieren', exact: true }).click();
 
-  await expect(page.getByRole('status').filter({ hasText: `The pharmacy ${name} was registered.` })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: `Die Apotheke ${name} wurde registriert.` })).toBeVisible();
   await expect(page).toHaveURL(/\/organisation$/);
   await expect(pharmacy.getByText(name, { exact: true })).toBeVisible();
   await page.reload();
@@ -36,9 +36,9 @@ test('an empty registration is refused at both fields and the user stays on the 
   await signIn(page);
   await page.goto('/organisation/register');
 
-  await page.getByRole('button', { name: 'Register pharmacy' }).click();
+  await page.getByRole('button', { name: 'Registrieren', exact: true }).click();
 
-  await expect(page.getByRole('alert').filter({ hasText: 'Give the pharmacy a name.' })).toBeVisible();
-  await expect(page.getByRole('alert').filter({ hasText: 'Choose what you do in the pharmacy.' })).toBeVisible();
+  await expect(page.getByRole('alert').filter({ hasText: 'Geben Sie den Namen der Apotheke an.' })).toBeVisible();
+  await expect(page.getByRole('alert').filter({ hasText: 'Wählen Sie Ihre Tätigkeit in der Apotheke.' })).toBeVisible();
   await expect(page).toHaveURL(/\/organisation\/register$/);
 });

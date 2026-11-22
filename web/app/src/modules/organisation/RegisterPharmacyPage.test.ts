@@ -6,6 +6,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { defineComponent, h } from 'vue';
 import { createMemoryHistory } from 'vue-router';
 import { getGetOrganisationPharmaciesMineQueryKey, type MyPharmacyDto } from '@/api/generated';
+import { i18n, setLanguage, t } from '@/i18n';
 import { createAppRouter } from '@/router';
 import { useMyPharmacies } from '@/shell/useMyPharmacies';
 import { useSelectedPharmacyStore } from '@/stores/selectedPharmacy';
@@ -102,9 +103,9 @@ async function renderPage(options: { inShell?: boolean; pinia?: Pinia } = {}) {
   return { router, queryClient, pinia };
 }
 
-const nameField = () => screen.getByRole('textbox', { name: 'Pharmacy name' });
-const jobFunctionField = () => screen.getByRole('combobox', { name: 'Your job function' });
-const submit = () => screen.getByRole('button', { name: 'Register pharmacy' });
+const nameField = () => screen.getByRole('textbox', { name: t('organisation.register.name') });
+const jobFunctionField = () => screen.getByRole('combobox', { name: t('organisation.register.jobFunction') });
+const submit = () => screen.getByRole('button', { name: t('organisation.register.submit') });
 
 /** Types a name (pasted, so a long one is quick) and picks a job function by its label. */
 async function fillIn(user: ReturnType<typeof userEvent.setup>, name: string, jobFunction: string) {
@@ -117,12 +118,10 @@ test('the page says what registering means and asks for the pharmacy name and th
   await renderPage();
 
   const main = within(screen.getByRole('main'));
-  const heading = main.getByRole('heading', { name: 'Register a pharmacy', level: 1 });
+  const heading = main.getByRole('heading', { name: t('organisation.register.title'), level: 1 });
   expect(heading).toHaveClass('text-title');
-  expect(
-    main.getByText('You will manage the pharmacy: invite your team and assign their training.'),
-  ).toBeInTheDocument();
-  const form = main.getByRole('form', { name: 'Register a pharmacy' });
+  expect(main.getByText(t('organisation.register.intro'))).toBeInTheDocument();
+  const form = main.getByRole('form', { name: t('organisation.register.title') });
   expect(form).toHaveAttribute('novalidate');
   expect(nameField()).toHaveAttribute('id', 'pharmacy-name');
   expect(nameField()).toHaveAttribute('autocomplete', 'organization');
@@ -131,14 +130,14 @@ test('the page says what registering means and asks for the pharmacy name and th
   expect(jobFunctionField()).toHaveValue('');
   const options = within(jobFunctionField()).getAllByRole('option');
   expect(options.map((option) => [option.textContent.trim(), option.getAttribute('value')])).toEqual([
-    ['Choose…', ''],
-    ['Pharmacist', 'Pharmacist'],
-    ['PTA (pharmaceutical-technical assistant)', 'Pta'],
-    ['PKA (pharmaceutical-commercial employee)', 'Pka'],
-    ['Trainee', 'Trainee'],
-    ['Other', 'Other'],
+    [t('organisation.register.choose'), ''],
+    [t('glossary.jobFunction.Pharmacist'), 'Pharmacist'],
+    [t('glossary.jobFunction.Pta'), 'Pta'],
+    [t('glossary.jobFunction.Pka'), 'Pka'],
+    [t('glossary.jobFunction.Trainee'), 'Trainee'],
+    [t('glossary.jobFunction.Other'), 'Other'],
   ]);
-  expect(within(jobFunctionField()).getByRole('option', { name: 'Choose…' })).toBeDisabled();
+  expect(within(jobFunctionField()).getByRole('option', { name: t('organisation.register.choose') })).toBeDisabled();
   expect(submit()).toHaveAttribute('type', 'submit');
   expect(submit()).toBeEnabled();
 });
@@ -159,29 +158,29 @@ test('an empty form is refused with a message below each field, and nothing is s
 
   const alerts = await screen.findAllByRole('alert');
   expect(alerts.map((alert) => alert.textContent.trim())).toEqual([
-    'Give the pharmacy a name.',
-    'Choose what you do in the pharmacy.',
+    t('organisation.register.nameRequired'),
+    t('organisation.register.jobFunctionRequired'),
   ]);
   for (const alert of alerts) {
     expect(alert.tagName).toBe('P');
     expect(alert).toHaveClass('text-caption', 'text-destructive');
   }
   expect(nameField()).toHaveAttribute('aria-invalid', 'true');
-  expect(nameField()).toHaveAccessibleDescription('Give the pharmacy a name.');
+  expect(nameField()).toHaveAccessibleDescription(t('organisation.register.nameRequired'));
   expect(jobFunctionField()).toHaveAttribute('aria-invalid', 'true');
-  expect(jobFunctionField()).toHaveAccessibleDescription('Choose what you do in the pharmacy.');
+  expect(jobFunctionField()).toHaveAccessibleDescription(t('organisation.register.jobFunctionRequired'));
   expect(posted()).toEqual([]);
 });
 
 test('a name of spaces only is no name', async () => {
   const user = userEvent.setup();
   await renderPage();
-  await fillIn(user, '   ', 'Pharmacist');
+  await fillIn(user, '   ', t('glossary.jobFunction.Pharmacist'));
 
   await user.click(submit());
 
-  expect(await screen.findByRole('alert')).toHaveTextContent('Give the pharmacy a name.');
-  expect(nameField()).toHaveAccessibleDescription('Give the pharmacy a name.');
+  expect(await screen.findByRole('alert')).toHaveTextContent(t('organisation.register.nameRequired'));
+  expect(nameField()).toHaveAccessibleDescription(t('organisation.register.nameRequired'));
   expect(jobFunctionField()).not.toHaveAttribute('aria-invalid', 'true');
   expect(posted()).toEqual([]);
 });
@@ -190,18 +189,18 @@ test('a name of spaces only is no name', async () => {
 test('a name of 121 characters is refused, and nothing is sent', async () => {
   const user = userEvent.setup();
   await renderPage();
-  await fillIn(user, 'A'.repeat(121), 'Pharmacist');
+  await fillIn(user, 'A'.repeat(121), t('glossary.jobFunction.Pharmacist'));
 
   await user.click(submit());
 
-  expect(await screen.findByRole('alert')).toHaveTextContent("A pharmacy's name is at most 120 characters.");
+  expect(await screen.findByRole('alert')).toHaveTextContent(t('organisation.register.nameTooLong'));
   expect(posted()).toEqual([]);
 });
 
 test('a name of 120 characters is registered', async () => {
   const user = userEvent.setup();
   await renderPage();
-  await fillIn(user, 'A'.repeat(120), 'Pharmacist');
+  await fillIn(user, 'A'.repeat(120), t('glossary.jobFunction.Pharmacist'));
 
   await user.click(submit());
 
@@ -216,18 +215,18 @@ test('a name of 120 characters is registered', async () => {
 test('a name with a nul character is refused, and nothing is sent', async () => {
   const user = userEvent.setup();
   await renderPage();
-  await fillIn(user, 'Apotheke\u0000am Markt', 'Pharmacist');
+  await fillIn(user, 'Apotheke\u0000am Markt', t('glossary.jobFunction.Pharmacist'));
 
   await user.click(submit());
 
-  expect(await screen.findByRole('alert')).toHaveTextContent("A pharmacy's name cannot contain a nul character.");
+  expect(await screen.findByRole('alert')).toHaveTextContent(t('organisation.register.nameHasNul'));
   expect(posted()).toEqual([]);
 });
 
 test('the page posts the trimmed name and the chosen job function', async () => {
   const user = userEvent.setup();
   await renderPage();
-  await fillIn(user, '  Apotheke am Markt  ', 'PTA (pharmaceutical-technical assistant)');
+  await fillIn(user, '  Apotheke am Markt  ', t('glossary.jobFunction.Pta'));
 
   await user.click(submit());
 
@@ -238,21 +237,38 @@ test('the page posts the trimmed name and the chosen job function', async () => 
   );
 });
 
+// The host's own words are shown as it sent them (ApiError.serverMessage); the catalog speaks only when it sent none.
 test.each([
-  [400, 'The pharmacy could not be registered: check its name and your job function.'],
-  [403, 'Your account has no name or email address, so it cannot register a pharmacy.'],
-  [500, 'The pharmacy could not be registered. Try again.'],
+  [
+    400,
+    () =>
+      new Response(JSON.stringify({ title: 'Bad Request', status: 400, detail: 'Der Name ist ungültig.' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/problem+json' },
+      }),
+    () => 'Der Name ist ungültig.',
+  ],
+  [
+    403,
+    () =>
+      new Response(JSON.stringify({ title: 'Ihr Konto hat keinen Namen.', status: 403 }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/problem+json' },
+      }),
+    () => 'Ihr Konto hat keinen Namen.',
+  ],
+  [500, () => new Response('', { status: 500 }), () => t('organisation.register.failed')],
 ])(
   'a registration the host answers with %i is reported, and the user stays with what they entered',
-  async (status, message) => {
+  async (_status, answer, message) => {
     const user = userEvent.setup();
-    registration = async () => Response.json({ title: 'Refused.' }, { status });
+    registration = async () => answer();
     const { router } = await renderPage();
-    await fillIn(user, 'Apotheke am Markt', 'Pharmacist');
+    await fillIn(user, 'Apotheke am Markt', t('glossary.jobFunction.Pharmacist'));
 
     await user.click(submit());
 
-    await waitFor(() => expect(notify.failure).toHaveBeenCalledWith(message));
+    await waitFor(() => expect(notify.failure).toHaveBeenCalledWith(message()));
     expect(notify.failure).toHaveBeenCalledOnce();
     expect(notify.success).not.toHaveBeenCalled();
     expect(router.currentRoute.value.path).toBe('/organisation/register');
@@ -271,7 +287,7 @@ test('the button is disabled while the registration is on its way', async () => 
       answer = resolve;
     });
   const { router } = await renderPage();
-  await fillIn(user, 'Apotheke am Markt', 'Pharmacist');
+  await fillIn(user, 'Apotheke am Markt', t('glossary.jobFunction.Pharmacist'));
 
   await user.click(submit());
 
@@ -300,7 +316,7 @@ test('the button stays disabled until the page has moved on, also while the memb
     });
   });
   const { router } = await renderPage({ inShell: true });
-  await fillIn(user, 'Apotheke am Markt', 'Pharmacist');
+  await fillIn(user, 'Apotheke am Markt', t('glossary.jobFunction.Pharmacist'));
 
   await user.click(submit());
 
@@ -333,13 +349,15 @@ test('a registration the host answers with 201 but no id is reported as register
   const pinia = createPinia();
   const { router } = await renderPage({ inShell: true, pinia });
   await waitFor(() => expect(host).toHaveBeenCalled());
-  await fillIn(user, 'Neue Apotheke', 'Pharmacist');
+  await fillIn(user, 'Neue Apotheke', t('glossary.jobFunction.Pharmacist'));
 
   await user.click(submit());
 
   await waitFor(() => expect(router.currentRoute.value.path).toBe('/'));
   expect(notify.failure).not.toHaveBeenCalled();
-  expect(notify.success).toHaveBeenCalledExactlyOnceWith('The pharmacy Neue Apotheke was registered.');
+  expect(notify.success).toHaveBeenCalledExactlyOnceWith(
+    t('organisation.register.registered', { name: 'Neue Apotheke' }),
+  );
   expect(useSelectedPharmacyStore(pinia).pharmacyId).toBe(markt.id);
   expect(localStorage.getItem('pharmacy')).toBe(markt.id);
   // The memberships were invalidated: the shell read them again, and the new pharmacy is among them.
@@ -352,12 +370,14 @@ test('a registered pharmacy is chosen and opened when nothing else reads the mem
   const user = userEvent.setup();
   const pinia = createPinia();
   const { router, queryClient } = await renderPage({ pinia });
-  await fillIn(user, 'Apotheke am Markt', 'Pharmacist');
+  await fillIn(user, 'Apotheke am Markt', t('glossary.jobFunction.Pharmacist'));
 
   await user.click(submit());
 
   await waitFor(() => expect(router.currentRoute.value.path).toBe('/organisation'));
-  expect(notify.success).toHaveBeenCalledExactlyOnceWith('The pharmacy Apotheke am Markt was registered.');
+  expect(notify.success).toHaveBeenCalledExactlyOnceWith(
+    t('organisation.register.registered', { name: 'Apotheke am Markt' }),
+  );
   expect(notify.failure).not.toHaveBeenCalled();
   expect(useSelectedPharmacyStore(pinia).pharmacyId).toBe(created);
   expect(membershipReadsAfterRegistration().length).toBeGreaterThan(0);
@@ -365,4 +385,30 @@ test('a registered pharmacy is chosen and opened when nothing else reads the mem
     .getQueriesData<{ items: MyPharmacyDto[] }>({ queryKey: getGetOrganisationPharmaciesMineQueryKey() })
     .flatMap(([, data]) => data?.items ?? []);
   expect(cached.map((membership) => membership.id)).toContain(created);
+});
+
+// The page follows a switch of the language while it is shown: its texts and the job functions at once, and the
+// refusals, since zod's messages are resolved when the form validates, not when the module loads.
+test('switched to English, the page, its job functions and its refusals speak English', async () => {
+  const user = userEvent.setup();
+  await renderPage();
+  await user.click(submit());
+  expect(await screen.findAllByRole('alert')).toHaveLength(2);
+
+  setLanguage('en-GB', { remember: false });
+
+  expect(await screen.findByRole('heading', { name: t('organisation.register.title'), level: 1 })).toBeInTheDocument();
+  expect(t('organisation.register.title')).not.toBe(
+    i18n.global.t('organisation.register.title', {}, { locale: 'de-DE' }),
+  );
+  expect(within(jobFunctionField()).getByRole('option', { name: t('glossary.jobFunction.Trainee') })).toHaveValue(
+    'Trainee',
+  );
+  await user.click(submit());
+  await waitFor(() =>
+    expect(screen.getAllByRole('alert').map((alert) => alert.textContent.trim())).toEqual([
+      t('organisation.register.nameRequired'),
+      t('organisation.register.jobFunctionRequired'),
+    ]),
+  );
 });
