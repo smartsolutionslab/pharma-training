@@ -17,7 +17,7 @@ partial class EditorialModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261121223447_DeferQuestionForeignKeys";
+    public override string LastMigrationId => "20261122190724_RecordReturnAndRetirement";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -133,6 +133,22 @@ partial class EditorialModelSnapshot : ModelSnapshot
                 b.Property<Guid?>("PublishedBy")
                     .HasColumnType("uuid")
                     .HasColumnName("published_by");
+
+                b.Property<DateTimeOffset?>("RetiredAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("retired_at");
+
+                b.Property<Guid?>("RetiredBy")
+                    .HasColumnType("uuid")
+                    .HasColumnName("retired_by");
+
+                b.Property<DateTimeOffset?>("ReturnedAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("returned_at");
+
+                b.Property<Guid?>("ReturnedBy")
+                    .HasColumnType("uuid")
+                    .HasColumnName("returned_by");
 
                 b.Property<uint>("RowVersion")
                     .IsConcurrencyToken()

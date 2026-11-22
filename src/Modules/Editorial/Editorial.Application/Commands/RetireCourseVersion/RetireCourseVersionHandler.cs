@@ -1,5 +1,6 @@
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.Contracts.Editorial;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.RetireCourseVersion;
 
@@ -7,7 +8,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Command
 /// Retires the version and announces it with <see cref="CourseVersionRetiredV1"/> through the unit of work, so the
 /// event is sent only with a commit that succeeds (ADR 0002: a lost race sends nothing).
 /// </summary>
-public sealed class RetireCourseVersionHandler(ICourseVersionStore versions, IEditorialUnitOfWork unitOfWork)
+public sealed class RetireCourseVersionHandler(ICourseVersionStore versions, IEditorialUnitOfWork unitOfWork, TimeProvider time)
     : ICommandHandler<RetireCourseVersion, Result<Unit, ApiError>>
 {
     public async Task<Result<Unit, ApiError>> HandleAsync(RetireCourseVersion command, CancellationToken cancellationToken)
@@ -21,7 +22,7 @@ public sealed class RetireCourseVersionHandler(ICourseVersionStore versions, IEd
         }
 
         var version = found.Value;
-        var retired = version.Retire(command.Editor);
+        var retired = version.Retire(command.Editor, Timestamp.From(time.GetUtcNow()));
         if (retired.IsFailure)
         {
             return Failure(CourseVersionFailures.From(retired.Error));

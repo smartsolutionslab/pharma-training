@@ -327,13 +327,13 @@ public sealed class Question : Entity<QuestionId>
     }
 
     /// <summary>Single choice: exactly one correct option. Multiple choice: at least one. Always at least two options.</summary>
-    internal Option<DomainError> Defect(QuestionId id)
+    internal Option<CourseVersionWorkflowError> Defect(QuestionId id)
     {
         var correct = options.Count(option => option.Correctness == Correctness.Correct);
-        return options.Count < 2 ? Option<DomainError>.Some(new TooFewOptions(id))
-            : Type == QuestionType.SingleChoice && correct != 1 ? Option<DomainError>.Some(new SingleChoiceNeedsOneCorrect(id))
-            : Type == QuestionType.MultipleChoice && correct == 0 ? Option<DomainError>.Some(new MultipleChoiceNeedsACorrect(id))
-            : Option<DomainError>.None;
+        return options.Count < 2 ? Option<CourseVersionWorkflowError>.Some(new TooFewOptions(id))
+            : Type == QuestionType.SingleChoice && correct != 1 ? Option<CourseVersionWorkflowError>.Some(new SingleChoiceNeedsOneCorrect(id))
+            : Type == QuestionType.MultipleChoice && correct == 0 ? Option<CourseVersionWorkflowError>.Some(new MultipleChoiceNeedsACorrect(id))
+            : Option<CourseVersionWorkflowError>.None;
     }
 
     internal Question CopyFor(QuestionId id, ChapterId chapter, Func<AnswerOptionId> newOptionId)
@@ -384,7 +384,8 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
 
     public IReadOnlyList<Chapter> Chapters => chapters;
 
-    public IReadOnlyList<Question> Questions => questions;
+    /// <summary>A read-only view: a cast does not lead back to the list behind it.</summary>
+    public IReadOnlyList<Question> Questions => questions.AsReadOnly();
 
     public PersonId CreatedBy { get; }
 
@@ -393,6 +394,15 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
     public PersonId? PublishedBy { get; private set; }
 
     public Timestamp? PublishedAt { get; private set; }
+
+    /// <summary>The editor who last returned the version from review to draft; a later return overwrites it.</summary>
+    public PersonId? ReturnedBy { get; private set; }
+
+    public Timestamp? ReturnedAt { get; private set; }
+
+    public PersonId? RetiredBy { get; private set; }
+
+    public Timestamp? RetiredAt { get; private set; }
 
     private bool IsDraft => Status == CourseVersionStatus.Draft;
 
@@ -602,9 +612,14 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
             return Failure(new QuestionNotFound(Id, id));
         }
 
+        if (question.Review == ReviewState.Approved)
+        {
+            return Failure(new QuestionAlreadyApproved(Id, id));
+        }
+
         if (question.Defect(id) is { HasValue: true } defect)
         {
-            return Failure(defect.Value);
+            return Refused(defect.Value);
         }
 
         question.Approve(editor, now);
@@ -613,7 +628,7 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
 
     // ── Workflow ──
 
-    public Result<Unit, DomainError> SubmitForReview(PersonId editor)
+    public Result<Unit, CourseVersionWorkflowError> SubmitForReview(PersonId editor)
     {
         if (!IsDraft)
         {
@@ -623,6 +638,11 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         if (chapters.Count == 0)
         {
             return Failure(new NoChapters(Id));
+        }
+
+        if (questions.Count > QuestionCount.Maximum)
+        {
+            return Failure(new TooManyQuestions(Id));
         }
 
         if (questions.Count != Blueprint.Questions.Value)
@@ -636,7 +656,8 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         return Success(Unit.Value);
     }
 
-    public Result<Unit, DomainError> ReturnToDraft()
+    /// <summary>Sends the version back to its editors; records who did and when, and a later return overwrites both.</summary>
+    public Result<Unit, CourseVersionWorkflowError> ReturnToDraft(PersonId editor, Timestamp now)
     {
         if (Status != CourseVersionStatus.InReview)
         {
@@ -644,23 +665,43 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         }
 
         Status = CourseVersionStatus.Draft;
+        ReturnedBy = editor;
+        ReturnedAt = now;
+        Raise(new CourseVersionReturned(Id, editor));
         return Success(Unit.Value);
     }
 
     /// <summary>
     /// Publishes the version. Every question is approved and sound, and with <see cref="ReviewPolicy.FourEyes"/> the
-    /// publishing editor is not the one who submitted it. The Application supersedes the course's previous version.
+    /// publishing editor is neither the one who submitted it nor one who approved any of its questions. The question count
+    /// is checked again, since a version loaded in review may hold rows its rules never took. The Application supersedes
+    /// the course's previous version.
     /// </summary>
-    public Result<Unit, DomainError> Publish(PersonId editor, ReviewPolicy policy, Timestamp now)
+    public Result<Unit, CourseVersionWorkflowError> Publish(PersonId editor, ReviewPolicy policy, Timestamp now)
     {
         if (Status != CourseVersionStatus.InReview)
         {
             return Failure(new NotInReview(Id, Status));
         }
 
+        if (questions.Count > QuestionCount.Maximum)
+        {
+            return Failure(new TooManyQuestions(Id));
+        }
+
+        if (questions.Count != Blueprint.Questions.Value)
+        {
+            return Failure(new TestIncomplete(Id, Blueprint.Questions, QuestionCount.From(questions.Count)));
+        }
+
         if (policy == ReviewPolicy.FourEyes && editor == SubmittedBy)
         {
             return Failure(new FourEyesRequired(Id));
+        }
+
+        if (policy == ReviewPolicy.FourEyes && questions.Any(question => question.ReviewedBy == editor))
+        {
+            return Failure(new PublisherApprovedQuestions(Id));
         }
 
         if (questions.FirstOrDefault(question => question.Review != ReviewState.Approved) is { } unreviewed)
@@ -692,7 +733,8 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         }
     }
 
-    public Result<Unit, DomainError> Retire(PersonId editor)
+    /// <summary>Retires a published or superseded version, alone under any review policy, and records who did and when.</summary>
+    public Result<Unit, CourseVersionWorkflowError> Retire(PersonId editor, Timestamp now)
     {
         if (Status is not (CourseVersionStatus.Published or CourseVersionStatus.Superseded))
         {
@@ -700,9 +742,17 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         }
 
         Status = CourseVersionStatus.Retired;
+        RetiredBy = editor;
+        RetiredAt = now;
         Raise(new CourseVersionRetired(Id, Course, editor));
         return Success(Unit.Value);
     }
+
+    /// <summary>Appends questions as EF Core loads them, past every rule; tests stand in for such a load with it.</summary>
+    internal void LoadQuestions(IEnumerable<Question> loaded) => questions.AddRange(loaded);
+
+    /// <summary>A refusal as the <see cref="DomainError"/> a method outside the workflow returns, a workflow error included.</summary>
+    private static FailureOutcome<DomainError> Refused(DomainError error) => Failure(error);
 }
 
 // ───────────────────────────── Domain events ─────────────────────────────
@@ -713,6 +763,9 @@ public sealed record CourseVersionPublished(CourseVersionId Version, CourseId Co
 
 public sealed record CourseVersionRetired(CourseVersionId Version, CourseId Course, PersonId RetiredBy) : IDomainEvent;
 
+[DeliberatelyUnhandled("Audit only: the version records who returned it and when.")]
+public sealed record CourseVersionReturned(CourseVersionId Version, PersonId ReturnedBy) : IDomainEvent;
+
 [DeliberatelyUnhandled("Shown in the editorial inbox through a query; no reaction needed.")]
 public sealed record SubmittedForReview(CourseVersionId Version, PersonId SubmittedBy) : IDomainEvent;
 
@@ -720,15 +773,36 @@ public sealed record SubmittedForReview(CourseVersionId Version, PersonId Submit
 public sealed record AiTestDraftApplied(CourseVersionId Version, QuestionCount Drafted) : IDomainEvent;
 
 // ───────────────────────────── Domain errors ─────────────────────────────
+// What a step of the workflow (SubmitForReview, ReturnToDraft, Publish, Retire) refuses is a closed union: each case
+// derives from CourseVersionWorkflowError, a DomainError marked [Union] whose IUnionMembers name the cases, so a switch
+// on it without a discard arm fails the build until a new case is mapped (CourseVersionFailures.From).
+
+[Union]
+public abstract record CourseVersionWorkflowError(string Code, string Message) : DomainError(Code, Message), CourseVersionWorkflowError.IUnionMembers
+{
+    public interface IUnionMembers
+    {
+        object? Value { get; }
+
+        static abstract CourseVersionWorkflowError Create(NotADraft refusal);
+        // … one Create per case: NotInReview, NotPublished, NoChapters, TooManyQuestions, TestIncomplete,
+        // QuestionNotApproved, FourEyesRequired, PublisherApprovedQuestions, TooFewOptions, SingleChoiceNeedsOneCorrect,
+        // MultipleChoiceNeedsACorrect.
+    }
+
+    object? IUnionMembers.Value => this;
+
+    static CourseVersionWorkflowError IUnionMembers.Create(NotADraft refusal) => refusal;
+}
 
 public sealed record NotADraft(CourseVersionId Version, CourseVersionStatus Status)
-    : DomainError("editorial.not-a-draft", "Nur ein Entwurf kann bearbeitet werden.");
+    : CourseVersionWorkflowError("editorial.not-a-draft", "Nur ein Entwurf kann bearbeitet werden.");
 
 public sealed record NotInReview(CourseVersionId Version, CourseVersionStatus Status)
-    : DomainError("editorial.not-in-review", "Die Version ist nicht in Prüfung.");
+    : CourseVersionWorkflowError("editorial.not-in-review", "Die Version ist nicht in Prüfung.");
 
 public sealed record NotPublished(CourseVersionId Version, CourseVersionStatus Status)
-    : DomainError("editorial.not-published", "Die Version ist nicht veröffentlicht.");
+    : CourseVersionWorkflowError("editorial.not-published", "Die Version ist nicht veröffentlicht.");
 
 public sealed record ChapterNotFound(CourseVersionId Version, ChapterId Chapter)
     : DomainError("editorial.chapter-not-found", "Dieses Kapitel gibt es in der Version nicht.");
@@ -740,22 +814,31 @@ public sealed record QuestionNotFound(CourseVersionId Version, QuestionId Questi
     : DomainError("editorial.question-not-found", "Diese Frage gibt es in der Version nicht.");
 
 public sealed record NoChapters(CourseVersionId Version)
-    : DomainError("editorial.no-chapters", "Eine Schulung braucht mindestens ein Kapitel.");
+    : CourseVersionWorkflowError("editorial.no-chapters", "Eine Schulung braucht mindestens ein Kapitel.");
 
 public sealed record TestIncomplete(CourseVersionId Version, QuestionCount Expected, QuestionCount Actual)
-    : DomainError("editorial.test-incomplete", $"Der Test braucht {Expected.Value} Fragen.");
+    : CourseVersionWorkflowError("editorial.test-incomplete", $"Der Test braucht {Expected.Value} Fragen.");
 
 public sealed record QuestionNotApproved(CourseVersionId Version, QuestionId Question)
-    : DomainError("editorial.question-not-approved", "Jede Frage muss vor der Veröffentlichung freigegeben sein.");
+    : CourseVersionWorkflowError("editorial.question-not-approved", "Jede Frage muss vor der Veröffentlichung freigegeben sein.");
 
 public sealed record FourEyesRequired(CourseVersionId Version)
-    : DomainError("editorial.four-eyes", "Veröffentlichen muss eine andere Person als die, die eingereicht hat.");
+    : CourseVersionWorkflowError("editorial.four-eyes", "Veröffentlichen muss eine andere Person als die, die eingereicht hat.");
 
 public sealed record TooFewOptions(QuestionId Question)
-    : DomainError("editorial.too-few-options", "Eine Frage braucht mindestens zwei Antwortoptionen.");
+    : CourseVersionWorkflowError("editorial.too-few-options", "Eine Frage braucht mindestens zwei Antwortoptionen.");
 
 public sealed record SingleChoiceNeedsOneCorrect(QuestionId Question)
-    : DomainError("editorial.single-choice-one-correct", "Eine Single-Choice-Frage hat genau eine richtige Antwort.");
+    : CourseVersionWorkflowError("editorial.single-choice-one-correct", "Eine Single-Choice-Frage hat genau eine richtige Antwort.");
 
 public sealed record MultipleChoiceNeedsACorrect(QuestionId Question)
-    : DomainError("editorial.multiple-choice-a-correct", "Eine Multiple-Choice-Frage hat mindestens eine richtige Antwort.");
+    : CourseVersionWorkflowError("editorial.multiple-choice-a-correct", "Eine Multiple-Choice-Frage hat mindestens eine richtige Antwort.");
+
+public sealed record TooManyQuestions(CourseVersionId Version)
+    : CourseVersionWorkflowError("editorial.too-many-questions", $"A test has at most {QuestionCount.Maximum} questions.");
+
+public sealed record PublisherApprovedQuestions(CourseVersionId Version)
+    : CourseVersionWorkflowError("editorial.publisher-approved-questions", "Under four eyes, an editor who approved a question of this version cannot publish it.");
+
+public sealed record QuestionAlreadyApproved(CourseVersionId Version, QuestionId Question)
+    : DomainError("editorial.question-already-approved", "This question is already approved; edit it to have it approved again.");
