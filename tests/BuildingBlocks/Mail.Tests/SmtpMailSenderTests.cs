@@ -43,6 +43,19 @@ public class SmtpMailSenderTests
     }
 
     [Fact]
+    public async Task A_recipient_the_server_refuses_fails_with_its_codes_and_without_the_address()
+    {
+        await using var server = new SmtpTestServer(refuse: ("RCPT", "550 5.1.1 <{0}>: Recipient address rejected"));
+        var sender = new SmtpMailSender(Settings.Of((ServerKey, server.ConnectionString), (FromKey, "noreply@example.com")));
+
+        var refused = await Should.ThrowAsync<MailNotSentException>(() => sender.SendAsync(Invitation, TestContext.Current.CancellationToken));
+
+        refused.Message.ShouldContain("550", Case.Sensitive);
+        refused.Message.ShouldNotContain("anna@example.org", Case.Insensitive);
+        refused.InnerException.ShouldBeNull();
+    }
+
+    [Fact]
     public async Task Without_a_sender_address_sending_fails_naming_the_setting()
     {
         var sender = new SmtpMailSender(Settings.Of(("ConnectionStrings:mail", "smtp://localhost:1"), ("Mail:From", null)));

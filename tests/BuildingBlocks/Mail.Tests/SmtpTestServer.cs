@@ -8,7 +8,8 @@ namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Mail.Tests;
 /// <summary>
 /// An SMTP server on the loopback interface, without TLS or authentication, that records the recipients and messages it
 /// is given. It can hold its answer to any of the commands named when it is created until the test releases it, so a
-/// test decides how long each step of a send takes.
+/// test decides how long each step of a send takes. It can instead refuse one command with an answer of the test's, in
+/// which <c>{0}</c> is the address the command carries.
 /// </summary>
 internal sealed class SmtpTestServer : IAsyncDisposable
 {
@@ -22,10 +23,24 @@ internal sealed class SmtpTestServer : IAsyncDisposable
 
     private readonly ConcurrentQueue<string> messages = new();
 
+    private readonly (string Verb, string Answer)? refusal;
+
     private readonly Task serving;
 
     public SmtpTestServer(params string[] held)
+        : this(null, held)
     {
+    }
+
+    /// <param name="refuse">The command to refuse, such as <c>RCPT</c>, and the answer, such as <c>550 5.1.1 &lt;{0}&gt;: Recipient address rejected</c>.</param>
+    public SmtpTestServer((string Verb, string Answer) refuse)
+        : this(refuse, [])
+    {
+    }
+
+    private SmtpTestServer((string Verb, string Answer)? refuse, string[] held)
+    {
+        refusal = refuse;
         holds = held.ToDictionary(verb => verb, _ => new Hold(), StringComparer.OrdinalIgnoreCase);
         listener.Start();
         serving = ServeAsync(stopping.Token);
@@ -78,6 +93,15 @@ internal sealed class SmtpTestServer : IAsyncDisposable
             {
                 hold.Received.TrySetResult();
                 await hold.Released.Task.WaitAsync(cancellationToken);
+            }
+
+            if (refusal is { } refused && string.Equals(refused.Verb, verb, StringComparison.OrdinalIgnoreCase))
+            {
+                var start = line.IndexOf('<', StringComparison.Ordinal);
+                var end = line.LastIndexOf('>');
+                var address = start >= 0 && end > start ? line[(start + 1)..end] : string.Empty;
+                await writer.WriteLineAsync(string.Format(System.Globalization.CultureInfo.InvariantCulture, refused.Answer, address));
+                continue;
             }
 
             switch (verb)
