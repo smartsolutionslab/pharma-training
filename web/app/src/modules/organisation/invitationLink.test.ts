@@ -27,6 +27,7 @@ beforeEach(() => {
   localStorage.clear();
 });
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   sessionStorage.clear();
   localStorage.clear();
@@ -107,8 +108,9 @@ test('with storage blocked the token is lost, and the fragment still leaves the 
   expect(JSON.stringify(answer)).not.toContain(token);
 });
 
+// Kept as the link's guard keeps it, with the time it was kept.
 test('taking the token answers it and removes it: a second take finds none', () => {
-  sessionStorage.setItem(key, token);
+  capture(`/invitations/accept#token=${token}`);
 
   expect(takeInvitationToken()).toBe(token);
   expect(sessionStorage.getItem(key)).toBeNull();
@@ -135,4 +137,53 @@ test('with storage blocked there is no token to take', () => {
   });
 
   expect(takeInvitationToken()).toBeUndefined();
+});
+
+// A kept token lives 30 minutes from the moment the link was opened: long enough to sign in, or to register and verify
+// the address, not long enough for a tab left open to accept it hours later.
+const opened = new Date('2026-11-22T10:00:00Z');
+const minutes = (count: number) => count * 60_000;
+
+test('a token kept less than 30 minutes ago is taken', () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(opened);
+  capture(`/invitations/accept#token=${token}`);
+
+  vi.setSystemTime(opened.getTime() + minutes(30) - 1_000);
+
+  expect(takeInvitationToken()).toBe(token);
+  expect(sessionStorage.length).toBe(0);
+});
+
+test('a token kept more than 30 minutes ago is not taken, and is removed', () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(opened);
+  capture(`/invitations/accept#token=${token}`);
+
+  vi.setSystemTime(opened.getTime() + minutes(30) + 1_000);
+
+  expect(takeInvitationToken()).toBeUndefined();
+  expect(sessionStorage.length).toBe(0);
+  expect(takeInvitationToken()).toBeUndefined();
+});
+
+// A token without the time it was kept has no age to check: it is not taken.
+test('a token kept without the time it was kept is not taken, and is removed', () => {
+  sessionStorage.setItem(key, token);
+
+  expect(takeInvitationToken()).toBeUndefined();
+  expect(sessionStorage.length).toBe(0);
+});
+
+test('a later link keeps its token for 30 minutes from its own opening', () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(opened);
+  capture(`/invitations/accept#token=${earlier}`);
+  vi.setSystemTime(opened.getTime() + minutes(25));
+  capture(`/invitations/accept#token=${token}`);
+
+  vi.setSystemTime(opened.getTime() + minutes(40));
+
+  expect(takeInvitationToken()).toBe(token);
+  expect(sessionStorage.length).toBe(0);
 });
