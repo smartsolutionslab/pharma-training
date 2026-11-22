@@ -211,6 +211,11 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
             return Failure(CourseVersionErrors.ChapterNotFound(Id, stray.Chapter));
         }
 
+        if (questions.Count(question => question.Review != ReviewState.Unreviewed) + drafted.Count > QuestionCount.Maximum)
+        {
+            return Failure(CourseVersionErrors.TooManyQuestions(Id));
+        }
+
         questions.RemoveAll(question => question.Review == ReviewState.Unreviewed);
         questions.AddRange(drafted.Select(draft => Question.From(newQuestionId(), draft, Provenance.AiDrafted, newOptionId)));
         Raise(new AiTestDraftApplied(Id, QuestionCount.From(drafted.Count)));
