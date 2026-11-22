@@ -1,3 +1,4 @@
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Tests.Pharmacies;
@@ -33,6 +34,17 @@ public class AccountEmailTests
     {
         AccountEmail.From(Anna, verified: true).ShouldBe(AccountEmail.From(EmailAddress.From("Anna@Example.org"), verified: true));
         AccountEmail.From(Anna, verified: true).ShouldNotBe(AccountEmail.From(Anna, verified: false));
+    }
+
+    /// <summary>
+    /// The aggregate never sees whether Keycloak verified the address; only the use case decides what an unverified one
+    /// may do, so the type belongs to the Application, beside the command that carries it.
+    /// </summary>
+    [Fact]
+    public void It_belongs_to_the_application_not_the_domain()
+    {
+        typeof(AccountEmail).Assembly.ShouldBe(typeof(OrganisationPolicyNames).Assembly);
+        typeof(AccountEmail).Namespace.ShouldBe(typeof(OrganisationPolicyNames).Namespace);
     }
 
     [Fact]
