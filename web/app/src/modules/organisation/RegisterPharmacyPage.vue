@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { useForm } from 'vee-validate';
+import { useI18n } from 'vue-i18n';
 import { z } from 'zod';
 import { OrganisationJobFunction } from '@/api/generated';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toTypedSchema } from '@/forms/toTypedSchema';
+import type { MessageKey } from '@/i18n';
 import { useRegisterPharmacy } from './useRegisterPharmacy';
 
 // Registers a pharmacy, with the user as its manager: its name and what the user does there, checked here as the host
@@ -12,23 +14,29 @@ import { useRegisterPharmacy } from './useRegisterPharmacy';
 const nameField = 'pharmacy-name';
 const jobFunctionField = 'pharmacy-job-function';
 
+// Each message is a key, rendered with t where it is shown: a message already shown follows a switch of the language.
 const registrationSchema = z.object({
   name: z
     .string()
     .trim()
-    .min(1, 'Give the pharmacy a name.')
-    .max(120, "A pharmacy's name is at most 120 characters.")
-    .refine((name) => !name.includes('\u0000'), "A pharmacy's name cannot contain a nul character."),
-  jobFunction: z.enum(OrganisationJobFunction, { error: 'Choose what you do in the pharmacy.' }),
+    .min(1, { error: 'organisation.register.nameRequired' satisfies MessageKey })
+    .max(120, { error: 'organisation.register.nameTooLong' satisfies MessageKey })
+    .refine((name) => !name.includes('\u0000'), { error: 'organisation.register.nameHasNul' satisfies MessageKey }),
+  jobFunction: z.enum(OrganisationJobFunction, {
+    error: 'organisation.register.jobFunctionRequired' satisfies MessageKey,
+  }),
 });
 
+// Their labels are the glossary's, looked up by the API's value when the page renders, in the language of the moment.
 const jobFunctions = [
-  { value: OrganisationJobFunction.Pharmacist, label: 'Pharmacist' },
-  { value: OrganisationJobFunction.Pta, label: 'PTA (pharmaceutical-technical assistant)' },
-  { value: OrganisationJobFunction.Pka, label: 'PKA (pharmaceutical-commercial employee)' },
-  { value: OrganisationJobFunction.Trainee, label: 'Trainee' },
-  { value: OrganisationJobFunction.Other, label: 'Other' },
-];
+  OrganisationJobFunction.Pharmacist,
+  OrganisationJobFunction.Pta,
+  OrganisationJobFunction.Pka,
+  OrganisationJobFunction.Trainee,
+  OrganisationJobFunction.Other,
+] as const;
+
+const { t } = useI18n();
 
 const { defineField, errors, handleSubmit, isSubmitting } = useForm({
   validationSchema: toTypedSchema(registrationSchema),
@@ -54,14 +62,12 @@ function submit(event: Event) {
 <template>
   <main class="flex max-w-xl flex-col gap-4 p-4">
     <div class="flex flex-col gap-1">
-      <h1 class="text-title">Register a pharmacy</h1>
-      <p class="text-body text-muted-foreground">
-        You will manage the pharmacy: invite your team and assign their training.
-      </p>
+      <h1 class="text-title">{{ t('organisation.register.title') }}</h1>
+      <p class="text-body text-muted-foreground">{{ t('organisation.register.intro') }}</p>
     </div>
-    <form novalidate aria-label="Register a pharmacy" class="flex flex-col gap-4" @submit="submit">
+    <form novalidate :aria-label="t('organisation.register.title')" class="flex flex-col gap-4" @submit="submit">
       <div class="flex flex-col gap-2">
-        <label :for="nameField" class="text-body font-medium">Pharmacy name</label>
+        <label :for="nameField" class="text-body font-medium">{{ t('organisation.register.name') }}</label>
         <Input
           :id="nameField"
           v-model="name"
@@ -72,11 +78,13 @@ function submit(event: Event) {
           :aria-describedby="errors.name ? `${nameField}-error` : undefined"
         />
         <p v-if="errors.name" :id="`${nameField}-error`" role="alert" class="text-caption text-destructive">
-          {{ errors.name }}
+          {{ t(errors.name) }}
         </p>
       </div>
       <div class="flex flex-col gap-2">
-        <label :for="jobFunctionField" class="text-body font-medium">Your job function</label>
+        <label :for="jobFunctionField" class="text-body font-medium">{{
+          t('organisation.register.jobFunction')
+        }}</label>
         <select
           :id="jobFunctionField"
           v-model="jobFunction"
@@ -86,8 +94,10 @@ function submit(event: Event) {
           :aria-describedby="errors.jobFunction ? `${jobFunctionField}-error` : undefined"
           class="h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-body motion-safe:transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:bg-input/30 dark:aria-invalid:ring-destructive/40 [&_option]:bg-popover [&_option]:text-popover-foreground"
         >
-          <option value="" disabled>Choose…</option>
-          <option v-for="option in jobFunctions" :key="option.value" :value="option.value">{{ option.label }}</option>
+          <option value="" disabled>{{ t('organisation.register.choose') }}</option>
+          <option v-for="option in jobFunctions" :key="option" :value="option">
+            {{ t(`glossary.jobFunction.${option}`) }}
+          </option>
         </select>
         <p
           v-if="errors.jobFunction"
@@ -95,10 +105,10 @@ function submit(event: Event) {
           role="alert"
           class="text-caption text-destructive"
         >
-          {{ errors.jobFunction }}
+          {{ t(errors.jobFunction) }}
         </p>
       </div>
-      <Button type="submit" class="self-start" :disabled="isBusy">Register pharmacy</Button>
+      <Button type="submit" class="self-start" :disabled="isBusy">{{ t('organisation.register.submit') }}</Button>
     </form>
   </main>
 </template>

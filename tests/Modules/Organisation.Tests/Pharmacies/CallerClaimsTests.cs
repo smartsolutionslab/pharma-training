@@ -94,6 +94,37 @@ public class CallerClaimsTests
         CallerClaims.PersonOf(User((ClaimTypes.NameIdentifier, Subject.ToString()))).Value.ShouldBe(PersonId.From(Subject));
     }
 
+    [Theory]
+    [InlineData("true")]
+    [InlineData("True")]
+    public void An_address_keycloak_verified_is_verified(string verified)
+    {
+        var user = User(("sub", Subject.ToString()), ("email", "owner@example.com"), ("email_verified", verified));
+
+        CallerClaims.HasVerifiedEmail(user).ShouldBeTrue();
+    }
+
+    [Theory]
+    [InlineData("false")]
+    [InlineData("False")]
+    [InlineData("")]
+    [InlineData("yes")]
+    [InlineData("1")]
+    public void An_address_keycloak_did_not_verify_is_not_verified(string verified)
+    {
+        var user = User(("sub", Subject.ToString()), ("email", "owner@example.com"), ("email_verified", verified));
+
+        CallerClaims.HasVerifiedEmail(user).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Without_the_claim_the_address_is_not_verified()
+    {
+        var user = User(("sub", Subject.ToString()), ("name", "Olaf Owner"), ("email", "owner@example.com"));
+
+        CallerClaims.HasVerifiedEmail(user).ShouldBeFalse();
+    }
+
     private static ClaimsPrincipal User(params (string Type, string Value)[] claims) =>
         new(new ClaimsIdentity(claims.Select(claim => new Claim(claim.Type, claim.Value)), authenticationType: "Bearer"));
 }

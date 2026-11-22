@@ -2,10 +2,11 @@ import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query';
 import { cleanup, render, screen } from '@testing-library/vue';
 import userEvent from '@testing-library/user-event';
 import { createPinia } from 'pinia';
-import { afterEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { createMemoryHistory } from 'vue-router';
 import { signedInAsDeveloper } from '@/auth/signedInAsDeveloper';
+import { languages, setLanguage, t } from '@/i18n';
 import { createAppRouter } from '@/router';
 import * as data from './RegisterPharmacyPage.data';
 import RegisterPharmacyPage from './RegisterPharmacyPage.vue';
@@ -100,84 +101,94 @@ async function renderPage() {
   await router.push('/organisation/register');
 
   // The page reads the query client (it refreshes the memberships after a registration) and the chosen pharmacy's store.
-  return render(RegisterPharmacyPage, {
+  const { container } = render(RegisterPharmacyPage, {
     global: {
       plugins: [router, createPinia(), [VueQueryPlugin, { queryClient: new QueryClient() }], signedInAsDeveloper],
     },
-  }).container;
+  });
+  // The screen speaks the language of the moment: axe checks what that language's user hears.
+  expect(screen.getByRole('heading', { level: 1, name: t('organisation.register.title') })).toBeInTheDocument();
+  return container;
 }
 
-test('the Register a pharmacy page has no accessibility violations axe can find', async () => {
-  const container = await renderPage();
+// Each language in turn: the texts differ, and so may what axe finds in them.
+describe.each(languages)('in %s', (language) => {
+  beforeEach(() => {
+    setLanguage(language, { remember: false });
+  });
 
-  expect(await axe(container)).toHaveNoViolations();
+  test('the Register a pharmacy page has no accessibility violations axe can find', async () => {
+    const container = await renderPage();
+
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  test.each(themes)(
+    'the Register a pharmacy page has no accessibility violations axe can find in the $name theme',
+    async ({ switchOn }) => {
+      switchOn();
+      const container = await renderPage();
+
+      expect(await axe(container)).toHaveNoViolations();
+    },
+  );
+
+  // Until RegisterPharmacyPage.data.ts has an example (AGENTS.md), the page is checked only as it loads.
+  test.runIf(Object.keys(examples).length > 0)(
+    'the Register a pharmacy page passes axe with its example data',
+    async () => {
+      shown.examples = examples;
+      const container = await renderPage();
+
+      expect(await axe(container)).toHaveNoViolations();
+    },
+  );
+
+  test.runIf(Object.keys(examples).length > 0).each(themes)(
+    'the Register a pharmacy page passes axe with its example data in the $name theme',
+    async ({ switchOn }) => {
+      shown.examples = examples;
+      switchOn();
+      const container = await renderPage();
+
+      expect(await axe(container)).toHaveNoViolations();
+    },
+  );
+
+  // Until RegisterPharmacyPage.data.ts has an empty example (AGENTS.md), the page is not checked with nothing to show.
+  test.runIf(Object.keys(emptyExamples).length > 0)(
+    'the Register a pharmacy page passes axe when it has nothing to show',
+    async () => {
+      shown.examples = emptyExamples;
+      const container = await renderPage();
+
+      expect(await axe(container)).toHaveNoViolations();
+    },
+  );
+
+  test.runIf(Object.keys(emptyExamples).length > 0).each(themes)(
+    'the Register a pharmacy page passes axe when it has nothing to show in the $name theme',
+    async ({ switchOn }) => {
+      shown.examples = emptyExamples;
+      switchOn();
+      const container = await renderPage();
+
+      expect(await axe(container)).toHaveNoViolations();
+    },
+  );
+
+  // The page as it shows after an empty submit: both fields refused, each with its message below it.
+  test.each([{ name: 'light', switchOn: () => undefined }, ...themes])(
+    'the Register a pharmacy page has no accessibility violations axe can find with both fields refused, in the $name theme',
+    async ({ switchOn }) => {
+      switchOn();
+      const user = userEvent.setup();
+      const container = await renderPage();
+
+      await user.click(screen.getByRole('button', { name: t('organisation.register.submit') }));
+
+      expect(await screen.findAllByRole('alert')).toHaveLength(2);
+      expect(await axe(container)).toHaveNoViolations();
+    },
+  );
 });
-
-test.each(themes)(
-  'the Register a pharmacy page has no accessibility violations axe can find in the $name theme',
-  async ({ switchOn }) => {
-    switchOn();
-    const container = await renderPage();
-
-    expect(await axe(container)).toHaveNoViolations();
-  },
-);
-
-// Until RegisterPharmacyPage.data.ts has an example (AGENTS.md), the page is checked only as it loads.
-test.runIf(Object.keys(examples).length > 0)(
-  'the Register a pharmacy page passes axe with its example data',
-  async () => {
-    shown.examples = examples;
-    const container = await renderPage();
-
-    expect(await axe(container)).toHaveNoViolations();
-  },
-);
-
-test.runIf(Object.keys(examples).length > 0).each(themes)(
-  'the Register a pharmacy page passes axe with its example data in the $name theme',
-  async ({ switchOn }) => {
-    shown.examples = examples;
-    switchOn();
-    const container = await renderPage();
-
-    expect(await axe(container)).toHaveNoViolations();
-  },
-);
-
-// Until RegisterPharmacyPage.data.ts has an empty example (AGENTS.md), the page is not checked with nothing to show.
-test.runIf(Object.keys(emptyExamples).length > 0)(
-  'the Register a pharmacy page passes axe when it has nothing to show',
-  async () => {
-    shown.examples = emptyExamples;
-    const container = await renderPage();
-
-    expect(await axe(container)).toHaveNoViolations();
-  },
-);
-
-test.runIf(Object.keys(emptyExamples).length > 0).each(themes)(
-  'the Register a pharmacy page passes axe when it has nothing to show in the $name theme',
-  async ({ switchOn }) => {
-    shown.examples = emptyExamples;
-    switchOn();
-    const container = await renderPage();
-
-    expect(await axe(container)).toHaveNoViolations();
-  },
-);
-
-// The page as it shows after an empty submit: both fields refused, each with its message below it.
-test.each([{ name: 'light', switchOn: () => undefined }, ...themes])(
-  'the Register a pharmacy page has no accessibility violations axe can find with both fields refused, in the $name theme',
-  async ({ switchOn }) => {
-    switchOn();
-    const user = userEvent.setup();
-    const container = await renderPage();
-
-    await user.click(screen.getByRole('button', { name: 'Register pharmacy' }));
-
-    expect(await screen.findAllByRole('alert')).toHaveLength(2);
-    expect(await axe(container)).toHaveNoViolations();
-  },
-);

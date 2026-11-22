@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { RouterLink, useRoute } from 'vue-router';
 import { useHasRole } from '@/auth/useHasRole';
 import { Button } from '@/components/ui/button';
@@ -13,6 +14,7 @@ import { useCurrentPharmacy } from './useCurrentPharmacy';
 const route = useRoute();
 const { status, memberships, current, retry } = useCurrentPharmacy();
 const isEditor = useHasRole('editor');
+const { t } = useI18n();
 
 const page = computed(() => pageOf(route.path));
 
@@ -30,32 +32,35 @@ const failed = computed(() => page.value?.audience !== 'editor' && status.value 
 
 const reason = computed(() => {
   if (page.value?.audience === 'editor') {
-    return 'This page is not available to you.';
+    return t('shell.gate.notForYou');
   }
   if (failed.value) {
-    return 'Your pharmacies could not be loaded.';
+    return t('shell.gate.pharmaciesFailed');
   }
   if (current.value !== undefined) {
-    return `This page is not available to you in ${current.value.name}.`;
+    return t('shell.gate.notInPharmacy', { name: current.value.name });
   }
-  return memberships.value.length === 0
-    ? 'You are not a member of any pharmacy yet.'
-    : 'Choose a pharmacy to see this page.';
+  if (memberships.value.length === 0) {
+    return t('shell.gate.noPharmacy');
+  }
+  return t('shell.gate.choosePharmacy');
 });
 </script>
 
 <template>
   <slot v-if="state === 'page'" />
   <main v-else-if="state === 'loading'" class="flex flex-col gap-3 p-4" aria-busy="true">
-    <span class="sr-only">Loading…</span>
+    <span class="sr-only">{{ t('shell.gate.loading') }}</span>
     <Skeleton class="h-8 w-1/3" />
     <Skeleton class="h-4 w-2/3" />
     <Skeleton class="h-4 w-1/2" />
   </main>
   <main v-else class="flex flex-col items-start gap-2 p-4">
-    <h1 class="text-title">Not available</h1>
+    <h1 class="text-title">{{ t('shell.gate.notAvailable') }}</h1>
     <p class="text-body">{{ reason }}</p>
-    <Button v-if="failed" variant="outline" @click="retry">Try again</Button>
-    <RouterLink to="/" class="text-body text-primary underline underline-offset-4">Go to Home</RouterLink>
+    <Button v-if="failed" variant="outline" @click="retry">{{ t('shell.retry') }}</Button>
+    <RouterLink to="/" class="text-body text-primary underline underline-offset-4">{{
+      t('shell.gate.goHome')
+    }}</RouterLink>
   </main>
 </template>

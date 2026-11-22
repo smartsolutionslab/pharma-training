@@ -6,6 +6,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { defineComponent, h } from 'vue';
 import { createMemoryHistory } from 'vue-router';
 import type { MyPharmacyDto } from '@/api/generated';
+import { i18n, setLanguage, t } from '@/i18n';
 import { createAppRouter } from '@/router';
 import { useCurrentPharmacy } from '@/shell/useCurrentPharmacy';
 import { useSelectedPharmacyStore } from '@/stores/selectedPharmacy';
@@ -90,10 +91,13 @@ function choicesOf(pinia: Pinia) {
 async function registerNeueApotheke() {
   const user = userEvent.setup();
   expect(await screen.findByText('Current pharmacy: Apotheke am Markt')).toBeInTheDocument();
-  await user.click(screen.getByRole('textbox', { name: 'Pharmacy name' }));
+  await user.click(screen.getByRole('textbox', { name: t('organisation.register.name') }));
   await user.paste('Neue Apotheke');
-  await user.selectOptions(screen.getByRole('combobox', { name: 'Your job function' }), 'Pharmacist');
-  await user.click(screen.getByRole('button', { name: 'Register pharmacy' }));
+  await user.selectOptions(
+    screen.getByRole('combobox', { name: t('organisation.register.jobFunction') }),
+    t('glossary.jobFunction.Pharmacist'),
+  );
+  await user.click(screen.getByRole('button', { name: t('organisation.register.submit') }));
 }
 
 // The memberships are read again before the new pharmacy is chosen: chosen among memberships that do not hold it yet,
@@ -103,13 +107,18 @@ test('a registered pharmacy becomes the current one and stays, the user is told,
   const { router } = await renderInShell();
   expect(await screen.findByText('Current pharmacy: Apotheke am Markt')).toBeInTheDocument();
 
-  await user.click(screen.getByRole('textbox', { name: 'Pharmacy name' }));
+  await user.click(screen.getByRole('textbox', { name: t('organisation.register.name') }));
   await user.paste('  Neue Apotheke ');
-  await user.selectOptions(screen.getByRole('combobox', { name: 'Your job function' }), 'Pharmacist');
-  await user.click(screen.getByRole('button', { name: 'Register pharmacy' }));
+  await user.selectOptions(
+    screen.getByRole('combobox', { name: t('organisation.register.jobFunction') }),
+    t('glossary.jobFunction.Pharmacist'),
+  );
+  await user.click(screen.getByRole('button', { name: t('organisation.register.submit') }));
 
   await waitFor(() => expect(router.currentRoute.value.path).toBe('/organisation'));
-  expect(notify.success).toHaveBeenCalledExactlyOnceWith('The pharmacy Neue Apotheke was registered.');
+  expect(notify.success).toHaveBeenCalledExactlyOnceWith(
+    t('organisation.register.registered', { name: 'Neue Apotheke' }),
+  );
   expect(notify.failure).not.toHaveBeenCalled();
   expect(await screen.findByText('Current pharmacy: Neue Apotheke')).toBeInTheDocument();
   expect(localStorage.getItem('pharmacy')).toBe(founded.id);
@@ -147,7 +156,7 @@ test.each([
 
     await waitFor(() => expect(router.currentRoute.value.path).toBe('/'));
     expect(notify.success).toHaveBeenCalledExactlyOnceWith(
-      'The pharmacy Neue Apotheke was registered, but it could not be opened. Choose it in the pharmacy switcher.',
+      t('organisation.register.registeredNotOpened', { name: 'Neue Apotheke' }),
     );
     expect(notify.failure).not.toHaveBeenCalled();
     expect(choices).not.toContain(founded.id);
@@ -155,3 +164,108 @@ test.each([
     expect(screen.getByText('Current pharmacy: Apotheke am Markt')).toBeInTheDocument();
   },
 );
+
+// A module's own words, as the host sent them (ApiError.serverMessage): nothing translates them until #147. A refusal
+// without them, a network failure, a 5xx, or a framework's problem (no code, or a failed guard's invalid-argument), is
+// told in the catalog's words: the framework's English titles never reach the user.
+test.each([
+  [
+    "a 400 with the module's problem details and a detail",
+    () =>
+      new Response(
+        JSON.stringify({
+          title: 'Bad Request',
+          status: 400,
+          detail: 'Der Name ist zu lang, sagt der Server.',
+          code: 'organisation.invalid-pharmacy-name',
+        }),
+        { status: 400, headers: { 'Content-Type': 'application/problem+json' } },
+      ),
+    () => 'Der Name ist zu lang, sagt der Server.',
+  ],
+  [
+    "a 403 with the module's problem title only",
+    () =>
+      new Response(
+        JSON.stringify({ title: 'Kein Name im Konto.', status: 403, code: 'organisation.identity-incomplete' }),
+        { status: 403, headers: { 'Content-Type': 'application/problem+json' } },
+      ),
+    () => 'Kein Name im Konto.',
+  ],
+  [
+    "a 500 with the framework's problem title",
+    () =>
+      new Response(
+        JSON.stringify({
+          type: 'https://tools.ietf.org/html/rfc9110#section-15.6.1',
+          title: 'An error occurred while processing your request.',
+          status: 500,
+        }),
+        { status: 500, headers: { 'Content-Type': 'application/problem+json' } },
+      ),
+    () => t('organisation.register.failed'),
+  ],
+  [
+    'a 400 binding failure without a code',
+    () =>
+      new Response(JSON.stringify({ title: 'Bad Request', status: 400 }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/problem+json' },
+      }),
+    () => t('organisation.register.failed'),
+  ],
+  [
+    'a 400 from a failed guard',
+    () =>
+      new Response(
+        JSON.stringify({
+          title: 'The request is invalid.',
+          status: 400,
+          detail: "The value of 'name' must not be null or white space.",
+          code: 'invalid-argument',
+        }),
+        { status: 400, headers: { 'Content-Type': 'application/problem+json' } },
+      ),
+    () => t('organisation.register.failed'),
+  ],
+  ['a 500 without a body', () => new Response('', { status: 500 }), () => t('organisation.register.failed')],
+  [
+    'a 502 with a plain-text body',
+    () => new Response('Bad Gateway', { status: 502, headers: { 'Content-Type': 'text/plain' } }),
+    () => t('organisation.register.failed'),
+  ],
+])(
+  'a registration refused with %s is reported in the right words, and nothing is chosen',
+  async (_how, answer, said) => {
+    host.mockImplementation(async (_input, init) =>
+      init?.method === 'POST' ? answer() : Response.json({ items: [markt], totalCount: 1, page: 1, pageSize: 100 }),
+    );
+    const pinia = createPinia();
+    const choices = choicesOf(pinia);
+    const { router } = await renderInShell(pinia);
+
+    await registerNeueApotheke();
+
+    await waitFor(() => expect(notify.failure).toHaveBeenCalledExactlyOnceWith(said()));
+    expect(notify.success).not.toHaveBeenCalled();
+    expect(router.currentRoute.value.path).toBe('/organisation/register');
+    expect(choices).not.toContain(founded.id);
+  },
+);
+
+test('a refusal without a server message is told in the language of the moment', async () => {
+  host.mockImplementation(async (_input, init) =>
+    init?.method === 'POST'
+      ? Promise.reject(new TypeError('Failed to fetch'))
+      : Response.json({ items: [markt], totalCount: 1, page: 1, pageSize: 100 }),
+  );
+  setLanguage('en-GB', { remember: false });
+  await renderInShell();
+
+  await registerNeueApotheke();
+
+  await waitFor(() => expect(notify.failure).toHaveBeenCalledExactlyOnceWith(t('organisation.register.failed')));
+  expect(t('organisation.register.failed')).not.toBe(
+    i18n.global.t('organisation.register.failed', {}, { locale: 'de-DE' }),
+  );
+});

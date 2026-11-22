@@ -114,6 +114,40 @@ public class CourseVersionFailuresTests
         failure.ShouldBeOfType<DomainFailure>().Error.ShouldBe(error);
     }
 
+    [Fact]
+    public void A_question_beyond_the_maximum_is_a_conflict()
+    {
+        var error = new TooManyQuestions(Version);
+
+        var failure = CourseVersionFailures.From(error);
+
+        failure.Code.ShouldBe("editorial.too-many-questions");
+        failure.Status.ShouldBe(HttpStatusCode.Conflict);
+        failure.ShouldBeOfType<DomainFailure>().Error.ShouldBe(error);
+    }
+
+    [Fact]
+    public void A_blueprint_asking_for_too_few_questions_is_a_bad_request_with_the_question_count_code()
+    {
+        var error = new TooFewQuestions(QuestionCount.From(0));
+
+        var failure = CourseVersionFailures.From(error);
+
+        failure.Code.ShouldBe("editorial.invalid-question-count");
+        failure.Status.ShouldBe(HttpStatusCode.BadRequest);
+        failure.ShouldBeOfType<DomainFailure>().Error.ShouldBe(error);
+    }
+
+    [Fact]
+    public void A_question_count_out_of_range_reads_the_same_whether_the_endpoint_or_the_domain_refuses_it()
+    {
+        var fromEndpoint = CourseVersionFailures.InvalidQuestionCount();
+        var fromDomain = CourseVersionErrors.TooFewQuestions(QuestionCount.From(0));
+
+        fromEndpoint.Code.ShouldBe(fromDomain.Code);
+        fromEndpoint.Message.ShouldBe(fromDomain.Message);
+    }
+
     [Theory]
     [InlineData(nameof(TooFewOptions), "editorial.too-few-options")]
     [InlineData(nameof(SingleChoiceNeedsOneCorrect), "editorial.single-choice-one-correct")]
@@ -137,13 +171,25 @@ public class CourseVersionFailuresTests
     [InlineData(nameof(NoChapters), "editorial.no-chapters")]
     [InlineData(nameof(TestIncomplete), "editorial.test-incomplete")]
     [InlineData(nameof(QuestionNotApproved), "editorial.question-not-approved")]
-    [InlineData(nameof(FourEyesRequired), "editorial.four-eyes")]
     public void The_versions_state_rules_stay_a_conflict(string rule, string code)
     {
         var failure = CourseVersionFailures.From(Rule(rule));
 
         failure.Code.ShouldBe(code);
         failure.Status.ShouldBe(HttpStatusCode.Conflict);
+    }
+
+    /// <summary>The version is in the right state, only this caller may not publish it: forbidden, with its own code.</summary>
+    [Fact]
+    public void Four_eyes_answers_forbidden()
+    {
+        var error = CourseVersionErrors.FourEyesRequired(Version);
+
+        var failure = CourseVersionFailures.From(error);
+
+        failure.Code.ShouldBe("editorial.four-eyes");
+        failure.Status.ShouldBe(HttpStatusCode.Forbidden);
+        failure.ShouldBeOfType<DomainFailure>().Error.ShouldBe(error);
     }
 
     private static DomainError Rule(string rule) => rule switch

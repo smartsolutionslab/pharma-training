@@ -6,7 +6,7 @@ import { computed, defineComponent, type Plugin } from 'vue';
 import type { MyPharmacyDto, PagedResultOfMyPharmacyDto } from '@/api/generated';
 import { type Auth, authKey } from '@/auth/useAuth';
 import { moduleRoutes } from '@/modules';
-import { useVisibleModules } from './useVisibleModules';
+import { useVisibleModules, useVisiblePages } from './useVisibleModules';
 
 // GET /organisation/pharmacies/mine as useMyPharmacies answers it: TanStack Query's refs, which a test sets.
 const pharmacies = await vi.hoisted(async () => {
@@ -135,4 +135,28 @@ test('the visible pages follow the chosen pharmacy', () => {
   answer([manager, employee]);
 
   expect(paths(visibleTo([]).value)).toContain('organisation');
+});
+
+function pagesVisibleTo(roles: string[]) {
+  let visible: ReturnType<typeof useVisiblePages> | undefined;
+  const Visible = defineComponent({
+    setup() {
+      visible = useVisiblePages();
+      return () => null;
+    },
+  });
+  render(Visible, { global: { plugins: [createPinia(), signedInWith(roles)] } });
+  if (visible === undefined) {
+    throw new Error('The component did not set up.');
+  }
+  return visible;
+}
+
+// A page is named by its key, which the sidebar, the breadcrumbs and the palette translate in the language shown.
+test('the pages below the modules are named by their title keys', () => {
+  answer([]);
+
+  expect(pagesVisibleTo([]).value).toEqual([
+    { to: '/organisation/register', titleKey: 'modules.organisation.pages.register.title' },
+  ]);
 });

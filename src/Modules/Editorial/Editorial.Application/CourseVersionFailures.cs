@@ -71,15 +71,20 @@ public static class CourseVersionFailures
     /// <summary>
     /// A rule of the version, with its own code: a chapter or question it does not hold is not found, a question whose
     /// content breaks the rules of its shape cannot be processed until it is edited, a blueprint with too few questions
-    /// is a bad request, anything else is a conflict with its state. <see cref="DomainError"/> is no closed union, so the
-    /// last arm takes the rules no arm names.
+    /// is a bad request, a publish under four eyes by the one who submitted the version or approved one of its questions
+    /// is forbidden to this caller, anything else is a conflict with its state. <see cref="DomainError"/> is no closed
+    /// union, so the last arm takes the rules no arm names.
     /// </summary>
     public static ApiError From(DomainError error) => error switch
     {
         ChapterNotFound or QuestionNotFound => ApiError.From(error, HttpStatusCode.NotFound),
         TooFewOptions or SingleChoiceNeedsOneCorrect or MultipleChoiceNeedsACorrect => ApiError.From(error, HttpStatusCode.UnprocessableEntity),
         TooFewQuestions => ApiError.From(error, HttpStatusCode.BadRequest),
-        NotADraft or OrderDoesNotMatchChapters or TooManyQuestions => ApiError.From(error, HttpStatusCode.Conflict),
+        FourEyesRequired or PublisherApprovedQuestions => ApiError.From(error, HttpStatusCode.Forbidden),
+        // This arm documents the rule that these refusals are conflicts with the version's state; it does not enforce it,
+        // since the discard arm below answers 409 for them all the same.
+        NotADraft or OrderDoesNotMatchChapters or TooManyQuestions or NotInReview or NotPublished or NoChapters or TestIncomplete
+            or QuestionNotApproved => ApiError.From(error, HttpStatusCode.Conflict),
         _ => ApiError.From(error, HttpStatusCode.Conflict),
     };
 }

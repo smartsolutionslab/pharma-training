@@ -12,7 +12,12 @@ public class SmtpMailSenderTests
 
     private static readonly MailboxAddress From = MailboxAddress.Parse("noreply@example.com");
 
-    private static readonly OutgoingMail Invitation = new("anna@example.org", "Einladung", "Text");
+    private const string Recipient = "anna@example.org";
+
+    /// <summary>Text only the server writes, so a message that holds it carries what the server said.</summary>
+    private const string ServerText = "only-the-server-wrote-this";
+
+    private static readonly OutgoingMail Invitation = new(Recipient, "Einladung", "Text");
 
     [Fact]
     public void The_message_has_its_sender_recipient_subject_and_one_plain_text_part()
@@ -53,6 +58,44 @@ public class SmtpMailSenderTests
         refused.Message.ShouldContain("550", Case.Sensitive);
         refused.Message.ShouldNotContain("anna@example.org", Case.Insensitive);
         refused.InnerException.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task A_reply_the_client_cannot_read_fails_as_not_sent_without_the_servers_text_or_the_address()
+    {
+        // No status code: MailKit throws SmtpProtocolException, not SmtpCommandException.
+        await using var server = new SmtpTestServer(refuse: ("RCPT", "XYZ <{0}>: " + ServerText));
+        var sender = new SmtpMailSender(Settings.Of((ServerKey, server.ConnectionString), (FromKey, "noreply@example.com")));
+
+        var failed = await Should.ThrowAsync<MailNotSentException>(() => sender.SendAsync(Invitation, TestContext.Current.CancellationToken));
+
+        ShouldNameNeitherTheServersTextNorTheRecipient(failed);
+    }
+
+    [Fact]
+    public async Task A_connection_the_server_resets_fails_as_not_sent_without_the_address()
+    {
+        // The reset surfaces as an IOException from the socket's read.
+        await using var server = SmtpTestServer.Resetting("RCPT");
+        var sender = new SmtpMailSender(Settings.Of((ServerKey, server.ConnectionString), (FromKey, "noreply@example.com")));
+
+        var failed = await Should.ThrowAsync<MailNotSentException>(() => sender.SendAsync(Invitation, TestContext.Current.CancellationToken));
+
+        ShouldNameNeitherTheServersTextNorTheRecipient(failed);
+    }
+
+    [Fact]
+    public async Task A_tls_handshake_that_fails_fails_as_not_sent_without_the_servers_text_or_the_address()
+    {
+        // smtps to a server that speaks plain SMTP: MailKit throws SslHandshakeException.
+        await using var server = new SmtpTestServer();
+        var tls = server.ConnectionString.Replace("smtp://", "smtps://", StringComparison.Ordinal);
+        var sender = new SmtpMailSender(Settings.Of((ServerKey, tls), (FromKey, "noreply@example.com")));
+
+        var failed = await Should.ThrowAsync<MailNotSentException>(() => sender.SendAsync(Invitation, TestContext.Current.CancellationToken));
+
+        ShouldNameNeitherTheServersTextNorTheRecipient(failed);
+        failed.Message.ShouldNotContain("test ESMTP", Case.Insensitive);
     }
 
     [Fact]
@@ -159,5 +202,12 @@ public class SmtpMailSenderTests
 
         await Should.NotThrowAsync(() => sender.SendAsync(Invitation, cancellationToken));
         server.Messages.ShouldHaveSingleItem();
+    }
+
+    private static void ShouldNameNeitherTheServersTextNorTheRecipient(MailNotSentException failed)
+    {
+        failed.Message.ShouldNotContain(ServerText, Case.Insensitive);
+        failed.Message.ShouldNotContain(Recipient, Case.Insensitive);
+        failed.InnerException.ShouldBeNull();
     }
 }

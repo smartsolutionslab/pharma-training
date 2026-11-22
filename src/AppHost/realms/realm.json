@@ -80,6 +80,15 @@
       "credentials": [{ "type": "password", "value": "visitor", "temporary": false }]
     },
     {
+      "username": "unverified",
+      "enabled": true,
+      "email": "unverified@example.com",
+      "emailVerified": false,
+      "firstName": "Uwe",
+      "lastName": "Unverified",
+      "credentials": [{ "type": "password", "value": "unverified", "temporary": false }]
+    },
+    {
       "username": "editor",
       "enabled": true,
       "email": "editor@example.com",

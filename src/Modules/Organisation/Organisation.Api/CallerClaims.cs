@@ -39,6 +39,17 @@ public static class CallerClaims
         return Option<Caller>.None;
     }
 
+    /// <summary>
+    /// Whether Keycloak verified the account's address: only an <c>email_verified</c> claim that reads as
+    /// <see langword="true"/>. A missing claim, or any other value, is unverified (fail closed).
+    /// </summary>
+    public static bool HasVerifiedEmail(ClaimsPrincipal user)
+    {
+        Ensure.That(user).IsNotNull();
+
+        return bool.TryParse(user.FindFirst("email_verified")?.Value, out var verified) && verified;
+    }
+
     private static string? First(ClaimsPrincipal user, params string[] types) =>
         types.Select(type => user.FindFirst(type)?.Value).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
 }

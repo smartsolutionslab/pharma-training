@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ChevronsUpDownIcon } from '@lucide/vue';
 import { computed, useId } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { RouterLink } from 'vue-router';
 import { Button } from '@/components/ui/button';
 import {
@@ -14,6 +15,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useSidebar } from '@/components/ui/sidebar';
 import { Skeleton } from '@/components/ui/skeleton';
+import type { OrganisationMembershipRole } from '@/api/generated';
 import { useCurrentPharmacy } from './useCurrentPharmacy';
 import { useMyPharmacies } from './useMyPharmacies';
 
@@ -23,6 +25,7 @@ import { useMyPharmacies } from './useMyPharmacies';
 const { status, memberships, current, choose } = useCurrentPharmacy();
 const { refetch } = useMyPharmacies();
 const { isMobile, setOpenMobile } = useSidebar();
+const { t } = useI18n();
 
 function closeSheet() {
   if (isMobile.value) {
@@ -31,7 +34,15 @@ function closeSheet() {
 }
 
 const labelId = useId();
-const trigger = computed(() => (current.value === undefined ? 'Choose a pharmacy' : `Pharmacy: ${current.value.name}`));
+const trigger = computed(() => {
+  if (current.value === undefined) {
+    return t('shell.pharmacy.choose');
+  }
+  return t('shell.pharmacy.current', { name: current.value.name });
+});
+
+/** A member's role as the glossary names it, from the API's enum value. */
+const roleOf = (role: OrganisationMembershipRole) => t(`glossary.membershipRole.${role}`);
 
 function pick(id: unknown) {
   if (typeof id === 'string') {
@@ -42,26 +53,26 @@ function pick(id: unknown) {
 
 <!-- A region of its own, which the open menu stays inside, so screen readers find it in a landmark. -->
 <template>
-  <section aria-label="Pharmacy" class="px-2">
+  <section :aria-label="t('shell.pharmacy.region')" class="px-2">
     <Skeleton v-if="status === 'loading'" class="h-10 w-full" />
     <div v-else-if="status === 'failed'" class="flex flex-col items-start gap-1 text-caption">
-      <p role="alert">Pharmacies could not be loaded.</p>
-      <Button variant="outline" size="sm" @click="refetch()">Try again</Button>
+      <p role="alert">{{ t('shell.pharmacy.failed') }}</p>
+      <Button variant="outline" size="sm" @click="refetch()">{{ t('shell.retry') }}</Button>
     </div>
     <p v-else-if="memberships.length === 0" class="text-caption text-muted-foreground">
-      You are not a member of any pharmacy yet.
+      {{ t('shell.pharmacy.none') }}
     </p>
     <p v-else-if="memberships.length === 1 && current !== undefined" class="flex flex-col">
       <span class="truncate text-body font-medium">{{ current.name }}</span>
-      <span class="text-caption text-muted-foreground">{{ current.role }}</span>
+      <span class="text-caption text-muted-foreground">{{ roleOf(current.role) }}</span>
     </p>
     <DropdownMenu v-else>
       <DropdownMenuTrigger as-child>
         <Button variant="ghost" class="h-auto w-full justify-between px-2 py-1.5 text-left" :aria-label="trigger">
-          <span v-if="current === undefined" class="text-body">Choose a pharmacy</span>
+          <span v-if="current === undefined" class="text-body">{{ t('shell.pharmacy.choose') }}</span>
           <span v-else class="flex min-w-0 flex-col">
             <span class="truncate text-body font-medium">{{ current.name }}</span>
-            <span class="text-caption text-muted-foreground">{{ current.role }}</span>
+            <span class="text-caption text-muted-foreground">{{ roleOf(current.role) }}</span>
           </span>
           <ChevronsUpDownIcon aria-hidden="true" />
         </Button>
@@ -72,13 +83,13 @@ function pick(id: unknown) {
         class="w-(--reka-dropdown-menu-trigger-width)"
         :aria-labelledby="labelId"
       >
-        <DropdownMenuLabel :id="labelId">Pharmacies</DropdownMenuLabel>
+        <DropdownMenuLabel :id="labelId">{{ t('shell.pharmacy.list') }}</DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuRadioGroup :model-value="current?.id" @update:model-value="pick">
           <DropdownMenuRadioItem v-for="membership in memberships" :key="membership.id" :value="membership.id">
             <span class="flex min-w-0 flex-col">
               <span class="truncate">{{ membership.name }}</span>
-              <span class="text-caption text-muted-foreground">{{ membership.role }}</span>
+              <span class="text-caption text-muted-foreground">{{ roleOf(membership.role) }}</span>
             </span>
           </DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>
@@ -90,7 +101,7 @@ function pick(id: unknown) {
       class="mt-1 inline-block text-caption text-primary underline underline-offset-4"
       @click="closeSheet"
     >
-      Register a pharmacy
+      {{ t('shell.pharmacy.register') }}
     </RouterLink>
   </section>
 </template>
