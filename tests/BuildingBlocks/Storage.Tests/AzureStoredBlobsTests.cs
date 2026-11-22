@@ -7,8 +7,9 @@ using Microsoft.Extensions.Configuration;
 namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Storage.Tests;
 
 /// <summary>
-/// What AzureStoredBlobs makes of a 404 from the storage service: only <c>BlobNotFound</c> says nothing lies under the
-/// name. Any other, a missing container first, says the module's storage is not what its configuration names, and is
+/// What AzureStoredBlobs makes of a 404 (or, reading a blob's start, a 416) from the storage service: only
+/// <c>BlobNotFound</c> says nothing lies under the name, and a range the service cannot satisfy says the blob is empty.
+/// Any other 404, a missing container first, says the module's storage is not what its configuration names, and is
 /// thrown rather than read as an upload that has not arrived yet. The storage service is a local endpoint that answers
 /// every request with the error the test chooses, as the service does: a status and the <c>x-ms-error-code</c> header.
 /// </summary>
@@ -52,6 +53,40 @@ public sealed class AzureStoredBlobsTests : IDisposable
             Blobs().FindAsync(BlobName.From("course-versions/handout.pdf"), TestContext.Current.CancellationToken));
 
         thrown.ErrorCode.ShouldBe("ResourceNotFound");
+    }
+
+    [Fact]
+    public async Task The_start_of_a_missing_blob_is_no_bytes()
+    {
+        service.AnswerWith(HttpStatusCode.NotFound, "BlobNotFound");
+
+        var start = await Blobs().ReadStartAsync(BlobName.From("course-versions/handout.pdf"), 8, TestContext.Current.CancellationToken);
+
+        start.Length.ShouldBe(0);
+        service.Requests.ShouldBe(1, "the storage service was asked, so no bytes is its answer, not the reader's blindness");
+    }
+
+    [Fact]
+    public async Task The_start_of_an_empty_blob_whose_range_cannot_be_satisfied_is_no_bytes()
+    {
+        service.AnswerWith(HttpStatusCode.RequestedRangeNotSatisfiable, "InvalidRange");
+
+        var start = await Blobs().ReadStartAsync(BlobName.From("course-versions/handout.pdf"), 8, TestContext.Current.CancellationToken);
+
+        start.Length.ShouldBe(0);
+        service.Requests.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task Reading_the_start_of_a_blob_in_a_missing_container_is_thrown_not_read_as_no_bytes()
+    {
+        service.AnswerWith(HttpStatusCode.NotFound, "ContainerNotFound");
+
+        var thrown = await Should.ThrowAsync<RequestFailedException>(() =>
+            Blobs().ReadStartAsync(BlobName.From("course-versions/handout.pdf"), 8, TestContext.Current.CancellationToken));
+
+        thrown.Status.ShouldBe(404);
+        thrown.ErrorCode.ShouldBe("ContainerNotFound");
     }
 
     public void Dispose() => service.Dispose();
