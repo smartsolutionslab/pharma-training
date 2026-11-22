@@ -445,6 +445,108 @@ describe('uploading', () => {
   });
 });
 
+// The limits the host issues with the upload URL are the ones that count (spec 2.4): a file they refuse is refused at
+// the file input as one refused on choosing is, with the same message, its {max} the issued maxBytes in megabytes.
+describe('refused by the limits issued with the upload URL', () => {
+  /** The host issues the URL with the limits given, for a video. */
+  function issuing(limits: Partial<EditorialChapterUploadDto>) {
+    host.mockImplementation(async (input, init) => {
+      const url = new URL(String(input), 'http://localhost');
+      if (init?.method === 'POST' && url.pathname === `/api/editorial/course-versions/${versionId}/uploads`) {
+        return Response.json({ ...issued.Video, ...limits });
+      }
+      return new Response('', { status: 404 });
+    });
+  }
+
+  test('a video larger than the issued maxBytes is refused at the file input, with the issued limit, and not put', async () => {
+    issuing({ maxBytes: '104857600' });
+    const { user } = await choose('Video', video(209_715_200));
+    await waitFor(() => expect(durationField()).toHaveValue('12:05'));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    await user.click(submit());
+
+    const message = t('editorial.chapterForm.fileTooLarge', { max: i18n.global.n(100, 'megabytes') });
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(message);
+    expect(alert).toHaveTextContent('Die Datei ist zu groß: höchstens 100 MB.');
+    expect(fileInput('Video')).toHaveAttribute('aria-invalid', 'true');
+    expect(fileInput('Video')).toHaveAccessibleDescription(expect.stringContaining(message));
+    expect(asked()).toEqual([`POST /api/editorial/course-versions/${versionId}/uploads`]);
+    expect(FakeXhr.instances.filter((xhr) => xhr.sent)).toEqual([]);
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  test('a video of another content type than the issued one is refused at the file input, and not put', async () => {
+    issuing({ contentType: 'video/quicktime' });
+    const { user } = await choose('Video', video());
+    await waitFor(() => expect(durationField()).toHaveValue('12:05'));
+
+    await user.click(submit());
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(t('editorial.chapterForm.fileWrongType.Video'));
+    expect(alert).toHaveTextContent('Wählen Sie ein Video im Format MP4.');
+    expect(fileInput('Video')).toHaveAttribute('aria-invalid', 'true');
+    expect(fileInput('Video')).toHaveAccessibleDescription(
+      expect.stringContaining(t('editorial.chapterForm.fileWrongType.Video')),
+    );
+    expect(FakeXhr.instances.filter((xhr) => xhr.sent)).toEqual([]);
+    expect(onSave).not.toHaveBeenCalled();
+  });
+});
+
+// A failed upload is said in the form too, not only in a toast that goes away: the editor reads it where they retry.
+describe('a failed upload stays visible in the form', () => {
+  test.each([
+    ['403 from storage, the URL expired', (xhr: FakeXhr) => xhr.respond(403)],
+    ['500 from storage', (xhr: FakeXhr) => xhr.respond(500)],
+    ['a network error', (xhr: FakeXhr) => xhr.failOnNetwork()],
+  ])('%s', async (_case, fail) => {
+    const { xhr } = await uploadVideo();
+
+    fail(xhr);
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(t('editorial.upload.failed'));
+    expect(alert).toHaveTextContent('Der Upload ist fehlgeschlagen. Versuchen Sie es erneut.');
+    expect(notify.failure).toHaveBeenCalledWith(t('editorial.upload.failed'));
+    await waitFor(() => expect(submit()).toBeEnabled());
+    expect(screen.getByRole('alert')).toHaveTextContent(t('editorial.upload.failed'));
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  test('an upload URL the host does not issue', async () => {
+    host.mockResolvedValue(new Response('', { status: 500 }));
+    const { user } = await choose('Video', video());
+    await waitFor(() => expect(durationField()).toHaveValue('12:05'));
+
+    await user.click(submit());
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(t('editorial.upload.failed'));
+    expect(FakeXhr.instances).toEqual([]);
+    expect(onSave).not.toHaveBeenCalled();
+  });
+});
+
+// A chapter the page could not save after its file was stored (onSave answers false) is saved again with the file
+// already stored: the URL was create-only, and the blob is there.
+test('a save refused after the upload is retried with the stored blob, without uploading again', async () => {
+  onSave.mockResolvedValueOnce(false);
+  const { user, xhr } = await uploadVideo();
+  xhr.respond(201);
+  await waitFor(() => expect(onSave).toHaveBeenCalledOnce());
+  await waitFor(() => expect(submit()).toBeEnabled());
+
+  await user.click(submit());
+
+  await waitFor(() => expect(onSave).toHaveBeenCalledTimes(2));
+  expect(onSave.mock.calls[1]?.[0].file).toBe(issued.Video.blobName);
+  expect(FakeXhr.instances.filter((each) => each.sent)).toHaveLength(1);
+  expect(asked()).toEqual([`POST /api/editorial/course-versions/${versionId}/uploads`]);
+});
+
 describe('editing a file chapter', () => {
   test('without a new file, it keeps its file and asks for no upload URL', async () => {
     const user = userEvent.setup();

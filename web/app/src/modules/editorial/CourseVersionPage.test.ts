@@ -1,7 +1,7 @@
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/vue';
 import userEvent from '@testing-library/user-event';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, onTestFinished, test, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { createMemoryHistory } from 'vue-router';
 import type {
@@ -13,6 +13,7 @@ import type {
 import { setLanguage, t } from '@/i18n';
 import { createAppRouter } from '@/router';
 import CourseVersionPage from './CourseVersionPage.vue';
+import { FakeXhr } from './fakeXhr';
 import { route } from './routes';
 
 const notify = vi.hoisted(() => ({ success: vi.fn(), failure: vi.fn() }));
@@ -844,4 +845,145 @@ describe('reordering the chapters', () => {
     await waitFor(() => expect(shownOrder()).toEqual([introduction.title, handout.title, handwashing.title]));
     await waitFor(() => expect(reads().length).toBeGreaterThan(1));
   });
+});
+
+// Moves made while an order is on its way are serialised (review round 2): one PUT .../chapters/order at a time, the
+// next with the latest order, and the list ends in the order of the last move.
+describe('moving a chapter twice before the host answers the first', () => {
+  /** Every PUT of an order, held until the test answers it; a read answers the version as the host now has it. */
+  function holdEachOrder() {
+    const puts: { body: unknown; answer: (response: Response) => void }[] = [];
+    changing = (method, path, body) =>
+      method === 'PUT' && path.endsWith('/chapters/order')
+        ? new Promise<Response>((resolve) => {
+            puts.push({ body, answer: resolve });
+          })
+        : Promise.resolve(new Response(null, { status: 204 }));
+    return puts;
+  }
+  const moveUp = (chapter: EditorialChapterDto) =>
+    screen.getByRole('button', { name: t('editorial.chapters.moveUp', { title: chapter.title }) });
+
+  test('sends one order at a time, the latest second, and shows the last move', async () => {
+    const user = userEvent.setup();
+    const puts = holdEachOrder();
+    await renderPage();
+
+    await user.click(moveUp(handwashing));
+    await waitFor(() => expect(shownOrder()).toEqual([introduction.title, handwashing.title, handout.title]));
+    await user.click(moveUp(handwashing));
+    await waitFor(() => expect(shownOrder()).toEqual([handwashing.title, introduction.title, handout.title]));
+    expect(puts).toHaveLength(1);
+    expect(puts[0]?.body).toEqual({ chapters: [introduction.id, handwashing.id, handout.id] });
+
+    version = versionOf('Draft', [introduction, handwashing, handout]);
+    puts[0]?.answer(Response.json({}));
+
+    await waitFor(() => expect(puts).toHaveLength(2));
+    expect(puts[1]?.body).toEqual({ chapters: [handwashing.id, introduction.id, handout.id] });
+    expect(shownOrder()).toEqual([handwashing.title, introduction.title, handout.title]);
+    version = versionOf('Draft', [handwashing, introduction, handout]);
+    puts[1]?.answer(Response.json({}));
+
+    await waitFor(() => expect(reads().length).toBeGreaterThan(1));
+    await waitFor(() => expect(shownOrder()).toEqual([handwashing.title, introduction.title, handout.title]));
+    expect(puts).toHaveLength(2);
+    expect(notify.failure).not.toHaveBeenCalled();
+  });
+});
+
+// The focus goes back to a pressed move button right after its move only; a later read of the version does not take
+// it from where the editor has put it since.
+test('after a move, a later read of the version leaves the focus where the editor put it', async () => {
+  const user = userEvent.setup();
+  const answer = holdReorder();
+  const { queryClient } = await renderPage();
+  const pressed = screen.getByRole('button', { name: t('editorial.chapters.moveUp', { title: handwashing.title }) });
+  await user.click(pressed);
+  version = versionOf('Draft', [introduction, handwashing, handout]);
+  answer(Response.json({}));
+  await waitFor(() => expect(reads().length).toBeGreaterThan(1));
+  expect(pressed).toHaveFocus();
+  const add = screen.getByRole('button', { name: t('editorial.chapters.add') });
+  add.focus();
+
+  version = versionOf('Draft', [
+    introduction,
+    handwashing,
+    handout,
+    { ...introduction, id: '0198c1a0-0000-7000-8000-0000000000e4', position: 4, title: 'Lagerung' },
+  ]);
+  await queryClient.invalidateQueries();
+
+  await waitFor(() => expect(shownOrder()).toHaveLength(4));
+  expect(add).toHaveFocus();
+});
+
+// The route's id goes into the request's path: one that is no UUID is no version, and is never sent.
+test.each([['abc'], ['../../me'], [`${versionId}/chapters`]])(
+  'the address versions/%s shows that the version does not exist, and asks the host nothing',
+  async (id) => {
+    const router = createAppRouter(createMemoryHistory());
+    await router.push(`/editorial/versions/${encodeURIComponent(id)}`);
+    expect(router.currentRoute.value.params.id).toBe(id);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    render(CourseVersionPage, { global: { plugins: [router, [VueQueryPlugin, { queryClient }]] } });
+
+    expect(await screen.findByText(t('editorial.version.notFound'))).toBeVisible();
+    expect(screen.getByText('Diese Version gibt es nicht.')).toBeVisible();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(host).not.toHaveBeenCalled();
+  },
+);
+
+// While a file goes to storage, nothing in the chapter dialog works but "Upload abbrechen": not the dialog's own
+// Abbrechen or its close button, not a field, a kind or a toggle.
+test('while uploading, everything in the chapter dialog but "Upload abbrechen" is disabled', async () => {
+  FakeXhr.reset();
+  vi.stubGlobal('XMLHttpRequest', FakeXhr);
+  onTestFinished(() => {
+    vi.unstubAllGlobals();
+    vi.stubGlobal('fetch', host);
+  });
+  const blobName = `course-versions/${versionId}/0198c1a0-0000-7000-8000-0000000000fa.pdf`;
+  changing = async (method, path) =>
+    method === 'POST' && path.endsWith('/uploads')
+      ? Response.json({
+          blobName,
+          uploadUrl: `http://127.0.0.1:10000/devstoreaccount1/editorial/${blobName}?sp=c&sig=abc`,
+          expiresAt: '2026-11-22T15:15:00+00:00',
+          contentType: 'application/pdf',
+          maxBytes: 52_428_800,
+        })
+      : new Response(null, { status: 204 });
+  const user = userEvent.setup({ applyAccept: false });
+  await renderPage();
+  await user.click(screen.getByRole('button', { name: t('editorial.chapters.add') }));
+  const dialog = within(await screen.findByRole('dialog', { name: t('editorial.chapterForm.addTitle') }));
+  await user.click(dialog.getByRole('textbox', { name: t('editorial.chapterForm.title') }));
+  await user.paste('Handout');
+  await user.click(dialog.getByRole('radio', { name: t('glossary.chapterKind.Pdf') }));
+  await user.upload(
+    dialog.getByLabelText(t('editorial.chapterForm.file.Pdf')),
+    new File(['%PDF-1.4\n%%EOF\n'], 'handout.pdf', { type: 'application/pdf' }),
+  );
+  await user.click(dialog.getByRole('button', { name: t('editorial.chapterForm.submit') }));
+  await waitFor(() => expect(FakeXhr.instances.filter((xhr) => xhr.sent)).toHaveLength(1));
+  await dialog.findByRole('progressbar');
+
+  const cancelUpload = dialog.getByRole('button', { name: t('editorial.upload.cancel') });
+  expect(cancelUpload).toBeEnabled();
+  expect(dialog.getByRole('button', { name: t('editorial.cancel') })).toBeDisabled();
+  expect(dialog.getByRole('button', { name: t('ui.close') })).toBeDisabled();
+  expect(dialog.getByRole('button', { name: 'Schließen' })).toBeDisabled();
+  const enabled = [
+    ...dialog.getAllByRole('button'),
+    ...dialog.getAllByRole('radio'),
+    ...dialog.queryAllByRole('textbox'),
+    dialog.getByLabelText(t('editorial.chapterForm.file.Pdf')),
+  ]
+    .filter((control) => control !== cancelUpload && !control.matches(':disabled'))
+    .map((control) => control.getAttribute('aria-label') ?? control.textContent.trim());
+  expect(enabled).toEqual([]);
 });

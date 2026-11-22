@@ -146,3 +146,84 @@ test("an order a module refuses is undone and reported in the host's words", asy
   expect(notify.failure).toHaveBeenCalledWith('Die Reihenfolge nennt nicht jedes Kapitel der Version genau einmal.');
   expect(queryClient.getQueryState(versionKey)?.isInvalidated).toBe(true);
 });
+
+// Moves made while an order is on its way are serialised: at most one PUT .../chapters/order is in flight, and the
+// next one sends the latest order once the one before has settled. Two PUTs in flight could reach the host in either
+// order and leave the older order saved.
+
+/** Every PUT of an order, held until the test answers it, in the order they went out. */
+function holdEach() {
+  const puts: { body: unknown; answer: (response: Response) => void }[] = [];
+  host.mockImplementation(
+    (_input, init) =>
+      new Promise<Response>((resolve) => {
+        puts.push({ body: JSON.parse(String(init?.body)), answer: resolve });
+      }),
+  );
+  return puts;
+}
+
+test('a second move while the first order is on its way waits for it, then sends the latest order', async () => {
+  const puts = holdEach();
+  const { reordering, queryClient } = renderReordering();
+
+  void reordering.reorder([c.id, a.id, b.id]);
+  await waitFor(() => expect(puts).toHaveLength(1));
+  void reordering.reorder([c.id, b.id, a.id]);
+
+  // The list shows the latest order at once, but only one order is on its way.
+  await waitFor(() => expect(cachedOrder(queryClient)).toEqual([c.id, b.id, a.id]));
+  expect(puts).toHaveLength(1);
+  expect(puts[0]?.body).toEqual({ chapters: [c.id, a.id, b.id] });
+
+  puts[0]?.answer(Response.json({}));
+
+  await waitFor(() => expect(puts).toHaveLength(2));
+  expect(puts[1]?.body).toEqual({ chapters: [c.id, b.id, a.id] });
+  expect(cachedOrder(queryClient)).toEqual([c.id, b.id, a.id]);
+  puts[1]?.answer(Response.json({}));
+
+  await waitFor(() => expect(queryClient.getQueryState(versionKey)?.isInvalidated).toBe(true));
+  expect(cachedOrder(queryClient)).toEqual([c.id, b.id, a.id]);
+  expect(puts).toHaveLength(2);
+  expect(notify.failure).not.toHaveBeenCalled();
+});
+
+test('an order refused after an earlier one was saved restores the order from before the refused request', async () => {
+  const puts = holdEach();
+  const { reordering, queryClient } = renderReordering();
+
+  void reordering.reorder([c.id, a.id, b.id]);
+  await waitFor(() => expect(puts).toHaveLength(1));
+  void reordering.reorder([c.id, b.id, a.id]);
+  await waitFor(() => expect(cachedOrder(queryClient)).toEqual([c.id, b.id, a.id]));
+  expect(puts).toHaveLength(1);
+  puts[0]?.answer(Response.json({}));
+  await waitFor(() => expect(puts).toHaveLength(2));
+
+  puts[1]?.answer(new Response('', { status: 500 }));
+
+  await waitFor(() => expect(notify.failure).toHaveBeenCalledOnce());
+  expect(notify.failure).toHaveBeenCalledWith(t('editorial.chapters.reorderFailed'));
+  // The first order was saved: the list goes back to it, not to the one before both moves.
+  await waitFor(() => expect(cachedOrder(queryClient)).toEqual([c.id, a.id, b.id]));
+});
+
+test('an order refused while a later move waits restores the order from before it, and the later move is not sent', async () => {
+  const puts = holdEach();
+  const { reordering, queryClient } = renderReordering();
+
+  void reordering.reorder([c.id, a.id, b.id]);
+  await waitFor(() => expect(puts).toHaveLength(1));
+  void reordering.reorder([c.id, b.id, a.id]);
+  await waitFor(() => expect(cachedOrder(queryClient)).toEqual([c.id, b.id, a.id]));
+  expect(puts).toHaveLength(1);
+
+  puts[0]?.answer(new Response('', { status: 500 }));
+
+  await waitFor(() => expect(notify.failure).toHaveBeenCalledOnce());
+  await waitFor(() => expect(cachedOrder(queryClient)).toEqual([a.id, b.id, c.id]));
+  await waitFor(() => expect(queryClient.getQueryState(versionKey)?.isInvalidated).toBe(true));
+  expect(puts).toHaveLength(1);
+  expect(notify.failure).toHaveBeenCalledOnce();
+});

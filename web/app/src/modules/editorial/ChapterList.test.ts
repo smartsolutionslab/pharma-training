@@ -239,3 +239,25 @@ test("a chapter's edit and delete buttons hand the chapter to the page", async (
   expect(onRemove).toHaveBeenCalledWith(c);
   expect(onReorder).not.toHaveBeenCalled();
 });
+
+// The focus goes back to the pressed move button only right after the move it made: a later change of the chapters
+// (one added or deleted, or another order read in the background) leaves the focus where the editor has put it since.
+const d = chapter('0198c1a0-0000-7000-8000-0000000000e4', 4, 'D');
+
+test.each([
+  ['a chapter added', [a, c, b, d]],
+  ['a chapter deleted', [a, c]],
+  ['another order read in the background', [c, a, b]],
+])('after a move, %s does not take the focus back to the move button', async (_case, later) => {
+  const user = userEvent.setup();
+  const { rerender } = renderList();
+  await user.click(up(c));
+  await rerender({ chapters: [a, c, b] });
+  expect(up(c)).toHaveFocus();
+  const edit = screen.getByRole('button', { name: t('editorial.chapters.edit', { title: 'A' }) });
+  edit.focus();
+
+  await rerender({ chapters: later });
+
+  expect(edit).toHaveFocus();
+});

@@ -375,3 +375,77 @@ test('a blank title is refused in the dialog before anything is sent', async () 
   expect(await dialog.findByRole('alert')).toHaveTextContent('Geben Sie der Schulung einen Titel.');
   expect(posted()).toEqual([]);
 });
+
+// 45 drafts, three pages of 20: the host answers the page asked for as it would, an empty page past the last one.
+const drafts: EditorialCourseVersionSummaryDto[] = Array.from({ length: 45 }, (_, index) => ({
+  id: `0198c1a0-0000-7000-8000-${String(index + 1).padStart(12, '0')}`,
+  courseId: `0198c1a0-0000-7000-8001-${String(index + 1).padStart(12, '0')}`,
+  number: 1,
+  title: `Schulung ${String(index + 1).padStart(2, '0')}`,
+  status: 'Draft',
+}));
+
+/** The drafts' page the address asks for; a page held while the test says so. */
+function pagingDrafts(hold?: string) {
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  host.mockImplementation(async (input) => {
+    const url = new URL(String(input), 'http://localhost');
+    if (url.pathname !== '/api/editorial/course-versions') {
+      return new Response('', { status: 404 });
+    }
+    const page = Number(url.searchParams.get('page') ?? '1');
+    if (url.searchParams.get('page') === hold) {
+      await held;
+    }
+    const items = drafts.slice((page - 1) * 20, page * 20);
+    return Response.json({ items, totalCount: drafts.length, page, pageSize: 20 });
+  });
+  return release;
+}
+
+test('paging with the keyboard keeps the focus on "Nächste Seite" while the next page loads and once it shows', async () => {
+  const user = userEvent.setup();
+  const release = pagingDrafts('2');
+  const { router } = await renderAt();
+  await screen.findByRole('link', { name: 'Schulung 01' });
+  const pager = screen.getByRole('navigation', { name: t('dataTable.pagination') });
+  within(pager)
+    .getByRole('button', { name: t('dataTable.next') })
+    .focus();
+
+  await user.keyboard('{Enter}');
+
+  await waitFor(() => expect(router.currentRoute.value.query.page).toBe('2'));
+  await waitFor(() => expect(listsAsked()).toContainEqual({ status: 'Draft', page: '2', pageSize: '20' }));
+  // While the next page loads, the pager stays, and so does the focus.
+  expect(screen.getByRole('navigation', { name: t('dataTable.pagination') })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: t('dataTable.next') })).toHaveFocus();
+  expect(screen.getByRole('button', { name: 'Nächste Seite' })).toHaveFocus();
+
+  release();
+
+  expect(await screen.findByRole('link', { name: 'Schulung 21' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: t('dataTable.next') })).toHaveFocus();
+});
+
+test('a page past the last one shows the last page and puts it in the address in its place', async () => {
+  pagingDrafts();
+  const router = createAppRouter(createMemoryHistory());
+  await router.push('/');
+  await router.push('/editorial?status=Draft&page=99');
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(EditorialPage, { global: { plugins: [router, [VueQueryPlugin, { queryClient }]] } });
+
+  expect(await screen.findByRole('link', { name: 'Schulung 41' })).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Schulung 45' })).toBeInTheDocument();
+  expect(router.currentRoute.value.query.page).toBe('3');
+  expect(router.currentRoute.value.query.status ?? 'Draft').toBe('Draft');
+  expect(screen.queryByText(t('editorial.inbox.empty.Draft'))).not.toBeInTheDocument();
+  expect(listsAsked()).toContainEqual({ status: 'Draft', page: '3', pageSize: '20' });
+  // Replaced, not pushed: Back leaves the inbox instead of returning to the page that does not exist.
+  router.back();
+  await waitFor(() => expect(router.currentRoute.value.path).toBe('/'));
+});
