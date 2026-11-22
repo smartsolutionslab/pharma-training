@@ -185,6 +185,7 @@ public class EditorialQuestionsTests(AspireFixture aspire)
     [InlineData("{'chapterId':'{chapter}','text':'Wann?','type':'SingleChoice'}", "editorial.invalid-answer-options")]
     [InlineData("{'chapterId':'{chapter}','text':'Wann?','type':'SingleChoice','options':null}", "editorial.invalid-answer-options")]
     [InlineData("{'chapterId':'{chapter}','text':'Wann?','type':'SingleChoice','options':[{'text':'Vor','correct':true},null]}", "editorial.invalid-answer-options")]
+    [InlineData("{'chapterId':'{chapter}','text':'Wann?','type':'MultipleChoice','options':{elevenOptions}}", "editorial.invalid-answer-options")]
     [InlineData("{'chapterId':'{chapter}','text':'Wann?','type':'SingleChoice','options':[{'text':'Vor','correct':true},{'text':' ','correct':false}]}", "editorial.invalid-answer-text")]
     [InlineData("{'chapterId':'{chapter}','text':'Wann?','type':'SingleChoice','options':[{'text':'Vor','correct':true},{'correct':false}]}", "editorial.invalid-answer-text")]
     [InlineData("{'chapterId':'{chapter}','text':'Wann?','type':'SingleChoice','options':[{'text':'Vor','correct':true},{'text':'Na\\u0000ch','correct':false}]}", "editorial.invalid-answer-text")]
@@ -197,6 +198,7 @@ public class EditorialQuestionsTests(AspireFixture aspire)
         var question = await AddQuestionAsync(client, id, SingleChoice(chapter), cancellationToken);
         var before = await QuestionsOfAsync(client, id, cancellationToken);
         var body = template
+            .Replace("{elevenOptions}", OptionsJson(11), StringComparison.Ordinal)
             .Replace("{options}", "[{'text':'Vor','correct':true},{'text':'Nach','correct':false}]", StringComparison.Ordinal)
             .Replace("{chapter}", chapter.ToString(), StringComparison.Ordinal)
             .Replace("{tooLong}", new string('a', 1001), StringComparison.Ordinal)
@@ -216,6 +218,22 @@ public class EditorialQuestionsTests(AspireFixture aspire)
 
         var after = await QuestionsOfAsync(client, id, cancellationToken);
         after.Select(read => (read.Id, read.Text, read.Type)).ShouldBe(before.Select(read => (read.Id, read.Text, read.Type)));
+    }
+
+    [Fact]
+    public async Task A_question_with_ten_answer_options_is_added_and_edited()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var id = await CreateAsync(client, cancellationToken);
+        var chapter = await AddChapterAsync(client, id, "Händehygiene", cancellationToken);
+        var body = $$"""{"chapterId":"{{chapter}}","text":"Welche Flächen?","type":"MultipleChoice","options":{{OptionsJson(10).Replace('\'', '"')}}}""";
+
+        using var added = await client.PostAsync(Questions(id), Json(body), cancellationToken);
+        added.StatusCode.ShouldBe(HttpStatusCode.Created, await added.Content.ReadAsStringAsync(cancellationToken));
+        var question = await added.Content.ReadFromJsonAsync<Guid>(cancellationToken);
+        using var edited = await client.PutAsync(Question(id, question), Json(body), cancellationToken);
+        edited.StatusCode.ShouldBe(HttpStatusCode.OK, await edited.Content.ReadAsStringAsync(cancellationToken));
     }
 
     [Fact]
@@ -361,6 +379,10 @@ public class EditorialQuestionsTests(AspireFixture aspire)
         new { chapterId = chapter, text, type, options = options.Select(option => new { text = option.Text, correct = option.Correct }).ToList() };
 
     private static StringContent Json(string body) => new(body, Encoding.UTF8, "application/json");
+
+    /// <summary>The given number of answer options in the theory's quoting, the first one correct.</summary>
+    private static string OptionsJson(int count) =>
+        $"[{string.Join(',', Enumerable.Range(1, count).Select(number => $"{{'text':'Fläche {number}','correct':{(number == 1 ? "true" : "false")}}}"))}]";
 
     private static async Task<Guid> CreateAsync(HttpClient client, CancellationToken cancellationToken)
     {
