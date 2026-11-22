@@ -144,6 +144,54 @@ public class EditorialChapterUploadsTests(AspireFixture aspire)
         (await ReadAsync(client, id, cancellationToken)).Chapters.ShouldBeEmpty();
     }
 
+    [Fact]
+    public async Task An_upload_of_html_declared_as_a_pdf_is_not_accepted()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var id = await CreateAsync(client, cancellationToken);
+        var upload = await RequestUploadAsync(client, id, "Pdf", cancellationToken);
+        await PutBlobAsync(upload, Encoding.UTF8.GetBytes("<html><body>Kein PDF</body></html>"), cancellationToken, contentType: "application/pdf");
+
+        using var added = await client.PostAsJsonAsync(Chapters(id), new { title = "Hygieneplan", kind = "Pdf", file = upload.BlobName }, cancellationToken);
+
+        await ShouldBeRefusedAsync(added, HttpStatusCode.BadRequest, "editorial.upload-not-accepted", cancellationToken);
+        (await ReadAsync(client, id, cancellationToken)).Chapters.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task An_upload_of_bytes_without_an_ftyp_box_declared_as_a_video_is_not_accepted()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var id = await CreateAsync(client, cancellationToken);
+        var upload = await RequestUploadAsync(client, id, "Video", cancellationToken);
+        await PutBlobAsync(upload, SmallPdf, cancellationToken, contentType: "video/mp4");
+
+        using var added = await client.PostAsJsonAsync(Chapters(id), new { title = "Vorführung", kind = "Video", file = upload.BlobName, durationSeconds = 90 }, cancellationToken);
+
+        await ShouldBeRefusedAsync(added, HttpStatusCode.BadRequest, "editorial.upload-not-accepted", cancellationToken);
+        (await ReadAsync(client, id, cancellationToken)).Chapters.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task A_file_another_chapter_of_the_version_holds_is_in_use()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var id = await CreateAsync(client, cancellationToken);
+        var upload = await RequestUploadAsync(client, id, "Pdf", cancellationToken);
+        await PutBlobAsync(upload, SmallPdf, cancellationToken);
+        using var first = await client.PostAsJsonAsync(Chapters(id), new { title = "Hygieneplan", kind = "Pdf", file = upload.BlobName }, cancellationToken);
+        await ShouldAnswerAsync(first, HttpStatusCode.Created, cancellationToken);
+        var chapter = await first.Content.ReadFromJsonAsync<Guid>(cancellationToken);
+
+        using var second = await client.PostAsJsonAsync(Chapters(id), new { title = "Hygieneplan, noch einmal", kind = "Pdf", file = upload.BlobName }, cancellationToken);
+
+        await ShouldBeRefusedAsync(second, HttpStatusCode.Conflict, "editorial.file-in-use", cancellationToken);
+        (await ReadAsync(client, id, cancellationToken)).Chapters.ShouldBe([new ChapterView(chapter, 1, "Hygieneplan", "Pdf", null, upload.BlobName, null)]);
+    }
+
     [Theory]
     [InlineData("""{"kind":"Text"}""")]
     [InlineData("{}")]
