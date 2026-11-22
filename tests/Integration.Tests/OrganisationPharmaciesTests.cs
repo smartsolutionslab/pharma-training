@@ -68,6 +68,22 @@ public class OrganisationPharmaciesTests(AspireFixture aspire)
         (await refused.Content.ReadFromJsonAsync<Problem>(cancellationToken))!.Code.ShouldBe("organisation.invalid-pharmacy-name");
     }
 
+    [Theory]
+    [InlineData("Stadt\r\nApotheke")]
+    [InlineData("Stadt\tApotheke")]
+    [InlineData("Stadt\u202EekehtopA")]
+    [InlineData("Stadt\u2066Apotheke")]
+    public async Task A_name_with_a_control_or_bidi_character_is_refused_as_the_callers_mistake(string name)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("owner");
+
+        using var refused = await client.PostAsJsonAsync(Pharmacies, new { name, jobFunction = "Pharmacist" }, cancellationToken);
+
+        refused.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await refused.Content.ReadFromJsonAsync<Problem>(cancellationToken))!.Code.ShouldBe("organisation.invalid-pharmacy-name");
+    }
+
     [Fact]
     public async Task A_missing_job_function_is_refused_as_the_callers_mistake()
     {
