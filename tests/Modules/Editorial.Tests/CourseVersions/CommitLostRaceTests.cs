@@ -2,6 +2,8 @@ using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Infrastructure;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Testing;
 using Npgsql;
 using Wolverine.EntityFrameworkCore;
 
@@ -97,13 +99,57 @@ public class CommitLostRaceTests
         thrown.InnerException.ShouldBeOfType<PostgresException>().SqlState.ShouldBe(sqlState);
     }
 
+    [Fact]
+    public async Task A_save_postgresql_ended_as_a_deadlock_inside_a_plain_db_update_exception_answers_false()
+    {
+        await using var services = OutboxFailingWith(new DbUpdateException("An error occurred while saving the entity changes. See the inner exception for details.", Ended(PostgresErrorCodes.DeadlockDetected)));
+
+        (await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken)).ShouldBeFalse();
+    }
+
+    [Theory]
+    [InlineData(PostgresErrorCodes.DeadlockDetected)]
+    [InlineData(PostgresErrorCodes.SerializationFailure)]
+    public async Task A_commit_postgresql_ended_as_a_lost_race_behind_another_failure_in_an_aggregate_exception_answers_false(string sqlState)
+    {
+        await using var services = OutboxFailingWith(new AggregateException(new InvalidOperationException("The envelopes could not be flushed."), Ended(sqlState)));
+
+        (await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken)).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task An_aggregate_exception_holding_no_lost_race_still_throws()
+    {
+        await using var services = OutboxFailingWith(new AggregateException(new InvalidOperationException("The envelopes could not be flushed."), Ended(PostgresErrorCodes.UniqueViolation)));
+
+        var thrown = await Should.ThrowAsync<AggregateException>(() => new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken));
+        thrown.InnerExceptions.Count.ShouldBe(2);
+    }
+
+    [Theory]
+    [InlineData(PostgresErrorCodes.DeadlockDetected)]
+    [InlineData(PostgresErrorCodes.SerializationFailure)]
+    public async Task A_lost_race_at_the_commit_is_logged_once_as_a_warning_naming_its_sql_state(string sqlState)
+    {
+        using var logs = new FakeLoggerProvider();
+        await using var services = OutboxFailingWith(Ended(sqlState), logs);
+
+        (await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken)).ShouldBeFalse();
+
+        var warning = logs.Collector.GetSnapshot().Where(record => record.Level >= LogLevel.Warning).ShouldHaveSingleItem();
+        warning.Level.ShouldBe(LogLevel.Warning);
+        warning.Message.ShouldContain(sqlState);
+    }
+
     private static PostgresException Ended(string sqlState) =>
         new($"the transaction was ended ({sqlState})", "ERROR", "ERROR", sqlState);
 
-    private static ServiceProvider OutboxFailingWith(Exception failure)
+    private static ServiceProvider OutboxFailingWith(Exception failure) => OutboxFailingWith(failure, new FakeLoggerProvider());
+
+    private static ServiceProvider OutboxFailingWith(Exception failure, ILoggerProvider logs)
     {
         var outbox = Substitute.For<IDbContextOutbox<EditorialDbContext>>();
         outbox.SaveChangesAndFlushMessagesAsync(Arg.Any<CancellationToken>()).Returns(Task.FromException(failure));
-        return new ServiceCollection().AddSingleton(outbox).BuildServiceProvider();
+        return new ServiceCollection().AddSingleton(outbox).AddLogging(logging => logging.AddProvider(logs)).BuildServiceProvider();
     }
 }
