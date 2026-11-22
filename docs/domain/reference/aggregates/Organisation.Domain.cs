@@ -171,8 +171,8 @@ public sealed class Membership : Entity<MembershipId>
 
     internal bool IsActiveManager => Status == MembershipStatus.Active && Role == MembershipRole.Manager;
 
-    internal static Membership Invited(MembershipId id, EmailAddress email, InvitationTokenHash tokenHash, JobFunction jobFunction, MembershipRole role, Timestamp expiresAt) =>
-        new(id) { Email = email, TokenHash = tokenHash, InvitationExpiresAt = expiresAt, JobFunction = jobFunction, Role = role, Status = MembershipStatus.Invited };
+    internal static Membership Invited(MembershipId id, EmailAddress email, JobFunction jobFunction, MembershipRole role, Timestamp expiresAt) =>
+        new(id) { Email = email, InvitationExpiresAt = expiresAt, JobFunction = jobFunction, Role = role, Status = MembershipStatus.Invited };
 
     internal static Membership Founder(MembershipId id, EmailAddress email, PersonId person, DisplayName name, JobFunction jobFunction, Timestamp now) =>
         new(id) { Email = email, Person = person, Name = name, JobFunction = jobFunction, Role = MembershipRole.Manager, Status = MembershipStatus.Active, StartedAt = now };
@@ -205,9 +205,12 @@ public sealed class Membership : Entity<MembershipId>
         Role = role;
     }
 
-    internal void RenewInvitation(InvitationTokenHash tokenHash, Timestamp expiresAt)
+    /// <summary>The link mailed now; an earlier link's hash matches nothing any more.</summary>
+    internal void IssueLink(InvitationTokenHash tokenHash) => TokenHash = tokenHash;
+
+    internal void RenewInvitation(Timestamp expiresAt)
     {
-        TokenHash = tokenHash; // the old link's hash matches nothing any more
+        TokenHash = null; // the old link stops working at once; the renewal's mail issues the new one
         InvitationExpiresAt = expiresAt;
     }
 }
@@ -257,13 +260,8 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
         return pharmacy;
     }
 
-    public Result<MembershipId, DomainError> Invite(
-        MembershipId id,
-        EmailAddress email,
-        InvitationToken token,
-        JobFunction jobFunction,
-        MembershipRole role,
-        Timestamp now)
+    /// <summary>Invites the address for 14 days; it holds no link until its mail issues one (IssueInvitationLink).</summary>
+    public Result<MembershipId, DomainError> Invite(MembershipId id, EmailAddress email, JobFunction jobFunction, MembershipRole role, Timestamp now)
     {
         if (memberships.Any(m => m.Email == email && m.Status is MembershipStatus.Invited or MembershipStatus.Active))
         {
@@ -271,13 +269,13 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
         }
 
         var expiresAt = now.PlusDays(InvitationValidityDays);
-        memberships.Add(Membership.Invited(id, email, InvitationTokenHash.Of(token), jobFunction, role, expiresAt));
-        Raise(new MemberInvited(Id, Name, id, email, token, expiresAt));
+        memberships.Add(Membership.Invited(id, email, jobFunction, role, expiresAt));
+        Raise(new MemberInvited(Id, id, expiresAt));
         return Success(id);
     }
 
-    /// <summary>Sends a fresh link for an invitation that is still open or has run out.</summary>
-    public Result<Unit, DomainError> RenewInvitation(MembershipId membership, InvitationToken token, Timestamp now)
+    /// <summary>Renews an open or expired invitation for 14 days from now; the old link stops working at once.</summary>
+    public Result<Unit, DomainError> RenewInvitation(MembershipId membership, Timestamp now)
     {
         if (Find(membership) is not { Status: MembershipStatus.Invited } invited)
         {
@@ -285,9 +283,27 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
         }
 
         var expiresAt = now.PlusDays(InvitationValidityDays);
-        invited.RenewInvitation(InvitationTokenHash.Of(token), expiresAt);
-        Raise(new MemberInvited(Id, Name, membership, invited.Email, token, expiresAt));
+        invited.RenewInvitation(expiresAt);
+        Raise(new MemberInvited(Id, membership, expiresAt));
         return Success(Unit.Value);
+    }
+
+    /// <summary>Issues the link of an open invitation that has not run out, when its mail is sent: the token's hash replaces any earlier one. Answers its expiry.</summary>
+    public Result<Timestamp, DomainError> IssueInvitationLink(MembershipId membership, InvitationToken token, Timestamp now)
+    {
+        if (Find(membership) is not { Status: MembershipStatus.Invited, InvitationExpiresAt: { } expiresAt } invited)
+        {
+            return Failure(new NoOpenInvitation(Id, membership));
+        }
+
+        if (expiresAt < now)
+        {
+            return Failure(new InvitationExpired(Id, membership));
+        }
+
+        invited.IssueLink(InvitationTokenHash.Of(token));
+        Raise(new InvitationLinkIssued(Id, membership));
+        return Success(expiresAt);
     }
 
     /// <param name="email">The address Keycloak verified for the person; it must be the invited one.</param>
@@ -384,12 +400,16 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
 
 // ───────────────────────────── Domain events ─────────────────────────────
 // PharmacyRegistered, MembershipStarted, MembershipEnded → integration events V1 (Compliance, Certification).
-// MemberInvited → the reaction SendInvitationMail, which sends the invitation mail over SMTP (docs/adr/0004).
+// MemberInvited → the command publishes InvitationMailRequestedV1; its own consumer issues the link (IssueInvitationLink) and mails it (docs/adr/0004).
 
 public sealed record PharmacyRegistered(PharmacyId Pharmacy, PharmacyName Name) : IDomainEvent;
 
-/// <summary>Carries the raw token for the invitation mail; never store, publish or log it.</summary>
-public sealed record MemberInvited(PharmacyId Pharmacy, PharmacyName Name, MembershipId Membership, EmailAddress Email, InvitationToken Token, Timestamp ExpiresAt) : IDomainEvent;
+/// <summary>Carries no token, address or name.</summary>
+[DeliberatelyUnhandled("The command that invites or renews publishes InvitationMailRequestedV1; its consumer issues the link and mails it.")]
+public sealed record MemberInvited(PharmacyId Pharmacy, MembershipId Membership, Timestamp ExpiresAt) : IDomainEvent;
+
+[DeliberatelyUnhandled("The consumer that issued the link mails it; nothing reacts.")]
+public sealed record InvitationLinkIssued(PharmacyId Pharmacy, MembershipId Membership) : IDomainEvent;
 
 public sealed record MembershipStarted(PharmacyId Pharmacy, MembershipId Membership, PersonId Person, DisplayName Name, JobFunction JobFunction, MembershipRole Role) : IDomainEvent;
 

@@ -236,7 +236,8 @@ Mitgliedschaften sind Entities **innerhalb** der Apotheke. Eine Apotheke hat wen
 | `Register` | Registrierende Person wird sofort aktive Leitung | `PharmacyRegistered`, `MembershipStarted` |
 | `Invite` | E-Mail nicht schon aktiv oder eingeladen; Tätigkeit und Rolle angegeben | `MemberInvited` |
 | `AcceptInvitation` | Einladung offen und nicht abgelaufen; PersonId aus Keycloak | `MembershipStarted` |
-| `RenewInvitation` | Nur offene oder abgelaufene Einladungen; neues Token, wieder 14 Tage gültig, der alte Link gilt nicht mehr | `MemberInvited` |
+| `RenewInvitation` | Nur offene oder abgelaufene Einladungen; wieder 14 Tage gültig, der alte Link gilt sofort nicht mehr; das neue Token entsteht beim Versand der Mail | `MemberInvited` |
+| `IssueInvitationLink` | Nur offene, nicht abgelaufene Einladungen; beim Versand der Mail, ersetzt den Hash | `InvitationLinkIssued` |
 | `RevokeInvitation` | Nur offene Einladungen | `InvitationRevoked` |
 | `EndMembership` | Nicht die letzte aktive Leitung | `MembershipEnded` |
 | `ChangeJobFunction` / `ChangeRole` | Letzte Leitung kann nicht zum Mitarbeiter werden | `MembershipChanged` |
