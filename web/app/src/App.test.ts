@@ -70,7 +70,7 @@ test('the Home link goes to the start page in a view transition where the browse
   Object.defineProperty(document, 'startViewTransition', { value: startViewTransition, configurable: true });
   const router = await renderAwayFromHome();
 
-  await userEvent.click(screen.getByRole('link', { name: 'Home' }));
+  await userEvent.click(screen.getByRole('link', { name: t('shell.home') }));
 
   await waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/'));
   expect(startViewTransition).toHaveBeenCalledOnce();
@@ -81,7 +81,7 @@ test('without the View Transitions API the Home link goes to the start page as b
   expect('startViewTransition' in document).toBe(false);
   const router = await renderAwayFromHome();
 
-  await userEvent.click(screen.getByRole('link', { name: 'Home' }));
+  await userEvent.click(screen.getByRole('link', { name: t('shell.home') }));
 
   await waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/'));
   expect(screen.getByRole('heading', { name: 'pharma-training' })).toBeInTheDocument();

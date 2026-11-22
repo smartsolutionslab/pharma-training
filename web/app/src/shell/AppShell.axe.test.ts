@@ -97,7 +97,7 @@ test.each(themes)(
     await renderShell();
 
     await user.keyboard('{Control>}k{/Control}');
-    await screen.findByRole('dialog', { name: 'Go to' });
+    await screen.findByRole('dialog', { name: t('shell.palette.title') });
 
     expect(await axe(document.body)).toHaveNoViolations();
   },

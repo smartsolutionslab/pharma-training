@@ -49,8 +49,8 @@ test('on a tablet the user chooses a pharmacy, switches to another, and it stays
     .getByRole('region', { name: 'Choose your pharmacy' })
     .getByRole('button', { name: /Apotheke am Markt/ })
     .click();
-  const navigation = page.getByRole('navigation', { name: 'Modules' });
-  await expect(navigation.getByRole('link', { name: 'Organisation' })).toBeVisible();
+  const navigation = page.getByRole('navigation', { name: 'Bereiche' });
+  await expect(navigation.getByRole('link', { name: 'Mitglieder' })).toBeVisible();
   expect(await scrollsSideways(page)).toBe(false);
 
   await page.getByRole('button', { name: 'Pharmacy: Apotheke am Markt' }).click();
@@ -59,15 +59,15 @@ test('on a tablet the user chooses a pharmacy, switches to another, and it stays
     .getByRole('menuitemradio', { name: /Apotheke am Dom/ })
     .click();
   await expect(page.getByRole('button', { name: 'Pharmacy: Apotheke am Dom' })).toBeVisible();
-  await expect(navigation.getByRole('link', { name: 'Organisation' })).toBeHidden();
-  await expect(navigation.getByRole('link', { name: 'Learning' })).toBeVisible();
+  await expect(navigation.getByRole('link', { name: 'Mitglieder' })).toBeHidden();
+  await expect(navigation.getByRole('link', { name: 'Meine Schulungen' })).toBeVisible();
 
   await page.reload();
   await expect(page.getByRole('button', { name: 'Pharmacy: Apotheke am Dom' })).toBeVisible();
-  await expect(navigation.getByRole('link', { name: 'Learning' })).toBeVisible();
+  await expect(navigation.getByRole('link', { name: 'Meine Schulungen' })).toBeVisible();
   expect(await scrollsSideways(page)).toBe(false);
 
-  await navigation.getByRole('link', { name: 'Learning' }).click();
+  await navigation.getByRole('link', { name: 'Meine Schulungen' }).click();
   await expect(page).toHaveURL(/\/learning$/);
   // The page itself, not the gate: an employee of Apotheke am Dom may learn.
   await expect(page.getByRole('heading', { name: 'Samples' })).toBeVisible();
