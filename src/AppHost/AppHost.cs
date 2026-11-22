@@ -36,7 +36,11 @@ else
     mail = builder.AddConnectionString("mail");
 }
 
-var mailFrom = builder.AddParameter("mail-from", "noreply@example.com", publishValueAsDefault: true);
+// The sender: noreply@example.com when run, and deployed the parameter mail-from with no published default, as
+// frontend-url has none, so a deployment that forgot it does not send from a placeholder address.
+var mailFrom = builder.ExecutionContext.IsRunMode
+    ? builder.AddParameter("mail-from", "noreply@example.com")
+    : builder.AddParameter("mail-from");
 // Blob storage on Azurite: one account, a container per module in the services' loop (docs/adr/0002). Each service signs
 // short-lived upload and read URLs for its own container only, with the account key.
 var storage = builder.AddAzureStorage("storage")
