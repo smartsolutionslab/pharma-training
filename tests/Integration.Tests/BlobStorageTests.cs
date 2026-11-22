@@ -245,6 +245,22 @@ public class BlobStorageTests(AspireFixture aspire)
     }
 
     [Fact]
+    public async Task Stored_blobs_throw_for_a_container_that_does_not_exist_rather_than_find_nothing()
+    {
+        // The editorial container's own connection string, naming a container the AppHost never created.
+        var parts = (await ConnectionStringAsync("editorial")).Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var elsewhere = string.Join(';', [.. parts.Where(part => !part.StartsWith("ContainerName=", StringComparison.OrdinalIgnoreCase)), $"ContainerName=missing-{Guid.CreateVersion7():N}"]);
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:blobs"] = elsewhere })
+            .Build();
+        var blobs = new AzureStoredBlobs(configuration);
+
+        var thrown = await Should.ThrowAsync<Azure.RequestFailedException>(() => blobs.FindAsync(NewName(), TestContext.Current.CancellationToken));
+
+        thrown.ErrorCode.ShouldBe("ContainerNotFound", "a module whose container is missing is misconfigured; no upload is merely late");
+    }
+
+    [Fact]
     public async Task Stored_blobs_report_a_blob_a_server_side_copy_created_as_a_copy_and_an_uploaded_one_as_none()
     {
         var urls = await UrlsAsync("editorial", TimeProvider.System.GetUtcNow());

@@ -68,6 +68,41 @@ public class AzureBlobUrlsTests
     }
 
     [Fact]
+    public async Task An_upload_url_for_an_https_endpoint_may_be_used_only_over_https()
+    {
+        var https = $"DefaultEndpointsProtocol=https;AccountName={Account};AccountKey={Key()};EndpointSuffix=core.windows.net;ContainerName={Container}";
+        var urls = new AzureBlobUrls(Configuration(https), new FakeTimeProvider(Noon));
+
+        var upload = await urls.CreateUploadUrlAsync(BlobName.From("handout.pdf"), FiveMinutes, TestContext.Current.CancellationToken);
+
+        upload.Url.Scheme.ShouldBe(Uri.UriSchemeHttps);
+        HttpUtility.ParseQueryString(upload.Url.Query)["spr"].ShouldBe("https", "a signature for an https endpoint must not work over plain http");
+    }
+
+    [Fact]
+    public async Task A_read_url_for_an_https_endpoint_may_be_used_only_over_https()
+    {
+        var https = $"BlobEndpoint=https://{Account}.blob.core.windows.net;AccountName={Account};AccountKey={Key()};ContainerName={Container}";
+        var urls = new AzureBlobUrls(Configuration(https), new FakeTimeProvider(Noon));
+
+        var read = await urls.CreateReadUrlAsync(BlobName.From("handout.pdf"), FiveMinutes, TestContext.Current.CancellationToken);
+
+        read.Url.Scheme.ShouldBe(Uri.UriSchemeHttps);
+        HttpUtility.ParseQueryString(read.Url.Query)["spr"].ShouldBe("https", "a signature for an https endpoint must not work over plain http");
+    }
+
+    [Fact]
+    public async Task A_url_for_the_emulators_http_endpoint_names_no_protocol()
+    {
+        var urls = new AzureBlobUrls(Configuration(ConnectionString()), new FakeTimeProvider(Noon));
+
+        var upload = await urls.CreateUploadUrlAsync(BlobName.From("handout.pdf"), FiveMinutes, TestContext.Current.CancellationToken);
+
+        upload.Url.Scheme.ShouldBe(Uri.UriSchemeHttp);
+        HttpUtility.ParseQueryString(upload.Url.Query)["spr"].ShouldBeNull("Azurite serves http, which spr=https would refuse");
+    }
+
+    [Fact]
     public async Task A_name_with_spaces_is_escaped_in_the_url()
     {
         var urls = new AzureBlobUrls(Configuration(ConnectionString()), new FakeTimeProvider(Noon));
