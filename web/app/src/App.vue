@@ -30,7 +30,7 @@ const { t } = useI18n();
   <SidebarProvider>
     <Sidebar>
       <SidebarHeader>
-        <p class="px-2 py-1 font-semibold">pharma-training</p>
+        <p class="px-2 py-1 font-semibold">{{ t('app.name') }}</p>
         <PharmacySwitcher />
       </SidebarHeader>
       <SidebarContent>

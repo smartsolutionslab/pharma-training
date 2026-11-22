@@ -31,6 +31,19 @@ export const en: MessageSchema = {
     signingIn: 'Signing in…',
     signingOut: 'Signing out…',
   },
+  theme: {
+    label: 'Theme',
+    light: 'Light',
+    dark: 'Dark',
+    system: 'System',
+  },
+  home: {
+    choosePharmacy: 'Choose your pharmacy',
+    noPharmacy: {
+      title: 'No pharmacy yet',
+      text: 'You are not a member of any pharmacy yet. Register your pharmacy, or ask its manager for an invitation.',
+    },
+  },
   modules: {
     learning: { title: 'My courses' },
     assessment: { title: 'Tests' },
@@ -63,8 +76,25 @@ export const en: MessageSchema = {
       empty: 'No page matches.',
       shortcut: 'Ctrl K',
     },
+    gate: {
+      loading: 'Loading…',
+      notAvailable: 'Not available',
+      notForYou: 'This page is not available to you.',
+      notInPharmacy: 'This page is not available to you in {name}.',
+      pharmaciesFailed: 'Your pharmacies could not be loaded.',
+      noPharmacy: 'You are not a member of any pharmacy yet.',
+      choosePharmacy: 'Choose a pharmacy to see this page.',
+      goHome: 'Go to Home',
+    },
+    retry: 'Try again',
     pharmacy: {
       region: 'Pharmacy',
+      list: 'Pharmacies',
+      choose: 'Choose a pharmacy',
+      current: 'Pharmacy: {name}',
+      failed: 'Pharmacies could not be loaded.',
+      none: 'You are not a member of any pharmacy yet.',
+      register: 'Register a pharmacy',
     },
   },
   toasts: {

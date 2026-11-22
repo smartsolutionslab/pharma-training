@@ -32,6 +32,19 @@ export const de = {
     signingIn: 'Anmeldung läuft…',
     signingOut: 'Abmeldung läuft…',
   },
+  theme: {
+    label: 'Farbschema',
+    light: 'Hell',
+    dark: 'Dunkel',
+    system: 'System',
+  },
+  home: {
+    choosePharmacy: 'Wählen Sie Ihre Apotheke',
+    noPharmacy: {
+      title: 'Noch keine Apotheke',
+      text: 'Sie sind noch in keiner Apotheke Mitglied. Registrieren Sie Ihre Apotheke, oder bitten Sie deren Apothekenleiter um eine Einladung.',
+    },
+  },
   modules: {
     learning: { title: 'Meine Schulungen' },
     assessment: { title: 'Tests' },
@@ -64,8 +77,25 @@ export const de = {
       empty: 'Keine Seite gefunden.',
       shortcut: 'Strg K',
     },
+    gate: {
+      loading: 'Wird geladen…',
+      notAvailable: 'Nicht verfügbar',
+      notForYou: 'Diese Seite steht Ihnen nicht zur Verfügung.',
+      notInPharmacy: 'Diese Seite steht Ihnen in {name} nicht zur Verfügung.',
+      pharmaciesFailed: 'Ihre Apotheken konnten nicht geladen werden.',
+      noPharmacy: 'Sie sind noch in keiner Apotheke Mitglied.',
+      choosePharmacy: 'Wählen Sie eine Apotheke, um diese Seite zu sehen.',
+      goHome: 'Zur Startseite',
+    },
+    retry: 'Erneut versuchen',
     pharmacy: {
       region: 'Apotheke',
+      list: 'Apotheken',
+      choose: 'Apotheke wählen',
+      current: 'Apotheke: {name}',
+      failed: 'Die Apotheken konnten nicht geladen werden.',
+      none: 'Sie sind noch in keiner Apotheke Mitglied.',
+      register: 'Apotheke registrieren',
     },
   },
   toasts: {
