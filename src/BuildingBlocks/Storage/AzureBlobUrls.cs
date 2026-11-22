@@ -13,12 +13,6 @@ namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Storage;
 /// </summary>
 public sealed class AzureBlobUrls : IBlobUrls
 {
-    private const string ConnectionStringName = "blobs";
-
-    private const string ContainerNameKey = "ContainerName";
-
-    private const string AccountKeyKey = "AccountKey";
-
     private readonly TimeProvider time;
 
     private readonly Lazy<BlobContainerClient> container;
@@ -28,7 +22,7 @@ public sealed class AzureBlobUrls : IBlobUrls
         Ensure.That(configuration).IsNotNull();
         Ensure.That(time).IsNotNull();
         this.time = time;
-        container = new Lazy<BlobContainerClient>(() => Container(configuration));
+        container = new Lazy<BlobContainerClient>(() => ModuleBlobContainer.ForSigning(configuration));
     }
 
     public Task<BlobUrl> CreateUploadUrlAsync(BlobName name, BlobUrlLifetime lifetime, CancellationToken cancellationToken) =>
@@ -56,46 +50,4 @@ public sealed class AzureBlobUrls : IBlobUrls
         };
         return Task.FromResult(new BlobUrl(blob.GenerateSasUri(sas), expiresAt));
     }
-
-    private static BlobContainerClient Container(IConfiguration configuration)
-    {
-        var connectionString = configuration.GetConnectionString(ConnectionStringName);
-        if (string.IsNullOrWhiteSpace(connectionString))
-        {
-            throw new InvalidOperationException(
-                $"No blob container is configured: ConnectionStrings:{ConnectionStringName} is missing. The AppHost passes it to every service from its module's '<module>-blobs' resource.");
-        }
-
-        // Kept as written, not through DbConnectionStringBuilder, which quotes a base64 key's trailing '=' the SDK then reads.
-        var parts = connectionString.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        var containerName = Value(parts, ContainerNameKey);
-        if (string.IsNullOrWhiteSpace(containerName))
-        {
-            throw new InvalidOperationException(
-                $"ConnectionStrings:{ConnectionStringName} names no container ({ContainerNameKey}=...); it must be the module's own '<module>-blobs' resource from the AppHost, not the storage account's.");
-        }
-
-        if (string.IsNullOrWhiteSpace(Value(parts, AccountKeyKey)))
-        {
-            throw new InvalidOperationException(
-                $"ConnectionStrings:{ConnectionStringName} has no {AccountKeyKey}: blob URLs are signed with the storage account's key. Keyless signing (a user delegation key, with managed identity) is a separate decision (docs/adr/0002).");
-        }
-
-        var account = string.Join(';', parts.Where(part => !IsKey(part, ContainerNameKey)));
-        var client = new BlobServiceClient(account).GetBlobContainerClient(containerName);
-        if (!client.CanGenerateSasUri)
-        {
-            throw new InvalidOperationException(
-                $"ConnectionStrings:{ConnectionStringName} cannot sign blob URLs: they are signed with the storage account's key. Keyless signing is a separate decision (docs/adr/0002).");
-        }
-
-        return client;
-    }
-
-    private static string? Value(IEnumerable<string> parts, string key) =>
-        parts.Where(part => IsKey(part, key)).Select(part => part[(part.IndexOf('=', StringComparison.Ordinal) + 1)..].Trim()).FirstOrDefault();
-
-    private static bool IsKey(string part, string key) =>
-        part.IndexOf('=', StringComparison.Ordinal) is var separator and > 0
-            && string.Equals(part[..separator].Trim(), key, StringComparison.OrdinalIgnoreCase);
 }

@@ -26,6 +26,20 @@ public static class CourseVersionFailures
 
     public static ApiError IdentityIncomplete() => new IdentityIncomplete();
 
+    public static ApiError InvalidUploadKind() => new InvalidUploadKind();
+
+    public static ApiError InvalidChapterKind() => new InvalidChapterKind();
+
+    public static ApiError ChapterContentDoesNotMatchKind() => new ChapterContentDoesNotMatchKind();
+
+    public static ApiError InvalidChapterFile() => new InvalidChapterFile();
+
+    public static ApiError InvalidVideoDuration() => new InvalidVideoDuration();
+
+    public static ApiError UploadNotFound() => new UploadNotFound();
+
+    public static ApiError UploadNotAccepted() => new UploadNotAccepted();
+
     public static ApiError NotFound(Guid id) => new CourseVersionNotFound(id);
 
     /// <summary>A save that lost a race: another change to the same version was saved since this one loaded it.</summary>

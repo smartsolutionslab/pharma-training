@@ -1,0 +1,25 @@
+using System.Diagnostics;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.DTOs;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
+
+namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Api.Endpoints;
+
+/// <summary>A request's kind as the module's, or as the kind its use cases name; an undefined one is refused before it is mapped, so meeting one here is a bug.</summary>
+internal static class EditorialChapterRequestKindMappings
+{
+    public static ChapterKind ToDomain(this EditorialChapterRequestKind kind) => kind switch
+    {
+        EditorialChapterRequestKind.Text => ChapterKind.Text,
+        EditorialChapterRequestKind.Pdf => ChapterKind.Pdf,
+        EditorialChapterRequestKind.Video => ChapterKind.Video,
+        _ => throw new UnreachableException($"Undefined chapter kind {kind}."),
+    };
+
+    public static EditorialChapterKind ToEditorialChapterKind(this EditorialChapterRequestKind kind) => kind switch
+    {
+        EditorialChapterRequestKind.Text => EditorialChapterKind.Text,
+        EditorialChapterRequestKind.Pdf => EditorialChapterKind.Pdf,
+        EditorialChapterRequestKind.Video => EditorialChapterKind.Video,
+        _ => throw new UnreachableException($"Undefined chapter kind {kind}."),
+    };
+}

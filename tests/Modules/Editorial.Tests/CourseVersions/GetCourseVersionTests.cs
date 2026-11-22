@@ -28,8 +28,8 @@ public class GetCourseVersionTests
         dto.Status.ShouldBe(EditorialCourseVersionStatus.Draft);
         dto.Chapters.ShouldBe(
         [
-            new EditorialChapterDto(second.Value, 1, "Flächendesinfektion", EditorialChapterKind.Text, "Wischen."),
-            new EditorialChapterDto(first.Value, 2, "Händehygiene", EditorialChapterKind.Text, "Hände vor und nach …"),
+            new EditorialChapterDto(second.Value, 1, "Flächendesinfektion", EditorialChapterKind.Text, "Wischen.", null, null),
+            new EditorialChapterDto(first.Value, 2, "Händehygiene", EditorialChapterKind.Text, "Hände vor und nach …", null, null),
         ]);
     }
 
