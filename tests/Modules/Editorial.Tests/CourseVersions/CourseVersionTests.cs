@@ -148,6 +148,56 @@ public class CourseVersionTests
         next.Questions.Single().Review.ShouldBe(ReviewState.Approved);
     }
 
+    [Fact]
+    public void Only_a_draft_accepts_uploads()
+    {
+        var draft = Draft();
+        var inReview = Submitted(approveAll: true);
+        var published = Submitted(approveAll: true);
+        published.Publish(Author, ReviewPolicy.SingleEditor, Now).IsSuccess.ShouldBeTrue();
+
+        draft.AcceptsUploads().IsSuccess.ShouldBeTrue();
+        foreach (var refusing in new[] { inReview, published })
+        {
+            var refused = refusing.AcceptsUploads();
+            refused.IsFailure.ShouldBeTrue($"a version {refusing.Status} accepts no upload");
+            refused.Error.ShouldBeOfType<NotADraft>();
+        }
+    }
+
+    [Fact]
+    public void A_pdf_and_a_video_chapter_are_added_with_their_kind_file_and_duration()
+    {
+        var version = Draft();
+        var pdf = NewChapter();
+        var video = NewChapter();
+
+        version.AddChapter(Chapter.OfPdf(pdf, ChapterTitle.From("Hygieneplan"), BlobReference.From("course-versions/a/plan.pdf"))).IsSuccess.ShouldBeTrue();
+        version.AddChapter(Chapter.OfVideo(video, ChapterTitle.From("Vorführung"), BlobReference.From("course-versions/a/demo.mp4"), VideoDuration.From(90))).IsSuccess.ShouldBeTrue();
+
+        version.Chapters[0].Kind.ShouldBe(ChapterKind.Pdf);
+        version.Chapters[0].File.ShouldBe(BlobReference.From("course-versions/a/plan.pdf"));
+        version.Chapters[0].Duration.ShouldBeNull();
+        version.Chapters[0].Text.ShouldBeNull();
+        version.Chapters[1].Kind.ShouldBe(ChapterKind.Video);
+        version.Chapters[1].File.ShouldBe(BlobReference.From("course-versions/a/demo.mp4"));
+        version.Chapters[1].Duration.ShouldBe(VideoDuration.From(90));
+    }
+
+    [Fact]
+    public void A_text_chapter_replaced_by_a_video_and_then_a_pdf_keeps_only_the_new_kinds_content()
+    {
+        var version = DraftWithChapter(out var chapter);
+
+        version.ReplaceChapter(Chapter.OfVideo(chapter, ChapterTitle.From("Vorführung"), BlobReference.From("course-versions/a/demo.mp4"), VideoDuration.From(90))).IsSuccess.ShouldBeTrue();
+        var asVideo = version.Chapters.Single();
+        (asVideo.Kind, asVideo.File, asVideo.Duration, asVideo.Text).ShouldBe((ChapterKind.Video, BlobReference.From("course-versions/a/demo.mp4"), VideoDuration.From(90), (MarkdownText?)null));
+
+        version.ReplaceChapter(Chapter.OfPdf(chapter, ChapterTitle.From("Hygieneplan"), BlobReference.From("course-versions/a/plan.pdf"))).IsSuccess.ShouldBeTrue();
+        var asPdf = version.Chapters.Single();
+        (asPdf.Kind, asPdf.File, asPdf.Duration, asPdf.Text).ShouldBe((ChapterKind.Pdf, BlobReference.From("course-versions/a/plan.pdf"), (VideoDuration?)null, (MarkdownText?)null));
+    }
+
     private static CourseVersion Draft() =>
         CourseVersion.DraftFirst(CourseVersionId.New(), CourseId.From(Guid.CreateVersion7()), CourseTitle.From("Hygiene 2027"), Author);
 

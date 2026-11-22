@@ -90,6 +90,13 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
 
     // ── Content ──
 
+    /// <summary>Red-test stub for #15 (task A2): accepts in every state. B3 accepts uploads for a draft only.</summary>
+    public Result<Unit, DomainError> AcceptsUploads()
+    {
+        Ensure.That(Id).IsNotNull();
+        return Success(Unit.Value);
+    }
+
     public Result<ChapterId, DomainError> AddChapter(Chapter chapter)
     {
         Ensure.That(chapter).IsNotNull();
