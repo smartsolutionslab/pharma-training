@@ -22,6 +22,13 @@ export const en: MessageSchema = {
       Trainee: 'Trainee',
       Other: 'Other',
     },
+    courseVersionStatus: {
+      Draft: 'Draft',
+      InReview: 'In review',
+      Published: 'Published',
+      Superseded: 'Superseded',
+      Retired: 'Retired',
+    },
   },
   auth: {
     signedIn: 'Signed in',
@@ -80,6 +87,31 @@ export const en: MessageSchema = {
         'The pharmacy {name} was registered, but it could not be opened. Choose it under “Pharmacy” in the sidebar.',
       failed: 'The pharmacy could not be registered. Try again.',
     },
+  },
+  editorial: {
+    inbox: {
+      title: 'Inbox',
+      statuses: 'Status',
+      columns: {
+        title: 'Course',
+        number: 'Version',
+        status: 'Status',
+      },
+      loadFailed: 'The inbox could not be loaded.',
+      empty: {
+        Draft: 'No drafts.',
+        InReview: 'No versions in review.',
+        Published: 'No published versions.',
+      },
+    },
+    course: {
+      new: 'New course',
+      form: {
+        label: 'Start a new course',
+        description: 'The course starts with version 1, a draft.',
+      },
+    },
+    cancel: 'Cancel',
   },
   samples: {
     manage: 'Manage',

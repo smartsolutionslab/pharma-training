@@ -1,4 +1,8 @@
-import type { OrganisationJobFunction, OrganisationMembershipRole } from '@/api/generated';
+import type {
+  EditorialCourseVersionStatus,
+  OrganisationJobFunction,
+  OrganisationMembershipRole,
+} from '@/api/generated';
 
 // The German catalog, which defines the keys (MessageSchema). German follows docs/domain/README.md's glossary and
 // addresses the user as "Sie". vue-i18n reads @ { } | $ as syntax: write a literal one as {'@'}.
@@ -23,6 +27,13 @@ export const de = {
       Trainee: 'Azubi',
       Other: 'Sonstige',
     } satisfies Record<NonNullable<OrganisationJobFunction>, string>,
+    courseVersionStatus: {
+      Draft: 'Entwurf',
+      InReview: 'In Prüfung',
+      Published: 'Veröffentlicht',
+      Superseded: 'Abgelöst',
+      Retired: 'Zurückgezogen',
+    } satisfies Record<EditorialCourseVersionStatus, string>,
   },
   auth: {
     signedIn: 'Angemeldet',
@@ -81,6 +92,31 @@ export const de = {
         'Die Apotheke {name} wurde registriert, konnte aber nicht geöffnet werden. Wählen Sie sie unter „Apotheke“ in der Seitenleiste.',
       failed: 'Die Apotheke konnte nicht registriert werden. Versuchen Sie es erneut.',
     },
+  },
+  editorial: {
+    inbox: {
+      title: 'Eingang',
+      statuses: 'Status',
+      columns: {
+        title: 'Schulung',
+        number: 'Version',
+        status: 'Status',
+      },
+      loadFailed: 'Der Eingang konnte nicht geladen werden.',
+      empty: {
+        Draft: 'Keine Entwürfe.',
+        InReview: 'Keine Versionen in Prüfung.',
+        Published: 'Keine veröffentlichten Versionen.',
+      },
+    },
+    course: {
+      new: 'Neue Schulung',
+      form: {
+        label: 'Neue Schulung anlegen',
+        description: 'Die Schulung beginnt mit Version 1 als Entwurf.',
+      },
+    },
+    cancel: 'Abbrechen',
   },
   samples: {
     manage: 'Verwalten',
