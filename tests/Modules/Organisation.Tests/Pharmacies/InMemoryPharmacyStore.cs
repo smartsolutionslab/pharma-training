@@ -16,6 +16,7 @@ internal sealed class InMemoryPharmacyStore : IPharmacyStore, IOrganisationUnitO
     private readonly List<IntegrationEvent> queued = [];
     private bool loseNextCommit;
     private Exception? failNextCommit;
+    private Action? onCommit;
 
     public List<Pharmacy> Stored { get; } = [];
 
@@ -62,8 +63,12 @@ internal sealed class InMemoryPharmacyStore : IPharmacyStore, IOrganisationUnitO
         Published.AddRange(queued);
         queued.Clear();
         Commits++;
+        onCommit?.Invoke();
         return Task.CompletedTask;
     }
+
+    /// <summary>Runs the action as every <see cref="CommitAsync"/> completes, once it has stored and sent.</summary>
+    public void OnCommit(Action action) => onCommit = action;
 
     /// <summary>The next <see cref="CommitAsync"/> throws the failure and stores and sends nothing.</summary>
     public void FailNextCommit(Exception failure) => failNextCommit = failure;

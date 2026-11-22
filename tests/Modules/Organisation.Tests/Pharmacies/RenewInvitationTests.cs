@@ -1,6 +1,7 @@
 using System.Net;
 using System.Security.Cryptography;
 using Microsoft.Extensions.Time.Testing;
+using SmartSolutionsLab.PharmaTraining.Contracts.Organisation;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Commands.RenewInvitation;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies.Events;
@@ -45,6 +46,23 @@ public class RenewInvitationTests
         membership.TokenHash.ShouldBe(InvitationTokenHash.Of(raised.Token));
         membership.TokenHash.ShouldNotBe(InvitationTokenHash.Of(old));
         membership.InvitationExpiresAt.ShouldBe(Timestamp.From(now.AddDays(14)));
+        store.Commits.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task A_renewal_requests_its_mail_in_its_own_commit()
+    {
+        var store = new InMemoryPharmacyStore();
+        var pharmacy = TestPharmacies.Register(Owner);
+        var invitation = TestPharmacies.Invite(pharmacy, "invitee@example.org");
+        pharmacy.Stored(store);
+
+        var renewed = await Handler(store).HandleAsync(new RenewInvitation(pharmacy.Id, invitation, Owner), TestContext.Current.CancellationToken);
+
+        renewed.IsSuccess.ShouldBeTrue();
+        var requested = store.Published.ShouldHaveSingleItem().ShouldBeOfType<InvitationMailRequestedV1>();
+        requested.MembershipId.ShouldBe(invitation.Value);
+        requested.PharmacyId.ShouldBe(pharmacy.Id.Value);
         store.Commits.ShouldBe(1);
     }
 
@@ -113,6 +131,7 @@ public class RenewInvitationTests
         lost.Error.Code.ShouldBe("organisation.pharmacy-changed");
         lost.Error.Status.ShouldBe(HttpStatusCode.Conflict);
         store.Commits.ShouldBe(0);
+        store.Published.ShouldBeEmpty();
     }
 
     private static RenewInvitationHandler Handler(InMemoryPharmacyStore store) => new(store, store, new FakeTimeProvider(Start));

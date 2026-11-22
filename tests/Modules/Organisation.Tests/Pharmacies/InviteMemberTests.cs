@@ -1,5 +1,6 @@
 using System.Net;
 using Microsoft.Extensions.Time.Testing;
+using SmartSolutionsLab.PharmaTraining.Contracts.Organisation;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Commands.InviteMember;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies.Events;
@@ -40,7 +41,36 @@ public class InviteMemberTests
         raised.ExpiresAt.ShouldBe(Timestamp.From(Start.AddMinutes(5).AddDays(14)));
         membership.TokenHash.ShouldBe(InvitationTokenHash.Of(raised.Token));
         store.Commits.ShouldBe(1);
-        store.Published.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task An_invitation_requests_its_mail_in_its_own_commit()
+    {
+        var store = new InMemoryPharmacyStore();
+        var pharmacy = TestPharmacies.Register(Owner).Stored(store);
+
+        var invited = await Handler(store).HandleAsync(new InviteMember(pharmacy.Id, Owner, Invitee, JobFunction.Pta, MembershipRole.Employee), TestContext.Current.CancellationToken);
+
+        invited.IsSuccess.ShouldBeTrue();
+        var requested = store.Published.ShouldHaveSingleItem().ShouldBeOfType<InvitationMailRequestedV1>();
+        requested.MembershipId.ShouldBe(invited.Value);
+        requested.PharmacyId.ShouldBe(pharmacy.Id.Value);
+        store.Commits.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task A_request_that_goes_away_as_its_commit_completes_still_has_its_mail_requested()
+    {
+        var store = new InMemoryPharmacyStore();
+        var pharmacy = TestPharmacies.Register(Owner).Stored(store);
+        using var request = new CancellationTokenSource();
+        store.OnCommit(request.Cancel);
+
+        var invited = await Handler(store).HandleAsync(new InviteMember(pharmacy.Id, Owner, Invitee, JobFunction.Pta, MembershipRole.Employee), request.Token);
+
+        request.IsCancellationRequested.ShouldBeTrue();
+        invited.IsSuccess.ShouldBeTrue();
+        store.Published.ShouldHaveSingleItem().ShouldBeOfType<InvitationMailRequestedV1>().MembershipId.ShouldBe(invited.Value);
     }
 
     [Fact]
@@ -117,6 +147,7 @@ public class InviteMemberTests
         lost.Error.Code.ShouldBe("organisation.pharmacy-changed");
         lost.Error.Status.ShouldBe(HttpStatusCode.Conflict);
         store.Commits.ShouldBe(0);
+        store.Published.ShouldBeEmpty();
     }
 
     private static InviteMemberHandler Handler(InMemoryPharmacyStore store) => new(store, store, new FakeTimeProvider(Start));
