@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using static SmartSolutionsLab.PharmaTraining.Integration.Tests.EditorialDatabase;
 using static SmartSolutionsLab.PharmaTraining.Integration.Tests.EditorialWorkflow;
 
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
@@ -82,4 +83,104 @@ public class EditorialWorkflowTests(AspireFixture aspire)
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
         (await CodeOfAsync(response, cancellationToken)).ShouldBe("editorial.course-version-not-found");
     }
+
+    [Fact]
+    public async Task An_editor_publishes_a_reviewed_version()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var draft = await ReadyToSubmitAsync(client, cancellationToken);
+        await SubmitAsync(client, draft.Id, cancellationToken);
+        await ApproveAllAsync(client, draft.Id, cancellationToken);
+
+        using var published = await StepAsync(client, draft.Id, "publish", cancellationToken);
+
+        published.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await ReadAsync(client, draft.Id, cancellationToken)).Status.ShouldBe("Published");
+        (await IsListedAsync(client, "Published", draft.Id, cancellationToken)).ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task A_version_with_an_unapproved_question_is_not_published()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var draft = await ReadyToSubmitAsync(client, cancellationToken);
+        await SubmitAsync(client, draft.Id, cancellationToken);
+
+        using var refused = await StepAsync(client, draft.Id, "publish", cancellationToken);
+
+        refused.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await CodeOfAsync(refused, cancellationToken)).ShouldBe("editorial.question-not-approved");
+        (await ReadAsync(client, draft.Id, cancellationToken)).Status.ShouldBe("InReview");
+    }
+
+    [Fact]
+    public async Task A_published_version_is_not_published_again()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var draft = await PublishedAsync(client, cancellationToken);
+
+        using var refused = await StepAsync(client, draft.Id, "publish", cancellationToken);
+
+        refused.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await CodeOfAsync(refused, cancellationToken)).ShouldBe("editorial.not-in-review");
+        (await ReadAsync(client, draft.Id, cancellationToken)).Status.ShouldBe("Published");
+    }
+
+    [Fact]
+    public async Task Publishing_the_next_version_supersedes_the_previous_one_which_keeps_its_content()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var (first, next) = await SupersededAsync(client, cancellationToken);
+
+        var previous = await ReadAsync(client, first.Id, cancellationToken);
+        previous.Status.ShouldBe("Superseded");
+        (await ContentOfAsync(client, first.Id, cancellationToken)).ShouldBe(first.Content);
+        var current = await ReadAsync(client, next.Id, cancellationToken);
+        current.Status.ShouldBe("Published");
+        current.CourseId.ShouldBe(previous.CourseId);
+        current.Number.ShouldBe(2);
+        (await IsListedAsync(client, "Published", next.Id, cancellationToken)).ShouldBeTrue();
+        (await IsListedAsync(client, "Published", first.Id, cancellationToken)).ShouldBeFalse();
+        (await IsListedAsync(client, "Superseded", first.Id, cancellationToken)).ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// The fixture runs with the default, four eyes off, and the realm has one editor: the one who submitted publishes.
+    /// Four eyes on is the publish handler's unit tests'.
+    /// </summary>
+    [Fact]
+    public async Task The_submitter_publishes_while_four_eyes_is_off()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var draft = await ReadyToSubmitAsync(client, cancellationToken);
+        await SubmitAsync(client, draft.Id, cancellationToken);
+        await ApproveAllAsync(client, draft.Id, cancellationToken);
+
+        using var published = await StepAsync(client, draft.Id, "publish", cancellationToken);
+
+        published.StatusCode.ShouldBe(HttpStatusCode.OK, await published.Content.ReadAsStringAsync(cancellationToken));
+    }
+
+    /// <summary>
+    /// Publishes course A's first version, then makes course B's submitted version A's second (until #20 drafts one
+    /// through the API) and publishes it. Answers the first version with its content as read before, and the second.
+    /// </summary>
+    private async Task<(Published First, Published Next)> SupersededAsync(HttpClient client, CancellationToken cancellationToken)
+    {
+        var first = await PublishedAsync(client, cancellationToken);
+        var firstContent = await ContentOfAsync(client, first.Id, cancellationToken);
+        var next = await ReadyToSubmitAsync(client, cancellationToken);
+        await SubmitAsync(client, next.Id, cancellationToken);
+        await SeedAsNextVersionAsync(await ConnectionStringAsync(aspire, cancellationToken), next.Id, first.CourseId, 2, cancellationToken);
+        await ApproveAllAsync(client, next.Id, cancellationToken);
+        await PublishAsync(client, next.Id, cancellationToken);
+        return (new Published(first.Id, firstContent), new Published(next.Id, await ContentOfAsync(client, next.Id, cancellationToken)));
+    }
+
+    private sealed record Published(Guid Id, string Content);
 }

@@ -137,13 +137,25 @@ public class CourseVersionFailuresTests
     [InlineData(nameof(NoChapters), "editorial.no-chapters")]
     [InlineData(nameof(TestIncomplete), "editorial.test-incomplete")]
     [InlineData(nameof(QuestionNotApproved), "editorial.question-not-approved")]
-    [InlineData(nameof(FourEyesRequired), "editorial.four-eyes")]
     public void The_versions_state_rules_stay_a_conflict(string rule, string code)
     {
         var failure = CourseVersionFailures.From(Rule(rule));
 
         failure.Code.ShouldBe(code);
         failure.Status.ShouldBe(HttpStatusCode.Conflict);
+    }
+
+    /// <summary>The version is in the right state, only this caller may not publish it: forbidden, with its own code.</summary>
+    [Fact]
+    public void Four_eyes_answers_forbidden()
+    {
+        var error = CourseVersionErrors.FourEyesRequired(Version);
+
+        var failure = CourseVersionFailures.From(error);
+
+        failure.Code.ShouldBe("editorial.four-eyes");
+        failure.Status.ShouldBe(HttpStatusCode.Forbidden);
+        failure.ShouldBeOfType<DomainFailure>().Error.ShouldBe(error);
     }
 
     private static DomainError Rule(string rule) => rule switch
