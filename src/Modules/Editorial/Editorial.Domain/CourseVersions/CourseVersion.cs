@@ -356,7 +356,8 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
 
     /// <summary>
     /// Publishes the version. Every question is approved and sound, and with <see cref="ReviewPolicy.FourEyes"/> the
-    /// publishing editor is not the one who submitted it. The Application supersedes the course's previous version.
+    /// publishing editor is neither the one who submitted it nor one who approved any of its questions, a question copied
+    /// from the previous version included. The Application supersedes the course's previous version.
     /// </summary>
     public Result<Unit, DomainError> Publish(PersonId editor, ReviewPolicy policy, Timestamp now)
     {
@@ -368,6 +369,11 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         if (policy == ReviewPolicy.FourEyes && editor == SubmittedBy)
         {
             return Failure(CourseVersionErrors.FourEyesRequired(Id));
+        }
+
+        if (policy == ReviewPolicy.FourEyes && questions.Any(question => question.ReviewedBy == editor))
+        {
+            return Failure(CourseVersionErrors.PublisherApprovedQuestions(Id));
         }
 
         if (questions.FirstOrDefault(question => question.Review != ReviewState.Approved) is { } unreviewed)
