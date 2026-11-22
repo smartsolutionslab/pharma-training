@@ -64,26 +64,6 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         return membership;
     }
 
-    /// <summary>Writes the pharmacy's name by hand, past every guard, as a row stored under earlier guards may hold it.</summary>
-    public async Task OverwritePharmacyNameAsync(Guid pharmacy, string name, CancellationToken cancellationToken)
-    {
-        await using var connection = await OpenAsync(cancellationToken);
-        await using var command = new NpgsqlCommand("UPDATE organisation.pharmacies SET name = @name WHERE id = @id", connection);
-        command.Parameters.AddWithValue("id", pharmacy);
-        command.Parameters.AddWithValue("name", name);
-        (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1);
-    }
-
-    /// <summary>Writes the membership's address by hand, past every guard, as a row stored under earlier guards may hold it.</summary>
-    public async Task OverwriteEmailAsync(Guid membership, string email, CancellationToken cancellationToken)
-    {
-        await using var connection = await OpenAsync(cancellationToken);
-        await using var command = new NpgsqlCommand("UPDATE organisation.memberships SET email = @email WHERE id = @id", connection);
-        command.Parameters.AddWithValue("id", membership);
-        command.Parameters.AddWithValue("email", email);
-        (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1);
-    }
-
     /// <summary>The membership's stored token hash, or null when it keeps none.</summary>
     public async Task<string?> TokenHashAsync(Guid membership, CancellationToken cancellationToken)
     {
