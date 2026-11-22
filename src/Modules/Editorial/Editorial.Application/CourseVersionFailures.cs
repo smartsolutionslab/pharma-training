@@ -49,6 +49,12 @@ public static class CourseVersionFailures
 
     public static ApiError UnknownQuestion(Guid version, Guid question) => new UnknownQuestion(version, question);
 
+    public static ApiError InvalidQuestionCount() => new InvalidQuestionCount();
+
+    public static ApiError InvalidPassingScore() => new InvalidPassingScore();
+
+    public static ApiError InvalidValidity() => new InvalidValidity();
+
     /// <summary>
     /// A rule of the version, with its own code: a chapter or question it does not hold is not found, a question whose
     /// content breaks the rules of its shape cannot be processed until it is edited, anything else is a conflict with
