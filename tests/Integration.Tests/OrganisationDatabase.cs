@@ -12,6 +12,8 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// </summary>
 internal sealed class OrganisationDatabase(AspireFixture aspire)
 {
+    private const string MailRequestType = "SmartSolutionsLab.PharmaTraining.Contracts.Organisation.InvitationMailRequestedV1";
+
     /// <summary>
     /// Seeds what accepting an invitation (#10) will do through the API; #10 replaces this seed. The row is the one the
     /// domain writes for an accepted invitation: the realm user's subject, name and address, no token, active since now.
@@ -23,7 +25,7 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand(
             """
-            INSERT INTO organisation.memberships (id, pharmacy_id, email, token, invitation_expires_at, person_id, name, job_function, role, status, started_at, ended_at)
+            INSERT INTO organisation.memberships (id, pharmacy_id, email, token_hash, invitation_expires_at, person_id, name, job_function, role, status, started_at, ended_at)
             VALUES (@id, @pharmacy, @email, NULL, NULL, @person, @name, @jobFunction, @role, 'Active', now(), NULL)
             """,
             connection);
@@ -37,6 +39,66 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         command.Parameters.AddWithValue("role", role);
         (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1);
         return membership;
+    }
+
+    /// <summary>
+    /// Writes an invitation row by hand, past the aggregate, as a second writer would: what the database itself refuses
+    /// is what these rows show.
+    /// </summary>
+    public async Task<Guid> InsertInvitationAsync(Guid pharmacy, string email, string tokenHash, string status, CancellationToken cancellationToken)
+    {
+        var membership = Guid.CreateVersion7();
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            """
+            INSERT INTO organisation.memberships (id, pharmacy_id, email, token_hash, invitation_expires_at, person_id, name, job_function, role, status, started_at, ended_at)
+            VALUES (@id, @pharmacy, @email, @tokenHash, now() + interval '14 days', NULL, NULL, 'Pta', 'Employee', @status, NULL, NULL)
+            """,
+            connection);
+        command.Parameters.AddWithValue("id", membership);
+        command.Parameters.AddWithValue("pharmacy", pharmacy);
+        command.Parameters.AddWithValue("email", email);
+        command.Parameters.AddWithValue("tokenHash", tokenHash);
+        command.Parameters.AddWithValue("status", status);
+        (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1);
+        return membership;
+    }
+
+    /// <summary>The membership's stored token hash, or null when it keeps none.</summary>
+    public async Task<string?> TokenHashAsync(Guid membership, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("SELECT token_hash FROM organisation.memberships WHERE id = @id", connection);
+        command.Parameters.AddWithValue("id", membership);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        (await reader.ReadAsync(cancellationToken)).ShouldBeTrue($"There is no membership {membership}.");
+        return await reader.IsDBNullAsync(0, cancellationToken) ? null : reader.GetString(0);
+    }
+
+    /// <summary>The statuses of the pharmacy's memberships of the address, oldest first.</summary>
+    public async Task<List<string>> StatusesOfAsync(Guid pharmacy, string email, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            "SELECT status FROM organisation.memberships WHERE pharmacy_id = @pharmacy AND email = @email ORDER BY id",
+            connection);
+        command.Parameters.AddWithValue("pharmacy", pharmacy);
+        command.Parameters.AddWithValue("email", email);
+        List<string> statuses = [];
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            statuses.Add(reader.GetString(0));
+        }
+
+        return statuses;
+    }
+
+    /// <summary>The realm user's address, as the domain stores it: trimmed and lower-case.</summary>
+    public async Task<string> EmailOfAsync(string user)
+    {
+        using var claims = await ClaimsOfAsync(user);
+        return (claims.RootElement.GetProperty("email").GetString() ?? throw new InvalidOperationException($"{user} has no email.")).Trim().ToLowerInvariant();
     }
 
     /// <summary>The realm user's Keycloak subject: the person a membership belongs to.</summary>
@@ -157,6 +219,153 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         blocked.ShouldBe(expected);
     }
 
+    /// <summary>
+    /// Polls the service's durable inbox (<c>wolverine.wolverine_incoming_envelopes</c>) until it holds the mail request
+    /// of the membership, found by its message type and the membership's id in its body, and answers the envelope; fails
+    /// the test when there is none within 30 seconds. Wolverine keeps a handled envelope for a while, so it is found also
+    /// once the mail is out.
+    /// </summary>
+    public Task<MailRequestEnvelope> MailRequestEnvelopeAsync(Guid membership, CancellationToken cancellationToken) =>
+        MailRequestEnvelopeAsync(membership, minimumAttempts: 0, TimeSpan.FromSeconds(30), cancellationToken);
+
+    /// <summary>As above, once the envelope has been tried at least <paramref name="minimumAttempts"/> times.</summary>
+    public async Task<MailRequestEnvelope> MailRequestEnvelopeAsync(Guid membership, int minimumAttempts, TimeSpan within, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        var started = TimeProvider.System.GetTimestamp();
+        while (true)
+        {
+            await using var command = new NpgsqlCommand(
+                """
+                SELECT id, received_at, attempts, body FROM wolverine.wolverine_incoming_envelopes
+                WHERE message_type = @type AND position(convert_to(@membership, 'UTF8') in body) > 0
+                """,
+                connection);
+            command.Parameters.AddWithValue("type", MailRequestType);
+            command.Parameters.AddWithValue("membership", membership.ToString());
+            await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
+            {
+                if (await reader.ReadAsync(cancellationToken))
+                {
+                    var envelope = new MailRequestEnvelope(reader.GetGuid(0), reader.GetString(1), reader.GetInt32(2), MessageJson(reader.GetFieldValue<byte[]>(3)));
+                    if (envelope.Attempts >= minimumAttempts)
+                    {
+                        return envelope;
+                    }
+                }
+            }
+
+            if (TimeProvider.System.GetElapsedTime(started) >= within)
+            {
+                throw new TimeoutException($"no envelope of InvitationMailRequestedV1 for {membership} with at least {minimumAttempts} attempt(s) within {within.TotalSeconds:0} s");
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Polls the service's dead letters (<c>wolverine.wolverine_dead_letters</c>) until it holds the mail request of the
+    /// membership, and answers the row: its id, its exception message, its message's JSON and the whole row as JSON text
+    /// with the body escaped. Fails the test when there is none within <paramref name="within"/>.
+    /// </summary>
+    public async Task<MailRequestDeadLetter> MailRequestDeadLetterAsync(Guid membership, TimeSpan within, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        var started = TimeProvider.System.GetTimestamp();
+        while (true)
+        {
+            await using var command = new NpgsqlCommand(
+                """
+                SELECT id, exception_message, body,
+                       (to_jsonb(dead_letter) - 'body' || jsonb_build_object('body', encode(dead_letter.body, 'escape')))::text
+                FROM wolverine.wolverine_dead_letters dead_letter
+                WHERE message_type = @type AND position(convert_to(@membership, 'UTF8') in body) > 0
+                """,
+                connection);
+            command.Parameters.AddWithValue("type", MailRequestType);
+            command.Parameters.AddWithValue("membership", membership.ToString());
+            await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
+            {
+                if (await reader.ReadAsync(cancellationToken))
+                {
+                    return new MailRequestDeadLetter(
+                        reader.GetGuid(0),
+                        await reader.IsDBNullAsync(1, cancellationToken) ? string.Empty : reader.GetString(1),
+                        MessageJson(reader.GetFieldValue<byte[]>(2)),
+                        reader.GetString(3));
+                }
+            }
+
+            if (TimeProvider.System.GetElapsedTime(started) >= within)
+            {
+                throw new TimeoutException($"Organisation had not dead-lettered the mail request of {membership} after {within.TotalSeconds:0} s");
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// The exception message of the membership's dead-lettered mail request, or null while
+    /// <c>wolverine.wolverine_dead_letters</c> holds none for it; asks once, without waiting.
+    /// </summary>
+    public async Task<string?> MailRequestDeadLetterReasonAsync(Guid membership, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT coalesce(exception_message, '') FROM wolverine.wolverine_dead_letters
+            WHERE message_type = @type AND position(convert_to(@membership, 'UTF8') in body) > 0
+            LIMIT 1
+            """,
+            connection);
+        command.Parameters.AddWithValue("type", MailRequestType);
+        command.Parameters.AddWithValue("membership", membership.ToString());
+        return (string?)await command.ExecuteScalarAsync(cancellationToken);
+    }
+
+    /// <summary>Marks the dead letter replayable, so Wolverine delivers it again.</summary>
+    public async Task ReplayAsync(Guid deadLetter, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("UPDATE wolverine.wolverine_dead_letters SET replayable = true WHERE id = @id", connection);
+        command.Parameters.AddWithValue("id", deadLetter);
+        (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1);
+    }
+
+    /// <summary>
+    /// The message's JSON inside a stored envelope. Wolverine stores the whole envelope in <c>body</c>
+    /// (<c>EnvelopeSerializer</c>: length-prefixed headers, then the message's bytes), so it is no UTF-8 text as a whole.
+    /// </summary>
+    /// <summary>
+    /// The JSON message inside Wolverine's binary envelope: the first "{" from which the bytes up to the last "}" parse as
+    /// one JSON object. The headers before it are binary, and a byte of a Guid or timestamp may be "{" too, so the first
+    /// "{" alone is not the message's start.
+    /// </summary>
+    private static string MessageJson(byte[] envelope)
+    {
+        var end = Array.LastIndexOf(envelope, (byte)'}');
+        for (var start = Array.IndexOf(envelope, (byte)'{'); start >= 0 && start < end; start = Array.IndexOf(envelope, (byte)'{', start + 1))
+        {
+            var candidate = envelope.AsMemory(start, end - start + 1);
+            try
+            {
+                using var parsed = JsonDocument.Parse(candidate);
+                if (parsed.RootElement.ValueKind == JsonValueKind.Object)
+                {
+                    return Encoding.UTF8.GetString(candidate.Span);
+                }
+            }
+            catch (JsonException)
+            {
+                // A "{" inside the binary headers; the message starts later.
+            }
+        }
+
+        throw new ShouldAssertException("the stored envelope holds no JSON message");
+    }
+
     private async Task<JsonDocument> ClaimsOfAsync(string user)
     {
         var token = await aspire.RequestAccessTokenAsync(user);
@@ -180,6 +389,12 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
             throw;
         }
     }
+
+    /// <summary>An envelope of the service's durable inbox as the tests read it: its message's JSON.</summary>
+    internal sealed record MailRequestEnvelope(Guid Id, string ReceivedAt, int Attempts, string Body);
+
+    /// <summary>A dead letter as the tests read it: its message's JSON, and the whole row as JSON text with the body escaped.</summary>
+    internal sealed record MailRequestDeadLetter(Guid Id, string ExceptionMessage, string Body, string Row);
 
     /// <summary>A membership row as the tests read it back.</summary>
     internal sealed record StoredMembership(string Status, string Role, string JobFunction, DateTimeOffset? EndedAt);

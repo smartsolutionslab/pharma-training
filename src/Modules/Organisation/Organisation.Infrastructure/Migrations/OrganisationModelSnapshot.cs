@@ -16,7 +16,7 @@ partial class OrganisationModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261121191155_AddPharmacyRowVersion";
+    public override string LastMigrationId => "20261122033354_ReplaceInvitationTokenWithHashAndAddUniqueIndexes";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -83,15 +83,23 @@ partial class OrganisationModelSnapshot : ModelSnapshot
                     .HasColumnType("character varying(20)")
                     .HasColumnName("status");
 
-                b.Property<string>("Token")
-                    .HasColumnType("text")
-                    .HasColumnName("token");
+                b.Property<string>("TokenHash")
+                    .HasMaxLength(64)
+                    .HasColumnType("character varying(64)")
+                    .HasColumnName("token_hash");
 
                 b.HasKey("Id");
 
                 b.HasIndex("Person");
 
                 b.HasIndex("PharmacyId");
+
+                b.HasIndex("TokenHash")
+                    .IsUnique();
+
+                b.HasIndex("PharmacyId", "Email")
+                    .IsUnique()
+                    .HasFilter("status IN ('Invited', 'Active')");
 
                 b.ToTable("memberships", "organisation");
             });
