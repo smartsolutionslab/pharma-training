@@ -20,6 +20,17 @@ public class DraftedQuestionTests
         Should.Throw<GuardException>(() => Drafted(ChapterId.New(), "Welche Flächen?", QuestionType.MultipleChoice, Options(11)));
     }
 
+    [Fact]
+    public void A_draft_keeps_the_ten_options_it_was_drafted_with_when_its_producer_adds_to_the_list_afterwards()
+    {
+        List<(AnswerText Text, Correctness Correctness)> options = [.. Enumerable.Range(1, 10).Select(number => (AnswerText.From($"Fläche {number}"), number == 1 ? Correctness.Correct : Correctness.Incorrect))];
+        var draft = new DraftedQuestion(QuestionText.From("Welche Flächen?"), QuestionType.MultipleChoice, ChapterId.New(), options);
+
+        options.Add((AnswerText.From("Fläche 11"), Correctness.Incorrect));
+
+        draft.Options.Count.ShouldBe(10, "the draft holds the producer's own list, so an eleventh option added to it afterwards passes the guard");
+    }
+
     private static (string Text, bool Correct)[] Options(int count) =>
         [.. Enumerable.Range(1, count).Select(number => ($"Fläche {number}", number == 1))];
 }
