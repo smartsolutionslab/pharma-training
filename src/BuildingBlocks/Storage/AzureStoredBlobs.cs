@@ -1,14 +1,39 @@
+using Azure;
+using Azure.Storage.Blobs;
+using Azure.Storage.Blobs.Models;
 using Microsoft.Extensions.Configuration;
 
 namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Storage;
 
 /// <summary>
-/// Red-test stub for #15 (task A1): finds nothing. B2 reads the blob's properties from the module's own container, the
-/// connection string <c>blobs</c>.
+/// Reads a blob's properties in the module's own container, the connection string <c>blobs</c> (docs/adr/0002), so the
+/// module that accepts an upload can check what was uploaded. The container is read when the first blob is looked up,
+/// so a host without it starts and fails only where a blob is needed.
 /// </summary>
 public sealed class AzureStoredBlobs : IStoredBlobs
 {
-    public AzureStoredBlobs(IConfiguration configuration) => Ensure.That(configuration).IsNotNull();
+    private const int NotFound = 404;
 
-    public Task<Option<StoredBlob>> FindAsync(BlobName name, CancellationToken cancellationToken) => Task.FromResult(Option<StoredBlob>.None);
+    private readonly Lazy<BlobContainerClient> container;
+
+    public AzureStoredBlobs(IConfiguration configuration)
+    {
+        Ensure.That(configuration).IsNotNull();
+        container = new Lazy<BlobContainerClient>(() => ModuleBlobContainer.From(configuration));
+    }
+
+    public async Task<Option<StoredBlob>> FindAsync(BlobName name, CancellationToken cancellationToken)
+    {
+        Ensure.That(name).IsNotNull();
+
+        try
+        {
+            var properties = (await container.Value.GetBlobClient(name.Value).GetPropertiesAsync(cancellationToken: cancellationToken)).Value;
+            return Option<StoredBlob>.Some(new StoredBlob(name, properties.ContentType ?? string.Empty, properties.ContentLength, properties.BlobType == BlobType.Block));
+        }
+        catch (RequestFailedException failed) when (failed.Status == NotFound)
+        {
+            return Option<StoredBlob>.None;
+        }
+    }
 }
