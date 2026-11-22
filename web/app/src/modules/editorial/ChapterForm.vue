@@ -177,7 +177,7 @@ function refuseIssued(kindOfFile: FileKind) {
 // A refused field takes the focus, the first one, so the editor corrects it where the refusal is read.
 const submit = handleSubmit(
   async ({ request, upload: file }) => {
-    if (file === undefined || request.kind === 'Text') {
+    if (file === undefined || request.kind === undefined || request.kind === 'Text') {
       await onSave(request);
       return;
     }
