@@ -78,4 +78,24 @@ public class SmtpSettingsTests
         refused.Message.ShouldContain(Key);
         refused.Message.ShouldNotContain("s3cret");
     }
+
+    [Theory]
+    [InlineData("smtp://user:42/Ab9s3cret@smtp.example:587")]
+    [InlineData("smtp://user:42?Ab9s3cret@smtp.example:587")]
+    [InlineData("smtp://user:42#Ab9s3cret@smtp.example:587")]
+    [InlineData("smtp://mail.example/inbox")]
+    [InlineData("smtp://mail.example?route=s3cret")]
+    [InlineData("smtp://mail.example#s3cret")]
+    public void A_connection_string_with_a_path_query_or_fragment_is_refused_rather_than_read_as_another_host(string value)
+    {
+        // A password with a "/", "?" or "#" that nothing escaped makes the user the host: smtp://user:42/… is host user.
+        var refused = Should.Throw<InvalidOperationException>(() => SmtpSettings.From(Settings.Of((Key, value))));
+
+        refused.Message.ShouldContain(Key);
+        refused.Message.ShouldNotContain("s3cret");
+    }
+
+    [Fact]
+    public void A_connection_string_ending_in_a_slash_names_its_server() =>
+        SmtpSettings.From(Settings.Of((Key, "smtp://mail.example:587/"))).Host.ShouldBe("mail.example");
 }
