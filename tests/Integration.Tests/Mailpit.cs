@@ -5,21 +5,21 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 
 /// <summary>
 /// The mail Mailpit caught, read through its HTTP API. Tests send to fresh addresses, so a search by recipient finds
-/// only their own mail.
+/// only their own mail. A wait lasts 30 seconds unless the test gives it longer.
 /// </summary>
-internal sealed class Mailpit(AspireFixture aspire)
+internal sealed class Mailpit(AspireFixture aspire, TimeSpan? timeout = null)
 {
-    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(30);
+    private readonly TimeSpan wait = timeout ?? TimeSpan.FromSeconds(30);
 
     /// <summary>
     /// Waits until Mailpit holds at least <paramref name="atLeast"/> mails to the address, polling once a second for at
-    /// most 30 seconds, and answers all of them oldest first; fails the test naming the address when fewer arrive.
+    /// most the wait, and answers all of them oldest first; fails the test naming the address when fewer arrive.
     /// </summary>
     public async Task<List<CaughtMail>> MessagesToAsync(string address, int atLeast, CancellationToken cancellationToken)
     {
         using var client = new HttpClient { BaseAddress = aspire.App.GetEndpoint("mailpit", "http") };
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(Timeout);
+        using var expired = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        expired.CancelAfter(wait);
         var search = new Uri($"/api/v1/search?query={Uri.EscapeDataString($"to:{address}")}", UriKind.Relative);
 
         List<Summary> found = [];
@@ -27,7 +27,7 @@ internal sealed class Mailpit(AspireFixture aspire)
         {
             var result = await client.GetFromJsonAsync<SearchResult>(search, cancellationToken);
             found = [.. result?.Messages ?? []];
-            if (found.Count >= atLeast || timeout.IsCancellationRequested)
+            if (found.Count >= atLeast || expired.IsCancellationRequested)
             {
                 break;
             }
@@ -35,7 +35,7 @@ internal sealed class Mailpit(AspireFixture aspire)
             await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
         }
 
-        found.Count.ShouldBeGreaterThanOrEqualTo(atLeast, $"no {atLeast} mail(s) reached {address} within {Timeout.TotalSeconds:0} s");
+        found.Count.ShouldBeGreaterThanOrEqualTo(atLeast, $"no {atLeast} mail(s) reached {address} within {wait.TotalSeconds:0} s");
 
         List<CaughtMail> mails = [];
         foreach (var summary in found.OrderBy(summary => summary.Created))

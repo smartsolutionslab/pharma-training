@@ -402,6 +402,28 @@ public partial class OrganisationInvitationsTests(AspireFixture aspire)
         (await database.TokenHashAsync(membership, cancellationToken)).ShouldBe(HashOf(second));
     }
 
+    [Fact]
+    public async Task The_mail_request_goes_through_the_services_local_queue_and_holds_only_ids()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var owner = await aspire.CreateHostClientAsync("owner");
+        var pharmacy = await RegisterAsync(owner, cancellationToken);
+        var address = Invitee();
+        using var invited = await owner.PostAsJsonAsync(InvitationsUri(pharmacy), new { email = address, jobFunction = "Pta", role = "Employee" }, cancellationToken);
+        await ShouldAnswerAsync(invited, HttpStatusCode.Created, cancellationToken);
+        var membership = await invited.Content.ReadFromJsonAsync<Guid>(cancellationToken);
+
+        var envelope = await database.MailRequestEnvelopeAsync(membership, cancellationToken);
+
+        envelope.ReceivedAt.ShouldStartWith("local://", Case.Sensitive, $"the mail request was not routed to the service's local queue: {envelope.ReceivedAt}");
+        using var body = JsonDocument.Parse(envelope.Body);
+        body.RootElement.EnumerateObject().Select(property => property.Name).ShouldBe(["membershipId", "metadata", "pharmacyId"], ignoreOrder: true, envelope.Body);
+        body.RootElement.GetProperty("membershipId").GetGuid().ShouldBe(membership);
+        body.RootElement.GetProperty("pharmacyId").GetGuid().ShouldBe(pharmacy);
+        envelope.Body.ShouldNotContain(address, Case.Insensitive);
+        envelope.Body.ShouldNotContain("token", Case.Insensitive);
+    }
+
     /// <summary>A fresh address per test, so no test sees another's invitation or mail.</summary>
     private static string Invitee() => $"invitee-{Guid.CreateVersion7()}@example.com";
 
