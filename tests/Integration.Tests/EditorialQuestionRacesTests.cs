@@ -164,6 +164,55 @@ public class EditorialQuestionRacesTests(AspireFixture aspire)
         await EditorialDatabase.ShouldHaveDeadlockedSinceAsync(connectionString, deadlocksBefore + DeadlockRounds - 1, cancellationToken);
     }
 
+    [Fact]
+    public async Task A_version_read_while_a_question_and_its_options_change_is_read_back_as_one_snapshot()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var connectionString = await EditorialDatabase.ConnectionStringAsync(aspire, cancellationToken);
+        var id = await CreateAsync(client, cancellationToken);
+        var chapter = await AddChapterAsync(client, id, cancellationToken);
+        var question = await AddQuestionAsync(client, id, SingleChoice(chapter), cancellationToken);
+
+        // The read loads the version, its chapters, its questions and their options in one query each. The gate locks
+        // the options' table, so the read has read the question when it waits for the options; the gate then changes
+        // the question's text and its options' texts and commits. Read in one snapshot, both are as they were.
+        Task<HttpResponseMessage> read;
+        var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await using (var gate = new VersionLock(connection, transaction))
+        {
+            await using (var locked = new NpgsqlCommand("LOCK TABLE editorial.course_version_answer_options IN ACCESS EXCLUSIVE MODE", connection, transaction))
+            {
+                await locked.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            read = client.GetAsync(new Uri($"/editorial/course-versions/{id}", UriKind.Relative), cancellationToken);
+            await EditorialDatabase.WaitUntilBlockedAsync(connectionString, gate, 1, cancellationToken);
+            await using (var changed = new NpgsqlCommand(
+                """
+                UPDATE editorial.course_version_questions SET text = 'Geändert' WHERE id = @question;
+                UPDATE editorial.course_version_answer_options SET text = 'Geändert' WHERE question_id = @question;
+                """,
+                connection,
+                transaction))
+            {
+                changed.Parameters.AddWithValue("question", question);
+                await changed.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await gate.CommitAsync(cancellationToken);
+        }
+
+        using var response = await read;
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var version = await response.Content.ReadFromJsonAsync<VersionView>(cancellationToken);
+        var readBack = (version?.Questions ?? []).ShouldHaveSingleItem();
+        readBack.Text.ShouldBe("Wann desinfizieren Sie die Hände?");
+        readBack.Options.Select(option => option.Text).ShouldBe(["Vor der Rezeptur", "Einmal am Tag"], "the options were read in another snapshot than their question");
+    }
+
     /// <summary>
     /// Holds the version, its chapters, questions and options, lets one request and then the other load the version
     /// and wait on those rows, and releases them by rolling back: the request let through first is first in line.
@@ -299,7 +348,9 @@ public class EditorialQuestionRacesTests(AspireFixture aspire)
 
     private sealed record ChapterView(Guid Id);
 
-    private sealed record QuestionView(Guid Id, Guid ChapterId, string Type);
+    private sealed record QuestionView(Guid Id, Guid ChapterId, string Type, string Text, IReadOnlyList<OptionView> Options);
+
+    private sealed record OptionView(string Text);
 
     private sealed record Problem(string Code);
 }
