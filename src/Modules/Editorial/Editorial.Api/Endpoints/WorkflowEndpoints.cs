@@ -2,6 +2,7 @@ using System.Security.Claims;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Api;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.PublishCourseVersion;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.ReturnToDraft;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.SubmitForReview;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
@@ -36,6 +37,10 @@ public sealed class WorkflowEndpoints : IEndpoint
 
             return (await dispatcher.SendAsync(new ReturnToDraft(CourseVersionId.From(id)), cancellationToken)).ToHttpResult();
         }).RequireAuthorization(EditorialPolicyNames.Edit);
+
+        endpoints.MapPost("/course-versions/{id:guid}/publish", (Guid id, ClaimsPrincipal user, IDispatcher dispatcher, CancellationToken cancellationToken) =>
+            ByEditorAsync(id, user, editor => dispatcher.SendAsync(new PublishCourseVersion(CourseVersionId.From(id), editor), cancellationToken)))
+            .RequireAuthorization(EditorialPolicyNames.Edit);
     }
 
     /// <summary>A step the calling editor takes: the empty Guid is not found, a caller without a person is refused.</summary>
