@@ -29,7 +29,7 @@ public class PharmacyTests
         var pharmacy = Register();
         Invite(pharmacy, AnnaMail);
 
-        pharmacy.Invite(MembershipId.New(), EmailAddress.From("ANNA@example.org"), Token(), JobFunction.Pta, MembershipRole.Employee, Now)
+        pharmacy.Invite(MembershipId.New(), EmailAddress.From("ANNA@example.org"), JobFunction.Pta, MembershipRole.Employee, Now)
             .Error.ShouldBeOfType<AlreadyMemberOrInvited>();
     }
 
@@ -39,15 +39,37 @@ public class PharmacyTests
         var pharmacy = Register();
         var token = Token();
         var membership = Invite(pharmacy, AnnaMail, token);
+        var anna = pharmacy.Memberships.Single(m => m.Id == membership);
+        anna.TokenHash.ShouldBe(InvitationTokenHash.Of(token));
 
         pharmacy.AcceptInvitation(token, Anna, DisplayName.From("Anna Berger"), AnnaMail, Now.PlusDays(2)).IsSuccess.ShouldBeTrue();
 
-        var anna = pharmacy.Memberships.Single(m => m.Id == membership);
         anna.Status.ShouldBe(MembershipStatus.Active);
         anna.Name.ShouldBe(DisplayName.From("Anna Berger"));
-        anna.Token.ShouldBeNull();
+        anna.TokenHash.ShouldBeNull();
         pharmacy.AcceptInvitation(token, Anna, DisplayName.From("Anna Berger"), AnnaMail, Now.PlusDays(2))
             .Error.ShouldBeOfType<InvitationNotFound>();
+    }
+
+    [Fact]
+    public void An_invitation_keeps_only_the_hash_of_its_token()
+    {
+        var pharmacy = Register();
+        var token = Token();
+        var membership = Invite(pharmacy, AnnaMail, token);
+
+        pharmacy.Memberships.Single(m => m.Id == membership).TokenHash.ShouldBe(InvitationTokenHash.Of(token));
+    }
+
+    [Fact]
+    public void Neither_the_token_nor_the_invitation_prints_the_secret()
+    {
+        var pharmacy = Register();
+        var token = Token();
+        Invite(pharmacy, AnnaMail, token);
+
+        token.ToString().ShouldNotContain(token.Value);
+        pharmacy.DomainEvents.OfType<MemberInvited>().ShouldHaveSingleItem().ToString().ShouldNotContain(token.Value);
     }
 
     [Fact]
@@ -69,10 +91,27 @@ public class PharmacyTests
         var membership = Invite(pharmacy, AnnaMail, old);
         var fresh = Token();
 
-        pharmacy.RenewInvitation(membership, fresh, Now.PlusDays(20));
+        pharmacy.RenewInvitation(membership, Now.PlusDays(20));
+        pharmacy.IssueInvitationLink(membership, fresh, Now.PlusDays(20)).IsSuccess.ShouldBeTrue();
 
+        pharmacy.Memberships.Single(m => m.Id == membership).TokenHash.ShouldBe(InvitationTokenHash.Of(fresh));
         pharmacy.AcceptInvitation(old, Anna, DisplayName.From("Anna Berger"), AnnaMail, Now.PlusDays(21)).Error.ShouldBeOfType<InvitationNotFound>();
         pharmacy.AcceptInvitation(fresh, Anna, DisplayName.From("Anna Berger"), AnnaMail, Now.PlusDays(21)).IsSuccess.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void A_revoked_invitation_keeps_no_hash_and_its_link_is_refused()
+    {
+        var pharmacy = Register();
+        var token = Token();
+        var membership = Invite(pharmacy, AnnaMail, token);
+        var revoked = pharmacy.Memberships.Single(m => m.Id == membership);
+        revoked.TokenHash.ShouldBe(InvitationTokenHash.Of(token));
+
+        pharmacy.RevokeInvitation(membership).IsSuccess.ShouldBeTrue();
+
+        revoked.TokenHash.ShouldBeNull();
+        pharmacy.AcceptInvitation(token, Anna, DisplayName.From("Anna Berger"), AnnaMail, Now).Error.ShouldBeOfType<InvitationNotFound>();
     }
 
     [Fact]
@@ -119,7 +158,134 @@ public class PharmacyTests
         pharmacy.AcceptInvitation(token, Anna, DisplayName.From("Anna Berger"), AnnaMail, Now);
         pharmacy.EndMembership(first, Now);
 
-        pharmacy.Invite(MembershipId.New(), AnnaMail, Token(), JobFunction.Pta, MembershipRole.Employee, Now).IsSuccess.ShouldBeTrue();
+        pharmacy.Invite(MembershipId.New(), AnnaMail, JobFunction.Pta, MembershipRole.Employee, Now).IsSuccess.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Issuing_a_link_stores_the_hash_of_its_token_and_answers_the_expiry()
+    {
+        var pharmacy = Register();
+        var membership = Invite(pharmacy, AnnaMail);
+        pharmacy.ClearDomainEvents();
+        var token = Token();
+
+        var issued = pharmacy.IssueInvitationLink(membership, token, Later(1));
+
+        issued.IsSuccess.ShouldBeTrue();
+        issued.Value.ShouldBe(Now.PlusDays(14));
+        pharmacy.Memberships.Single(m => m.Id == membership).TokenHash.ShouldBe(InvitationTokenHash.Of(token));
+        var raised = pharmacy.DomainEvents.OfType<InvitationLinkIssued>().SingleOrDefault();
+        raised.ShouldNotBeNull("no InvitationLinkIssued raised");
+        raised.Pharmacy.ShouldBe(pharmacy.Id);
+        raised.Membership.ShouldBe(membership);
+    }
+
+    [Fact]
+    public void A_link_issued_again_replaces_the_one_before()
+    {
+        var pharmacy = Register();
+        var membership = Invite(pharmacy, AnnaMail);
+        var first = Token();
+        var second = Token();
+
+        pharmacy.IssueInvitationLink(membership, first, Later(1)).IsSuccess.ShouldBeTrue();
+        pharmacy.IssueInvitationLink(membership, second, Later(2)).IsSuccess.ShouldBeTrue();
+
+        pharmacy.Memberships.Single(m => m.Id == membership).TokenHash.ShouldBe(InvitationTokenHash.Of(second));
+        pharmacy.AcceptInvitation(first, Anna, DisplayName.From("Anna Berger"), AnnaMail, Later(3)).Error.ShouldBeOfType<InvitationNotFound>();
+    }
+
+    [Theory]
+    [InlineData("revoked")]
+    [InlineData("accepted")]
+    [InlineData("founder")]
+    [InlineData("unknown")]
+    public void A_link_is_issued_only_for_an_open_invitation(string which)
+    {
+        var pharmacy = Register();
+        var token = Token();
+        var invited = Invite(pharmacy, AnnaMail, token);
+        var membership = which switch
+        {
+            "revoked" => Revoked(pharmacy, invited),
+            "accepted" => Accepted(pharmacy, invited, token),
+            "founder" => pharmacy.Memberships[0].Id,
+            _ => MembershipId.New(),
+        };
+        List<InvitationTokenHash?> before = [.. pharmacy.Memberships.Select(m => m.TokenHash)];
+        pharmacy.ClearDomainEvents();
+
+        var issued = pharmacy.IssueInvitationLink(membership, Token(), Later(1));
+
+        issued.IsSuccess.ShouldBeFalse($"a link was issued for the {which} membership: should be NoOpenInvitation but was SuccessOutcome");
+        issued.Error.ShouldBeOfType<NoOpenInvitation>();
+        pharmacy.Memberships.Select(m => m.TokenHash).ShouldBe(before);
+        pharmacy.DomainEvents.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void No_link_is_issued_for_an_invitation_that_has_run_out()
+    {
+        var pharmacy = Register();
+        var token = Token();
+        var membership = Invite(pharmacy, AnnaMail, token);
+        var expiresAt = Now.PlusDays(14);
+        pharmacy.ClearDomainEvents();
+
+        var issued = pharmacy.IssueInvitationLink(membership, Token(), Timestamp.From(expiresAt.Value.AddTicks(1)));
+
+        issued.IsSuccess.ShouldBeFalse("a link was issued for an invitation that had run out: should be InvitationExpired but was SuccessOutcome");
+        issued.Error.ShouldBeOfType<InvitationExpired>();
+        pharmacy.Memberships.Single(m => m.Id == membership).TokenHash.ShouldBe(InvitationTokenHash.Of(token));
+        pharmacy.DomainEvents.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void InvitationLinkIssued_carries_no_token()
+    {
+        typeof(InvitationLinkIssued).GetProperties().Select(property => property.Name).Order(StringComparer.Ordinal)
+            .ShouldBe(["Membership", "Pharmacy"]);
+    }
+
+    [Fact]
+    public void An_invitation_holds_no_link_until_its_mail_issues_one()
+    {
+        var pharmacy = Register();
+        var membership = MembershipId.New();
+
+        pharmacy.Invite(membership, AnnaMail, JobFunction.Pta, MembershipRole.Employee, Now).IsSuccess.ShouldBeTrue();
+
+        var invited = pharmacy.Memberships.Single(m => m.Id == membership);
+        invited.TokenHash.ShouldBeNull();
+        invited.InvitationExpiresAt.ShouldBe(Now.PlusDays(14));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(20)]
+    public void A_renewal_kills_the_old_link_at_once_and_runs_14_days_from_the_renewal(int daysLater)
+    {
+        var pharmacy = Register();
+        var membership = MembershipId.New();
+        pharmacy.Invite(membership, AnnaMail, JobFunction.Pta, MembershipRole.Employee, Now).IsSuccess.ShouldBeTrue();
+        var first = Token();
+        pharmacy.IssueInvitationLink(membership, first, Later(1)).IsSuccess.ShouldBeTrue();
+        var later = Now.PlusDays(daysLater);
+
+        pharmacy.RenewInvitation(membership, later).IsSuccess.ShouldBeTrue();
+
+        var renewed = pharmacy.Memberships.Single(m => m.Id == membership);
+        renewed.TokenHash.ShouldBeNull();
+        renewed.InvitationExpiresAt.ShouldBe(later.PlusDays(14));
+        pharmacy.AcceptInvitation(first, Anna, DisplayName.From("Anna Berger"), AnnaMail, later).Error.ShouldBeOfType<InvitationNotFound>();
+    }
+
+    [Fact]
+    public void MemberInvited_carries_no_token_address_or_name()
+    {
+        var properties = typeof(MemberInvited).GetProperties().Select(property => property.Name).ToList();
+
+        properties.ShouldBe(["Pharmacy", "Membership", "ExpiresAt"], ignoreOrder: true, $"MemberInvited has properties {string.Join(", ", properties)}");
     }
 
     [Fact]
@@ -140,8 +306,31 @@ public class PharmacyTests
             JobFunction.Pharmacist,
             Now);
 
-    private static MembershipId Invite(Pharmacy pharmacy, EmailAddress email, InvitationToken? token = null, MembershipRole role = MembershipRole.Employee) =>
-        pharmacy.Invite(MembershipId.New(), email, token ?? Token(), JobFunction.Pta, role, Now).Value;
+    /// <summary>Invites the address; with a token, its mail has issued that link too.</summary>
+    private static MembershipId Invite(Pharmacy pharmacy, EmailAddress email, InvitationToken? token = null, MembershipRole role = MembershipRole.Employee)
+    {
+        var membership = pharmacy.Invite(MembershipId.New(), email, JobFunction.Pta, role, Now).Value;
+        if (token is not null)
+        {
+            pharmacy.IssueInvitationLink(membership, token, Now).IsSuccess.ShouldBeTrue();
+        }
+
+        return membership;
+    }
+
+    private static Timestamp Later(int minutes) => Timestamp.From(Now.Value.AddMinutes(minutes));
+
+    private static MembershipId Revoked(Pharmacy pharmacy, MembershipId membership)
+    {
+        pharmacy.RevokeInvitation(membership).IsSuccess.ShouldBeTrue();
+        return membership;
+    }
+
+    private static MembershipId Accepted(Pharmacy pharmacy, MembershipId membership, InvitationToken token)
+    {
+        pharmacy.AcceptInvitation(token, Anna, DisplayName.From("Anna Berger"), AnnaMail, Now).IsSuccess.ShouldBeTrue();
+        return membership;
+    }
 
     private static InvitationToken Token() => InvitationToken.From(RandomNumberGenerator.GetHexString(64));
 }

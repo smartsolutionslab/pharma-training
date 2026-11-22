@@ -36,10 +36,10 @@ public sealed class BlueprintEndpoints : IEndpoint
         }).RequireAuthorization(EditorialPolicyNames.Edit);
     }
 
-    /// <summary>The blueprint the caller sent, as values, or the first of its values out of range or missing.</summary>
+    /// <summary>The blueprint the caller sent, as values, or the first of its values out of range or missing, or what the blueprint refuses.</summary>
     private static Result<TestBlueprint, ApiError> Blueprint(EditorialBlueprintRequest request)
     {
-        if (request.Questions is not { } questions || !QuestionCount.TryFrom(questions, out var count) || count.Value < TestBlueprint.MinimumQuestions)
+        if (request.Questions is not { } questions || !QuestionCount.TryFrom(questions, out var count))
         {
             return Failure(CourseVersionFailures.InvalidQuestionCount());
         }
@@ -54,6 +54,7 @@ public sealed class BlueprintEndpoints : IEndpoint
             return Failure(CourseVersionFailures.InvalidValidity());
         }
 
-        return Success(new TestBlueprint(count, score, validity));
+        // The domain decides how few questions a test may have.
+        return TestBlueprint.TryCreate(count, score, validity).MapError(CourseVersionFailures.From);
     }
 }
