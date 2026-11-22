@@ -19,6 +19,8 @@ public sealed record DraftedQuestion(
     {
         Ensure.That(options).IsNotNull();
         Ensure.That(options.Count).InRange(0, MaxOptions);
-        return options;
+
+        // A copy: the caller's list could grow past the maximum after the guard if the draft kept it.
+        return [.. options];
     }
 }
