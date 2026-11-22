@@ -1,5 +1,9 @@
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Azure;
+using Aspire.Hosting.Azure.AppContainers;
+using Azure.Provisioning;
+using Azure.Provisioning.Expressions;
+using Azure.Provisioning.Storage;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 
@@ -8,8 +12,9 @@ namespace Aspire.Hosting;
 /// <summary>
 /// Lets the web app's own origin, alone, use the signed upload and read URLs from the browser: a CORS rule on the storage
 /// emulator's blob service (docs/adr/0002). Aspire's storage integration has no CORS setting, so in run mode the rule is
-/// set on the emulator as soon as it is ready, keeping its other properties, and the web app waits for that. A deployed
-/// storage account gets its CORS rules where it is provisioned.
+/// set on the emulator as soon as it is ready, keeping its other properties, and the web app waits for that. Published,
+/// the web app is served by the edge, so the storage account's blob service has one rule, the same, for the edge's https
+/// origin alone, written into its Bicep.
 /// </summary>
 public static class BrowserUploads
 {
@@ -21,6 +26,11 @@ public static class BrowserUploads
     private const string ExposedHeaders = "etag,content-type,content-length,x-ms-request-id";
 
     private const int MaxAgeInSeconds = 3600;
+
+    private const string DefaultDomain = "environment_default_domain";
+
+    // The environment's output Aspire writes in its Bicep; the property that reads it is not public.
+    private const string DefaultDomainOutput = "AZURE_CONTAINER_APPS_ENVIRONMENT_DEFAULT_DOMAIN";
 
     public static IResourceBuilder<AzureStorageResource> AllowBrowserAccessFrom<TWeb>(this IResourceBuilder<AzureStorageResource> storage, IResourceBuilder<TWeb> web)
         where TWeb : IResourceWithEndpoints, IResourceWithWaitSupport
@@ -44,6 +54,50 @@ public static class BrowserUploads
                 cancellationToken));
         web.WaitFor(storage);
         return storage;
+    }
+
+    /// <summary>
+    /// Published, the edge's origin alone, <c>https://&lt;edge&gt;.&lt;the environment's default domain&gt;</c>, where a
+    /// Container App with external ingress is served; in run mode nothing (<see cref="AllowBrowserAccessFrom"/> does it).
+    /// </summary>
+    public static IResourceBuilder<AzureStorageResource> AllowBrowserAccessFromEdge(this IResourceBuilder<AzureStorageResource> storage, IResourceBuilder<ProjectResource> edge)
+    {
+        ArgumentNullException.ThrowIfNull(storage);
+        ArgumentNullException.ThrowIfNull(edge);
+
+        if (!storage.ApplicationBuilder.ExecutionContext.IsPublishMode)
+        {
+            return storage;
+        }
+
+        var environment = storage.ApplicationBuilder.Resources.OfType<AzureContainerAppEnvironmentResource>().SingleOrDefault()
+            ?? throw new InvalidOperationException($"{edge.Resource.Name} is published to no Container Apps environment; add it first (AddContainerAppsEnvironment).");
+        var edgeName = edge.Resource.Name;
+        return storage
+            .WithParameter(DefaultDomain, new BicepOutputReference(DefaultDomainOutput, environment))
+            .ConfigureInfrastructure(infrastructure =>
+            {
+                var domain = new ProvisioningParameter(DefaultDomain, typeof(string));
+                infrastructure.Add(domain);
+                var rule = new StorageCorsRule { MaxAgeInSeconds = MaxAgeInSeconds };
+                rule.AllowedOrigins.Add(new InterpolatedStringExpression([new StringLiteralExpression($"https://{edgeName}."), new IdentifierExpression(domain.BicepIdentifier)]));
+                foreach (var method in Methods.Split(','))
+                {
+                    rule.AllowedMethods.Add(Enum.Parse<CorsRuleAllowedMethod>(method, ignoreCase: true));
+                }
+
+                foreach (var header in AllowedHeaders.Split(','))
+                {
+                    rule.AllowedHeaders.Add(header);
+                }
+
+                foreach (var header in ExposedHeaders.Split(','))
+                {
+                    rule.ExposedHeaders.Add(header);
+                }
+
+                infrastructure.GetProvisionableResources().OfType<BlobService>().Single().CorsRules.Add(rule);
+            });
     }
 
     /// <summary>The account's blob service, which the module's containers (AddBlobContainer) are children of.</summary>
