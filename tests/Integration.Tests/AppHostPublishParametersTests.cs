@@ -67,6 +67,44 @@ public class AppHostPublishParametersTests
         }
     }
 
+    /// <summary>Every service's own broker password (#183), found from the service hosts as the AppHost finds them.</summary>
+    [Fact]
+    public async Task Every_service_has_a_broker_password_of_its_own_as_an_explicit_parameter_in_key_vault()
+    {
+        await using var builder = await PublishedAppHost.ModelAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
+        var services = PublishedAppHost.Services(builder);
+
+        services.ShouldNotBeEmpty();
+        foreach (var service in services)
+        {
+            var name = $"messaging-{service.Name}-password";
+            var parameter = Parameter(builder, name);
+            var secrets = builder.Resources.OfType<AzureKeyVaultSecretResource>().Where(secret => Holds(secret, parameter)).ToList();
+
+            parameter.Secret.ShouldBeTrue($"{name} is not a secret parameter.");
+            parameter.Default.ShouldBeNull($"{name} has a default ({parameter.Default?.GetType().Name}); the deployment must set it.");
+            secrets.ShouldHaveSingleItem($"{name} is not a secret in a Key Vault.").Parent.Name.ShouldBe(KeyVault);
+        }
+    }
+
+    /// <summary>Every service's broker user is named after its module unless the deployment says otherwise (#183).</summary>
+    [Fact]
+    public async Task Every_services_broker_user_is_a_parameter_named_after_its_module_by_default()
+    {
+        await using var builder = await PublishedAppHost.ModelAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
+        var services = PublishedAppHost.Services(builder);
+
+        services.ShouldNotBeEmpty();
+        foreach (var service in services)
+        {
+            var name = $"messaging-{service.Name}-username";
+            var parameter = Parameter(builder, name);
+
+            parameter.Secret.ShouldBeFalse($"{name} is not a secret.");
+            parameter.Default.ShouldNotBeNull($"{name} has no default.").GetDefaultValue().ShouldBe(service.Name);
+        }
+    }
+
     [Fact]
     public async Task No_container_app_receives_a_secret_as_a_plain_value()
     {
