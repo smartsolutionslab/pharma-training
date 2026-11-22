@@ -9,6 +9,7 @@ import ChapterForm from './ChapterForm.vue';
 // (ChapterTitle: 1 to 150 characters, trimmed, no NUL) and its content (MarkdownText: 1 to 200,000 characters, not
 // blank, no NUL), checked before the host checks them again. It hands the request to onSave; what saving answers, and
 // what the page does then, are the page's.
+const versionId = '0198c1a0-0000-7000-8000-0000000000c1';
 const onSave = vi.fn<(request: EditorialChapterRequest) => Promise<boolean>>();
 
 beforeEach(() => {
@@ -57,7 +58,7 @@ const previewToggle = () => screen.getByRole('button', { name: t('editorial.chap
 type Props = { chapter?: EditorialChapterDto; questions?: EditorialQuestionDto[] };
 
 function renderForm(props: Props = {}) {
-  return render(ChapterForm, { props: { questions: [], ...props, onSave, saving: false } });
+  return render(ChapterForm, { props: { versionId, questions: [], ...props, onSave, saving: false } });
 }
 
 /** Fills the fields it is given (pasted, so a long text is quick), each replacing what the field held, and submits. */
