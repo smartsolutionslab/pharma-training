@@ -58,10 +58,17 @@ export function createAuth(client: AuthClient): Auth {
 
   // A redirect that cannot start (the identity provider unreachable, say) is shown, never left to reject unseen. While
   // one is under way no other starts: signing out unloads the user before it leaves, which must not start a sign-in.
+  // A sign-in comes back to the page it left, without its query and fragment: those never travel to the identity
+  // provider (an invitation link's token is in the fragment). oidc-client-ts keeps that redirect_uri with the request's
+  // state and exchanges the code with it.
   const redirect = async (navigator: 'signinRedirect' | 'signoutRedirect') => {
     activeNavigator.value = navigator;
     try {
-      await client[navigator]();
+      if (navigator === 'signinRedirect') {
+        await client.signinRedirect({ redirect_uri: window.location.origin + window.location.pathname });
+      } else {
+        await client.signoutRedirect();
+      }
     } catch (failure) {
       activeNavigator.value = null;
       error.value = asError(failure);
