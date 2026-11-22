@@ -25,7 +25,8 @@ public class RenewInvitationTests
         var store = new InMemoryPharmacyStore();
         var pharmacy = TestPharmacies.Register(Owner);
         var old = Token();
-        var invitation = pharmacy.Invite(MembershipId.New(), Invitee, old, JobFunction.Pta, MembershipRole.Employee, Timestamp.From(Start)).Value;
+        var invitation = pharmacy.Invite(MembershipId.New(), Invitee, JobFunction.Pta, MembershipRole.Employee, Timestamp.From(Start)).Value;
+        pharmacy.IssueInvitationLink(invitation, old, Timestamp.From(Start)).IsSuccess.ShouldBeTrue();
         pharmacy.Stored(store);
         var time = new FakeTimeProvider(Start);
         time.Advance(TimeSpan.FromDays(daysOld) + TimeSpan.FromMinutes(5));
@@ -38,13 +39,10 @@ public class RenewInvitationTests
         var raised = pharmacy.DomainEvents.OfType<MemberInvited>().SingleOrDefault();
         raised.ShouldNotBeNull("renewing raised no MemberInvited");
         raised.Membership.ShouldBe(invitation);
-        raised.Email.ShouldBe(Invitee);
-        raised.Token.ShouldNotBe(old);
         raised.ExpiresAt.ShouldBe(Timestamp.From(now.AddDays(14)));
         var membership = pharmacy.Membership(invitation);
         membership.Status.ShouldBe(MembershipStatus.Invited);
-        membership.TokenHash.ShouldBe(InvitationTokenHash.Of(raised.Token));
-        membership.TokenHash.ShouldNotBe(InvitationTokenHash.Of(old));
+        membership.TokenHash.ShouldBeNull();
         membership.InvitationExpiresAt.ShouldBe(Timestamp.From(now.AddDays(14)));
         store.Commits.ShouldBe(1);
     }

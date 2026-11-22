@@ -57,7 +57,7 @@ public class PharmacyCoverageTests
         var membership = Invite(pharmacy, AnnaMail, token);
 
         pharmacy.DomainEvents.OfType<MemberInvited>().ShouldHaveSingleItem()
-            .ShouldBe(new MemberInvited(pharmacy.Id, pharmacy.Name, membership, AnnaMail, token, Now.PlusDays(Pharmacy.InvitationValidityDays)));
+            .ShouldBe(new MemberInvited(pharmacy.Id, membership, Now.PlusDays(Pharmacy.InvitationValidityDays)));
         var invited = pharmacy.Memberships.Single(m => m.Id == membership);
         invited.Status.ShouldBe(MembershipStatus.Invited);
         invited.Person.ShouldBeNull();
@@ -109,7 +109,7 @@ public class PharmacyCoverageTests
         var pharmacy = Register();
         pharmacy.RevokeInvitation(Invite(pharmacy, AnnaMail));
 
-        pharmacy.Invite(MembershipId.New(), AnnaMail, Token(), JobFunction.Pta, MembershipRole.Employee, Now).IsSuccess.ShouldBeTrue();
+        pharmacy.Invite(MembershipId.New(), AnnaMail, JobFunction.Pta, MembershipRole.Employee, Now).IsSuccess.ShouldBeTrue();
     }
 
     [Fact]
@@ -118,8 +118,8 @@ public class PharmacyCoverageTests
         var pharmacy = Register();
         var founder = pharmacy.Memberships.Single().Id;
 
-        pharmacy.RenewInvitation(founder, Token(), Now).Error.ShouldBeOfType<NoOpenInvitation>();
-        pharmacy.RenewInvitation(MembershipId.New(), Token(), Now).Error.ShouldBeOfType<NoOpenInvitation>();
+        pharmacy.RenewInvitation(founder, Now).Error.ShouldBeOfType<NoOpenInvitation>();
+        pharmacy.RenewInvitation(MembershipId.New(), Now).Error.ShouldBeOfType<NoOpenInvitation>();
     }
 
     [Fact]
@@ -127,12 +127,11 @@ public class PharmacyCoverageTests
     {
         var pharmacy = Register();
         var membership = Invite(pharmacy, AnnaMail);
-        var fresh = Token();
 
-        pharmacy.RenewInvitation(membership, fresh, Now.PlusDays(20)).IsSuccess.ShouldBeTrue();
+        pharmacy.RenewInvitation(membership, Now.PlusDays(20)).IsSuccess.ShouldBeTrue();
 
         pharmacy.DomainEvents.OfType<MemberInvited>().Last()
-            .ShouldBe(new MemberInvited(pharmacy.Id, pharmacy.Name, membership, AnnaMail, fresh, Now.PlusDays(20 + Pharmacy.InvitationValidityDays)));
+            .ShouldBe(new MemberInvited(pharmacy.Id, membership, Now.PlusDays(20 + Pharmacy.InvitationValidityDays)));
     }
 
     [Fact]
@@ -265,8 +264,17 @@ public class PharmacyCoverageTests
             JobFunction.Pharmacist,
             Now);
 
-    private static MembershipId Invite(Pharmacy pharmacy, EmailAddress email, InvitationToken? token = null, MembershipRole role = MembershipRole.Employee) =>
-        pharmacy.Invite(MembershipId.New(), email, token ?? Token(), JobFunction.Pta, role, Now).Value;
+    /// <summary>Invites the address; with a token, its mail has issued that link too.</summary>
+    private static MembershipId Invite(Pharmacy pharmacy, EmailAddress email, InvitationToken? token = null, MembershipRole role = MembershipRole.Employee)
+    {
+        var membership = pharmacy.Invite(MembershipId.New(), email, JobFunction.Pta, role, Now).Value;
+        if (token is not null)
+        {
+            pharmacy.IssueInvitationLink(membership, token, Now).IsSuccess.ShouldBeTrue();
+        }
+
+        return membership;
+    }
 
     private static MembershipId Join(Pharmacy pharmacy, MembershipRole role = MembershipRole.Employee)
     {

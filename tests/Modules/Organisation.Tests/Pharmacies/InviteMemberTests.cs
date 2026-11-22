@@ -37,9 +37,8 @@ public class InviteMemberTests
         membership.InvitationExpiresAt.ShouldBe(Timestamp.From(Start.AddMinutes(5).AddDays(14)));
         var raised = pharmacy.DomainEvents.OfType<MemberInvited>().ShouldHaveSingleItem();
         raised.Membership.ShouldBe(membership.Id);
-        raised.Email.ShouldBe(Invitee);
         raised.ExpiresAt.ShouldBe(Timestamp.From(Start.AddMinutes(5).AddDays(14)));
-        membership.TokenHash.ShouldBe(InvitationTokenHash.Of(raised.Token));
+        membership.TokenHash.ShouldBeNull();
         store.Commits.ShouldBe(1);
     }
 
