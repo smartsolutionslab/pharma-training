@@ -2,7 +2,7 @@ using System.Globalization;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Mail;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
 
-namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Reactions;
+namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Consumers;
 
 /// <summary>
 /// The invitation mail, in German plain text. The expiry is written in UTC with a fixed pattern and the invariant culture,

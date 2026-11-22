@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Logging;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Mail;
 using SmartSolutionsLab.PharmaTraining.Contracts.Organisation;
-using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Reactions;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Consumers;

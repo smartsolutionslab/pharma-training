@@ -1,9 +1,11 @@
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.IntegrationEvents;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies.Events;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Commands.RenewInvitation;
 
-/// <summary>Gives the open or expired invitation a fresh token valid for 14 more days, so the old link stops working. The new mail goes out after the commit, in the reaction to MemberInvited.</summary>
+/// <summary>Gives the open or expired invitation a fresh token valid for 14 more days, so the old link stops working. In the same commit it requests the new mail (InvitationMailRequestedV1), which the consumer sends.</summary>
 public sealed class RenewInvitationHandler(IPharmacyStore pharmacies, IOrganisationUnitOfWork unitOfWork, TimeProvider time)
     : ICommandHandler<RenewInvitation, Result<Unit, ApiError>>
 {
@@ -28,6 +30,12 @@ public sealed class RenewInvitationHandler(IPharmacyStore pharmacies, IOrganisat
         if (changed.IsFailure)
         {
             return Failure(PharmacyFailures.From(changed.Error));
+        }
+
+        foreach (var requested in pharmacy.DomainEvents.OfType<MemberInvited>())
+        {
+            // Saved with the invitation in the same commit; the consumer issues the link and mails it (docs/adr/0004).
+            await unitOfWork.PublishAsync(requested.ToIntegrationEvent());
         }
 
         if (!await unitOfWork.TryCommitAsync(cancellationToken))

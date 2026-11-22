@@ -7,4 +7,5 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacie
 /// never store, publish or log it. That is safe only because a domain event of this module lives in memory: it is
 /// neither stored nor published, and <see cref="InvitationToken"/> does not print its value.
 /// </summary>
+[DeliberatelyUnhandled("The command that invites or renews publishes InvitationMailRequestedV1; its consumer issues the link and mails it.")]
 public sealed record MemberInvited(PharmacyId Pharmacy, PharmacyName Name, MembershipId Membership, EmailAddress Email, InvitationToken Token, Timestamp ExpiresAt) : IDomainEvent;

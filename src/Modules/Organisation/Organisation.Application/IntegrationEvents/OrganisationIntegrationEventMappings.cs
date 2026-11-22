@@ -28,6 +28,14 @@ public static class OrganisationIntegrationEventMappings
             started.StartedAt.Value);
     }
 
+    /// <summary>Organisation's own work item: ids only, so its envelope and dead letter hold no personal data.</summary>
+    public static InvitationMailRequestedV1 ToIntegrationEvent(this MemberInvited invited)
+    {
+        Ensure.That(invited).IsNotNull();
+
+        return new InvitationMailRequestedV1(invited.Membership.Value, invited.Pharmacy.Value);
+    }
+
     public static MembershipEndedV1 ToIntegrationEvent(this MembershipEnded ended)
     {
         Ensure.That(ended).IsNotNull();
