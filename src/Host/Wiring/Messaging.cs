@@ -53,9 +53,11 @@ public static class Messaging
                 TimeSpan.FromSeconds(32));
             // A message given up on is dead-lettered in the wolverine_dead_letters table, where it is replayed from,
             // and not in a dead-letter queue of the broker's (see docs/adr).
-            // An event a module of this host both publishes and consumes stays off the broker altogether: no exchange, no
-            // sender and no binding to the service's queue, so it travels on the local queue alone and nobody with broker
-            // credentials can hand the host one (docs/adr/0004). Events of other services are still bound to the queue.
+            // An event a module of this host both publishes and consumes stays off the broker: no exchange, no sender and no
+            // binding to the service's queue, so nothing the broker routes reaches the local consumer (docs/adr/0004). A
+            // message published straight to the service's own queue still dispatches by type; for InvitationMailRequestedV1
+            // the worst is a re-issued link to the same invited address, which the consumer's re-read still checks. Events
+            // of other services are still bound to the queue.
             // Wolverine's request/reply queue (wolverine.response.<id>) is not declared either: its listener dispatches any
             // message by type, the local ones included, and no service asks another for a reply over the broker.
             var local = LocalMessageTypes(modules);
