@@ -139,6 +139,38 @@ public class ChapterUploadsTests
         blobs.StartReads.ShouldBe(1, "what the uploader declared is not trusted: the module reads the blob's own leading bytes");
     }
 
+    [Theory]
+    [InlineData(ChapterKind.Pdf, ".pdf", "application/pdf", "attachment; filename=handout.html", null, "a read URL would download it under a name and type the uploader chose")]
+    [InlineData(ChapterKind.Pdf, ".pdf", "application/pdf", "inline", null, "the module sets how a file is served, not the uploader")]
+    [InlineData(ChapterKind.Pdf, ".pdf", "application/pdf", null, "gzip", "a read URL would serve it with an encoding the uploader chose")]
+    [InlineData(ChapterKind.Video, ".mp4", "video/mp4", "attachment; filename=lesson.html", null, "a read URL would download it under a name and type the uploader chose")]
+    [InlineData(ChapterKind.Video, ".mp4", "video/mp4", null, "br", "a read URL would serve it with an encoding the uploader chose")]
+    public async Task A_file_uploaded_with_a_content_disposition_or_encoding_is_not_accepted_and_its_bytes_are_not_read(ChapterKind kind, string extension, string contentType, string? contentDisposition, string? contentEncoding, string because)
+    {
+        var blobs = new InMemoryStoredBlobs();
+        var file = AddFileChapterTests.IssuedName(Version, extension);
+        blobs.Upload(file, contentType, 1024, contentDisposition: contentDisposition, contentEncoding: contentEncoding);
+
+        var accepted = await ChapterUploads.AcceptAsync(blobs, BlobReference.From(file), Version, kind, TestContext.Current.CancellationToken);
+
+        AddFileChapterTests.ShouldBeRefused(accepted.IsFailure ? accepted.Error : null, "editorial.upload-not-accepted", HttpStatusCode.BadRequest, because);
+        blobs.StartReads.ShouldBe(0, "what the properties already refuse needs no read of the bytes");
+    }
+
+    [Fact]
+    public async Task A_pdf_replaced_after_its_properties_were_checked_is_not_accepted_on_the_new_ones_bytes()
+    {
+        var blobs = new InMemoryStoredBlobs();
+        var file = AddFileChapterTests.IssuedName(Version, ".pdf");
+        blobs.Upload(file, "application/pdf", 1024);
+        // Another PUT under the name once its properties were read: far above a PDF's size, yet starting as a PDF does.
+        blobs.AfterNextLookup(() => blobs.Upload(file, "application/pdf", ChapterUploads.MaxPdfBytes * 2, content: InMemoryStoredBlobs.PdfStart));
+
+        var accepted = await ChapterUploads.AcceptAsync(blobs, BlobReference.From(file), Version, ChapterKind.Pdf, TestContext.Current.CancellationToken);
+
+        AddFileChapterTests.ShouldBeRefused(accepted.IsFailure ? accepted.Error : null, "editorial.upload-not-accepted", HttpStatusCode.BadRequest, "the properties checked and the bytes checked must be one version's");
+    }
+
     [Fact]
     public async Task A_video_is_accepted_once_its_leading_bytes_are_read_and_bytes_4_to_7_are_ftyp()
     {

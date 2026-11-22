@@ -223,7 +223,8 @@ public class BlobStorageTests(AspireFixture aspire)
 
         put.StatusCode.ShouldBe(HttpStatusCode.Created);
         stored.HasValue.ShouldBeTrue("an uploaded blob is found");
-        stored.Value.ShouldBe(new StoredBlob(name, "application/pdf", 300, IsBlockBlob: true));
+        stored.Value.ETag.ShouldNotBeNullOrWhiteSpace("the version of the blob found, which reading its start must match");
+        stored.Value.ShouldBe(new StoredBlob(name, "application/pdf", 300, IsBlockBlob: true, ETag: stored.Value.ETag));
     }
 
     [Fact]
@@ -272,8 +273,12 @@ public class BlobStorageTests(AspireFixture aspire)
 
         using var putLonger = await PutAsync((await urls.CreateUploadUrlAsync(longer, FiveMinutes, TestContext.Current.CancellationToken)).Url, longerContent);
         using var putShorter = await PutAsync((await urls.CreateUploadUrlAsync(shorter, FiveMinutes, TestContext.Current.CancellationToken)).Url, shorterContent);
-        var startOfLonger = await blobs.ReadStartAsync(longer, 8, TestContext.Current.CancellationToken);
-        var startOfShorter = await blobs.ReadStartAsync(shorter, 8, TestContext.Current.CancellationToken);
+        var foundLonger = await blobs.FindAsync(longer, TestContext.Current.CancellationToken);
+        var foundShorter = await blobs.FindAsync(shorter, TestContext.Current.CancellationToken);
+        foundLonger.HasValue.ShouldBeTrue("the longer blob was uploaded");
+        foundShorter.HasValue.ShouldBeTrue("the shorter blob was uploaded");
+        var startOfLonger = await blobs.ReadStartAsync(foundLonger.Value, 8, TestContext.Current.CancellationToken);
+        var startOfShorter = await blobs.ReadStartAsync(foundShorter.Value, 8, TestContext.Current.CancellationToken);
 
         putLonger.StatusCode.ShouldBe(HttpStatusCode.Created);
         putShorter.StatusCode.ShouldBe(HttpStatusCode.Created);
@@ -303,7 +308,7 @@ public class BlobStorageTests(AspireFixture aspire)
         uploaded.HasValue.ShouldBeTrue("the uploaded blob is found");
         uploaded.Value.IsCopy.ShouldBeFalse("a blob put directly is no copy");
         copied.HasValue.ShouldBeTrue("the copied blob is found");
-        copied.Value.ShouldBe(new StoredBlob(copy, "application/pdf", 300, IsBlockBlob: true, IsCopy: true));
+        copied.Value.ShouldBe(new StoredBlob(copy, "application/pdf", 300, IsBlockBlob: true, IsCopy: true, ETag: copied.Value.ETag));
     }
 
     /// <summary>
