@@ -25,7 +25,7 @@ public sealed class FrontendLinks : IFrontendLinks
         return new Uri(BaseUrl(configuration).AbsoluteUri.TrimEnd('/') + pathAndFragment, UriKind.Absolute);
     }
 
-    private static Uri BaseUrl(IConfiguration configuration)
+    internal static Uri BaseUrl(IConfiguration configuration)
     {
         var value = configuration[BaseUrlKey];
         if (!Uri.TryCreate(value, UriKind.Absolute, out var url) || (url.Scheme != Uri.UriSchemeHttps && !(url.Scheme == Uri.UriSchemeHttp && SmtpSettings.IsLoopback(url))))

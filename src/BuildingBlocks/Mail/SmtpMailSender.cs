@@ -87,7 +87,7 @@ public sealed class SmtpMailSender : IMailSender
     private static bool IsBareAddress(string to) =>
         MailboxAddress.TryParse(to, out var parsed) && string.IsNullOrEmpty(parsed.Name) && string.Equals(parsed.Address, to, StringComparison.Ordinal);
 
-    private static MailboxAddress From(IConfiguration configuration)
+    internal static MailboxAddress From(IConfiguration configuration)
     {
         if (!MailboxAddress.TryParse(configuration[FromKey], out var address))
         {
