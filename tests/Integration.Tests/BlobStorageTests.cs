@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Azure;
@@ -13,7 +14,7 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// <summary>
 /// The URLs AzureBlobUrls signs, sent to the storage emulator the AppHost runs: an upload URL creates its own blob and does
 /// nothing else, a read URL reads its own blob and does nothing else, neither works once its lifetime ends, and the web
-/// app's origin, alone, may use them from a browser.
+/// app's origin, alone, may use them from a browser. AzureStoredBlobs reads what was uploaded.
 /// </summary>
 public class BlobStorageTests(AspireFixture aspire)
 {
@@ -206,6 +207,41 @@ public class BlobStorageTests(AspireFixture aspire)
         preflight.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
     }
 
+    [Fact]
+    public async Task Stored_blobs_read_an_uploaded_blobs_content_type_length_and_block_type()
+    {
+        var urls = await UrlsAsync("editorial", TimeProvider.System.GetUtcNow());
+        var blobs = await StoredBlobsAsync("editorial");
+        var name = NewName();
+        var content = RandomNumberGenerator.GetBytes(300);
+
+        var upload = await urls.CreateUploadUrlAsync(name, FiveMinutes, TestContext.Current.CancellationToken);
+        using var put = await PutAsync(upload.Url, content, "application/pdf");
+        var stored = await blobs.FindAsync(name, TestContext.Current.CancellationToken);
+
+        put.StatusCode.ShouldBe(HttpStatusCode.Created);
+        stored.HasValue.ShouldBeTrue("an uploaded blob is found");
+        stored.Value.ShouldBe(new StoredBlob(name, "application/pdf", 300, IsBlockBlob: true));
+    }
+
+    [Fact]
+    public async Task Stored_blobs_find_nothing_for_a_name_never_uploaded()
+    {
+        var urls = await UrlsAsync("editorial", TimeProvider.System.GetUtcNow());
+        var blobs = await StoredBlobsAsync("editorial");
+        var uploaded = NewName();
+        var never = NewName();
+
+        using var put = await PutAsync((await urls.CreateUploadUrlAsync(uploaded, FiveMinutes, TestContext.Current.CancellationToken)).Url, RandomNumberGenerator.GetBytes(16));
+        var found = await blobs.FindAsync(uploaded, TestContext.Current.CancellationToken);
+        var missing = await blobs.FindAsync(never, TestContext.Current.CancellationToken);
+
+        // The uploaded blob is found, so finding nothing for the other name says it is missing, not that the reader is blind.
+        put.StatusCode.ShouldBe(HttpStatusCode.Created);
+        found.HasValue.ShouldBeTrue("the blob uploaded beside it is found");
+        missing.HasValue.ShouldBeFalse();
+    }
+
     /// <summary>
     /// The modules whose containers the running AppHost created, read from its application model rather than listed, so a
     /// module added or removed with <c>fabric add-module</c> is covered without touching this file.
@@ -222,10 +258,15 @@ public class BlobStorageTests(AspireFixture aspire)
     private static Uri Elsewhere(Uri url, BlobName name, BlobName other) =>
         new(url.AbsoluteUri.Replace(name.Value, other.Value, StringComparison.Ordinal));
 
-    private static async Task<HttpResponseMessage> PutAsync(Uri url, byte[] content)
+    private static async Task<HttpResponseMessage> PutAsync(Uri url, byte[] content, string? contentType = null)
     {
         using var request = new HttpRequestMessage(HttpMethod.Put, url) { Content = new ByteArrayContent(content) };
         request.Headers.Add("x-ms-blob-type", "BlockBlob");
+        if (contentType is not null)
+        {
+            request.Content.Headers.ContentType = MediaTypeHeaderValue.Parse(contentType);
+        }
+
         return await Http.SendAsync(request, TestContext.Current.CancellationToken);
     }
 
@@ -248,6 +289,15 @@ public class BlobStorageTests(AspireFixture aspire)
             .AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:blobs"] = await ConnectionStringAsync(module) })
             .Build();
         return new AzureBlobUrls(configuration, new FakeTimeProvider(now));
+    }
+
+    /// <summary>The blobs of a module's container, read as the service reads them.</summary>
+    private async Task<AzureStoredBlobs> StoredBlobsAsync(string module)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:blobs"] = await ConnectionStringAsync(module) })
+            .Build();
+        return new AzureStoredBlobs(configuration);
     }
 
     private async Task<string> ConnectionStringAsync(string module)

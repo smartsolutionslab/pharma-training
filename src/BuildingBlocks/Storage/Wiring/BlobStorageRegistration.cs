@@ -17,6 +17,10 @@ public static class BlobStorageRegistration
         Ensure.That(configuration).IsNotNull();
 
         services.TryAddSingleton<IBlobUrls>(provider => new AzureBlobUrls(configuration, provider.GetRequiredService<TimeProvider>()));
+
+        // Red-test stub for #15 (task A1): registered so the module's stubbed handlers resolve, but once per call rather
+        // than once per host; B2 registers it with TryAddSingleton.
+        services.AddSingleton<IStoredBlobs>(_ => new AzureStoredBlobs(configuration));
         return services;
     }
 }
