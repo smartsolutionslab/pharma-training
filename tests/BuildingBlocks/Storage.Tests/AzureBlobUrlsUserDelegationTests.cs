@@ -130,6 +130,76 @@ public class AzureBlobUrlsUserDelegationTests
         await keys.DidNotReceiveWithAnyArgs().GetKeyAsync(default!, default, TestContext.Current.CancellationToken);
     }
 
+    [Fact]
+    public async Task Without_an_account_key_the_url_is_valid_over_https_alone()
+    {
+        var urls = new AzureBlobUrls(Configuration(Keyless()), new FakeTimeProvider(Noon), KeySource(Key(Noon.AddHours(1))));
+
+        var upload = await urls.CreateUploadUrlAsync(BlobName.From("handout.pdf"), FiveMinutes, TestContext.Current.CancellationToken);
+        var read = await urls.CreateReadUrlAsync(BlobName.From("handout.pdf"), FiveMinutes, TestContext.Current.CancellationToken);
+
+        HttpUtility.ParseQueryString(upload.Url.Query)["spr"].ShouldBe("https", $"The upload URL should be signed for https alone: {upload.Url}");
+        HttpUtility.ParseQueryString(read.Url.Query)["spr"].ShouldBe("https", $"The read URL should be signed for https alone: {read.Url}");
+    }
+
+    [Fact]
+    public async Task Without_an_account_key_an_endpoint_that_is_not_an_account_blob_host_fails_when_the_first_url_is_signed_naming_it()
+    {
+        const string endpoint = "https://files.contoso.example/";
+        var urls = new AzureBlobUrls(Configuration($"Endpoint={endpoint};ContainerName={Container}"), new FakeTimeProvider(Noon), KeySource(Key(Noon.AddHours(1))));
+
+        var failure = await Should.ThrowAsync<InvalidOperationException>(() =>
+            urls.CreateUploadUrlAsync(BlobName.From("handout.pdf"), FiveMinutes, TestContext.Current.CancellationToken));
+
+        failure.Message.ShouldContain(endpoint.TrimEnd('/'));
+    }
+
+    [Fact]
+    public async Task Without_an_account_key_urls_signed_at_once_ask_for_one_key()
+    {
+        var pending = new TaskCompletionSource<UserDelegationKey>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var keys = Substitute.For<IUserDelegationKeySource>();
+        keys.GetKeyAsync(Arg.Any<Uri>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>()).Returns(pending.Task);
+        var urls = new AzureBlobUrls(Configuration(Keyless()), new FakeTimeProvider(Noon), keys);
+        var key = Key(Noon.AddHours(1));
+
+        var signing = Enumerable.Range(0, 8)
+            .Select(index => urls.CreateUploadUrlAsync(BlobName.From($"handout-{index}.pdf"), FiveMinutes, TestContext.Current.CancellationToken))
+            .ToList();
+        pending.SetResult(key);
+        var signed = await Task.WhenAll(signing);
+
+        await keys.Received(1).GetKeyAsync(Arg.Any<Uri>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>());
+        signed.ShouldAllBe(url => HttpUtility.ParseQueryString(url.Url.Query)["skoid"] == key.SignedObjectId);
+    }
+
+    [Fact]
+    public async Task Without_an_account_key_a_shorter_lived_key_that_arrives_later_never_replaces_a_longer_lived_one()
+    {
+        var time = new FakeTimeProvider(Noon);
+        var shortLived = new TaskCompletionSource<UserDelegationKey>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var longLived = Key(Noon.AddHours(2));
+        var keys = Substitute.For<IUserDelegationKeySource>();
+        keys.GetKeyAsync(Arg.Any<Uri>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
+            .Returns(shortLived.Task, Task.FromResult(longLived), Task.FromResult(Key(Noon.AddHours(3))));
+        var urls = new AzureBlobUrls(Configuration(Keyless()), time, keys);
+        var name = BlobName.From("handout.pdf");
+
+        // At noon a key valid until 13:00 is asked for and takes its time.
+        var atNoon = urls.CreateReadUrlAsync(name, FiveMinutes, TestContext.Current.CancellationToken);
+        // At 12:58 a five-minute URL (13:03) would outlive it, so another key, valid until 14:00, is asked for and arrives.
+        time.Advance(TimeSpan.FromMinutes(58));
+        var later = await urls.CreateReadUrlAsync(name, FiveMinutes, TestContext.Current.CancellationToken);
+        // Then the first key, valid until 13:00, arrives; the one valid until 14:00 is kept.
+        shortLived.SetResult(Key(Noon.AddHours(1)));
+        await atNoon;
+        var afterBoth = await urls.CreateReadUrlAsync(name, FiveMinutes, TestContext.Current.CancellationToken);
+
+        HttpUtility.ParseQueryString(later.Url.Query)["skoid"].ShouldBe(longLived.SignedObjectId);
+        HttpUtility.ParseQueryString(afterBoth.Url.Query)["skoid"].ShouldBe(longLived.SignedObjectId, "A key that expires at 13:00 replaced the one kept until 14:00.");
+        await keys.Received(2).GetKeyAsync(Arg.Any<Uri>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>());
+    }
+
     /// <summary>The connection string as the AppHost publishes it: the account's endpoint and the container, no key.</summary>
     private static string Keyless() => $"Endpoint=https://{Account}.blob.core.windows.net/;ContainerName={Container}";
 
