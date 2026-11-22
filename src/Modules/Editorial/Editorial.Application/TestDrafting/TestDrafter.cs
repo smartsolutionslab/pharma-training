@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using Microsoft.Extensions.AI;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.TestDrafting;
 
@@ -34,6 +35,30 @@ public static class TestDrafter
         var options = new ChatOptions { ResponseFormat = ResponseFormat };
         var response = await model.GetResponseAsync(TestDraftPrompt.Messages(request), options, cancellationToken);
         return Read(response.Text);
+    }
+
+    /// <summary>
+    /// The whole draft: the request from the version (refused before the model is called when it cannot be drafted),
+    /// the model's answer, and the drafted questions it maps onto. A failure returns no questions at all.
+    /// </summary>
+    public static async Task<Result<IReadOnlyList<DraftedQuestion>, ApiError>> DraftAsync(IChatClient model, CourseVersion version, CancellationToken cancellationToken)
+    {
+        Ensure.That(model).IsNotNull();
+        Ensure.That(version).IsNotNull();
+
+        var request = TestDraftRequest.For(version);
+        if (request.IsFailure)
+        {
+            return Failure(request.Error);
+        }
+
+        var answer = await AskAsync(model, request.Value, cancellationToken);
+        if (answer.IsFailure)
+        {
+            return Failure(answer.Error);
+        }
+
+        return answer.Value.ToDraftedQuestions(request.Value);
     }
 
     private static Result<TestDraftAnswer, ApiError> Read(string text)
