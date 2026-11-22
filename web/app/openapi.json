@@ -812,6 +812,36 @@
         }
       }
     },
+    "/editorial/course-versions/{id}/content-review": {
+      "post": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorialContentReviewDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/editorial/courses": {
       "post": {
         "tags": [
@@ -2452,11 +2482,7 @@
       },
       "EditorialChapterRequest": {
         "required": [
-          "title",
-          "kind",
-          "text",
-          "file",
-          "durationSeconds"
+          "title"
         ],
         "type": "object",
         "properties": {
@@ -2494,7 +2520,8 @@
           "Text",
           "Pdf",
           "Video"
-        ]
+        ],
+        "default": "Text"
       },
       "EditorialChapterUploadDto": {
         "required": [
@@ -2527,6 +2554,55 @@
               "string"
             ],
             "format": "int64"
+          }
+        }
+      },
+      "EditorialContentHintDto": {
+        "required": [
+          "chapterId",
+          "kind",
+          "text"
+        ],
+        "type": "object",
+        "properties": {
+          "chapterId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/EditorialContentHintKind"
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "EditorialContentHintKind": {
+        "enum": [
+          "Gap",
+          "Contradiction",
+          "Readability"
+        ]
+      },
+      "EditorialContentReviewDto": {
+        "required": [
+          "reviewedChapterIds",
+          "hints"
+        ],
+        "type": "object",
+        "properties": {
+          "reviewedChapterIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "hints": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorialContentHintDto"
+            }
           }
         }
       },
@@ -2808,6 +2884,12 @@
           }
         }
       },
+      "EditorialUploadKind": {
+        "enum": [
+          "Pdf",
+          "Video"
+        ]
+      },
       "EditorialUploadRequest": {
         "required": [
           "kind"
@@ -2815,7 +2897,7 @@
         "type": "object",
         "properties": {
           "kind": {
-            "$ref": "#/components/schemas/EditorialChapterRequestKind"
+            "$ref": "#/components/schemas/EditorialUploadKind"
           }
         }
       },

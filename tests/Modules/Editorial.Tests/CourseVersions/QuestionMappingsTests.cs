@@ -104,6 +104,15 @@ public class QuestionMappingsTests
     }
 
     [Theory]
+    [MemberData(nameof(Types))]
+    public void A_question_type_travels_under_its_own_name_in_the_integration_events(QuestionType type) =>
+        type.ToV1().ToString().ShouldBe(type.ToString());
+
+    [Fact]
+    public void An_undefined_question_type_is_a_bug_in_the_integration_events() =>
+        Should.Throw<UnreachableException>(() => ((QuestionType)99).ToV1());
+
+    [Theory]
     [MemberData(nameof(Provenances))]
     public void A_provenance_travels_under_its_own_name_to_the_dto(Provenance provenance) =>
         provenance.ToDto().ToString().ShouldBe(provenance.ToString());

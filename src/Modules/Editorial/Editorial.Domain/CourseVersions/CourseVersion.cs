@@ -101,6 +101,28 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         return Success(Unit.Value);
     }
 
+    /// <summary>
+    /// Whether the file may become the chapter's, before the storage is asked about it: the version is a draft and no
+    /// other chapter of it holds the file, whether an earlier add recorded it or a copy brought it from the version before.
+    /// </summary>
+    public Result<Unit, DomainError> AcceptsFile(ChapterId chapter, BlobReference file)
+    {
+        Ensure.That(file).IsNotNull();
+
+        var accepts = AcceptsUploads();
+        if (accepts.IsFailure)
+        {
+            return accepts;
+        }
+
+        if (IsHeldByAnotherChapter(file, chapter))
+        {
+            return Failure(CourseVersionErrors.FileInUse(Id, file));
+        }
+
+        return Success(Unit.Value);
+    }
+
     public Result<ChapterId, DomainError> AddChapter(Chapter chapter)
     {
         Ensure.That(chapter).IsNotNull();
@@ -108,6 +130,11 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         if (!IsDraft)
         {
             return Failure(CourseVersionErrors.NotADraft(Id, Status));
+        }
+
+        if (chapter.File is { } file && IsHeldByAnotherChapter(file, chapter.Id))
+        {
+            return Failure(CourseVersionErrors.FileInUse(Id, file));
         }
 
         chapters.Add(chapter);
@@ -127,6 +154,12 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         if (chapters.SingleOrDefault(chapter => chapter.Id == replacement.Id) is not { } stored)
         {
             return Failure(CourseVersionErrors.ChapterNotFound(Id, replacement.Id));
+        }
+
+        // The chapter's own file is no other's: a replacement that keeps it is no conflict.
+        if (replacement.File is { } file && IsHeldByAnotherChapter(file, replacement.Id))
+        {
+            return Failure(CourseVersionErrors.FileInUse(Id, file));
         }
 
         stored.Take(replacement);
@@ -423,4 +456,8 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         Raise(new CourseVersionRetired(Id, Course, editor));
         return Success(Unit.Value);
     }
+
+    /// <summary>Whether a chapter of the version other than <paramref name="chapter"/> holds the file: one file, one chapter.</summary>
+    private bool IsHeldByAnotherChapter(BlobReference file, ChapterId chapter) =>
+        chapters.Any(other => other.Id != chapter && other.File == file);
 }

@@ -23,6 +23,9 @@ public static class PharmacyFailures
 
     public static ApiError Changed(Guid id) => new PharmacyChanged(id);
 
+    /// <summary>An accept lost the race to another change of the invitation; it names no pharmacy, which the caller does not belong to.</summary>
+    public static ApiError InvitationChanged() => new InvitationChanged();
+
     public static ApiError InvalidEmail() => new InvalidEmail();
 
     public static ApiError OpenInvitationNotFound(Guid id) => new OpenInvitationNotFound(id);
@@ -48,12 +51,18 @@ public static class PharmacyFailures
             LastManagerCannotLeave => ApiError.From(error, HttpStatusCode.Conflict),
             AlreadyMemberOrInvited => ApiError.From(error, HttpStatusCode.Conflict),
             NoOpenInvitation => ApiError.From(error, HttpStatusCode.NotFound),
-            InvitationNotFound => InvitationLinkNotFound(),
             InvitationExpired => ApiError.From(error, HttpStatusCode.Gone),
-            InvitationForAnotherAddress => ApiError.From(error, HttpStatusCode.Forbidden),
-            PersonAlreadyMember => ApiError.From(error, HttpStatusCode.Conflict),
             _ => throw new UnreachableException(
                 $"{error.Code} is not returned by an Organisation use case yet; map it where it is first returned."),
         };
     }
+
+    /// <summary>Accept's refusals, each case mapped; a new case fails the build until it is mapped here.</summary>
+    public static ApiError From(AcceptInvitationError error) => error switch
+    {
+        InvitationNotFound => InvitationLinkNotFound(),
+        InvitationExpired expired => ApiError.From(expired, HttpStatusCode.Gone),
+        InvitationForAnotherAddress another => ApiError.From(another, HttpStatusCode.Forbidden),
+        PersonAlreadyMember member => ApiError.From(member, HttpStatusCode.Conflict),
+    };
 }

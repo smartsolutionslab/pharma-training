@@ -123,7 +123,7 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
     /// <param name="name">The name the person goes by in Keycloak.</param>
     /// <param name="email">The address Keycloak verified for the person; it must be the invited one.</param>
     /// <param name="now">The moment of accepting.</param>
-    public Result<Unit, DomainError> AcceptInvitation(
+    public Result<Unit, AcceptInvitationError> AcceptInvitation(
         InvitationToken token,
         PersonId person,
         DisplayName name,
@@ -144,7 +144,7 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
 
         if (invited.InvitationExpiresAt! < now)
         {
-            return Failure(PharmacyErrors.InvitationExpired(Id, invited.Id));
+            return Failure(PharmacyErrors.AcceptedAfterExpiry(Id, invited.Id));
         }
 
         if (invited.Email != email)
