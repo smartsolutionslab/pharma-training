@@ -26,7 +26,8 @@ jobs:
       matrix:
         environment: [staging, production]
     # A placeholder for every parameter the AppHost declares without a default. The Bicep declares each one and never holds
-    # its value, so a placeholder changes nothing it writes; without one a publish may wait for someone to enter it.
+    # its value, so a placeholder changes nothing it writes. Aspire 13.6.5's `publish --non-interactive` writes the Bicep
+    # without them; they guard against a CLI that prompts for a missing value, as the in-process test harness does.
     env:
       Parameters__postgres-username: placeholder
       Parameters__postgres-password: placeholder
@@ -41,6 +42,8 @@ jobs:
       Parameters__azure-openai-api-key: placeholder
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           global-json-file: global.json
