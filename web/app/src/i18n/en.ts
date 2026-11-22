@@ -203,6 +203,21 @@ export const en: MessageSchema = {
     test: {
       heading: 'Test for “{title}”',
       backToVersion: 'Back to the version',
+      blueprint: {
+        title: 'Test blueprint',
+        questions: 'Number of questions',
+        passingScore: 'Passing score (%)',
+        validity: 'Validity (months)',
+        months: 'one month | {count} months',
+        edit: 'Change the blueprint',
+        submit: 'Save the blueprint',
+        saved: 'The test blueprint was saved.',
+        saveFailed: 'The test blueprint could not be saved.',
+        required: 'Enter a whole number.',
+        questionsInvalid: 'A test has {min} to {max} questions.',
+        passingScoreInvalid: 'The passing score is between {min} and {max} percent.',
+        validityInvalid: 'Validity is between {min} and {max} months.',
+      },
     },
   },
   samples: {

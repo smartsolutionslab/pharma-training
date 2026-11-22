@@ -212,6 +212,21 @@ export const de = {
     test: {
       heading: 'Test zu „{title}“',
       backToVersion: 'Zurück zur Version',
+      blueprint: {
+        title: 'Testvorgaben',
+        questions: 'Anzahl Fragen',
+        passingScore: 'Bestehensgrenze (%)',
+        validity: 'Gültigkeit (Monate)',
+        months: 'ein Monat | {count} Monate',
+        edit: 'Vorgaben ändern',
+        submit: 'Vorgaben speichern',
+        saved: 'Die Testvorgaben wurden gespeichert.',
+        saveFailed: 'Die Testvorgaben konnten nicht gespeichert werden.',
+        required: 'Geben Sie eine ganze Zahl an.',
+        questionsInvalid: 'Ein Test hat {min} bis {max} Fragen.',
+        passingScoreInvalid: 'Die Bestehensgrenze liegt zwischen {min} und {max} Prozent.',
+        validityInvalid: 'Die Gültigkeit liegt zwischen {min} und {max} Monaten.',
+      },
     },
   },
   samples: {

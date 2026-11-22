@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { useGetEditorialCourseVersionsId } from '@/api/generated';
 import { ApiError } from '@/api/baseApi';
 import { Skeleton } from '@/components/ui/skeleton';
+import TestBlueprintSection from './TestBlueprintSection.vue';
 
 // The test of a course version (/editorial/versions/:id/test), a page of its own beside the version's: headed by the
 // version's title, number and status, with the way back to the version. Only a draft's test can be changed; any other
@@ -23,6 +24,7 @@ const {
 const { t } = useI18n();
 
 const notFound = computed(() => error.value instanceof ApiError && error.value.status === 404);
+const editable = computed(() => version.value?.status === 'Draft');
 </script>
 
 <template>
@@ -61,6 +63,7 @@ const notFound = computed(() => error.value instanceof ApiError && error.value.s
       <p v-if="version.status !== 'Draft'" class="text-body bg-muted rounded-md p-3">
         {{ t(`editorial.version.readOnly.${version.status}`) }}
       </p>
+      <TestBlueprintSection :version-id="id" :blueprint="version.blueprint" :editable="editable" />
     </template>
   </main>
 </template>
