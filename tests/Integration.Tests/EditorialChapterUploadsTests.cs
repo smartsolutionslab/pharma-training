@@ -207,18 +207,48 @@ public class EditorialChapterUploadsTests(AspireFixture aspire)
         await ShouldBeRefusedAsync(requested, HttpStatusCode.BadRequest, "editorial.invalid-upload-kind", cancellationToken);
     }
 
-    [Fact]
-    public async Task An_upload_request_in_a_charset_the_host_does_not_know_is_refused_not_a_server_error()
+    /// <summary>
+    /// A UTF-8 body under a charset the host cannot read it in: one it does not know, UTF-16 (quoted, which RFC 9110 allows),
+    /// a quoted empty one, which names no charset, and UTF-7, which .NET refuses to decode.
+    /// </summary>
+    [Theory]
+    [InlineData("application/json; charset=bogus")]
+    [InlineData("application/json; charset=\"utf-16\"")]
+    [InlineData("application/json; charset=\"\"")]
+    [InlineData("application/json; charset=utf-7")]
+    public async Task An_upload_request_in_a_charset_the_host_does_not_know_is_refused_not_a_server_error(string contentType)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await aspire.CreateHostClientAsync("editor");
         var id = await CreateAsync(client, cancellationToken);
         using var body = Json("""{"kind":"Pdf"}""");
-        body.Headers.ContentType = MediaTypeHeaderValue.Parse("application/json; charset=bogus");
+        body.Headers.ContentType = MediaTypeHeaderValue.Parse(contentType);
 
         using var requested = await client.PostAsync(Uploads(id), body, cancellationToken);
 
         await ShouldBeRefusedAsync(requested, HttpStatusCode.BadRequest, "editorial.invalid-upload-kind", cancellationToken);
+    }
+
+    /// <summary>A UTF-8 body named as UTF-8, with the charset quoted or not (RFC 9110 allows both), is a valid request.</summary>
+    [Theory]
+    [InlineData("application/json; charset=utf-8")]
+    [InlineData("application/json; charset=\"utf-8\"")]
+    [InlineData("application/json; charset=\"UTF-8\"")]
+    public async Task An_upload_request_in_utf_8_gets_an_upload_url_whether_its_charset_is_quoted_or_not(string contentType)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var id = await CreateAsync(client, cancellationToken);
+        using var body = Json("""{"kind":"Pdf"}""");
+        body.Headers.ContentType = MediaTypeHeaderValue.Parse(contentType);
+
+        using var requested = await client.PostAsync(Uploads(id), body, cancellationToken);
+
+        await ShouldAnswerAsync(requested, HttpStatusCode.OK, cancellationToken);
+        var upload = await requested.Content.ReadFromJsonAsync<Upload>(cancellationToken);
+        upload.ShouldNotBeNull().BlobName.ShouldStartWith($"course-versions/{id:D}/");
+        upload.ContentType.ShouldBe("application/pdf");
+        upload.UploadUrl.IsAbsoluteUri.ShouldBeTrue();
     }
 
     [Fact]
