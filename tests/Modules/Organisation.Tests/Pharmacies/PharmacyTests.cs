@@ -48,7 +48,7 @@ public class PharmacyTests
         anna.Name.ShouldBe(DisplayName.From("Anna Berger"));
         anna.TokenHash.ShouldBeNull();
         pharmacy.AcceptInvitation(token, Anna, DisplayName.From("Anna Berger"), AnnaMail, Now.PlusDays(2))
-            .Error.ShouldBeOfType<InvitationNotFound>();
+            .Error.Value.ShouldBeOfType<InvitationNotFound>();
     }
 
     [Fact]
@@ -80,7 +80,7 @@ public class PharmacyTests
         Invite(pharmacy, AnnaMail, token);
 
         pharmacy.AcceptInvitation(token, Anna, DisplayName.From("Anna Berger"), AnnaMail, Now.PlusDays(15))
-            .Error.ShouldBeOfType<InvitationExpired>();
+            .Error.Value.ShouldBeOfType<InvitationExpired>();
     }
 
     [Fact]
@@ -95,7 +95,7 @@ public class PharmacyTests
         pharmacy.IssueInvitationLink(membership, fresh, Now.PlusDays(20)).IsSuccess.ShouldBeTrue();
 
         pharmacy.Memberships.Single(m => m.Id == membership).TokenHash.ShouldBe(InvitationTokenHash.Of(fresh));
-        pharmacy.AcceptInvitation(old, Anna, DisplayName.From("Anna Berger"), AnnaMail, Now.PlusDays(21)).Error.ShouldBeOfType<InvitationNotFound>();
+        pharmacy.AcceptInvitation(old, Anna, DisplayName.From("Anna Berger"), AnnaMail, Now.PlusDays(21)).Error.Value.ShouldBeOfType<InvitationNotFound>();
         pharmacy.AcceptInvitation(fresh, Anna, DisplayName.From("Anna Berger"), AnnaMail, Now.PlusDays(21)).IsSuccess.ShouldBeTrue();
     }
 
@@ -111,7 +111,7 @@ public class PharmacyTests
         pharmacy.RevokeInvitation(membership).IsSuccess.ShouldBeTrue();
 
         revoked.TokenHash.ShouldBeNull();
-        pharmacy.AcceptInvitation(token, Anna, DisplayName.From("Anna Berger"), AnnaMail, Now).Error.ShouldBeOfType<InvitationNotFound>();
+        pharmacy.AcceptInvitation(token, Anna, DisplayName.From("Anna Berger"), AnnaMail, Now).Error.Value.ShouldBeOfType<InvitationNotFound>();
     }
 
     [Fact]
@@ -122,7 +122,7 @@ public class PharmacyTests
         Invite(pharmacy, AnnaMail, token);
 
         pharmacy.AcceptInvitation(token, Anna, DisplayName.From("Bert Klein"), EmailAddress.From("bert@example.org"), Now)
-            .Error.ShouldBeOfType<InvitationForAnotherAddress>();
+            .Error.Value.ShouldBeOfType<InvitationForAnotherAddress>();
     }
 
     [Fact]
@@ -137,7 +137,7 @@ public class PharmacyTests
         Invite(onTime, AnnaMail, onTimeToken);
 
         late.AcceptInvitation(lateToken, Anna, DisplayName.From("Anna Berger"), AnnaMail, Timestamp.From(expiresAt.Value.AddTicks(1)))
-            .Error.ShouldBeOfType<InvitationExpired>();
+            .Error.Value.ShouldBeOfType<InvitationExpired>();
         onTime.AcceptInvitation(onTimeToken, Anna, DisplayName.From("Anna Berger"), AnnaMail, expiresAt).IsSuccess.ShouldBeTrue();
     }
 
@@ -153,7 +153,7 @@ public class PharmacyTests
         pharmacy.ClearDomainEvents();
 
         pharmacy.AcceptInvitation(token, Anna, DisplayName.From("Anna Berger"), privateMail, Now)
-            .Error.ShouldBeOfType<PersonAlreadyMember>();
+            .Error.Value.ShouldBeOfType<PersonAlreadyMember>();
 
         var open = pharmacy.Memberships.Single(m => m.Id == second);
         open.Status.ShouldBe(MembershipStatus.Invited);
@@ -275,7 +275,7 @@ public class PharmacyTests
         pharmacy.IssueInvitationLink(membership, second, Later(2)).IsSuccess.ShouldBeTrue();
 
         pharmacy.Memberships.Single(m => m.Id == membership).TokenHash.ShouldBe(InvitationTokenHash.Of(second));
-        pharmacy.AcceptInvitation(first, Anna, DisplayName.From("Anna Berger"), AnnaMail, Later(3)).Error.ShouldBeOfType<InvitationNotFound>();
+        pharmacy.AcceptInvitation(first, Anna, DisplayName.From("Anna Berger"), AnnaMail, Later(3)).Error.Value.ShouldBeOfType<InvitationNotFound>();
     }
 
     [Theory]
@@ -360,7 +360,7 @@ public class PharmacyTests
         var renewed = pharmacy.Memberships.Single(m => m.Id == membership);
         renewed.TokenHash.ShouldBeNull();
         renewed.InvitationExpiresAt.ShouldBe(later.PlusDays(14));
-        pharmacy.AcceptInvitation(first, Anna, DisplayName.From("Anna Berger"), AnnaMail, later).Error.ShouldBeOfType<InvitationNotFound>();
+        pharmacy.AcceptInvitation(first, Anna, DisplayName.From("Anna Berger"), AnnaMail, later).Error.Value.ShouldBeOfType<InvitationNotFound>();
     }
 
     [Fact]

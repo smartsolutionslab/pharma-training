@@ -90,7 +90,7 @@ public class PharmacyCoverageTests
         revoked.Status.ShouldBe(MembershipStatus.Revoked);
         revoked.TokenHash.ShouldBeNull();
         pharmacy.DomainEvents.OfType<InvitationRevoked>().ShouldHaveSingleItem().ShouldBe(new InvitationRevoked(pharmacy.Id, membership));
-        pharmacy.AcceptInvitation(token, Anna, AnnaName, AnnaMail, Now).Error.ShouldBeOfType<InvitationNotFound>();
+        pharmacy.AcceptInvitation(token, Anna, AnnaName, AnnaMail, Now).Error.Value.ShouldBeOfType<InvitationNotFound>();
     }
 
     [Fact]
@@ -145,7 +145,7 @@ public class PharmacyCoverageTests
         var privateMail = EmailAddress.From("anna.private@example.org");
         Invite(pharmacy, privateMail, second);
 
-        pharmacy.AcceptInvitation(second, Anna, AnnaName, privateMail, Now).Error.ShouldBeOfType<PersonAlreadyMember>();
+        pharmacy.AcceptInvitation(second, Anna, AnnaName, privateMail, Now).Error.Value.ShouldBeOfType<PersonAlreadyMember>();
     }
 
     [Fact]
