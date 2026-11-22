@@ -1,7 +1,31 @@
 import js from '@eslint/js';
+import vueI18n from '@intlify/eslint-plugin-vue-i18n';
 import { defineConfigWithVueTs, vueTsConfigs } from '@vue/eslint-config-typescript';
 import pluginVue from 'eslint-plugin-vue';
 import globals from 'globals';
+
+/**
+ * Where @intlify/vue-i18n/no-raw-text looks besides a template's text: the attributes a reader hears or sees, on any
+ * element. Text of punctuation, digits and spaces alone is no language.
+ */
+const rawTextOptions = {
+  attributes: {
+    '/.+/': [
+      'title',
+      'aria-label',
+      'aria-description',
+      'aria-placeholder',
+      'aria-roledescription',
+      'aria-valuetext',
+      'placeholder',
+      'alt',
+      'label',
+      'description',
+      'heading',
+    ],
+  },
+  ignorePattern: '^[-–—·…/:()#&|+%\\d\\s]+$',
+};
 
 export default defineConfigWithVueTs(
   {
@@ -123,5 +147,35 @@ export default defineConfigWithVueTs(
       },
     },
     rules: { 'motion/respect-reduced-motion': 'error' },
+  },
+  {
+    // Every text a user sees comes from a key in both catalogs (docs/adr/0007): a raw text in a template, or in an
+    // attribute a reader hears or sees, fails. Never turn it off: src/i18n/i18nGuard.test.ts fails the tests then.
+    files: ['src/**/*.vue'],
+    ignores: ['**/*.test.*'],
+    plugins: { '@intlify/vue-i18n': vueI18n },
+    settings: { 'vue-i18n': { messageSyntaxVersion: '^11.0.0' } },
+    rules: {
+      '@intlify/vue-i18n/no-raw-text': ['error', rawTextOptions],
+    },
+  },
+  {
+    // A toast's text and a formatted date or number come from the catalogs and their formats too (docs/adr/0007).
+    files: ['src/**/*.{ts,vue}'],
+    ignores: ['**/*.test.*'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "CallExpression[callee.object.name='notify'] > :matches(Literal, TemplateLiteral)",
+          message: 'notify takes t(...)',
+        },
+        {
+          selector:
+            "CallExpression[callee.property.name=/^toLocale(Date|Time)?String$/], NewExpression[callee.object.name='Intl']",
+          message: 'format with d()/n() (src/i18n/formats.ts)',
+        },
+      ],
+    },
   },
 );
