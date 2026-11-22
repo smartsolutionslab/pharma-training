@@ -197,22 +197,6 @@ internal static class EditorialDatabase
     }
 
     /// <summary>
-    /// Makes a version of a second, separately created course the next version of the first course, numbered as given,
-    /// until the API can draft one from a published version. #20 replaces this seed with <c>POST …/next</c>.
-    /// </summary>
-    public static async Task SeedAsNextVersionAsync(string connectionString, Guid versionId, Guid courseId, int number, CancellationToken cancellationToken)
-    {
-        await using var connection = new NpgsqlConnection(connectionString);
-        await connection.OpenAsync(cancellationToken);
-        await using var command = new NpgsqlCommand("UPDATE editorial.course_versions SET course_id = @course, number = @number WHERE id = @id", connection);
-        command.Parameters.AddWithValue("course", courseId);
-        command.Parameters.AddWithValue("number", number);
-        command.Parameters.AddWithValue("id", versionId);
-
-        (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1);
-    }
-
-    /// <summary>
     /// A writer that has taken the number but not committed: the handler's check does not see it, and an INSERT of the
     /// same number waits on it. It inserts a bare draft of the course with that number in a transaction it leaves
     /// open; committing the gate keeps the row, disposing it uncommitted drops it.
