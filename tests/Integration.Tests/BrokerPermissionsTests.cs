@@ -10,8 +10,10 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// <summary>
 /// What the running broker lets a service's own user do (#183), tried with Catalog's credentials as its service holds them:
 /// it may not bind its queue to the test definition, which carries every solution, read another service's queue, publish
-/// another module's event or straight to a queue, or declare a queue not its own. Every attempt that the broker allows
-/// (as it does while every service is its admin) is undone at once, so the shared application is left as it was.
+/// another module's event or straight to a queue, declare a queue not its own, declare or delete another module's queue or
+/// an exchange it does not consume, bind its queue to <c>amq.fanout</c>, or bind an exchange into another. Every attempt that
+/// the broker allows (as it does while every service is its admin) is undone at once or cannot change anything, so the shared
+/// application is left as it was.
 /// </summary>
 public class BrokerPermissionsTests(AspireFixture aspire)
 {
@@ -22,6 +24,10 @@ public class BrokerPermissionsTests(AspireFixture aspire)
     private const string Contracts = "SmartSolutionsLab.PharmaTraining.Contracts.";
 
     private const string TestDefinitionPublished = Contracts + "Editorial.TestDefinitionPublishedV1";
+
+    private const string CourseVersionPublished = Contracts + "Editorial.CourseVersionPublishedV1";
+
+    private const string CourseVersionRetired = Contracts + "Editorial.CourseVersionRetiredV1";
 
     private static readonly TimeSpan WaitTimeout = TimeSpan.FromSeconds(30);
 
@@ -126,6 +132,148 @@ public class BrokerPermissionsTests(AspireFixture aspire)
     }
 
     [Fact]
+    public async Task Catalog_configures_only_its_own_queue_and_the_exchanges_it_consumes()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var management = await BrokerUsers.ManagementClientAsync(aspire, cancellationToken);
+
+        var permissions = await management.GetFromJsonAsync<List<Permission>>(new Uri("/api/permissions", UriKind.Relative), cancellationToken) ?? [];
+
+        var catalog = permissions.Where(candidate => candidate.User == Catalog && candidate.Vhost == "/").ShouldHaveSingleItem($"The broker gives '{Catalog}' no permission of its own.");
+        BrokerUsers.Alternatives(catalog.Configure).ShouldBe(
+            [CourseVersionPublished, CourseVersionRetired, Catalog],
+            ignoreOrder: false,
+            $"{Catalog} may configure {catalog.Configure} on the running broker.");
+    }
+
+    [Fact]
+    public async Task Catalog_may_not_declare_compliances_queue()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var catalog = await CatalogConnectionAsync(cancellationToken);
+
+        // Allowed, a declare whose arguments differ from the durable queue Compliance's Wolverine declared fails as
+        // inequivalent (406) and changes nothing; refused, it fails before the broker compares them.
+        var refusal = await BrokerUsers.RefusalOfAsync(
+            catalog,
+            channel => channel.QueueDeclareAsync(Compliance, durable: false, exclusive: false, autoDelete: true, cancellationToken: cancellationToken),
+            cancellationToken);
+
+        ShouldBeRefused(refusal, $"declaring the queue {Compliance}");
+    }
+
+    [Fact]
+    public async Task Catalog_may_not_delete_compliances_queue()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ComplianceIsListeningAsync(cancellationToken);
+        await using var catalog = await CatalogConnectionAsync(cancellationToken);
+
+        // Allowed, a delete only while unused fails (406) as long as Compliance's Wolverine consumes the queue, which the
+        // admin has just seen; refused, it fails before the broker looks at the queue.
+        var refusal = await BrokerUsers.RefusalOfAsync(
+            catalog,
+            channel => channel.QueueDeleteAsync(Compliance, ifUnused: true, ifEmpty: true, cancellationToken: cancellationToken),
+            cancellationToken);
+
+        ShouldBeRefused(refusal, $"deleting the queue {Compliance}");
+    }
+
+    [Fact]
+    public async Task Catalog_may_not_declare_an_exchange_it_does_not_consume()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var catalog = await CatalogConnectionAsync(cancellationToken);
+        var other = $"{Catalog}-broker-permissions-{Guid.CreateVersion7():N}";
+
+        ShutdownEventArgs? refusal;
+        try
+        {
+            refusal = await BrokerUsers.RefusalOfAsync(
+                catalog,
+                channel => channel.ExchangeDeclareAsync(other, ExchangeType.Fanout, durable: false, autoDelete: true, cancellationToken: cancellationToken),
+                cancellationToken);
+        }
+        finally
+        {
+            // Allowed, the exchange would stay on the broker: the admin deletes it again at once.
+            await using var admin = await Broker.ConnectAsync(aspire, cancellationToken);
+            await using var channel = await admin.CreateChannelAsync(cancellationToken: cancellationToken);
+            await channel.ExchangeDeleteAsync(other, cancellationToken: cancellationToken);
+        }
+
+        ShouldBeRefused(refusal, $"declaring the exchange {other}");
+    }
+
+    [Fact]
+    public async Task Catalog_may_not_delete_an_exchange_it_does_not_consume()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var catalog = await CatalogConnectionAsync(cancellationToken);
+
+        // Allowed, deleting an exchange nobody declared changes nothing; refused, it fails before the broker looks for it.
+        var other = $"{Catalog}-broker-permissions-{Guid.CreateVersion7():N}";
+        var refusal = await BrokerUsers.RefusalOfAsync(
+            catalog,
+            channel => channel.ExchangeDeleteAsync(other, cancellationToken: cancellationToken),
+            cancellationToken);
+
+        ShouldBeRefused(refusal, $"deleting the exchange {other}");
+    }
+
+    [Fact]
+    public async Task Catalog_may_not_bind_its_queue_to_amq_fanout()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var catalog = await CatalogConnectionAsync(cancellationToken);
+
+        ShutdownEventArgs? refusal;
+        try
+        {
+            refusal = await BrokerUsers.RefusalOfAsync(catalog, channel => channel.QueueBindAsync(Catalog, "amq.fanout", string.Empty, cancellationToken: cancellationToken), cancellationToken);
+        }
+        finally
+        {
+            // Allowed, the binding would route whatever anyone publishes to amq.fanout to Catalog: the admin removes it at once.
+            await using var admin = await Broker.ConnectAsync(aspire, cancellationToken);
+            await using var channel = await admin.CreateChannelAsync(cancellationToken: cancellationToken);
+            await channel.QueueUnbindAsync(Catalog, "amq.fanout", string.Empty, cancellationToken: cancellationToken);
+        }
+
+        ShouldBeRefused(refusal, $"binding the queue {Catalog} to amq.fanout");
+    }
+
+    [Fact]
+    public async Task Catalog_may_not_bind_an_exchange_it_consumes_into_another_exchange()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using (var admin = await Broker.ConnectAsync(aspire, cancellationToken))
+        {
+            await Broker.WaitForExchangeAsync(admin, CourseVersionPublished, cancellationToken);
+        }
+
+        await using var catalog = await CatalogConnectionAsync(cancellationToken);
+
+        ShutdownEventArgs? refusal;
+        try
+        {
+            refusal = await BrokerUsers.RefusalOfAsync(
+                catalog,
+                channel => channel.ExchangeBindAsync("amq.direct", CourseVersionPublished, string.Empty, cancellationToken: cancellationToken),
+                cancellationToken);
+        }
+        finally
+        {
+            // Allowed, every published course version would also reach amq.direct: the admin removes the binding at once.
+            await using var admin = await Broker.ConnectAsync(aspire, cancellationToken);
+            await using var channel = await admin.CreateChannelAsync(cancellationToken: cancellationToken);
+            await channel.ExchangeUnbindAsync("amq.direct", CourseVersionPublished, string.Empty, cancellationToken: cancellationToken);
+        }
+
+        ShouldBeRefused(refusal, $"binding the exchange {CourseVersionPublished} into amq.direct");
+    }
+
+    [Fact]
     public async Task Every_wolverine_connection_uses_the_user_of_a_service_and_every_service_has_one()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -194,6 +342,25 @@ public class BrokerPermissionsTests(AspireFixture aspire)
         await EditorialWorkflow.PublishedAsync(editor, cancellationToken);
         await using var admin = await Broker.ConnectAsync(aspire, cancellationToken);
         await Broker.WaitForExchangeAsync(admin, TestDefinitionPublished, cancellationToken);
+    }
+
+    /// <summary>
+    /// Compliance's Wolverine consumes its queue, so a delete only while unused cannot remove it even if the broker allowed it.
+    /// </summary>
+    private async Task ComplianceIsListeningAsync(CancellationToken cancellationToken)
+    {
+        await using var admin = await Broker.ConnectAsync(aspire, cancellationToken);
+        await using var channel = await admin.CreateChannelAsync(cancellationToken: cancellationToken);
+        var started = TimeProvider.System.GetTimestamp();
+        while ((await channel.QueueDeclarePassiveAsync(Compliance, cancellationToken)).ConsumerCount == 0)
+        {
+            if (TimeProvider.System.GetElapsedTime(started) >= WaitTimeout)
+            {
+                throw new TimeoutException($"Nothing consumed the queue {Compliance} after {WaitTimeout.TotalSeconds:0} s; deleting it is not tried.");
+            }
+
+            await Task.Delay(PollInterval, cancellationToken);
+        }
     }
 
     /// <summary>The broker's Wolverine connections, once every service has opened one.</summary>
