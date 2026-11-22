@@ -3,6 +3,8 @@
 // Identities (PharmacyId, MembershipId, PersonId) and Timestamp: same shape as in Compliance.Domain.cs;
 // this service's Timestamp adds PlusDays(int days) => From(Value.AddDays(days)).
 
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
@@ -73,6 +75,31 @@ public sealed record InvitationToken : IValueObject<string>
         Ensure.That(value).IsNotNullOrWhiteSpace().HasMinLength(MinLength);
         return new InvitationToken(value);
     }
+
+    /// <summary>Never the secret itself, so no log or record print shows it; read <see cref="Value"/> for the link.</summary>
+    public override string ToString() => "InvitationToken { *** }";
+}
+
+/// <summary>The SHA-256 of an invitation token in lower-case hex, the only form in which the token is stored.</summary>
+public sealed partial record InvitationTokenHash : IValueObject<string>
+{
+    public const int Length = 64;
+
+    private InvitationTokenHash(string value) => Value = value;
+
+    public string Value { get; }
+
+    public static InvitationTokenHash From(string value)
+    {
+        Ensure.That(value).IsNotNullOrWhiteSpace().Matches(Shape(), "Kein SHA-256 in Kleinbuchstaben-Hex.");
+        return new InvitationTokenHash(value);
+    }
+
+    public static InvitationTokenHash Of(InvitationToken token) =>
+        new(Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(token.Value))));
+
+    [GeneratedRegex("^[0-9a-f]{64}$")]
+    private static partial Regex Shape();
 }
 
 public enum MembershipRole
@@ -124,7 +151,7 @@ public sealed class Membership : Entity<MembershipId>
 
     public EmailAddress Email { get; private set; } = default!;
 
-    public InvitationToken? Token { get; private set; }
+    public InvitationTokenHash? TokenHash { get; private set; }
 
     public Timestamp? InvitationExpiresAt { get; private set; }
 
@@ -144,8 +171,8 @@ public sealed class Membership : Entity<MembershipId>
 
     internal bool IsActiveManager => Status == MembershipStatus.Active && Role == MembershipRole.Manager;
 
-    internal static Membership Invited(MembershipId id, EmailAddress email, InvitationToken token, JobFunction jobFunction, MembershipRole role, Timestamp expiresAt) =>
-        new(id) { Email = email, Token = token, InvitationExpiresAt = expiresAt, JobFunction = jobFunction, Role = role, Status = MembershipStatus.Invited };
+    internal static Membership Invited(MembershipId id, EmailAddress email, InvitationTokenHash tokenHash, JobFunction jobFunction, MembershipRole role, Timestamp expiresAt) =>
+        new(id) { Email = email, TokenHash = tokenHash, InvitationExpiresAt = expiresAt, JobFunction = jobFunction, Role = role, Status = MembershipStatus.Invited };
 
     internal static Membership Founder(MembershipId id, EmailAddress email, PersonId person, DisplayName name, JobFunction jobFunction, Timestamp now) =>
         new(id) { Email = email, Person = person, Name = name, JobFunction = jobFunction, Role = MembershipRole.Manager, Status = MembershipStatus.Active, StartedAt = now };
@@ -156,14 +183,14 @@ public sealed class Membership : Entity<MembershipId>
         Name = name;
         Status = MembershipStatus.Active;
         StartedAt = now;
-        Token = null; // a used link never works again
+        TokenHash = null; // a used link never works again
         InvitationExpiresAt = null;
     }
 
     internal void Revoke()
     {
         Status = MembershipStatus.Revoked;
-        Token = null;
+        TokenHash = null;
     }
 
     internal void End(Timestamp now)
@@ -178,9 +205,9 @@ public sealed class Membership : Entity<MembershipId>
         Role = role;
     }
 
-    internal void RenewInvitation(InvitationToken token, Timestamp expiresAt)
+    internal void RenewInvitation(InvitationTokenHash tokenHash, Timestamp expiresAt)
     {
-        Token = token;
+        TokenHash = tokenHash; // the old link's hash matches nothing any more
         InvitationExpiresAt = expiresAt;
     }
 }
@@ -244,8 +271,8 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
         }
 
         var expiresAt = now.PlusDays(InvitationValidityDays);
-        memberships.Add(Membership.Invited(id, email, token, jobFunction, role, expiresAt));
-        Raise(new MemberInvited(Id, id, email, token, expiresAt));
+        memberships.Add(Membership.Invited(id, email, InvitationTokenHash.Of(token), jobFunction, role, expiresAt));
+        Raise(new MemberInvited(Id, Name, id, email, token, expiresAt));
         return Success(id);
     }
 
@@ -258,8 +285,8 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
         }
 
         var expiresAt = now.PlusDays(InvitationValidityDays);
-        invited.RenewInvitation(token, expiresAt);
-        Raise(new MemberInvited(Id, membership, invited.Email, token, expiresAt));
+        invited.RenewInvitation(InvitationTokenHash.Of(token), expiresAt);
+        Raise(new MemberInvited(Id, Name, membership, invited.Email, token, expiresAt));
         return Success(Unit.Value);
     }
 
@@ -271,7 +298,7 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
         EmailAddress email,
         Timestamp now)
     {
-        if (memberships.SingleOrDefault(m => m.Status == MembershipStatus.Invited && m.Token == token) is not { } invited)
+        if (memberships.SingleOrDefault(m => m.Status == MembershipStatus.Invited && m.TokenHash == InvitationTokenHash.Of(token)) is not { } invited)
         {
             return Failure(new InvitationNotFound(Id));
         }
@@ -357,11 +384,12 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
 
 // ───────────────────────────── Domain events ─────────────────────────────
 // PharmacyRegistered, MembershipStarted, MembershipEnded → integration events V1 (Compliance, Certification).
-// MemberInvited → a reaction that sends the invitation mail through the IdP.
+// MemberInvited → the reaction SendInvitationMail, which sends the invitation mail over SMTP (docs/adr/0004).
 
 public sealed record PharmacyRegistered(PharmacyId Pharmacy, PharmacyName Name) : IDomainEvent;
 
-public sealed record MemberInvited(PharmacyId Pharmacy, MembershipId Membership, EmailAddress Email, InvitationToken Token, Timestamp ExpiresAt) : IDomainEvent;
+/// <summary>Carries the raw token for the invitation mail; never store, publish or log it.</summary>
+public sealed record MemberInvited(PharmacyId Pharmacy, PharmacyName Name, MembershipId Membership, EmailAddress Email, InvitationToken Token, Timestamp ExpiresAt) : IDomainEvent;
 
 public sealed record MembershipStarted(PharmacyId Pharmacy, MembershipId Membership, PersonId Person, DisplayName Name, JobFunction JobFunction, MembershipRole Role) : IDomainEvent;
 
