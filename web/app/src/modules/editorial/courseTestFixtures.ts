@@ -106,3 +106,18 @@ export function refusal(status: number, code: string, detail: string): Response 
     headers: { 'Content-Type': 'application/problem+json' },
   });
 }
+
+/** A test of as many unreviewed hand-written questions about the introduction, by position from 1. */
+export function questionsUpTo(count: number): EditorialQuestionDto[] {
+  return Array.from({ length: count }, (_, index) => ({
+    ...handWritten,
+    id: `0198c1a0-0000-7000-8000-${String(index + 1).padStart(12, '0')}`,
+    position: index + 1,
+    chapterId: introduction.id,
+    text: `Frage Nummer ${index + 1}?`,
+    options: handWritten.options.map((option, number) => ({
+      ...option,
+      id: `0198c1a0-0000-7000-8001-${String(index * 10 + number).padStart(12, '0')}`,
+    })),
+  }));
+}
