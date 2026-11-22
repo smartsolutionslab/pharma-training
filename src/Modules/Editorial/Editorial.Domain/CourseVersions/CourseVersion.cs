@@ -101,6 +101,28 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         return Success(Unit.Value);
     }
 
+    /// <summary>
+    /// Whether the file may become the chapter's, before the storage is asked about it: the version is a draft and no
+    /// other chapter of it holds the file, whether an earlier add recorded it or a copy brought it from the version before.
+    /// </summary>
+    public Result<Unit, DomainError> AcceptsFile(ChapterId chapter, BlobReference file)
+    {
+        Ensure.That(file).IsNotNull();
+
+        var accepts = AcceptsUploads();
+        if (accepts.IsFailure)
+        {
+            return accepts;
+        }
+
+        if (IsHeldByAnotherChapter(file, chapter))
+        {
+            return Failure(CourseVersionErrors.FileInUse(Id, file));
+        }
+
+        return Success(Unit.Value);
+    }
+
     public Result<ChapterId, DomainError> AddChapter(Chapter chapter)
     {
         Ensure.That(chapter).IsNotNull();
