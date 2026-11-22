@@ -126,6 +126,89 @@ public class PharmacyTests
     }
 
     [Fact]
+    public void An_invitation_is_accepted_up_to_the_instant_it_runs_out_and_not_one_tick_later()
+    {
+        var expiresAt = Now.PlusDays(Pharmacy.InvitationValidityDays);
+        var late = Register();
+        var lateToken = Token();
+        Invite(late, AnnaMail, lateToken);
+        var onTime = Register();
+        var onTimeToken = Token();
+        Invite(onTime, AnnaMail, onTimeToken);
+
+        late.AcceptInvitation(lateToken, Anna, DisplayName.From("Anna Berger"), AnnaMail, Timestamp.From(expiresAt.Value.AddTicks(1)))
+            .Error.ShouldBeOfType<InvitationExpired>();
+        onTime.AcceptInvitation(onTimeToken, Anna, DisplayName.From("Anna Berger"), AnnaMail, expiresAt).IsSuccess.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void A_person_already_active_under_another_address_cannot_accept_and_the_invitation_stays_open()
+    {
+        var pharmacy = Register();
+        var firstToken = Token();
+        Accepted(pharmacy, Invite(pharmacy, AnnaMail, firstToken), firstToken);
+        var token = Token();
+        var privateMail = EmailAddress.From("anna.private@example.org");
+        var second = Invite(pharmacy, privateMail, token);
+        pharmacy.ClearDomainEvents();
+
+        pharmacy.AcceptInvitation(token, Anna, DisplayName.From("Anna Berger"), privateMail, Now)
+            .Error.ShouldBeOfType<PersonAlreadyMember>();
+
+        var open = pharmacy.Memberships.Single(m => m.Id == second);
+        open.Status.ShouldBe(MembershipStatus.Invited);
+        open.TokenHash.ShouldBe(InvitationTokenHash.Of(token));
+        pharmacy.DomainEvents.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void A_person_active_in_another_pharmacy_accepts_here_too()
+    {
+        var first = Register();
+        var firstToken = Token();
+        var firstMembership = Invite(first, AnnaMail, firstToken);
+        first.AcceptInvitation(firstToken, Anna, DisplayName.From("Anna Berger"), AnnaMail, Now).IsSuccess.ShouldBeTrue();
+        var second = Register();
+        var secondToken = Token();
+        var secondMembership = Invite(second, AnnaMail, secondToken);
+
+        second.AcceptInvitation(secondToken, Anna, DisplayName.From("Anna Berger"), AnnaMail, Now).IsSuccess.ShouldBeTrue();
+
+        first.Memberships.Single(m => m.Id == firstMembership).Status.ShouldBe(MembershipStatus.Active);
+        first.Memberships.Single(m => m.Id == firstMembership).Person.ShouldBe(Anna);
+        second.Memberships.Single(m => m.Id == secondMembership).Status.ShouldBe(MembershipStatus.Active);
+        second.Memberships.Single(m => m.Id == secondMembership).Person.ShouldBe(Anna);
+    }
+
+    [Theory]
+    [InlineData("unknown")]
+    [InlineData("expired")]
+    [InlineData("forwarded")]
+    [InlineData("already-member")]
+    public void A_refused_accept_raises_nothing_and_changes_nothing(string why)
+    {
+        var pharmacy = Register();
+        var token = Token();
+        var membership = Invite(pharmacy, AnnaMail, token);
+        var person = why == "already-member" ? Owner : Anna;
+        var email = why == "forwarded" ? EmailAddress.From("bert@example.org") : AnnaMail;
+        var now = why == "expired" ? Now.PlusDays(15) : Now;
+        var presented = why == "unknown" ? Token() : token;
+        pharmacy.ClearDomainEvents();
+
+        pharmacy.AcceptInvitation(presented, person, DisplayName.From("Anna Berger"), email, now).IsFailure.ShouldBeTrue();
+
+        pharmacy.DomainEvents.ShouldBeEmpty();
+        var open = pharmacy.Memberships.Single(m => m.Id == membership);
+        open.Status.ShouldBe(MembershipStatus.Invited);
+        open.TokenHash.ShouldBe(InvitationTokenHash.Of(token));
+        open.Person.ShouldBeNull();
+        open.Name.ShouldBeNull();
+        open.StartedAt.ShouldBeNull();
+        open.InvitationExpiresAt.ShouldBe(Now.PlusDays(Pharmacy.InvitationValidityDays));
+    }
+
+    [Fact]
     public void The_last_manager_can_neither_leave_nor_step_down()
     {
         var pharmacy = Register();

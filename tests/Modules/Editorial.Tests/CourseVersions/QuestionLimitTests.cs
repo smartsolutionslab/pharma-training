@@ -55,6 +55,26 @@ public class QuestionLimitTests
         submitted.Error.ShouldBeOfType<TestIncomplete>().Actual.ShouldBe(QuestionCount.From(QuestionCount.Maximum));
     }
 
+    [Fact]
+    public void Submitting_a_draft_loaded_with_more_than_the_maximum_fails_with_too_many_questions_and_never_throws()
+    {
+        var version = AtTheMaximum(out _);
+        var stray = DraftWithChapter(out var strayChapter);
+        stray.AddQuestion(QuestionId.New(), SingleChoice(strayChapter), AnswerOptionId.New).IsSuccess.ShouldBeTrue();
+
+        // Rows written before the cap, or by hand, are loaded by EF Core through the backing list, past AddQuestion's
+        // check. The list behind Questions is that backing list, so adding to it stands in for such a load.
+        var loaded = version.Questions.ShouldBeOfType<List<Question>>();
+        loaded.Add(stray.Questions[0]);
+        version.Questions.Count.ShouldBe(QuestionCount.Maximum + 1);
+
+        var submitted = Should.NotThrow(() => version.SubmitForReview(Author));
+
+        submitted.IsFailure.ShouldBeTrue();
+        submitted.Error.ShouldBeOfType<TooManyQuestions>().Code.ShouldBe("editorial.too-many-questions");
+        version.Status.ShouldBe(CourseVersionStatus.Draft);
+    }
+
     /// <summary>A draft with one chapter and exactly <see cref="QuestionCount.Maximum"/> questions, its blueprint the default.</summary>
     private static CourseVersion AtTheMaximum(out ChapterId chapter)
     {

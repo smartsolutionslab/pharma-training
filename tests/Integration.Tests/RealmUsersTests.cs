@@ -24,6 +24,20 @@ public class RealmUsersTests(AspireFixture aspire)
     }
 
     [Fact]
+    public async Task The_unverified_user_signs_in_with_a_name_and_an_email_keycloak_has_not_verified()
+    {
+        var token = await aspire.RequestAccessTokenAsync("unverified");
+
+        using var payload = Payload(token);
+
+        payload.RootElement.GetProperty("email").GetString().ShouldBe("unverified@example.com");
+        payload.RootElement.GetProperty("email_verified").ValueKind.ShouldBe(JsonValueKind.False);
+        payload.RootElement.GetProperty("name").GetString().ShouldNotBeNullOrWhiteSpace();
+        RealmRoles(payload).ShouldNotContain("manager");
+        RealmRoles(payload).ShouldNotContain("editor");
+    }
+
+    [Fact]
     public async Task The_editor_holds_the_editor_role_and_the_owner_does_not()
     {
         var editorToken = await aspire.RequestAccessTokenAsync("editor");

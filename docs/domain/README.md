@@ -48,7 +48,7 @@ Stand der Diskussion vom 17.11.2026.
 | Status einer Zuweisung | offen → in Bearbeitung → abgeschlossen; überfällig bei verstrichener Frist; gesperrt nach 3 Fehlversuchen als Unterzustand | Einfaches, verständliches Modell |
 | Nach Fristablauf | Abschluss weiter möglich, Vermerk „verspätet“ | Später Nachweis ist besser als keiner |
 | Ansicht Apothekenleiter | Matrix Mitarbeiter × Schulung mit Statusfarben plus Compliance-Quote | Auf einen Blick sehen, wo Lücken sind |
-| Sprache im Code | Domain Model und Events auf Englisch, UI auf Deutsch | Glossar führt beide Begriffe |
+| Sprache im Code | Domain Model und Events auf Englisch, UI auf Deutsch und Englisch (Deutsch als Rückfall, Wahl nach Browser und Umschalter) | Entscheidung vom 22.11.2026 (#146); Glossar führt beide Begriffe |
 | Architektur | Ein Service pro Context von Anfang an (backend.topology: services). Fabric bekommt dafür erst den Services-Pack (ADR-0017, PR #702, Issues #703–#708); PharmaTraining wird danach direkt mit services generiert | Entscheidung von Heiko; Option ist in Fabric noch experimental |
 | Zuweisung und Lernen | Learning und Assessment kennen keine Zuweisungen; Compliance gleicht über Events ab; Überfällig ist berechnet | Lose Kopplung zwischen den Services |
 | Frühere Bestätigungen, Teilzeit, Fristen, Austritt | Alte Bestätigung zählt in MVP 1 nicht; mehrere Apotheken erlaubt; nächste Frist ab Abschluss + Intervall; Frist änderbar mit Historie; bei Austritt offene Zuweisungen storniert | Runde 10 |

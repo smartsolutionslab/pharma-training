@@ -54,6 +54,15 @@ public sealed class CourseVersionStore(EditorialDbContext context) : ICourseVers
         return new PagedResult<CourseVersion>(items, total, page.Value, pageSize.Value);
     }
 
+    /// <summary>
+    /// Tracked and without their content: superseding changes only the version itself, and the row version loaded
+    /// with it makes a save that lost a race to another change of it fail.
+    /// </summary>
+    public async Task<IReadOnlyList<CourseVersion>> ListPublishedForUpdateAsync(CourseId course, CancellationToken cancellationToken) =>
+        await context.Set<CourseVersion>()
+            .Where(version => version.Course == course && version.Status == CourseVersionStatus.Published)
+            .ToListAsync(cancellationToken);
+
     private static async Task<Option<CourseVersion>> FindAsync(IQueryable<CourseVersion> versions, CourseVersionId id, CancellationToken cancellationToken) =>
         await versions.SingleOrDefaultAsync(version => version.Id == id, cancellationToken) is { } version
             ? Option<CourseVersion>.Some(version)

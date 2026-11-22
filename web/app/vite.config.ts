@@ -7,6 +7,12 @@ import tailwindcss from '@tailwindcss/vite';
 const host = process.env.services__host__http__0;
 
 export default defineConfig({
+  // vue-i18n's feature flags: the Composition API only, without the legacy API or devtools in production.
+  define: {
+    __VUE_I18N_FULL_INSTALL__: true,
+    __VUE_I18N_LEGACY_API__: false,
+    __INTLIFY_PROD_DEVTOOLS__: false,
+  },
   plugins: [
     // Vue's first, then the chosen packs' in order.
     vue(),

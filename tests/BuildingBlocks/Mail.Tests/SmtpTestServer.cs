@@ -9,7 +9,7 @@ namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Mail.Tests;
 /// An SMTP server on the loopback interface, without TLS or authentication, that records the recipients and messages it
 /// is given. It can hold its answer to any of the commands named when it is created until the test releases it, so a
 /// test decides how long each step of a send takes. It can instead refuse one command with an answer of the test's, in
-/// which <c>{0}</c> is the address the command carries.
+/// which <c>{0}</c> is the address the command carries, or reset the connection when one command arrives.
 /// </summary>
 internal sealed class SmtpTestServer : IAsyncDisposable
 {
@@ -25,26 +25,32 @@ internal sealed class SmtpTestServer : IAsyncDisposable
 
     private readonly (string Verb, string Answer)? refusal;
 
+    private readonly string? resetAt;
+
     private readonly Task serving;
 
     public SmtpTestServer(params string[] held)
-        : this(null, held)
+        : this(null, null, held)
     {
     }
 
     /// <param name="refuse">The command to refuse, such as <c>RCPT</c>, and the answer, such as <c>550 5.1.1 &lt;{0}&gt;: Recipient address rejected</c>.</param>
     public SmtpTestServer((string Verb, string Answer) refuse)
-        : this(refuse, [])
+        : this(refuse, null, [])
     {
     }
 
-    private SmtpTestServer((string Verb, string Answer)? refuse, string[] held)
+    private SmtpTestServer((string Verb, string Answer)? refuse, string? reset, string[] held)
     {
         refusal = refuse;
+        resetAt = reset;
         holds = held.ToDictionary(verb => verb, _ => new Hold(), StringComparer.OrdinalIgnoreCase);
         listener.Start();
         serving = ServeAsync(stopping.Token);
     }
+
+    /// <summary>A server that aborts the connection with a reset, answering nothing, when the command arrives.</summary>
+    public static SmtpTestServer Resetting(string verb) => new(null, verb, []);
 
     public string ConnectionString => $"smtp://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}";
 
@@ -93,6 +99,13 @@ internal sealed class SmtpTestServer : IAsyncDisposable
             {
                 hold.Received.TrySetResult();
                 await hold.Released.Task.WaitAsync(cancellationToken);
+            }
+
+            if (string.Equals(resetAt, verb, StringComparison.OrdinalIgnoreCase))
+            {
+                client.Client.LingerState = new LingerOption(enable: true, seconds: 0);
+                client.Client.Close();
+                return;
             }
 
             if (refusal is { } refused && string.Equals(refused.Verb, verb, StringComparison.OrdinalIgnoreCase))

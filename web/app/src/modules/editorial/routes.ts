@@ -1,9 +1,19 @@
 import type { ModuleRoute } from '@/modules';
+import CourseVersionPage from './CourseVersionPage.vue';
 import EditorialPage from './EditorialPage.vue';
+import { titleKey } from './titleKey';
 
 export const route: ModuleRoute = {
   path: 'editorial',
-  title: 'Editorial',
+  titleKey,
   audience: 'editor',
   component: EditorialPage,
+  details: [
+    {
+      path: 'versions/:id',
+      titleKey: 'modules.editorial.details.version.title',
+      audience: 'editor',
+      component: CourseVersionPage,
+    },
+  ],
 };

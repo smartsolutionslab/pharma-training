@@ -17,7 +17,11 @@ public abstract partial class ModuleUnitOfWork<TContext>(IServiceProvider servic
 {
     private IDbContextOutbox<TContext>? outbox;
 
+    private ILogger? logger;
+
     private IDbContextOutbox<TContext> Outbox => outbox ??= services.GetRequiredService<IDbContextOutbox<TContext>>();
+
+    private ILogger Logger => logger ??= services.GetService<ILogger<ModuleUnitOfWork<TContext>>>() ?? NullLogger<ModuleUnitOfWork<TContext>>.Instance;
 
     public async Task PublishAsync(IntegrationEvent integrationEvent)
     {
@@ -33,46 +37,43 @@ public abstract partial class ModuleUnitOfWork<TContext>(IServiceProvider servic
     /// transaction, with the outbox's envelopes, rolls back, and the outbox flushes only after a save that succeeded.
     /// A module opts in by declaring this method on its own unit of work's interface; <see cref="CommitAsync"/> still
     /// lets a lost race through, as a 500.
-    /// A deadlock (40P01) or serialization failure (40001) that PostgreSQL raises at the commit is a lost race too.
-    /// EF Core wraps it in <see cref="DbUpdateConcurrencyException"/> when it owns the transaction, but once a handler
-    /// publishes, Wolverine's envelope transaction commits through <c>Database.CommitTransactionAsync</c> and the
-    /// failure arrives as a bare <see cref="PostgresException"/>, or inside another exception. Every other failure is
-    /// rethrown as it came. A lost race is logged once, at Warning, naming its SqlState.
+    /// A deadlock (40P01) or serialization failure (40001) that PostgreSQL raises anywhere in the save is a lost race too:
+    /// at one of its statements, where EF Core wraps it in a plain <see cref="DbUpdateException"/>; at the commit EF Core
+    /// owns, where it wraps it in <see cref="DbUpdateConcurrencyException"/>; and, once a handler publishes, at the commit
+    /// of Wolverine's envelope transaction through <c>Database.CommitTransactionAsync</c>, where it arrives as a bare
+    /// <see cref="PostgresException"/> or inside another exception. Each is logged as a warning naming its SqlState, with
+    /// the <see cref="PostgresException"/> attached so its stack shows where the deadlock happened (Npgsql redacts
+    /// PostgreSQL's Detail unless <c>Include Error Detail</c> is set, so keep it off; Where names the relation and tuple,
+    /// never values), so a deadlock that keeps happening (two handlers taking locks in opposite orders) shows in the
+    /// telemetry, not only as 409s; a row version that moved on is ordinary and is not logged. The filter also covers Wolverine's flush after
+    /// the commit, but that flush catches each envelope's send failure itself (Wolverine 6.64.0, outside
+    /// <c>DurabilityMode.ServerlessWithOutbox</c>, which deletes the sent envelopes' outbox rows after the commit with no
+    /// such catch), so a 40P01 or 40001 cannot come from a write that already committed; recheck both when upgrading
+    /// Wolverine or changing its durability mode. Every other failure is rethrown as it came.
     /// </summary>
     public async Task<bool> TryCommitAsync(CancellationToken cancellationToken)
     {
         try
         {
-            // The flush can end as a lost race: PostgreSQL reports a deadlock (40P01) or a serialization failure (40001) at a
-            // statement or at the COMMIT, and EF Core, Wolverine's outbox or an AggregateException may wrap it.
             await Outbox.SaveChangesAndFlushMessagesAsync(cancellationToken);
             return true;
         }
-        catch (Exception exception) when (LostRaceSqlState(exception) is { } sqlState)
+        catch (Exception exception) when (EndedAsLostRace(exception) is { } ended)
         {
-            CommitLostRace(Logger, sqlState);
+            LogLostRace(Logger, ended, ended.SqlState, typeof(TContext).Name);
             return false;
         }
         catch (DbUpdateConcurrencyException)
         {
-            RowVersionMoved(Logger);
             return false;
         }
     }
 
-    private ILogger Logger => services.GetService<ILogger<ModuleUnitOfWork<TContext>>>() ?? NullLogger<ModuleUnitOfWork<TContext>>.Instance;
+    private static PostgresException? EndedAsLostRace(Exception exception) =>
+        exception is PostgresException { SqlState: PostgresErrorCodes.DeadlockDetected or PostgresErrorCodes.SerializationFailure } ended
+            ? ended
+            : exception.InnerException is { } inner ? EndedAsLostRace(inner) : null;
 
-    private static string? LostRaceSqlState(Exception exception) => exception switch
-    {
-        PostgresException { SqlState: PostgresErrorCodes.DeadlockDetected or PostgresErrorCodes.SerializationFailure } ended => ended.SqlState,
-        AggregateException aggregate => aggregate.InnerExceptions.Select(LostRaceSqlState).FirstOrDefault(sqlState => sqlState is not null),
-        { InnerException: { } inner } => LostRaceSqlState(inner),
-        _ => null,
-    };
-
-    [LoggerMessage(Level = LogLevel.Warning, Message = "The commit lost a race: PostgreSQL ended its transaction with {SqlState}.")]
-    private static partial void CommitLostRace(ILogger logger, string sqlState);
-
-    [LoggerMessage(Level = LogLevel.Debug, Message = "The commit lost a race: a row version it checks moved on since it was loaded.")]
-    private static partial void RowVersionMoved(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "PostgreSQL ended a save of {Context} with SqlState {SqlState}; answered as a lost race.")]
+    private static partial void LogLostRace(ILogger logger, Exception exception, string sqlState, string context);
 }
