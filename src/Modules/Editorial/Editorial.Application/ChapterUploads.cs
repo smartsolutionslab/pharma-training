@@ -27,6 +27,18 @@ public static class ChapterUploads
     /// <summary>The length of a Guid in its "D" format, <c>xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</c>.</summary>
     private const int GuidLength = 36;
 
+    /// <summary>Where an MP4's first box names its type, <c>ftyp</c>: after the box's four-byte size.</summary>
+    private const int BoxTypeOffset = 4;
+
+    /// <summary>The header every PDF file starts with.</summary>
+    private static ReadOnlySpan<byte> PdfHeader => "%PDF-"u8;
+
+    /// <summary>The type of the box an MP4 file starts with, at bytes 4 to 7.</summary>
+    private static ReadOnlySpan<byte> FileTypeBox => "ftyp"u8;
+
+    /// <summary>How many leading bytes tell a PDF or an MP4: the longer of the two signatures, read from the start.</summary>
+    private static int SignatureLength => Math.Max(PdfHeader.Length, BoxTypeOffset + FileTypeBox.Length);
+
     /// <summary>A new name for one upload of a PDF or video for the version.</summary>
     public static BlobName NameFor(CourseVersionId version, ChapterKind kind)
     {
@@ -73,7 +85,9 @@ public static class ChapterUploads
     /// <summary>
     /// Whether the file may become the content of a chapter of the version and kind: a name issued for them, under which
     /// a block blob of the kind's content type (in any case, with any parameters), not empty and at most the kind's size,
-    /// was put directly, not created by a server-side copy, which an upload URL also allows.
+    /// was put directly, not created by a server-side copy, which an upload URL also allows, and whose own leading bytes
+    /// are the kind's: a PDF starts with <c>%PDF-</c>, an MP4 has <c>ftyp</c> at bytes 4 to 7. The declared content type
+    /// is the uploader's word; the bytes are the file's.
     /// </summary>
     public static async Task<Result<Unit, ApiError>> AcceptAsync(IStoredBlobs blobs, BlobReference file, CourseVersionId version, ChapterKind kind, CancellationToken cancellationToken)
     {
@@ -96,6 +110,12 @@ public static class ChapterUploads
             return Failure(CourseVersionFailures.UploadNotAccepted());
         }
 
+        var start = await blobs.ReadStartAsync(BlobName.From(file.Value), SignatureLength, cancellationToken);
+        if (!StartsAsTheKindDoes(start.Span, kind))
+        {
+            return Failure(CourseVersionFailures.UploadNotAccepted());
+        }
+
         return Success(Unit.Value);
     }
 
@@ -108,6 +128,13 @@ public static class ChapterUploads
             && blob.Length <= MaxBytesOf(kind)
             && string.Equals(mediaType, ContentTypeOf(kind), StringComparison.OrdinalIgnoreCase);
     }
+
+    private static bool StartsAsTheKindDoes(ReadOnlySpan<byte> start, ChapterKind kind) => kind switch
+    {
+        ChapterKind.Pdf => start.StartsWith(PdfHeader),
+        ChapterKind.Video => start.Length >= BoxTypeOffset + FileTypeBox.Length && start.Slice(BoxTypeOffset, FileTypeBox.Length).SequenceEqual(FileTypeBox),
+        _ => throw new UnreachableException($"A {kind} chapter has no file."),
+    };
 
     /// <summary>The kind, when it takes a file; a text chapter's has none, and asking for it is a bug.</summary>
     private static ChapterKind TakingAFile(ChapterKind kind)
