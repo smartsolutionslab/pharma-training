@@ -59,7 +59,8 @@ public static class ServiceHostProjects
                 && string.Equals(Path.GetFullPath(metadata.ProjectPath), projectPath, StringComparison.Ordinal))
             .ToList();
 
-        // The SDK generates one type per referenced project, so a path names one type or, with a stale build, none.
+        // The SDK generates one type per referenced project, so a path names one type or, with a stale build, none. More
+        // than one is a guard: only a Host.csproj referenced twice, with different AspireProjectMetadataTypeName values.
         return matches.Count switch
         {
             1 => matches[0],

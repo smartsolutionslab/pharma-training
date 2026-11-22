@@ -3,8 +3,10 @@ import userEvent from '@testing-library/user-event';
 import { createPinia } from 'pinia';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { defineComponent, h } from 'vue';
+import { createMemoryHistory } from 'vue-router';
 import type { MyPharmacyDto, PagedResultOfMyPharmacyDto } from '@/api/generated';
 import { SidebarProvider } from '@/components/ui/sidebar';
+import { createAppRouter } from '@/router';
 import PharmacySwitcher from './PharmacySwitcher.vue';
 
 // GET /organisation/pharmacies/mine as useMyPharmacies answers it: TanStack Query's refs, which a test sets.
@@ -57,9 +59,13 @@ afterEach(() => {
 });
 
 // The switcher sits in the sidebar's header, so it renders inside the sidebar's provider; each render is a page loaded
-// afresh, with a new Pinia.
+// afresh, with a new Pinia, on the start page.
 const InSidebar = defineComponent({ render: () => h(SidebarProvider, null, () => h(PharmacySwitcher)) });
-const renderSwitcher = () => render(InSidebar, { global: { plugins: [createPinia()] } });
+let router = createAppRouter(createMemoryHistory());
+const renderSwitcher = () => {
+  router = createAppRouter(createMemoryHistory());
+  return render(InSidebar, { global: { plugins: [router, createPinia()] } });
+};
 
 test('with several pharmacies the switcher names the chosen one and its role', () => {
   localStorage.setItem('pharmacy', markt.id);
@@ -144,4 +150,43 @@ test('when the pharmacies could not be loaded the switcher says so and tries aga
   await user.click(screen.getByRole('button', { name: 'Try again' }));
 
   expect(pharmacies.refetch).toHaveBeenCalledOnce();
+});
+
+const pharmacyRegion = () => within(screen.getByRole('region', { name: 'Pharmacy' }));
+
+// Whatever the user's memberships, a new pharmacy is one link away, beside them and not inside the menu.
+test.each([
+  ['no pharmacy', []],
+  ['one pharmacy', [dom]],
+  ['several pharmacies', [markt, dom]],
+])('with %s the switcher leads to the page that registers one', async (_, memberships: MyPharmacyDto[]) => {
+  const user = userEvent.setup();
+  answer(memberships);
+  renderSwitcher();
+
+  const link = pharmacyRegion().getByRole('link', { name: 'Register a pharmacy' });
+  expect(link).toHaveAttribute('href', '/organisation/register');
+  await user.click(link);
+
+  await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/organisation/register'));
+});
+
+// Not while it is a skeleton, nor beside the alert that the pharmacies could not be loaded: only once they are known.
+test.each([
+  ['load', () => undefined],
+  [
+    'could not be loaded',
+    () => {
+      pharmacies.isPending.value = false;
+      pharmacies.isError.value = true;
+    },
+  ],
+])('while the pharmacies %s the switcher has no link to register one, until they are known', async (_, before) => {
+  before();
+  renderSwitcher();
+  expect(pharmacyRegion().queryByRole('link', { name: 'Register a pharmacy' })).not.toBeInTheDocument();
+
+  answer([]);
+
+  expect(await pharmacyRegion().findByRole('link', { name: 'Register a pharmacy' })).toBeInTheDocument();
 });

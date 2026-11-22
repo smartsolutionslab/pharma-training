@@ -14,8 +14,9 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// <summary>The whole application, started once per test run on empty containers.</summary>
 public sealed partial class AspireFixture : IAsyncLifetime
 {
-    // Twice the slowest start-up measured on the CI runner since every project starts from the AppHost's build
-    // (#126: 136, 182 and 204 s), rounded up to the minute; the fixture logs each run's start-up beside this limit.
+    // Twice the largest start-up of the green CI runs listed in #134 (204 s), rounded up to the minute. Before #126 the
+    // edge and every service host were rebuilt at each start, which took 3.5 to over 5 minutes; now every project starts
+    // from the AppHost's build. The fixture logs each run's start-up beside this limit.
     private static readonly TimeSpan StartupTimeout = TimeSpan.FromMinutes(7);
 
     private DistributedApplication? app;
