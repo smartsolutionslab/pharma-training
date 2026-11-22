@@ -81,6 +81,18 @@ internal static class EditorialWorkflow
         return draft;
     }
 
+    /// <summary>Drafts the next version of a published one (<c>POST …/{id}/next</c>) and answers its id.</summary>
+    public static async Task<Guid> DraftNextAsync(HttpClient client, Guid id, CancellationToken cancellationToken)
+    {
+        Ensure.That(client).IsNotNull();
+
+        using var drafted = await client.PostAsync(VersionPath(id, "next"), null, cancellationToken);
+        drafted.StatusCode.ShouldBe(
+            HttpStatusCode.Created,
+            $"POST {VersionPath(id, "next")} answered {(int)drafted.StatusCode} {await drafted.Content.ReadAsStringAsync(cancellationToken)}");
+        return await drafted.Content.ReadFromJsonAsync<Guid>(cancellationToken);
+    }
+
     /// <summary>Sends one of the workflow's steps (submit, return, publish, retire) to the version, with no body.</summary>
     public static Task<HttpResponseMessage> StepAsync(HttpClient client, Guid id, string step, CancellationToken cancellationToken)
     {
