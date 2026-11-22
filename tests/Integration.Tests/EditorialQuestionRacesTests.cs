@@ -332,22 +332,13 @@ public class EditorialQuestionRacesTests(AspireFixture aspire)
 
         // It loaded the version before the other question landed, so its row version is the one before: under one
         // snapshot (REPEATABLE READ) it saw none of the other question, and saving against the old row version loses.
-        // Only a load that waited for the other question and then read it whole may save on top of it.
+        // The snapshot is taken at the version's own statement, before the gate commits, so it always loses (#170).
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict, $"POST {added} saved over a version it read before the other question landed: {body}");
+        (await CodeOfAsync(response, cancellationToken)).ShouldBe("editorial.course-version-changed", body);
         var version = await ReadAsync(client, id, cancellationToken);
         var questions = version.Questions ?? [];
-        if (response.StatusCode == HttpStatusCode.Conflict)
-        {
-            (await CodeOfAsync(response, cancellationToken)).ShouldBe("editorial.course-version-changed", body);
-            version.Chapters.Count.ShouldBe(1, "the refused addition left a chapter behind");
-            questions.Select(read => read.Id).ShouldBe([question, landed], "the refused addition changed the version's questions");
-        }
-        else
-        {
-            response.StatusCode.ShouldBe(HttpStatusCode.Created, $"expected 409 editorial.course-version-changed (or 201 after reading the other question whole): {body}");
-            version.Chapters.Count.ShouldBe(added == "chapters" ? 2 : 1);
-            questions.Count.ShouldBe(added == "questions" ? 3 : 2);
-            questions.Select(read => read.Id).ShouldContain(landed, "the addition saved over the other editor's question");
-        }
+        version.Chapters.Count.ShouldBe(1, "the refused addition left a chapter behind");
+        questions.Select(read => read.Id).ShouldBe([question, landed], "the refused addition changed the version's questions");
 
         questions.ShouldAllBe(read => read.Options.Count == 2, "a question lost or gained options in the race");
     }
