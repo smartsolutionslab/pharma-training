@@ -190,6 +190,7 @@ public class ChapterUploadsTests
     [InlineData("heic", "a HEIC image is no mp4")]
     [InlineData("avif", "an AVIF image is no mp4")]
     [InlineData("3gp4", "a 3GP file is no mp4")]
+    [InlineData("f4v ", "a Flash video is no mp4")]
     public async Task A_video_whose_ftyp_box_names_a_major_brand_that_is_no_mp4_is_not_accepted(string brand, string because)
     {
         var blobs = new InMemoryStoredBlobs();
@@ -204,10 +205,23 @@ public class ChapterUploadsTests
     [Theory]
     [InlineData("isom")]
     [InlineData("iso2")]
+    [InlineData("iso3")]
+    [InlineData("iso4")]
+    [InlineData("iso5")]
+    [InlineData("iso6")]
+    [InlineData("iso7")]
+    [InlineData("iso8")]
+    [InlineData("iso9")]
     [InlineData("mp41")]
     [InlineData("mp42")]
     [InlineData("avc1")]
     [InlineData("dash")]
+    [InlineData("M4V ")]
+    [InlineData("cmfc")]
+    [InlineData("cmf2")]
+    [InlineData("XAVC")]
+    [InlineData("MSNV")]
+    [InlineData("mmp4")]
     public async Task A_video_whose_ftyp_box_names_an_mp4_major_brand_is_accepted(string brand)
     {
         var blobs = new InMemoryStoredBlobs();
