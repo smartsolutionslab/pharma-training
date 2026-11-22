@@ -1601,6 +1601,36 @@
         }
       }
     },
+    "/organisation/invitations/accept": {
+      "post": {
+        "tags": [
+          "Host"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptOrganisationInvitationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/organisation/pharmacies/{id}/members/{membershipId}": {
       "delete": {
         "tags": [
@@ -1890,6 +1920,20 @@
   },
   "components": {
     "schemas": {
+      "AcceptOrganisationInvitationRequest": {
+        "required": [
+          "token"
+        ],
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "AssessmentSampleDto": {
         "required": [
           "id",

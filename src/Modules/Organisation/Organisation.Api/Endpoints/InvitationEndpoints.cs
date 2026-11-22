@@ -2,6 +2,7 @@ using System.Security.Claims;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Api;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application;
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Commands.AcceptInvitation;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Commands.InviteMember;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Commands.RenewInvitation;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Commands.RevokeInvitation;
@@ -14,8 +15,9 @@ using Microsoft.AspNetCore.Routing;
 namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Api.Endpoints;
 
 /// <summary>
-/// Invite an address, renew an invitation with a fresh link, or revoke it. Any signed-in user may ask; whether they may
-/// is decided by their own membership in the pharmacy (managing members), not by a realm role.
+/// Invite an address, renew an invitation with a fresh link, or revoke it, and accept one with the link's token. Any
+/// signed-in user may ask; whether they may is decided by their own membership in the pharmacy (managing members), or,
+/// to accept, by the token and the account's verified address, not by a realm role.
 /// </summary>
 public sealed class InvitationEndpoints : IEndpoint
 {
@@ -92,6 +94,30 @@ public sealed class InvitationEndpoints : IEndpoint
             }
 
             var command = new RevokeInvitation(PharmacyId.From(id), MembershipId.From(membershipId), person.Value);
+            return (await dispatcher.SendAsync(command, cancellationToken)).ToHttpResult();
+        }).RequireAuthorization();
+
+        endpoints.MapPost("/invitations/accept", async (AcceptOrganisationInvitationRequest request, ClaimsPrincipal user, IDispatcher dispatcher, CancellationToken cancellationToken) =>
+        {
+            // Who accepts comes from the token alone, never from the body.
+            var caller = CallerClaims.Of(user);
+            if (!caller.HasValue)
+            {
+                return Result<Guid, ApiError>.Failure(PharmacyFailures.IdentityIncomplete()).ToHttpResult();
+            }
+
+            // The verified address is the only proof that the caller is the invitee.
+            if (!CallerClaims.HasVerifiedEmail(user))
+            {
+                return Result<Guid, ApiError>.Failure(PharmacyFailures.EmailNotVerified()).ToHttpResult();
+            }
+
+            if (!InvitationToken.TryFrom(request.Token, out var token))
+            {
+                return Result<Guid, ApiError>.Failure(PharmacyFailures.InvalidInvitationToken()).ToHttpResult();
+            }
+
+            var command = new AcceptInvitation(token, caller.Value.Person, caller.Value.Name, caller.Value.Email);
             return (await dispatcher.SendAsync(command, cancellationToken)).ToHttpResult();
         }).RequireAuthorization();
     }

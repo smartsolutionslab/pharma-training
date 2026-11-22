@@ -32,6 +32,12 @@ internal sealed class InMemoryPharmacyStore : IPharmacyStore, IOrganisationUnitO
     /// <summary>The stored pharmacy itself, so what a command changes on it is what the next read finds once committed.</summary>
     public Task<Option<Pharmacy>> LoadAsync(PharmacyId id, CancellationToken cancellationToken) => FindAsync(id, cancellationToken);
 
+    /// <summary>The one stored pharmacy whose memberships hold the hash, as the database's unique index on it finds it.</summary>
+    public Task<Option<Pharmacy>> LoadByInvitationAsync(InvitationTokenHash hash, CancellationToken cancellationToken) =>
+        Task.FromResult(Stored.SingleOrDefault(pharmacy => pharmacy.Memberships.Any(membership => membership.TokenHash == hash)) is { } pharmacy
+            ? Option<Pharmacy>.Some(pharmacy)
+            : Option<Pharmacy>.None);
+
     public Task<PagedResult<Pharmacy>> ListWithActiveMemberAsync(PersonId person, Page page, PageSize pageSize, CancellationToken cancellationToken)
     {
         List<Pharmacy> members = [.. Stored
