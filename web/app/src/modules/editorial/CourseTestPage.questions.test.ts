@@ -127,6 +127,8 @@ describe('the question list', () => {
     await renderPage();
 
     setLanguage('en-GB', { remember: false });
+    // card() finds the list by its English name, so wait for the page to have re-rendered in English first.
+    await screen.findByRole('heading', { level: 2, name: 'Questions' });
 
     expect(await within(card(0)).findByText('Approved')).toBeInTheDocument();
     expect(within(card(1)).getByText('Unreviewed')).toBeInTheDocument();
@@ -150,6 +152,8 @@ describe('the question list', () => {
     await renderPage();
 
     setLanguage('en-GB', { remember: false });
+    // card() finds the list by its English name, so wait for the page to have re-rendered in English first.
+    await screen.findByRole('heading', { level: 2, name: 'Questions' });
 
     expect(await within(card(1)).findByText('AI-drafted, not yet approved')).toBeInTheDocument();
     expect(within(card(2)).getByText('Written by hand, not yet approved')).toBeInTheDocument();
