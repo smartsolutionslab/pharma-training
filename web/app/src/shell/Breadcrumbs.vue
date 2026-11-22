@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { RouterLink, useRoute } from 'vue-router';
 import {
   Breadcrumb,
@@ -10,7 +11,7 @@ import {
   BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb';
 import { moduleRoutes } from '@/modules';
-import { useVisibleModules, useVisiblePages } from './useVisibleModules';
+import { useVisibleModules, useVisiblePages, type VisiblePage } from './useVisibleModules';
 
 // One word is the file's name; lint wants a component's name in two.
 defineOptions({ name: 'ShellBreadcrumbs' });
@@ -22,16 +23,18 @@ interface Crumb {
   link: boolean;
 }
 
-// Home, the module the address is in (by the title its routes.ts gives it), and each step of the address below it.
+// Home, the module the address is in (by the title its routes.ts gives it, in the language shown), and each step of the address below it.
 const route = useRoute();
+const { t } = useI18n();
 // A module the user may not see is an unknown segment of the address to them: it is not named.
 const modules = useVisibleModules();
 // A page below a module is named by its title where the user may see it, whether or not they may see its module. Its
 // module, hidden from the user, is then named by its title too, as text: a link would lead to a page refused to them.
 const pages = useVisiblePages();
+const titleOf = (page: VisiblePage | undefined) => (page === undefined ? undefined : t(page.titleKey));
 const crumbs = computed<Crumb[]>(() => {
   const [first, ...rest] = route.path.split('/').filter((segment) => segment !== '');
-  const all: Crumb[] = [{ label: 'Home', to: '/', link: true }];
+  const all: Crumb[] = [{ label: t('shell.home'), to: '/', link: true }];
   if (first === undefined) {
     return all;
   }
@@ -40,9 +43,9 @@ const crumbs = computed<Crumb[]>(() => {
   const page = rest.length > 0 ? pages.value.find((candidate) => candidate.to === `/${first}/${rest[0]}`) : undefined;
   const hiddenModule = page === undefined ? undefined : moduleRoutes.find((candidate) => candidate.path === first);
   if (module !== undefined) {
-    all.push({ label: module.title, to: `/${first}`, link: true });
+    all.push({ label: t(module.titleKey), to: `/${first}`, link: true });
   } else if (hiddenModule !== undefined) {
-    all.push({ label: hiddenModule.title, to: `/${first}`, link: false });
+    all.push({ label: t(hiddenModule.titleKey), to: `/${first}`, link: false });
   } else {
     all.push({ label: decodeURIComponent(first), to: `/${first}`, link: true });
   }
@@ -50,7 +53,7 @@ const crumbs = computed<Crumb[]>(() => {
   for (const segment of rest) {
     to = `${to}/${segment}`;
     all.push({
-      label: pages.value.find((candidate) => candidate.to === to)?.title ?? decodeURIComponent(segment),
+      label: titleOf(pages.value.find((candidate) => candidate.to === to)) ?? decodeURIComponent(segment),
       to,
       link: true,
     });

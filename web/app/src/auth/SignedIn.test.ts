@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/vue';
 import { User } from 'oidc-client-ts';
 import { afterEach, expect, test, vi } from 'vitest';
+import { setLanguage, t } from '@/i18n';
 import SignedIn from './SignedIn.vue';
 import { type AuthClient, authKey, createAuth } from './useAuth';
 
@@ -52,7 +53,7 @@ test('an anonymous visitor is sent to the identity provider', async () => {
   renderSignedIn(fake);
 
   await vi.waitFor(() => expect(fake.signinRedirect).toHaveBeenCalledOnce());
-  expect(screen.getByText('Signing in…')).toBeInTheDocument();
+  expect(screen.getByText(t('auth.signingIn'))).toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: 'pharma-training' })).not.toBeInTheDocument();
 });
 
@@ -63,7 +64,7 @@ test('a signed-in user sees the application', async () => {
   renderSignedIn(fake);
 
   expect(await screen.findByRole('heading', { name: 'pharma-training' })).toBeInTheDocument();
-  expect(screen.queryByText(/Signed in as/)).not.toBeInTheDocument();
+  expect(screen.queryByText(t('auth.signedInAs', { name: 'developer' }))).not.toBeInTheDocument();
   expect(fake.signinRedirect).not.toHaveBeenCalled();
 });
 
@@ -87,7 +88,7 @@ test('a failed sign-in is shown, not retried', async () => {
 
   renderSignedIn(fake);
 
-  expect(await screen.findByRole('alert')).toHaveTextContent('Sign-in failed: access_denied');
+  expect(await screen.findByRole('alert')).toHaveTextContent(t('auth.signInFailed', { message: 'access_denied' }));
   expect(fake.signinRedirect).not.toHaveBeenCalled();
 });
 
@@ -111,7 +112,9 @@ test('a failed silent renewal is shown', async () => {
   const [renewalFailed] = vi.mocked(fake.events.addSilentRenewError).mock.calls[0] ?? [];
   renewalFailed?.(new Error('the identity provider is unreachable'));
 
-  expect(await screen.findByRole('alert')).toHaveTextContent('Sign-in failed: the identity provider is unreachable');
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    t('auth.signInFailed', { message: 'the identity provider is unreachable' }),
+  );
 });
 
 test('a redirect to the identity provider that fails is shown', async () => {
@@ -121,7 +124,7 @@ test('a redirect to the identity provider that fails is shown', async () => {
 
   renderSignedIn(fake);
 
-  expect(await screen.findByRole('alert')).toHaveTextContent('Sign-in failed: discovery failed');
+  expect(await screen.findByRole('alert')).toHaveTextContent(t('auth.signInFailed', { message: 'discovery failed' }));
 });
 
 test('signing out does not start a sign-in while the identity provider signs the user out', async () => {
@@ -141,6 +144,15 @@ test('signing out does not start a sign-in while the identity provider signs the
 
   await vi.waitFor(() => expect(fake.signoutRedirect).toHaveBeenCalledOnce());
   expect(fake.signinRedirect).not.toHaveBeenCalled();
-  expect(await screen.findByText('Signing out…')).toBeInTheDocument();
+  expect(await screen.findByText(t('auth.signingOut'))).toBeInTheDocument();
   expect(fake.signinRedirect).not.toHaveBeenCalled();
+});
+
+test('the sign-in texts are German by default and English once chosen', async () => {
+  renderSignedIn(client());
+  expect(await screen.findByText('Anmeldung läuft…')).toBeInTheDocument();
+
+  setLanguage('en-GB', { remember: false });
+
+  expect(await screen.findByText('Signing in…')).toBeInTheDocument();
 });

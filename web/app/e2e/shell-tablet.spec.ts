@@ -33,7 +33,7 @@ async function signIn(page: Page) {
   await page.getByLabel('Username or email').fill('developer');
   await page.getByLabel('Password', { exact: true }).fill('developer');
   await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.getByText('Signed in as developer')).toBeVisible();
+  await expect(page.getByText('Angemeldet als developer')).toBeVisible();
 }
 
 /** Whether the page is wider than the viewport, so the user would scroll sideways. */
@@ -46,31 +46,31 @@ test('on a tablet the user chooses a pharmacy, switches to another, and it stays
   await signIn(page);
 
   await page
-    .getByRole('region', { name: 'Choose your pharmacy' })
+    .getByRole('region', { name: 'Wählen Sie Ihre Apotheke' })
     .getByRole('button', { name: /Apotheke am Markt/ })
     .click();
-  const navigation = page.getByRole('navigation', { name: 'Modules' });
-  await expect(navigation.getByRole('link', { name: 'Organisation' })).toBeVisible();
+  const navigation = page.getByRole('navigation', { name: 'Bereiche' });
+  await expect(navigation.getByRole('link', { name: 'Mitglieder' })).toBeVisible();
   expect(await scrollsSideways(page)).toBe(false);
 
-  await page.getByRole('button', { name: 'Pharmacy: Apotheke am Markt' }).click();
+  await page.getByRole('button', { name: 'Apotheke: Apotheke am Markt' }).click();
   await page
-    .getByRole('menu', { name: 'Pharmacies' })
+    .getByRole('menu', { name: 'Apotheken' })
     .getByRole('menuitemradio', { name: /Apotheke am Dom/ })
     .click();
-  await expect(page.getByRole('button', { name: 'Pharmacy: Apotheke am Dom' })).toBeVisible();
-  await expect(navigation.getByRole('link', { name: 'Organisation' })).toBeHidden();
-  await expect(navigation.getByRole('link', { name: 'Learning' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Apotheke: Apotheke am Dom' })).toBeVisible();
+  await expect(navigation.getByRole('link', { name: 'Mitglieder' })).toBeHidden();
+  await expect(navigation.getByRole('link', { name: 'Meine Schulungen' })).toBeVisible();
 
   await page.reload();
-  await expect(page.getByRole('button', { name: 'Pharmacy: Apotheke am Dom' })).toBeVisible();
-  await expect(navigation.getByRole('link', { name: 'Learning' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Apotheke: Apotheke am Dom' })).toBeVisible();
+  await expect(navigation.getByRole('link', { name: 'Meine Schulungen' })).toBeVisible();
   expect(await scrollsSideways(page)).toBe(false);
 
-  await navigation.getByRole('link', { name: 'Learning' }).click();
+  await navigation.getByRole('link', { name: 'Meine Schulungen' }).click();
   await expect(page).toHaveURL(/\/learning$/);
   // The page itself, not the gate: an employee of Apotheke am Dom may learn.
-  await expect(page.getByRole('heading', { name: 'Samples' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Not available' })).toBeHidden();
+  await expect(page.getByRole('heading', { name: 'Beispiele' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Nicht verfügbar' })).toBeHidden();
   expect(await scrollsSideways(page)).toBe(false);
 });

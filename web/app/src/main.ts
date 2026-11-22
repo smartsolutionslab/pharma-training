@@ -1,5 +1,6 @@
 import { type App as VueApp, type Component, createApp, h } from 'vue';
 import { withAuth } from './providers/auth';
+import { withI18n } from './providers/i18n';
 import { withPinia } from './providers/pinia';
 import { withQueryClient } from './providers/query';
 import { withRouter } from './providers/router';
@@ -11,6 +12,7 @@ type Provider = (app: VueApp, root: Component) => Component;
 
 const providers: Provider[] = [
   // Outermost first: each one wraps all that follow it.
+  withI18n,
   withAuth,
   withPinia,
   withQueryClient,

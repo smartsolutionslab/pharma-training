@@ -1,5 +1,6 @@
 import { computed } from 'vue';
 import { useHasRole } from '@/auth/useHasRole';
+import type { MessageKey } from '@/i18n';
 import { moduleRoutes } from '@/modules';
 import { canReach } from './audience';
 import { useCurrentPharmacy } from './useCurrentPharmacy';
@@ -13,10 +14,10 @@ export function useVisibleModules() {
   );
 }
 
-/** A page below a module the user may see: where it is and what it is called. */
+/** A page below a module the user may see: where it is and the key of what it is called. */
 export interface VisiblePage {
   to: string;
-  title: string;
+  titleKey: MessageKey;
 }
 
 /**
@@ -30,7 +31,7 @@ export function useVisiblePages() {
     moduleRoutes.flatMap((route) =>
       (route.pages ?? [])
         .filter((page) => canReach(page.audience, { current: current.value, isEditor: isEditor.value }))
-        .map((page) => ({ to: `/${route.path}/${page.path}`, title: page.title })),
+        .map((page) => ({ to: `/${route.path}/${page.path}`, titleKey: page.titleKey })),
     ),
   );
 }
