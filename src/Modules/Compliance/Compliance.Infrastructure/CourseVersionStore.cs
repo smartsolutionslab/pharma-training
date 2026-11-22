@@ -14,6 +14,15 @@ public sealed class CourseVersionStore(ComplianceDbContext context) : ICourseVer
     public Task<bool> ExistsAsync(CourseVersionId version, CancellationToken cancellationToken) =>
         context.Set<CourseVersion>().AnyAsync(stored => stored.Id == version, cancellationToken);
 
+    public async Task<Option<CourseVersionId>> FindByNumberAsync(CourseId course, VersionNumber number, CancellationToken cancellationToken) =>
+        await context.Set<CourseVersion>()
+            .AsNoTracking()
+            .Where(version => version.Course == course && version.Number == number)
+            .Select(version => version.Id)
+            .SingleOrDefaultAsync(cancellationToken) is { } stored
+            ? Option<CourseVersionId>.Some(stored)
+            : Option<CourseVersionId>.None;
+
     public void Add(CourseVersion version) => context.Add(version);
 
     public Task<bool> IsRetiredAsync(CourseVersionId version, CancellationToken cancellationToken) =>

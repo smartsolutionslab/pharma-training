@@ -24,7 +24,7 @@ public class PublishedCourseTests
         published.Course.ShouldBe(course);
         published.Latest.ShouldBeSameAs(first);
         published.Title.ShouldBe(CourseTitle.From("Kühlkette"));
-        published.IsRetired.ShouldBeFalse();
+        published.State.ShouldBe(PublishedCourseState.Available);
         published.CurrentVersion().Value.ShouldBeSameAs(first);
     }
 
@@ -41,7 +41,7 @@ public class PublishedCourseTests
 
         published.Latest.ShouldBeSameAs(newer);
         published.Title.ShouldBe(CourseTitle.From("Kühlkette 2"));
-        published.IsRetired.ShouldBeFalse();
+        published.State.ShouldBe(PublishedCourseState.Available);
         published.CurrentVersion().Value.ShouldBeSameAs(newer);
     }
 
@@ -53,7 +53,7 @@ public class PublishedCourseTests
 
         var published = PublishedCourse.Of(course, [older, newer], [Retirement(newer.Id)]).Value;
 
-        published.IsRetired.ShouldBeTrue();
+        published.State.ShouldBe(PublishedCourseState.Retired);
         published.CurrentVersion().HasValue.ShouldBeFalse();
         published.Latest.ShouldBeSameAs(newer);
         published.Title.ShouldBe(CourseTitle.From("Kühlkette 2"));
@@ -67,7 +67,7 @@ public class PublishedCourseTests
 
         var published = PublishedCourse.Of(course, [older, newer], [Retirement(older.Id)]).Value;
 
-        published.IsRetired.ShouldBeFalse();
+        published.State.ShouldBe(PublishedCourseState.Available);
         published.CurrentVersion().Value.ShouldBeSameAs(newer);
     }
 
@@ -78,7 +78,7 @@ public class PublishedCourseTests
 
         var published = PublishedCourse.Of(course, [first], [Retirement(CourseVersionId.From(Guid.CreateVersion7()))]).Value;
 
-        published.IsRetired.ShouldBeFalse();
+        published.State.ShouldBe(PublishedCourseState.Available);
         published.CurrentVersion().Value.ShouldBeSameAs(first);
     }
 

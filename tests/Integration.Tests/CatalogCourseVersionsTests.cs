@@ -3,8 +3,6 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Aspire.Hosting.Testing;
 using Npgsql;
-using RabbitMQ.Client;
-using RabbitMQ.Client.Exceptions;
 
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 
@@ -219,50 +217,8 @@ public class CatalogCourseVersionsTests(AspireFixture aspire)
 
     private static EventMetadata NewMetadata() => new(Guid.CreateVersion7(), TimeProvider.System.GetUtcNow());
 
-    /// <summary>
-    /// Sends an event as Editorial's Wolverine does: to the fanout exchange named after its type, with the type and the
-    /// envelope id in the message's properties and the event as camelCase JSON.
-    /// </summary>
-    private async Task SendAsync<T>(string type, T message, Guid messageId, CancellationToken cancellationToken)
-    {
-        var factory = new ConnectionFactory { Uri = new Uri(await aspire.App.GetConnectionStringAsync("messaging", cancellationToken) ?? throw new InvalidOperationException("The broker has no connection string.")) };
-        await using var connection = await factory.CreateConnectionAsync(cancellationToken);
-        await WaitForExchangeAsync(connection, type, cancellationToken);
-        await using var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
-        var properties = new BasicProperties
-        {
-            Type = type,
-            ContentType = "application/json",
-            MessageId = messageId.ToString(),
-            DeliveryMode = DeliveryModes.Persistent,
-        };
-
-        await channel.BasicPublishAsync(type, routingKey: string.Empty, mandatory: false, properties, JsonSerializer.SerializeToUtf8Bytes(message, JsonSerializerOptions.Web), cancellationToken);
-    }
-
-    /// <summary>Asks for the exchange Catalog's Wolverine declares at startup, without declaring it, so the test never conflicts with its arguments.</summary>
-    private static async Task WaitForExchangeAsync(IConnection connection, string exchange, CancellationToken cancellationToken)
-    {
-        var started = TimeProvider.System.GetTimestamp();
-        while (true)
-        {
-            // A passive declare of a missing exchange closes its channel, so every attempt gets a channel of its own.
-            await using var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
-            try
-            {
-                await channel.ExchangeDeclarePassiveAsync(exchange, cancellationToken);
-                return;
-            }
-            catch (OperationInterruptedException) when (TimeProvider.System.GetElapsedTime(started) < WaitTimeout)
-            {
-                await Task.Delay(PollInterval, cancellationToken);
-            }
-            catch (OperationInterruptedException missing)
-            {
-                throw new TimeoutException($"The exchange {exchange} did not exist after {WaitTimeout.TotalSeconds} s.", missing);
-            }
-        }
-    }
+    private Task SendAsync<T>(string type, T message, Guid messageId, CancellationToken cancellationToken) =>
+        Broker.SendAsync(aspire, type, message, messageId, cancellationToken);
 
     /// <summary>Barrier (a): the version is stored once Catalog answers it.</summary>
     private static async Task<ReadVersion> WaitUntilReadableAsync(HttpClient client, Guid courseVersionId, CancellationToken cancellationToken)

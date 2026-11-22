@@ -59,6 +59,25 @@ public class CourseVersionPublishedV1ConsumerTests
     }
 
     [Fact]
+    public async Task Another_version_with_a_number_its_course_already_has_is_refused_naming_the_stored_version_and_nothing_more_stored()
+    {
+        var store = new InMemoryCourseVersionStore();
+        var consumer = new CourseVersionPublishedV1Consumer(store, store);
+        var courseId = Guid.CreateVersion7();
+        var stored = CourseVersionEvents.Published(courseId, Guid.CreateVersion7(), 2, "Hygiene 2");
+        await consumer.HandleAsync(stored, TestContext.Current.CancellationToken);
+        var conflicting = CourseVersionEvents.Published(courseId, Guid.CreateVersion7(), 2, "Hygiene 2, noch einmal");
+
+        var refused = await Should.ThrowAsync<InvalidOperationException>(() => consumer.HandleAsync(conflicting, TestContext.Current.CancellationToken));
+
+        refused.Message.ShouldContain(conflicting.CourseVersionId.ToString());
+        refused.Message.ShouldContain(stored.CourseVersionId.ToString());
+        refused.Message.ShouldContain(courseId.ToString());
+        store.Versions.ShouldHaveSingleItem().Id.ShouldBe(CourseVersionId.From(stored.CourseVersionId));
+        store.Commits.ShouldBe(1);
+    }
+
+    [Fact]
     public async Task A_version_without_chapters_is_stored_since_compliance_keeps_none()
     {
         var store = new InMemoryCourseVersionStore();
@@ -93,6 +112,26 @@ public class CourseVersionPublishedV1ConsumerTests
     {
         var store = new InMemoryCourseVersionStore();
         var published = CourseVersionEvents.Published(Guid.CreateVersion7(), Guid.CreateVersion7(), 1, title!);
+
+        await RefusedAsync(store, published, nameof(CourseVersionPublishedV1.Title));
+    }
+
+    [Fact]
+    public async Task A_title_as_long_as_editorial_allows_is_stored()
+    {
+        var store = new InMemoryCourseVersionStore();
+        var title = new string('a', 150);
+
+        await new CourseVersionPublishedV1Consumer(store, store).HandleAsync(CourseVersionEvents.Published(Guid.CreateVersion7(), Guid.CreateVersion7(), 1, title), TestContext.Current.CancellationToken);
+
+        store.Versions.ShouldHaveSingleItem().Title.ShouldBe(CourseTitle.From(title));
+    }
+
+    [Fact]
+    public async Task A_title_longer_than_editorial_allows_is_refused_by_its_name_and_nothing_stored()
+    {
+        var store = new InMemoryCourseVersionStore();
+        var published = CourseVersionEvents.Published(Guid.CreateVersion7(), Guid.CreateVersion7(), 1, new string('a', 151));
 
         await RefusedAsync(store, published, nameof(CourseVersionPublishedV1.Title));
     }
