@@ -91,19 +91,20 @@ public class AppHostParametersTests
     }
 
     [Fact]
-    public async Task Deployed_mail_from_has_no_published_default_as_frontend_url_has_none()
+    public async Task The_deployed_sender_has_no_published_default_as_frontend_url_has_none()
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         timeout.CancelAfter(Timeout);
-        await using var builder = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AppHost>(["--operation", "publish"], timeout.Token);
+        await using var builder = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AppHost>(["--operation", "publish", "--environment", "staging"], timeout.Token);
         Unconfigured(builder);
         builder.ExecutionContext.IsPublishMode.ShouldBeTrue("the AppHost's model was not built in publish mode");
 
+        // Published, the services' sender is the mail server's smtp-from, which Keycloak shares (docs/adr/0004).
         var frontendUrl = Parameter(builder, "frontend-url");
-        var mailFrom = Parameter(builder, "mail-from");
+        var sender = Parameter(builder, "smtp-from");
 
         frontendUrl.Default.ShouldBeNull("frontend-url publishes a default");
-        mailFrom.Default.ShouldBeNull("mail-from publishes a default, so a deployment that forgot it sends from that address");
+        sender.Default.ShouldBeNull("smtp-from publishes a default, so a deployment that forgot it sends from that address");
     }
 
     /// <summary>A developer's user secrets must not decide what these tests see.</summary>
