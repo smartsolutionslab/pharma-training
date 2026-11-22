@@ -56,10 +56,13 @@ public static class Messaging
             // An event a module of this host both publishes and consumes stays off the broker altogether: no exchange, no
             // sender and no binding to the service's queue, so it travels on the local queue alone and nobody with broker
             // credentials can hand the host one (docs/adr/0004). Events of other services are still bound to the queue.
+            // Wolverine's request/reply queue (wolverine.response.<id>) is not declared either: its listener dispatches any
+            // message by type, the local ones included, and no service asks another for a reply over the broker.
             var local = LocalMessageTypes(modules);
-            options.UseRabbitMq(new Uri(broker)).AutoProvision().DisableDeadLetterQueueing().UseConventionalRouting(convention => convention
-                .QueueNameForListener(_ => queue)
-                .ExcludeTypes(local.Contains));
+            options.UseRabbitMq(new Uri(broker)).AutoProvision().DisableDeadLetterQueueing().DisableSystemRequestReplyQueueDeclaration()
+                .UseConventionalRouting(convention => convention
+                    .QueueNameForListener(_ => queue)
+                    .ExcludeTypes(local.Contains));
 
             options.Discovery.DisableConventionalDiscovery();
             options.Discovery.CustomizeHandlerDiscovery(query => query.Includes.WithNameSuffix("Consumer"));
