@@ -74,6 +74,8 @@ public class BlueprintValueObjectTests
         QuestionCount.Maximum.ShouldBe(50);
         ScorePercent.Minimum.ShouldBe(0);
         ScorePercent.Maximum.ShouldBe(100);
+        RecurrenceInterval.MinimumMonths.ShouldBe(1);
+        RecurrenceInterval.MaximumMonths.ShouldBe(60);
         TestBlueprint.MinimumQuestions.ShouldBe(1);
     }
 }
