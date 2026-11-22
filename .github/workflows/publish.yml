@@ -50,6 +50,23 @@ jobs:
           global-json-file: global.json
       # The AppHost uses the Aspire CLI bundle; set it up before anything builds the AppHost.
       - run: dnx --yes aspire.cli@13.6.5 -- setup --install-path "$HOME/.aspire"
+      # Every service has a broker password of its own, messaging-<module>-password (docs/adr/0011): a placeholder for each
+      # service host, found as the AppHost finds them (src/Services/*/Host/Host.csproj and its <ModuleName>), so no module
+      # is listed here.
+      - name: Placeholders for each service's broker password
+        run: |
+          count=0
+          for project in src/Services/*/Host/Host.csproj; do
+            module="$(sed -n 's:.*<ModuleName>\(.*\)</ModuleName>.*:\1:p' "$project")"
+            if [ -z "$module" ]; then
+              echo "::error file=$project::$project names no <ModuleName>."
+              exit 1
+            fi
+            echo "Parameters__messaging-$module-password=placeholder" >> "$GITHUB_ENV"
+            count=$((count + 1))
+          done
+          echo "Set a broker password placeholder for $count services."
+          test "$count" -gt 0
       - name: Publish ${{ matrix.environment }}
         run: dnx --yes aspire.cli@13.6.5 -- publish --apphost src/AppHost/AppHost.csproj -e "${{ matrix.environment }}" -o "publish/${{ matrix.environment }}/first" --non-interactive --nologo
       # The same commit must write the same Bicep every time, or a deploy changes what nobody changed. The first publish
