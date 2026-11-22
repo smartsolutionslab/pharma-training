@@ -8,7 +8,6 @@ using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.Re
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.ReorderChapters;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.ReplaceFileChapter;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.ReplaceTextChapter;
-using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.DTOs;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -122,14 +121,14 @@ public sealed class ChapterEndpoints : IEndpoint
         }
 
         // The enum's converter also reads numbers, so an undefined one is the caller's mistake, not a bug.
-        var kind = request.Kind ?? EditorialChapterKind.Text;
+        var kind = request.Kind ?? EditorialChapterRequestKind.Text;
         if (!Enum.IsDefined(kind))
         {
             return Failure(CourseVersionFailures.InvalidChapterKind());
         }
 
-        var takesText = kind == EditorialChapterKind.Text;
-        var takesDuration = kind == EditorialChapterKind.Video;
+        var takesText = kind == EditorialChapterRequestKind.Text;
+        var takesDuration = kind == EditorialChapterRequestKind.Video;
         if ((request.Text is not null && !takesText) || (request.File is not null && takesText) || (request.DurationSeconds is not null && !takesDuration))
         {
             return Failure(CourseVersionFailures.ChapterContentDoesNotMatchKind());

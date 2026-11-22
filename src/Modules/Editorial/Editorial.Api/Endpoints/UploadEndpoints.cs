@@ -22,12 +22,12 @@ public sealed class UploadEndpoints : IEndpoint
         endpoints.MapPost("/course-versions/{id:guid}/uploads", async (Guid id, EditorialUploadRequest request, IDispatcher dispatcher, CancellationToken cancellationToken) =>
         {
             // The enum's converter also reads numbers, so an undefined one is refused here as a text or a missing kind is.
-            if (request.Kind is not { } kind || !Enum.IsDefined(kind) || kind == EditorialChapterKind.Text)
+            if (request.Kind is not { } kind || !Enum.IsDefined(kind) || kind == EditorialChapterRequestKind.Text)
             {
                 return Result<EditorialChapterUploadDto, ApiError>.Failure(CourseVersionFailures.InvalidUploadKind()).ToHttpResult();
             }
 
-            return (await dispatcher.QueryAsync(new RequestChapterUpload(id, kind), cancellationToken)).ToHttpResult();
+            return (await dispatcher.QueryAsync(new RequestChapterUpload(id, kind.ToEditorialChapterKind()), cancellationToken)).ToHttpResult();
         }).RequireAuthorization(EditorialPolicyNames.Edit);
     }
 }
