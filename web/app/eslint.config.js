@@ -176,6 +176,16 @@ export default defineConfigWithVueTs(
     },
   },
   {
+    // HTML put on the page runs whatever it holds: an editor's Markdown reaches the page only through MarkdownView,
+    // which renders it sanitised (src/lib/markdown.ts). src/lib/noVHtml.test.ts keeps this from being turned off.
+    files: ['src/**/*.vue'],
+    rules: { 'vue/no-v-html': 'error' },
+  },
+  {
+    files: ['src/components/MarkdownView.vue'],
+    rules: { 'vue/no-v-html': 'off' },
+  },
+  {
     // A toast's text and a formatted date or number come from the catalogs and their formats too (docs/adr/0007).
     files: ['src/**/*.{ts,vue}'],
     ignores: ['**/*.test.*'],
