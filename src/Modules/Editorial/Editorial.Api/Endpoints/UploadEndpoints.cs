@@ -7,7 +7,10 @@ using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.DTOs;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Queries.RequestChapterUpload;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Json;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Microsoft.Net.Http.Headers;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Api.Endpoints;
@@ -18,6 +21,9 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Api.Endpoints;
 /// </summary>
 public sealed class UploadEndpoints : IEndpoint
 {
+    /// <summary>The charset of a body that names none, JSON's own, refusing invalid bytes rather than replacing them.</summary>
+    private static readonly Encoding StrictUtf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+
     public void Map(IEndpointRouteBuilder endpoints)
     {
         Ensure.That(endpoints).IsNotNull();
@@ -40,44 +46,66 @@ public sealed class UploadEndpoints : IEndpoint
     }
 
     /// <summary>
-    /// The body, or null when it is no JSON, is in a charset the host does not know, or names a kind that is no upload's.
-    /// A body without a kind reads as 0, which is no kind either; the converter also reads numbers, so an undefined one is
-    /// left to the caller's check.
+    /// The body, or null when it is no JSON, names a charset that is empty or one the host cannot decode (unknown, or
+    /// refused like UTF-7), cannot be decoded in the charset it names, or names a kind that is no upload's. The charset is
+    /// read the way RFC 9110 allows, quoted or not, and the body is decoded in that same charset here, so the check and the
+    /// read cannot disagree. A body without a kind reads as 0, which is no kind either; the converter also reads numbers,
+    /// so an undefined one is left to the caller's check.
     /// </summary>
     private static async Task<EditorialUploadRequest?> ReadAsync(HttpRequest http, CancellationToken cancellationToken)
     {
-        if (!http.HasJsonContentType() || !HasKnownCharset(http))
+        if (!http.HasJsonContentType() || !TryGetEncoding(http, out var encoding))
         {
             return null;
         }
 
+        var options = http.HttpContext.RequestServices.GetRequiredService<IOptions<JsonOptions>>().Value.SerializerOptions;
         try
         {
-            return await http.ReadFromJsonAsync<EditorialUploadRequest>(cancellationToken);
+            using var reader = new StreamReader(http.Body, encoding, detectEncodingFromByteOrderMarks: false, leaveOpen: true);
+            var text = await reader.ReadToEndAsync(cancellationToken);
+            return JsonSerializer.Deserialize<EditorialUploadRequest>(text, options);
         }
         catch (JsonException)
+        {
+            return null;
+        }
+        catch (DecoderFallbackException)
         {
             return null;
         }
     }
 
     /// <summary>
-    /// Whether the content type names no charset or one the host can decode. Reading the body looks the charset up the
-    /// same way and throws an <see cref="InvalidOperationException"/> for one it does not know, which would answer 500.
+    /// The encoding the content type names, UTF-8 when it names none. False for a charset that is empty (<c>""</c>), one
+    /// the host does not know, or one it refuses to decode (UTF-7), which reading the body with the framework would answer
+    /// with a 500. The decoder throws on invalid bytes rather than replacing them.
     /// </summary>
-    private static bool HasKnownCharset(HttpRequest http)
+    private static bool TryGetEncoding(HttpRequest http, out Encoding encoding)
     {
-        var charset = HeaderUtilities.RemoveQuotes(MediaTypeHeaderValue.Parse(http.ContentType).Charset);
-        if (!charset.HasValue || charset.Length == 0)
+        encoding = StrictUtf8;
+        var charset = MediaTypeHeaderValue.Parse(http.ContentType).Charset;
+        if (!charset.HasValue)
         {
             return true;
         }
 
+        var name = HeaderUtilities.RemoveQuotes(charset).Trim();
+        if (name.Length == 0)
+        {
+            return false;
+        }
+
         try
         {
-            return Encoding.GetEncoding(charset.ToString()) is not null;
+            encoding = Encoding.GetEncoding(name.ToString(), EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback);
+            return true;
         }
         catch (ArgumentException)
+        {
+            return false;
+        }
+        catch (NotSupportedException)
         {
             return false;
         }
