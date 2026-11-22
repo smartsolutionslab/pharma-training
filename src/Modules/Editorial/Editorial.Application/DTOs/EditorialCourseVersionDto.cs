@@ -8,4 +8,5 @@ public sealed record EditorialCourseVersionDto(
     string Title,
     EditorialCourseVersionStatus Status,
     IReadOnlyList<EditorialChapterDto> Chapters,
-    IReadOnlyList<EditorialQuestionDto> Questions);
+    IReadOnlyList<EditorialQuestionDto> Questions,
+    EditorialTestBlueprintDto? Blueprint = null); // Red-first stub for #17: no blueprint is answered until the change lands.
