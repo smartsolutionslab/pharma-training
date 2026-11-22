@@ -1,17 +1,27 @@
 <script setup lang="ts">
 import { ListChecks } from '@lucide/vue';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { RouterLink, useRoute } from 'vue-router';
 import { z } from 'zod';
 import { useGetEditorialCourseVersionsId } from '@/api/generated';
 import { ApiError } from '@/api/baseApi';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
+import type { EditorialQuestionDto, EditorialQuestionRequest } from '@/api/generated';
+import { t as translate } from '@/i18n';
+import { notify } from '@/lib/notify';
 import QuestionCard from './QuestionCard.vue';
+import QuestionForm from './QuestionForm.vue';
+import RemoveQuestionDialog from './RemoveQuestionDialog.vue';
 import TestBlueprintSection from './TestBlueprintSection.vue';
 import { testCounts } from './testCounts';
+import { useQuestionMutations } from './useQuestionMutations';
+
+/** The most questions a test holds (Test.MaxQuestions). */
+const maxQuestions = 50;
 
 // The test of a course version (/editorial/versions/:id/test), a page of its own beside the version's: headed by the
 // version's title, number and status, with the way back to the version. Only a draft's test can be changed; any other
@@ -40,6 +50,39 @@ const counts = computed(() =>
     ? undefined
     : testCounts({ questions: questions.value, blueprint: version.value.blueprint }),
 );
+
+const { add, replace, remove, isSaving, isRemoving } = useQuestionMutations(id);
+/** The question form while it is open: a question to replace, or none to add one. */
+const form = ref<{ question?: EditorialQuestionDto }>();
+/** The question asked about before it is deleted. */
+const removing = ref<EditorialQuestionDto>();
+/** Whether another question may be added: a draft with chapters and room for one. */
+const canAdd = computed(
+  () => editable.value && (version.value?.chapters.length ?? 0) > 0 && questions.value.length < maxQuestions,
+);
+
+/** Saves the form's question; a refusal is reported, and the form stays open with what was entered. */
+async function save(request: EditorialQuestionRequest) {
+  const question = form.value?.question;
+  const result = question === undefined ? await add(request) : await replace(question.id, request);
+  if (!result.ok) {
+    notify.failure(result.serverMessage ?? translate('editorial.test.questions.saveFailed'));
+    return false;
+  }
+  notify.success(translate('editorial.test.questions.saved'));
+  form.value = undefined;
+  return true;
+}
+
+async function confirmRemove(question: EditorialQuestionDto) {
+  const result = await remove(question.id);
+  removing.value = undefined;
+  if (result.ok) {
+    notify.success(translate('editorial.test.questions.removed'));
+  } else {
+    notify.failure(result.serverMessage ?? translate('editorial.test.questions.removeFailed'));
+  }
+}
 </script>
 
 <template>
@@ -80,7 +123,12 @@ const counts = computed(() =>
       </p>
       <TestBlueprintSection :version-id="id" :blueprint="version.blueprint" :editable="editable" />
       <section aria-labelledby="course-test-questions" class="flex flex-col gap-4">
-        <h2 id="course-test-questions">{{ t('editorial.test.questions.title') }}</h2>
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h2 id="course-test-questions">{{ t('editorial.test.questions.title') }}</h2>
+          <Button v-if="canAdd && questions.length > 0" type="button" @click="form = {}">
+            {{ t('editorial.test.questions.add') }}
+          </Button>
+        </div>
         <div v-if="counts !== undefined" class="text-body flex flex-col gap-1 tabular-nums">
           <p>
             {{
@@ -114,19 +162,54 @@ const counts = computed(() =>
             :key="question.id"
             :question="question"
             :chapter="chapters.get(question.chapterId)"
+            :editable="editable"
+            @edit="(each) => (form = { question: each })"
+            @remove="(each) => (removing = each)"
           />
         </ol>
         <EmptyState v-else>
           <template #icon><ListChecks /></template>
           {{ t('editorial.test.questions.empty') }}
           <template v-if="editable" #action>
-            <Button v-if="version.chapters.length > 0" type="button" variant="outline">
+            <Button v-if="version.chapters.length > 0" type="button" variant="outline" @click="form = {}">
               {{ t('editorial.test.questions.add') }}
             </Button>
             <p v-else class="text-body">{{ t('editorial.test.questions.noChapters') }}</p>
           </template>
         </EmptyState>
       </section>
+      <template v-if="editable">
+        <Dialog :open="form !== undefined" @update:open="(open) => !open && (form = undefined)">
+          <DialogContent class="max-h-[90vh] overflow-y-auto sm:max-w-2xl" :aria-describedby="undefined">
+            <DialogHeader>
+              <DialogTitle>
+                {{
+                  t(form?.question ? 'editorial.test.questionForm.editTitle' : 'editorial.test.questionForm.addTitle')
+                }}
+              </DialogTitle>
+            </DialogHeader>
+            <QuestionForm
+              v-if="form !== undefined"
+              :chapters="version.chapters"
+              :question="form.question"
+              :on-save="save"
+              :saving="isSaving"
+            >
+              <template #actions>
+                <DialogClose as-child>
+                  <Button type="button" variant="outline">{{ t('editorial.cancel') }}</Button>
+                </DialogClose>
+              </template>
+            </QuestionForm>
+          </DialogContent>
+        </Dialog>
+        <RemoveQuestionDialog
+          :question="removing"
+          :removing="isRemoving"
+          @confirm="confirmRemove"
+          @cancel="removing = undefined"
+        />
+      </template>
     </template>
   </main>
 </template>

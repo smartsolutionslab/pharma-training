@@ -1,19 +1,25 @@
 <script setup lang="ts">
-import { Check, CircleAlert, CircleCheck } from '@lucide/vue';
+import { Check, CircleAlert, CircleCheck, Pencil, Trash2 } from '@lucide/vue';
 import { useI18n } from 'vue-i18n';
 import type { EditorialChapterDto, EditorialQuestionDto } from '@/api/generated';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 interface QuestionCardProps {
   question: EditorialQuestionDto;
   /** The chapter the question is about; none when the version has no chapter of its id. */
   chapter?: EditorialChapterDto;
+  /** Whether the question may be edited and deleted: in a draft only. */
+  editable?: boolean;
+  /** Whether nothing may change for now, such as while the AI drafts the test. */
+  locked?: boolean;
 }
 
 // One question of a test, as an item of the question list: its position, chapter and type, its text and options as
 // plain text (they may come from the model: never markup), the correct options named, not marked by colour alone, and
 // its review marked by a badge's text and icon.
-const { question, chapter } = defineProps<QuestionCardProps>();
+const { question, chapter, editable = false, locked = false } = defineProps<QuestionCardProps>();
+const emit = defineEmits<{ edit: [question: EditorialQuestionDto]; remove: [question: EditorialQuestionDto] }>();
 const { t } = useI18n();
 </script>
 
@@ -66,5 +72,27 @@ const { t } = useI18n();
           : t(`glossary.questionProvenance.${question.provenance}`)
       }}
     </p>
+    <div v-if="editable" class="flex flex-wrap justify-end gap-2">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        :disabled="locked"
+        :aria-label="t('editorial.test.questions.edit', { position: Number(question.position) })"
+        @click="emit('edit', question)"
+      >
+        <Pencil aria-hidden="true" />
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        :disabled="locked"
+        :aria-label="t('editorial.test.questions.remove', { position: Number(question.position) })"
+        @click="emit('remove', question)"
+      >
+        <Trash2 aria-hidden="true" />
+      </Button>
+    </div>
   </li>
 </template>
