@@ -1,5 +1,8 @@
 using System.Text.RegularExpressions;
 using Aspire.Hosting;
+using Aspire.Hosting.ApplicationModel;
+using Aspire.Hosting.Azure;
+using Microsoft.Extensions.Hosting;
 
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 
@@ -18,6 +21,9 @@ public class AppHostSecretAccessTests
 
     // Built-in roles that read or manage a vault's contents; any of them on a vault, a resource group or a subscription
     // reaches every secret in it.
+    // A bare publish waits for a parameter without a value as the AppHost's does (PublishedAppHost).
+    private static readonly TimeSpan PublishTimeout = TimeSpan.FromMinutes(2);
+
     private static readonly HashSet<string> KeyVaultDataRoles =
     [
         KeyVaultSecretsUser,
@@ -84,6 +90,104 @@ public class AppHostSecretAccessTests
     }
 
     [Fact]
+    public async Task Each_app_that_reads_secrets_deploys_after_its_own_secret_grants()
+    {
+        var bicep = await PublishedAppHost.PublishAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
+        var main = bicep.Files["main.bicep"];
+        var apps = bicep.ContainerApps.Where(app => PublishedBicep.KeyVaultSecretsReferenced(app.Value).Count > 0).ToList();
+
+        apps.ShouldNotBeEmpty();
+        List<string> unordered = [];
+        foreach (var (name, module) in apps)
+        {
+            // The app's own grants, <app>-roles-secrets; an app is published as a deployment of its own, so it waits for
+            // them only by taking one of their outputs as a parameter, which main.bicep outputs from that module.
+            var roles = $"{name.Replace('-', '_')}_roles_secrets";
+            main.ShouldMatch($@"(?m)^module\s+{roles}\s+'", $"{name} reads Key Vault secrets but main.bicep has no module {roles}.");
+            var takesAnOutput = Regex.IsMatch(module, $@"(?mi)^param\s+{roles}_outputs_\w+\s", RegexOptions.None, TimeSpan.FromSeconds(1));
+            var mainOutputsIt = Regex.IsMatch(main, $@"(?m)^output\s+{roles}_\w+\s+\w+\s*=\s*{roles}\.outputs\.\w+", RegexOptions.None, TimeSpan.FromSeconds(1));
+            if (!takesAnOutput || !mainOutputsIt)
+            {
+                unordered.Add($"{name} (takes an output of {roles}: {takesAnOutput}; main.bicep outputs one: {mainOutputsIt})");
+            }
+        }
+
+        unordered.ShouldBeEmpty("These apps may start before their identity may read the secrets they reference: each must take an output of its own <app>-roles-secrets module.");
+    }
+
+    [Theory]
+    [InlineData(PublishedAppHost.Staging)]
+    [InlineData(PublishedAppHost.Production)]
+    public async Task The_container_apps_environment_keeps_api_version_2025_07_01_with_encrypted_peer_traffic(string environment)
+    {
+        var bicep = await PublishedAppHost.PublishAsync(environment, TestContext.Current.CancellationToken);
+        var aca = bicep.Module("aca");
+
+        var declared = Regex.Match(aca, @"'Microsoft\.App/managedEnvironments@(?<version>[^']+)'", RegexOptions.None, TimeSpan.FromSeconds(1));
+        declared.Success.ShouldBeTrue("The aca module declares no Microsoft.App/managedEnvironments resource.");
+        declared.Groups["version"].Value.ShouldBe("2025-07-01", "The Container Apps environment should be declared with API version 2025-07-01.");
+        PublishedBicep.Block(PublishedBicep.Block(aca, "peerTrafficConfiguration"), "encryption").ShouldMatch(@"\benabled:\s*true\b");
+    }
+
+    [Fact]
+    public async Task Published_a_secret_given_to_an_app_after_the_grants_is_granted_too()
+    {
+        var output = OutputDirectory();
+        var builder = PublishBuilder(output);
+        builder.AddContainerAppsEnvironment();
+        var secrets = DeploymentSecrets.For(builder);
+        var early = secrets.Secret("early-secret");
+        var probe = builder.AddContainer("probe", "probe-image").WithSecret("Probe__Early", early, secrets);
+
+        await secrets.GrantEachAppTheSecretsItReadsAsync(builder, TestContext.Current.CancellationToken);
+        var late = secrets.Secret("late-secret");
+        probe.WithSecret("Probe__Late", late, secrets);
+
+        var bicep = await PublishAsync(builder, output, TestContext.Current.CancellationToken);
+
+        bicep.ContainerApps.ShouldContainKey("probe");
+        PublishedBicep.KeyVaultSecretsReferenced(bicep.ContainerApps["probe"]).ShouldBe(["early-secret", "late-secret"]);
+        Granted(bicep, "probe").ShouldBe(["early-secret", "late-secret"], customMessage: $"probe should read each secret it references. It holds: {Describe(bicep.RoleAssignmentsOf("probe-identity"))}");
+    }
+
+    [Fact]
+    public async Task Published_an_app_added_after_the_grants_is_granted_its_secrets()
+    {
+        var output = OutputDirectory();
+        var builder = PublishBuilder(output);
+        builder.AddContainerAppsEnvironment();
+        var secrets = DeploymentSecrets.For(builder);
+
+        await secrets.GrantEachAppTheSecretsItReadsAsync(builder, TestContext.Current.CancellationToken);
+        var late = secrets.Secret("late-secret");
+        builder.AddContainer("probe", "probe-image").WithSecret("Probe__Late", late, secrets);
+
+        var bicep = await PublishAsync(builder, output, TestContext.Current.CancellationToken);
+
+        bicep.ContainerApps.ShouldContainKey("probe");
+        PublishedBicep.KeyVaultSecretsReferenced(bicep.ContainerApps["probe"]).ShouldBe(["late-secret"]);
+        Granted(bicep, "probe").ShouldBe(["late-secret"], customMessage: $"probe should read the secret it references. It holds: {Describe(bicep.RoleAssignmentsOf("probe-identity"))}");
+    }
+
+    [Fact]
+    public async Task Published_a_vault_secret_given_as_an_argument_is_granted()
+    {
+        var output = OutputDirectory();
+        var builder = PublishBuilder(output);
+        builder.AddContainerAppsEnvironment();
+        var secrets = DeploymentSecrets.For(builder);
+        var held = secrets.Holding(secrets.Secret("argument-secret")).ShouldNotBeNull();
+        IAzureKeyVaultSecretReference reference = held.Resource;
+        builder.AddContainer("probe", "probe-image").WithArgs(context => context.Args.Add(reference));
+
+        await secrets.GrantEachAppTheSecretsItReadsAsync(builder, TestContext.Current.CancellationToken);
+        var bicep = await PublishAsync(builder, output, TestContext.Current.CancellationToken);
+
+        bicep.ContainerApps.ShouldContainKey("probe");
+        Granted(bicep, "probe").ShouldBe(["argument-secret"], customMessage: $"probe is given argument-secret as an argument and should read it. It holds: {Describe(bicep.RoleAssignmentsOf("probe-identity"))}");
+    }
+
+    [Fact]
     public void Published_a_secret_parameter_the_vault_does_not_hold_fails_naming_it()
     {
         var builder = PublishBuilder();
@@ -114,9 +218,51 @@ public class AppHostSecretAccessTests
             : null;
 
     /// <summary>An empty application in publish mode, as <c>aspire publish</c> starts one; it is never built or run.</summary>
-    private static IDistributedApplicationBuilder PublishBuilder() =>
+    private static IDistributedApplicationBuilder PublishBuilder() => PublishBuilder(OutputDirectory());
+
+    /// <summary>An empty application in publish mode that writes its Bicep into <paramref name="output"/>.</summary>
+    private static IDistributedApplicationBuilder PublishBuilder(string output) =>
         DistributedApplication.CreateBuilder(
-            ["--operation", "publish", "--step", "publish", "--environment", PublishedAppHost.Staging, "--output-path", Path.Combine(Path.GetTempPath(), "pharma-training-publish", Guid.CreateVersion7().ToString("N"))]);
+            ["--operation", "publish", "--step", "publish", "--environment", PublishedAppHost.Staging, "--output-path", output, "--clear-cache", "true"]);
+
+    private static string OutputDirectory() =>
+        Path.Combine(Path.GetTempPath(), "pharma-training-publish", Guid.CreateVersion7().ToString("N"));
+
+    /// <summary>
+    /// Runs a bare application's publish pipeline and returns what it wrote; the directory is removed again. Every
+    /// parameter without a value gets a placeholder, so the pipeline never waits for one.
+    /// </summary>
+    private static async Task<PublishedBicep> PublishAsync(IDistributedApplicationBuilder builder, string output, CancellationToken cancellationToken)
+    {
+        foreach (var parameter in builder.Resources.OfType<ParameterResource>().Where(parameter => parameter.Default is null))
+        {
+            builder.Configuration[$"Parameters:{parameter.Name}"] ??= $"placeholder-{parameter.Name}";
+        }
+
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(PublishTimeout);
+            await using var app = builder.Build();
+            await app.StartAsync(timeout.Token);
+            await app.WaitForShutdownAsync(timeout.Token);
+            return PublishedBicep.Read(output);
+        }
+        finally
+        {
+            if (Directory.Exists(output))
+            {
+                Directory.Delete(output, recursive: true);
+            }
+        }
+    }
+
+    /// <summary>The vault secrets an app's identity is a Key Vault Secrets User on, one secret at a time, by name.</summary>
+    private static List<string> Granted(PublishedBicep bicep, string app) =>
+        [.. bicep.RoleAssignmentsOf($"{app}-identity")
+            .Where(assignment => assignment.Role == KeyVaultSecretsUser && assignment.ScopeType == VaultSecret)
+            .Select(assignment => assignment.ScopeName)
+            .Order(StringComparer.Ordinal)];
 
     private static string Describe(IEnumerable<PublishedRoleAssignment> assignments) =>
         string.Join("; ", assignments.Select(assignment => $"{assignment.Role} on {assignment.ScopeType} '{assignment.ScopeName}' ({assignment.File})"));

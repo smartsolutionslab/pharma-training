@@ -92,6 +92,50 @@ public class AppHostStorageTests
         Regex.Match(cors, @"maxAgeInSeconds:\s*(?<age>\d+)", RegexOptions.None, TimeSpan.FromSeconds(1)).Groups["age"].Value.ShouldBe("3600");
     }
 
+    [Fact]
+    public async Task Each_service_signs_in_as_its_own_identity()
+    {
+        var bicep = await PublishedAppHost.PublishAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
+        var main = bicep.Files["main.bicep"];
+        var modules = Containers(bicep.Module("storage"));
+
+        modules.ShouldNotBeEmpty();
+        foreach (var module in modules)
+        {
+            var identity = $"{module.Replace('-', '_')}_identity";
+            var clientId = Regex.Match(bicep.Module(module), @"name:\s*'AZURE_CLIENT_ID'\s+value:\s*(?<value>\w+)", RegexOptions.None, TimeSpan.FromSeconds(1));
+
+            clientId.Success.ShouldBeTrue($"{module} is given no AZURE_CLIENT_ID to sign and read its container keyless with.");
+            clientId.Groups["value"].Value.ShouldBe($"{identity}_outputs_clientid", $"{module}'s AZURE_CLIENT_ID should be the clientId of its own {module}-identity.");
+            main.ShouldMatch(
+                $@"(?m)^output\s+{identity}_clientId\s+string\s*=\s*{identity}\.outputs\.clientId\s*$",
+                $"main.bicep should hand {module} the clientId output of its own {module}-identity.");
+        }
+    }
+
+    [Fact]
+    public async Task The_published_account_allows_the_frontend_url_origin_and_no_wildcard()
+    {
+        var bicep = await PublishedAppHost.PublishAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
+        var storage = bicep.Module("storage");
+        var main = bicep.Files["main.bicep"];
+
+        var origins = Array(PublishedBicep.Block(storage, "cors"), "allowedOrigins");
+        origins.ShouldNotBeEmpty("The published storage account's blob service allows no origin.");
+        origins.ShouldNotContain("*", Case.Sensitive, $"The rule allows a wildcard origin: {origins}");
+
+        // main.bicep hands the storage module the parameter frontend-url (main's frontend_url) under a name of its own,
+        // and an allowed origin is made of it.
+        var storageModule = Regex.Match(main, @"(?ms)^module\s+storage\s+'storage/storage\.bicep'\s*=\s*\{.*?^\}", RegexOptions.None, TimeSpan.FromSeconds(1)).Value;
+        var handed = Regex.Matches(storageModule, @"(?m)^\s*(?<name>\w+):\s*frontend_url\s*$", RegexOptions.None, TimeSpan.FromSeconds(1))
+            .Select(match => match.Groups["name"].Value)
+            .ToList();
+        handed.ShouldNotBeEmpty($"main.bicep hands the storage module no frontend-url parameter: {storageModule}");
+        handed.ShouldContain(
+            name => Regex.IsMatch(origins, $@"\b{Regex.Escape(name)}\b", RegexOptions.None, TimeSpan.FromSeconds(1)),
+            $"No allowed origin is the web app's public address from frontend-url ({string.Join(", ", handed)}): {origins}");
+    }
+
     /// <summary>The containers the storage module declares, one per module, by name.</summary>
     private static List<string> Containers(string storage) =>
         [.. Regex.Matches(storage, @"'Microsoft\.Storage/storageAccounts/blobServices/containers@[^']*'\s*=\s*\{\s*name:\s*'(?<name>[^']+)'", RegexOptions.None, TimeSpan.FromSeconds(1))
