@@ -16,6 +16,9 @@ public partial class RealmUsersTests(AspireFixture aspire)
 {
     private const string WebClient = "pharma-training-web";
 
+    /// <summary>The web client requires PKCE (S256); the form is only shown, the code is never exchanged, so a fixed challenge (RFC 7636, appendix B) will do.</summary>
+    private const string PkceChallenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
+
     private const string WebApp = "http://localhost:5173/";
 
     private readonly Mailpit mailpit = new(aspire);
@@ -84,10 +87,15 @@ public partial class RealmUsersTests(AspireFixture aspire)
         var email = $"{username}@example.com";
         using var browser = Browser();
 
-        using var registered = await RegisterAsync(browser, username, email, cancellationToken);
+        using var posted = await RegisterAsync(browser, username, email, cancellationToken);
+        // Keycloak answers the form with a redirect to its next step, the address to verify, as a browser follows it.
+        posted.StatusCode.ShouldBe(HttpStatusCode.Found, await posted.Content.ReadAsStringAsync(cancellationToken));
+        var next = posted.Headers.Location ?? throw new InvalidOperationException("Keycloak answered the registration without a next step.");
+        using var registered = await FollowWithinKeycloakAsync(browser, next.IsAbsoluteUri ? next : new Uri(browser.BaseAddress ?? next, next), cancellationToken);
 
         var verifyPage = await registered.Content.ReadAsStringAsync(cancellationToken);
         registered.StatusCode.ShouldBe(HttpStatusCode.OK, verifyPage);
+        verifyPage.ShouldContain("You need to verify your email address to activate your account.");
         var mails = await mailpit.MessagesToAsync(email, 1, cancellationToken);
         using var beforeVerifying = await PasswordGrantAsync(username, cancellationToken);
         var refusal = await beforeVerifying.Content.ReadAsStringAsync(cancellationToken);
@@ -108,7 +116,7 @@ public partial class RealmUsersTests(AspireFixture aspire)
     }
 
     private static Uri RegistrationForm() =>
-        new($"/realms/pharma-training/protocol/openid-connect/registrations?client_id={WebClient}&response_type=code&scope=openid&redirect_uri={Uri.EscapeDataString(WebApp)}", UriKind.Relative);
+        new($"/realms/pharma-training/protocol/openid-connect/registrations?client_id={WebClient}&response_type=code&scope=openid&redirect_uri={Uri.EscapeDataString(WebApp)}&code_challenge={PkceChallenge}&code_challenge_method=S256", UriKind.Relative);
 
     /// <summary>Fills in Keycloak's registration form as a browser does, with the cookies of the page that showed it.</summary>
     private static async Task<HttpResponseMessage> RegisterAsync(HttpClient browser, string username, string email, CancellationToken cancellationToken)
@@ -166,7 +174,7 @@ public partial class RealmUsersTests(AspireFixture aspire)
 
     /// <summary>A client that keeps Keycloak's cookies as a browser does and stops at every redirect.</summary>
     private HttpClient Browser() =>
-        new(new HttpClientHandler { AllowAutoRedirect = false, CookieContainer = new CookieContainer() })
+        new(new LocalhostCookies())
         {
             BaseAddress = aspire.App.GetEndpoint("keycloak", "http"),
         };
@@ -196,5 +204,53 @@ public partial class RealmUsersTests(AspireFixture aspire)
         }
 
         return roles;
+    }
+
+    /// <summary>
+    /// Keeps cookies by name and sends them back, as a browser does on localhost. Keycloak marks its session cookies
+    /// Secure; a browser treats http://localhost as secure and sends them, .NET's CookieContainer does not over http.
+    /// </summary>
+    private sealed class LocalhostCookies() : DelegatingHandler(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false })
+    {
+        private readonly Dictionary<string, string> cookies = [];
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (cookies.Count > 0)
+            {
+                request.Headers.Add("Cookie", string.Join("; ", cookies.Select(cookie => $"{cookie.Key}={cookie.Value}")));
+            }
+
+            var response = await base.SendAsync(request, cancellationToken);
+            if (response.Headers.TryGetValues("Set-Cookie", out var values))
+            {
+                foreach (var value in values)
+                {
+                    Keep(value);
+                }
+            }
+
+            return response;
+        }
+
+        private void Keep(string setCookie)
+        {
+            var pair = setCookie.Split(';', 2)[0];
+            var at = pair.IndexOf('=', StringComparison.Ordinal);
+            if (at <= 0)
+            {
+                return;
+            }
+
+            var name = pair[..at].Trim();
+            var content = pair[(at + 1)..];
+            if (content.Length == 0 || setCookie.Contains("Max-Age=0", StringComparison.OrdinalIgnoreCase))
+            {
+                cookies.Remove(name);
+                return;
+            }
+
+            cookies[name] = content;
+        }
     }
 }

@@ -21,7 +21,8 @@ const tokenOf = (link: string) => link.slice(link.indexOf('#token=') + '#token='
 async function expectMemberOn(page: Page, pharmacy: string, token: string) {
   await expect(
     page.getByRole('status').filter({ hasText: `Sie sind jetzt Mitglied der Apotheke ${pharmacy}.` }),
-  ).toBeVisible();
+    // From the link through Keycloak's sign-in, the accept and the pharmacy's name: longer than one page after a cold start.
+  ).toBeVisible({ timeout: 15_000 });
   await expect(page).toHaveURL(/\/learning$/);
   await expect(page.getByRole('heading', { name: 'Meine Schulungen', level: 1 })).toBeVisible();
   const region = page.getByRole('region', { name: 'Apotheke', exact: true });
@@ -78,12 +79,12 @@ test('an invited person without an account registers, verifies the address and l
 
   await page.goto(link);
   await page.getByRole('link', { name: 'Register' }).click();
-  await page.getByLabel('Username', { exact: true }).fill(username);
-  await page.getByLabel('Email', { exact: true }).fill(invited);
+  await page.locator('#username').fill(username);
+  await page.locator('#email').fill(invited);
   await page.getByLabel('First name').fill('Ina');
   await page.getByLabel('Last name').fill('Invitee');
-  await page.getByLabel('Password', { exact: true }).fill(username);
-  await page.getByLabel('Confirm password').fill(username);
+  await page.locator('#password').fill(username);
+  await page.locator('#password-confirm').fill(username);
   await page.getByRole('button', { name: 'Register' }).click();
 
   // Keycloak asks the new account to verify its address before it signs in, and mails the link to Mailpit.
