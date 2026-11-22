@@ -6,7 +6,7 @@ import { OrganisationJobFunction } from '@/api/generated';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toTypedSchema } from '@/forms/toTypedSchema';
-import { t as translate } from '@/i18n';
+import type { MessageKey } from '@/i18n';
 import { useRegisterPharmacy } from './useRegisterPharmacy';
 
 // Registers a pharmacy, with the user as its manager: its name and what the user does there, checked here as the host
@@ -14,14 +14,17 @@ import { useRegisterPharmacy } from './useRegisterPharmacy';
 const nameField = 'pharmacy-name';
 const jobFunctionField = 'pharmacy-job-function';
 
+// Each message is a key, rendered with t where it is shown: a message already shown follows a switch of the language.
 const registrationSchema = z.object({
   name: z
     .string()
     .trim()
-    .min(1, { error: () => translate('organisation.register.nameRequired') })
-    .max(120, { error: () => translate('organisation.register.nameTooLong') })
-    .refine((name) => !name.includes('\u0000'), { error: () => translate('organisation.register.nameHasNul') }),
-  jobFunction: z.enum(OrganisationJobFunction, { error: () => translate('organisation.register.jobFunctionRequired') }),
+    .min(1, { error: 'organisation.register.nameRequired' satisfies MessageKey })
+    .max(120, { error: 'organisation.register.nameTooLong' satisfies MessageKey })
+    .refine((name) => !name.includes('\u0000'), { error: 'organisation.register.nameHasNul' satisfies MessageKey }),
+  jobFunction: z.enum(OrganisationJobFunction, {
+    error: 'organisation.register.jobFunctionRequired' satisfies MessageKey,
+  }),
 });
 
 // Their labels are the glossary's, looked up by the API's value when the page renders, in the language of the moment.
@@ -75,7 +78,7 @@ function submit(event: Event) {
           :aria-describedby="errors.name ? `${nameField}-error` : undefined"
         />
         <p v-if="errors.name" :id="`${nameField}-error`" role="alert" class="text-caption text-destructive">
-          {{ errors.name }}
+          {{ t(errors.name) }}
         </p>
       </div>
       <div class="flex flex-col gap-2">
@@ -102,7 +105,7 @@ function submit(event: Event) {
           role="alert"
           class="text-caption text-destructive"
         >
-          {{ errors.jobFunction }}
+          {{ t(errors.jobFunction) }}
         </p>
       </div>
       <Button type="submit" class="self-start" :disabled="isBusy">{{ t('organisation.register.submit') }}</Button>
