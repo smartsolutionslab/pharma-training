@@ -5,7 +5,7 @@ using Microsoft.Extensions.Configuration;
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests;
 
 /// <summary>
-/// Four eyes is deployment configuration, <c>Editorial:FourEyes</c>, off unless it says otherwise (ADR 0005): the host
+/// Four eyes is deployment configuration, <c>Editorial:FourEyes</c>, off unless it says otherwise (ADR 0007): the host
 /// reads it once at startup, and a value it cannot read stops the host there rather than on a publish.
 /// </summary>
 public class EditorialSettingsTests
