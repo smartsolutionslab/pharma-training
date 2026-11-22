@@ -2,6 +2,8 @@ using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Infrastructure;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Testing;
 using Npgsql;
 using Wolverine.EntityFrameworkCore;
 
@@ -12,8 +14,9 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersion
 /// save as a deadlock (40P01) or a serialization failure (40001), even at the COMMIT that SaveChangesAsync issues for
 /// its own transaction (where a deferred key check closes the cycle), EFCore.PG reports it as a
 /// <see cref="DbUpdateConcurrencyException"/> around the <see cref="PostgresException"/>; observed against PostgreSQL
-/// for EFCore.PG 11.0.0-rc.3. That is a lost race, so the save answers <see langword="false"/>. Any other database error
-/// still throws.
+/// for EFCore.PG 11.0.0-rc.3. That is a lost race, so the save answers <see langword="false"/>, as it does for a 40P01 or
+/// 40001 raised by one of the save's statements, which EF Core wraps in a plain <see cref="DbUpdateException"/>. A
+/// database error with any other SqlState still throws.
 /// <para>
 /// These tests build the <see cref="DbUpdateConcurrencyException"/> by hand, so the 40P01 or 40001 inside it plays no
 /// part in them: only the integration test
@@ -97,13 +100,87 @@ public class CommitLostRaceTests
         thrown.InnerException.ShouldBeOfType<PostgresException>().SqlState.ShouldBe(sqlState);
     }
 
+    [Theory]
+    [InlineData(PostgresErrorCodes.DeadlockDetected)]
+    [InlineData(PostgresErrorCodes.SerializationFailure)]
+    public async Task A_save_postgresql_ended_as_a_lost_race_at_one_of_its_statements_answers_false(string sqlState)
+    {
+        await using var services = OutboxFailingWith(new DbUpdateException("An error occurred while saving the entity changes. See the inner exception for details.", Ended(sqlState)));
+
+        (await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken)).ShouldBeFalse();
+    }
+
+    [Theory]
+    [InlineData(PostgresErrorCodes.DeadlockDetected, Bare)]
+    [InlineData(PostgresErrorCodes.SerializationFailure, Bare)]
+    [InlineData(PostgresErrorCodes.DeadlockDetected, InsideAnotherException)]
+    [InlineData(PostgresErrorCodes.SerializationFailure, InsideAnotherException)]
+    [InlineData(PostgresErrorCodes.DeadlockDetected, AtAStatement)]
+    [InlineData(PostgresErrorCodes.SerializationFailure, AtAStatement)]
+    [InlineData(PostgresErrorCodes.DeadlockDetected, AtTheCommitEfCoreOwns)]
+    [InlineData(PostgresErrorCodes.SerializationFailure, AtTheCommitEfCoreOwns)]
+    public async Task A_lost_race_is_logged_as_a_warning_naming_its_sql_state_and_context_with_the_exception(string sqlState, string wrapping)
+    {
+        var ended = Ended(sqlState);
+        await using var services = OutboxFailingWith(Wrapped(ended, wrapping));
+
+        await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken);
+
+        var record = services.GetFakeLogCollector().GetSnapshot().ShouldHaveSingleItem();
+        record.Level.ShouldBe(LogLevel.Warning);
+        record.Message.ShouldContain(sqlState);
+        record.Message.ShouldContain(nameof(EditorialDbContext));
+        record.Exception.ShouldBeSameAs(ended);
+    }
+
+    [Fact]
+    public async Task A_save_that_moved_a_row_version_logs_nothing()
+    {
+        await using var services = OutboxFailingWith(new DbUpdateConcurrencyException("The row version moved on."));
+
+        await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken);
+
+        services.GetFakeLogCollector().GetSnapshot().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task A_lost_race_without_a_logger_registered_still_answers_false()
+    {
+        await using var services = OutboxFailingWith(Ended(PostgresErrorCodes.DeadlockDetected), logging: false);
+
+        (await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken)).ShouldBeFalse();
+    }
+
+    private const string Bare = "bare";
+
+    private const string InsideAnotherException = "inside another exception";
+
+    private const string AtAStatement = "at a statement";
+
+    private const string AtTheCommitEfCoreOwns = "at the commit EF Core owns";
+
+    private static Exception Wrapped(PostgresException ended, string wrapping) => wrapping switch
+    {
+        Bare => ended,
+        InsideAnotherException => new InvalidOperationException("The transaction could not be committed.", ended),
+        AtAStatement => new DbUpdateException("An error occurred while saving the entity changes. See the inner exception for details.", ended),
+        AtTheCommitEfCoreOwns => new DbUpdateConcurrencyException("An error occurred while saving the entity changes. See the inner exception for details.", ended),
+        _ => throw new InvalidOperationException($"No wrapping named '{wrapping}'."),
+    };
+
     private static PostgresException Ended(string sqlState) =>
         new($"the transaction was ended ({sqlState})", "ERROR", "ERROR", sqlState);
 
-    private static ServiceProvider OutboxFailingWith(Exception failure)
+    private static ServiceProvider OutboxFailingWith(Exception failure, bool logging = true)
     {
         var outbox = Substitute.For<IDbContextOutbox<EditorialDbContext>>();
         outbox.SaveChangesAndFlushMessagesAsync(Arg.Any<CancellationToken>()).Returns(Task.FromException(failure));
-        return new ServiceCollection().AddSingleton(outbox).BuildServiceProvider();
+        var services = new ServiceCollection().AddSingleton(outbox);
+        if (logging)
+        {
+            services.AddFakeLogging();
+        }
+
+        return services.BuildServiceProvider();
     }
 }
