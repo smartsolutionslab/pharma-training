@@ -11,6 +11,8 @@ public static class CourseVersionErrors
 
     public static DomainError ChapterNotFound(CourseVersionId version, ChapterId chapter) => new ChapterNotFound(version, chapter);
 
+    public static DomainError FileInUse(CourseVersionId version, BlobReference file) => new FileInUse(version, file);
+
     public static DomainError OrderDoesNotMatchChapters(CourseVersionId version) => new OrderDoesNotMatchChapters(version);
 
     public static DomainError QuestionNotFound(CourseVersionId version, QuestionId question) => new QuestionNotFound(version, question);

@@ -110,6 +110,11 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
             return Failure(CourseVersionErrors.NotADraft(Id, Status));
         }
 
+        if (chapter.File is { } file && IsHeldByAnotherChapter(file, chapter.Id))
+        {
+            return Failure(CourseVersionErrors.FileInUse(Id, file));
+        }
+
         chapters.Add(chapter);
         return Success(chapter.Id);
     }
@@ -127,6 +132,12 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         if (chapters.SingleOrDefault(chapter => chapter.Id == replacement.Id) is not { } stored)
         {
             return Failure(CourseVersionErrors.ChapterNotFound(Id, replacement.Id));
+        }
+
+        // The chapter's own file is no other's: a replacement that keeps it is no conflict.
+        if (replacement.File is { } file && IsHeldByAnotherChapter(file, replacement.Id))
+        {
+            return Failure(CourseVersionErrors.FileInUse(Id, file));
         }
 
         stored.Take(replacement);
@@ -400,4 +411,8 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         Raise(new CourseVersionRetired(Id, Course, editor));
         return Success(Unit.Value);
     }
+
+    /// <summary>Whether a chapter of the version other than <paramref name="chapter"/> holds the file: one file, one chapter.</summary>
+    private bool IsHeldByAnotherChapter(BlobReference file, ChapterId chapter) =>
+        chapters.Any(other => other.Id != chapter && other.File == file);
 }
