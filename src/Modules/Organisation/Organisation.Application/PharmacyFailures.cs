@@ -25,8 +25,7 @@ public static class PharmacyFailures
 
     public static ApiError InvalidEmail() => new InvalidEmail();
 
-    /// <summary>Stub for #9's red tests (T4).</summary>
-    public static ApiError OpenInvitationNotFound(Guid id) => throw new NotImplementedException();
+    public static ApiError OpenInvitationNotFound(Guid id) => new OpenInvitationNotFound(id);
 
     /// <summary>
     /// The domain's refusals with the status each use case answers them with. An error no use case returns yet has no
