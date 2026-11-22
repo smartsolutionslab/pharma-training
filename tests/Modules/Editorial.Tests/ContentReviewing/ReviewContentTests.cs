@@ -119,6 +119,23 @@ public class ReviewContentTests
         result.Error.Status.ShouldBe(HttpStatusCode.BadGateway);
     }
 
+    [Theory]
+    [InlineData("Gap, Readability")]
+    [InlineData("Contradiction, Readability")]
+    public async Task Kinds_joined_by_a_comma_answer_502_not_an_exception(string kind)
+    {
+        var store = new InMemoryCourseVersionStore();
+        var version = ContentReviewVersions.WithTextChapters("Händehygiene");
+        store.Stored.Add(version);
+        using var model = new FakeChatClient(Answer(Hint(1, kind, "Schritt 3 fehlt.")));
+
+        var result = await new ReviewContentHandler(store, model).HandleAsync(new ReviewContent(version.Id.Value), TestContext.Current.CancellationToken);
+
+        result.IsFailure.ShouldBeTrue();
+        result.Error.Code.ShouldBe("editorial.ai-review-malformed");
+        result.Error.Status.ShouldBe(HttpStatusCode.BadGateway);
+    }
+
     [Fact]
     public async Task An_exception_from_the_model_is_not_caught()
     {

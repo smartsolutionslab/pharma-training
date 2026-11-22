@@ -234,6 +234,55 @@ public partial class ContentReviewerAskTests
         Malformed(result, ContentReviewDefect.Unreadable);
     }
 
+    [Theory]
+    [InlineData("Gap, Readability")]
+    [InlineData("Contradiction, Readability")]
+    [InlineData("Gap,Contradiction")]
+    public async Task Kinds_joined_by_a_comma_are_malformed_as_unreadable(string kind)
+    {
+        // JsonStringEnumConverter reads "A, B" as the flags A | B even on an enum without [Flags]: 0 | 2 is Readability, 1 | 2 is no kind at all.
+        var version = ContentReviewVersions.WithTextChapters("Händehygiene");
+        using var model = new FakeChatClient(Answer(Hint(1, kind, "Schritt 3 fehlt.")));
+
+        var result = await AskAsync(model, version);
+
+        Malformed(result, ContentReviewDefect.Unreadable);
+    }
+
+    [Theory]
+    [InlineData("""{"hints":[{"chapter":"1","kind":"Gap","text":"Schritt 3 fehlt."}]}""")]
+    [InlineData("""{"hints":[{"chapter":"01","kind":"Gap","text":"Schritt 3 fehlt."}]}""")]
+    public async Task A_chapter_number_given_as_a_string_is_malformed_as_unreadable(string answer)
+    {
+        var version = ContentReviewVersions.WithTextChapters("Händehygiene");
+        using var model = new FakeChatClient(answer);
+
+        var result = await AskAsync(model, version);
+
+        Malformed(result, ContentReviewDefect.Unreadable);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(3)]
+    public async Task The_request_caps_the_answers_length_by_the_chapters_sent(int count)
+    {
+        // A full answer is at most 5 hints of at most 1000 characters on each chapter sent. Counting one token per
+        // character (German text runs at about three or four), with 100 more per hint for its JSON, and 16 384 for the
+        // reasoning a gpt-5 deployment spends out of the same budget, bounds the cap from above; a cap below 100 tokens
+        // per hint would cut off a sound answer of 300-character hints, which reads as unreadable.
+        string[] titles = [.. Enumerable.Range(1, count).Select(number => $"Kapitel {number}")];
+        var version = ContentReviewVersions.WithTextChapters(titles);
+        using var model = new FakeChatClient(Sound(1));
+        var hints = ContentReviewAnswer.MaxHintsPerChapter * count;
+
+        await AskAsync(model, version);
+
+        var cap = model.Options.ShouldHaveSingleItem().ShouldNotBeNull().MaxOutputTokens.ShouldNotBeNull("the answer's length is not capped");
+        cap.ShouldBeLessThanOrEqualTo((hints * (ContentHint.MaxTextLength + 100)) + 16_384);
+        cap.ShouldBeGreaterThanOrEqualTo(hints * 100);
+    }
+
     [Fact]
     public void The_malformed_answer_failure_has_its_code_status_and_one_English_message_and_keeps_its_defect()
     {

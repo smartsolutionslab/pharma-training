@@ -108,6 +108,34 @@ public class ContentReviewAnswerTests
         Malformed(answer.ToReview(request), ContentReviewDefect.InvalidHintText);
     }
 
+    [Theory]
+    [InlineData("Schritt 3\u0007 fehlt.")]
+    [InlineData("Schritt 3 \u001B[31mfehlt\u001B[0m.")]
+    [InlineData("Schritt 3\u007F fehlt.")]
+    [InlineData("Schritt 3 \u202Etlhef.")]
+    [InlineData("Schritt 3 \u2067fehlt.\u2069")]
+    [InlineData("\u200B")]
+    [InlineData("\u200B\u200C\u200D\u2060\uFEFF")]
+    [InlineData(" \u200B \u200B ")]
+    public void A_hint_text_with_a_control_or_bidi_character_or_only_zero_width_ones_is_malformed_as_invalid_hint_text(string text)
+    {
+        var request = Request("Händehygiene");
+        var answer = Answer(Hint(1, ContentReviewAnswerKind.Gap, "Schritt 3 fehlt."), Hint(1, ContentReviewAnswerKind.Readability, text));
+
+        Malformed(answer.ToReview(request), ContentReviewDefect.InvalidHintText);
+    }
+
+    [Fact]
+    public void Line_breaks_and_tabs_inside_a_hint_text_are_accepted_and_kept()
+    {
+        var request = Request("Händehygiene");
+        const string Text = "Schritt 3 fehlt.\nSchritt 4 fehlt:\tTrocknen.";
+
+        var review = Answer(Hint(1, ContentReviewAnswerKind.Gap, Text)).ToReview(request).Value;
+
+        review.Hints.ShouldHaveSingleItem().Text.ShouldBe(Text);
+    }
+
     [Fact]
     public void A_hint_text_of_the_maximum_length_is_accepted_also_with_whitespace_around_it()
     {
