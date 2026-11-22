@@ -16,6 +16,6 @@ public sealed class SendInvitationMail(IMailSender mails, IFrontendLinks links) 
         Ensure.That(domainEvent).IsNotNull();
 
         var link = links.LinkTo($"/invitations/accept#token={domainEvent.Token.Value}");
-        await mails.SendAsync(InvitationMails.Compose(domainEvent, link), cancellationToken);
+        await mails.SendAsync(InvitationMails.Compose(domainEvent.Name, domainEvent.Email, domainEvent.ExpiresAt, link), cancellationToken);
     }
 }
