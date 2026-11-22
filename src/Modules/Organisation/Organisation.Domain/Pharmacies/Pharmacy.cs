@@ -96,6 +96,17 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
         return Success(Unit.Value);
     }
 
+    /// <summary>Issues the link of an open invitation that has not run out: the token's hash replaces any earlier one. Answers its expiry.</summary>
+    public Result<Timestamp, DomainError> IssueInvitationLink(MembershipId membership, InvitationToken token, Timestamp now)
+    {
+        // Red-first stub (T1): answers success and changes nothing.
+        Ensure.That(membership).IsNotNull();
+        Ensure.That(token).IsNotNull();
+        Ensure.That(now).IsNotNull();
+        _ = Find(membership);
+        return Success(now);
+    }
+
     /// <param name="token">The secret from the invitation link.</param>
     /// <param name="person">The person accepting, as Keycloak knows them.</param>
     /// <param name="name">The name the person goes by in Keycloak.</param>
