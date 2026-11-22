@@ -17,7 +17,7 @@ partial class EditorialModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261121223447_DeferQuestionForeignKeys";
+    public override string LastMigrationId => "20261122210814_UniqueCourseVersionNumbers";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -175,9 +175,11 @@ partial class EditorialModelSnapshot : ModelSnapshot
 
                 b.HasKey("Id");
 
-                b.HasIndex("Course");
-
                 b.HasIndex("Status");
+
+                b.HasIndex("Course", "Number")
+                    .IsUnique()
+                    .HasDatabaseName("ix_course_versions_course_id_number");
 
                 b.ToTable("course_versions", "editorial");
             });
