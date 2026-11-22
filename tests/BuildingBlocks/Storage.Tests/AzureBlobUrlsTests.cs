@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Web;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
 
 namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Storage.Tests;
@@ -102,16 +103,22 @@ public class AzureBlobUrlsTests
     }
 
     [Fact]
-    public async Task A_connection_string_without_an_account_key_says_keyless_signing_is_a_separate_decision()
+    public async Task Without_an_account_key_or_a_managed_identity_it_fails_when_a_url_is_first_created_naming_both()
     {
-        var withoutKey = $"BlobEndpoint=https://{Account}.blob.core.windows.net;ContainerName={Container}";
-        var urls = new AzureBlobUrls(Configuration(withoutKey), new FakeTimeProvider(Noon));
+        // As published: the account's endpoint and the container, no key; and no AZURE_CLIENT_ID to sign keyless with.
+        var withoutKey = $"Endpoint=https://{Account}.blob.core.windows.net/;ContainerName={Container}";
+        var services = new ServiceCollection();
+        services.AddSingleton<TimeProvider>(new FakeTimeProvider(Noon));
+        services.AddModuleBlobStorage(Configuration(withoutKey));
+        using var provider = services.BuildServiceProvider();
+        var urls = provider.GetRequiredService<IBlobUrls>();
 
         var failure = await Should.ThrowAsync<InvalidOperationException>(() =>
             urls.CreateUploadUrlAsync(BlobName.From("handout.pdf"), FiveMinutes, TestContext.Current.CancellationToken));
 
-        failure.Message.ShouldContain("keyless", Case.Insensitive);
-        failure.Message.ShouldContain("decision", Case.Insensitive);
+        failure.Message.ShouldContain("AZURE_CLIENT_ID");
+        failure.Message.ShouldContain("AccountKey");
+        failure.Message.ShouldNotContain("separate decision", Case.Insensitive);
     }
 
     /// <summary>An account key made up for this run, as the emulator's connection string carries one.</summary>
