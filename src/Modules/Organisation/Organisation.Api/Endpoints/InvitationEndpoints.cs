@@ -25,7 +25,8 @@ public sealed class InvitationEndpoints : IEndpoint
 
         endpoints.MapPost("/pharmacies/{id:guid}/invitations", async (Guid id, InviteOrganisationMemberRequest request, ClaimsPrincipal user, IDispatcher dispatcher, CancellationToken cancellationToken) =>
         {
-            string Location(Guid membership) => $"/organisation/pharmacies/{id}/invitations/{membership}";
+            // The invitation has no resource of its own: its location is the pharmacy that holds it.
+            string Location(Guid membership) => $"/organisation/pharmacies/{id}";
 
             // What the caller got wrong is refused before it becomes a value object, whose factory would throw on it.
             var person = CallerClaims.PersonOf(user);
