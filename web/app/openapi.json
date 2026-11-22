@@ -880,6 +880,172 @@
         }
       }
     },
+    "/editorial/course-versions/{id}/questions": {
+      "post": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditorialQuestionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/editorial/course-versions/{id}/questions/{questionId}": {
+      "put": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "questionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditorialQuestionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Unit"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "questionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Unit"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/editorial/course-versions/{id}/questions/{questionId}/approve": {
+      "post": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "questionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Unit"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/editorial/samples": {
       "post": {
         "tags": [
@@ -1728,6 +1894,41 @@
           }
         }
       },
+      "EditorialAnswerOptionDto": {
+        "required": [
+          "id",
+          "text",
+          "correct"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "text": {
+            "type": "string"
+          },
+          "correct": {
+            "type": "boolean"
+          }
+        }
+      },
+      "EditorialAnswerOptionRequest": {
+        "required": [
+          "text",
+          "correct"
+        ],
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "correct": {
+            "type": "boolean"
+          }
+        }
+      },
       "EditorialChapterDto": {
         "required": [
           "id",
@@ -1778,7 +1979,8 @@
           "number",
           "title",
           "status",
-          "chapters"
+          "chapters",
+          "questions"
         ],
         "type": "object",
         "properties": {
@@ -1808,6 +2010,12 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/EditorialChapterDto"
+            }
+          },
+          "questions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorialQuestionDto"
             }
           }
         }
@@ -1854,6 +2062,116 @@
             "$ref": "#/components/schemas/EditorialCourseVersionStatus"
           }
         }
+      },
+      "EditorialQuestionDto": {
+        "required": [
+          "id",
+          "position",
+          "chapterId",
+          "text",
+          "type",
+          "options",
+          "provenance",
+          "review",
+          "reviewedBy",
+          "reviewedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "position": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "chapterId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "text": {
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/EditorialQuestionType"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorialAnswerOptionDto"
+            }
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/EditorialQuestionProvenance"
+          },
+          "review": {
+            "$ref": "#/components/schemas/EditorialQuestionReview"
+          },
+          "reviewedBy": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "reviewedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "EditorialQuestionProvenance": {
+        "enum": [
+          "Human",
+          "AiDrafted"
+        ]
+      },
+      "EditorialQuestionRequest": {
+        "required": [
+          "chapterId",
+          "text",
+          "type",
+          "options"
+        ],
+        "type": "object",
+        "properties": {
+          "chapterId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "text": {
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/EditorialQuestionType"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorialAnswerOptionRequest"
+            }
+          }
+        }
+      },
+      "EditorialQuestionReview": {
+        "enum": [
+          "Unreviewed",
+          "Approved"
+        ]
+      },
+      "EditorialQuestionType": {
+        "enum": [
+          "SingleChoice",
+          "MultipleChoice"
+        ]
       },
       "EditorialSampleDto": {
         "required": [
