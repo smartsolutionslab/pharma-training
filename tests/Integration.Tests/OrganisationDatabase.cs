@@ -131,6 +131,23 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         return Guid.Parse(claims.RootElement.GetProperty("sub").GetString() ?? throw new InvalidOperationException($"{user} has no subject."));
     }
 
+    /// <summary>The membership's status, person, name and token hash as stored: what accepting an invitation writes.</summary>
+    public async Task<StoredMember> MemberAsync(Guid membership, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            "SELECT status, person_id, name, token_hash FROM organisation.memberships WHERE id = @id",
+            connection);
+        command.Parameters.AddWithValue("id", membership);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        (await reader.ReadAsync(cancellationToken)).ShouldBeTrue($"There is no membership {membership}.");
+        return new StoredMember(
+            reader.GetString(0),
+            await reader.IsDBNullAsync(1, cancellationToken) ? null : reader.GetGuid(1),
+            await reader.IsDBNullAsync(2, cancellationToken) ? null : reader.GetString(2),
+            await reader.IsDBNullAsync(3, cancellationToken) ? null : reader.GetString(3));
+    }
+
     /// <summary>The membership's status, role, job function and end as stored.</summary>
     public async Task<StoredMembership> MembershipAsync(Guid membership, CancellationToken cancellationToken)
     {
@@ -418,6 +435,9 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
 
     /// <summary>A dead letter as the tests read it: its message's JSON, and the whole row as JSON text with the body escaped.</summary>
     internal sealed record MailRequestDeadLetter(Guid Id, string ExceptionMessage, string Body, string Row);
+
+    /// <summary>A membership row as the tests read it back after accepting.</summary>
+    internal sealed record StoredMember(string Status, Guid? Person, string? Name, string? TokenHash);
 
     /// <summary>A membership row as the tests read it back.</summary>
     internal sealed record StoredMembership(string Status, string Role, string JobFunction, DateTimeOffset? EndedAt);
