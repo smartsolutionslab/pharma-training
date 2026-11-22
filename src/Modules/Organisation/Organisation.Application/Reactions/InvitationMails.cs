@@ -1,5 +1,6 @@
 using System.Globalization;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Mail;
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies.Events;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Reactions;
@@ -10,6 +11,10 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Reac
 /// </summary>
 public static class InvitationMails
 {
+    /// <summary>Red-first stub (T2): the consumer's overload, not written yet.</summary>
+    public static OutgoingMail Compose(PharmacyName name, EmailAddress email, Timestamp expiresAt, Uri link) =>
+        throw new NotImplementedException();
+
     public static OutgoingMail Compose(MemberInvited invited, Uri link)
     {
         Ensure.That(invited).IsNotNull();
