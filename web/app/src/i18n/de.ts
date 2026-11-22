@@ -57,7 +57,12 @@ export const de = {
         register: { title: 'Apotheke registrieren' },
       },
     },
-    editorial: { title: 'Redaktion' },
+    editorial: {
+      title: 'Redaktion',
+      details: {
+        version: { title: 'Schulungsversion' },
+      },
+    },
   },
   organisation: {
     register: {

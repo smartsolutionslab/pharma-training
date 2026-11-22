@@ -56,7 +56,12 @@ export const en: MessageSchema = {
         register: { title: 'Register a pharmacy' },
       },
     },
-    editorial: { title: 'Editorial' },
+    editorial: {
+      title: 'Editorial',
+      details: {
+        version: { title: 'Course version' },
+      },
+    },
   },
   organisation: {
     register: {
