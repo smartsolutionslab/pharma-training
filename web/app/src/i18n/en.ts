@@ -67,6 +67,9 @@ export const en: MessageSchema = {
       pages: {
         register: { title: 'Register a pharmacy' },
       },
+      entries: {
+        acceptInvitation: { title: 'Accept an invitation' },
+      },
     },
     editorial: {
       title: 'Editorial',
@@ -91,6 +94,22 @@ export const en: MessageSchema = {
       registeredNotOpened:
         'The pharmacy {name} was registered, but it could not be opened. Choose it under “Pharmacy” in the sidebar.',
       failed: 'The pharmacy could not be registered. Try again.',
+    },
+    accept: {
+      title: 'Accept an invitation',
+      accepting: 'Accepting the invitation …',
+      accepted: 'You are now a member of {name}.',
+      acceptedUnnamed: 'You have accepted the invitation.',
+      acceptedNotOpened:
+        'You have accepted the invitation, but the pharmacy could not be opened. Choose it under “Pharmacy” in the sidebar.',
+      missing: {
+        title: 'No valid invitation link',
+        text: 'Open the link in your invitation e-mail again, in full and in this browser. As you are signed in now, the invitation will then be accepted straight away.',
+      },
+      failed: {
+        title: 'Invitation not accepted',
+        text: 'The invitation could not be accepted. Try again.',
+      },
     },
   },
   editorial: {

@@ -73,6 +73,9 @@ export const de = {
       pages: {
         register: { title: 'Apotheke registrieren' },
       },
+      entries: {
+        acceptInvitation: { title: 'Einladung annehmen' },
+      },
     },
     editorial: {
       title: 'Redaktion',
@@ -97,6 +100,22 @@ export const de = {
       registeredNotOpened:
         'Die Apotheke {name} wurde registriert, konnte aber nicht geöffnet werden. Wählen Sie sie unter „Apotheke“ in der Seitenleiste.',
       failed: 'Die Apotheke konnte nicht registriert werden. Versuchen Sie es erneut.',
+    },
+    accept: {
+      title: 'Einladung annehmen',
+      accepting: 'Die Einladung wird angenommen …',
+      accepted: 'Sie sind jetzt Mitglied der Apotheke {name}.',
+      acceptedUnnamed: 'Sie haben die Einladung angenommen.',
+      acceptedNotOpened:
+        'Sie haben die Einladung angenommen, die Apotheke konnte aber nicht geöffnet werden. Wählen Sie sie unter „Apotheke“ in der Seitenleiste.',
+      missing: {
+        title: 'Kein gültiger Einladungslink',
+        text: 'Öffnen Sie den Link aus Ihrer Einladungs-E-Mail noch einmal, vollständig und in diesem Browser. Da Sie jetzt angemeldet sind, wird die Einladung dann sofort angenommen.',
+      },
+      failed: {
+        title: 'Einladung nicht angenommen',
+        text: 'Die Einladung konnte nicht angenommen werden. Versuchen Sie es erneut.',
+      },
     },
   },
   editorial: {
