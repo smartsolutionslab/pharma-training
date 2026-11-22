@@ -3,6 +3,7 @@ using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Api;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.PublishCourseVersion;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.RetireCourseVersion;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.ReturnToDraft;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.SubmitForReview;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
@@ -40,6 +41,10 @@ public sealed class WorkflowEndpoints : IEndpoint
 
         endpoints.MapPost("/course-versions/{id:guid}/publish", (Guid id, ClaimsPrincipal user, IDispatcher dispatcher, CancellationToken cancellationToken) =>
             ByEditorAsync(id, user, editor => dispatcher.SendAsync(new PublishCourseVersion(CourseVersionId.From(id), editor), cancellationToken)))
+            .RequireAuthorization(EditorialPolicyNames.Edit);
+
+        endpoints.MapPost("/course-versions/{id:guid}/retire", (Guid id, ClaimsPrincipal user, IDispatcher dispatcher, CancellationToken cancellationToken) =>
+            ByEditorAsync(id, user, editor => dispatcher.SendAsync(new RetireCourseVersion(CourseVersionId.From(id), editor), cancellationToken)))
             .RequireAuthorization(EditorialPolicyNames.Edit);
     }
 
