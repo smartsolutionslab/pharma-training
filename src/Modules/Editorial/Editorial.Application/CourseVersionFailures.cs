@@ -1,4 +1,5 @@
 using System.Net;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.TestDrafting;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application;
@@ -63,6 +64,9 @@ public static class CourseVersionFailures
 
     /// <summary>The text chapters are too long to send to the model in one AI test draft request.</summary>
     public static ApiError TooMuchContentToDraft() => new TooMuchContentToDraft();
+
+    /// <summary>The model's answer to an AI test draft could not be used; <paramref name="defect"/> says why.</summary>
+    public static ApiError AiTestDraftMalformed(TestDraftDefect defect) => new AiTestDraftMalformed(defect);
 
     /// <summary>
     /// A rule of the version, with its own code: a chapter or question it does not hold is not found, a question whose
