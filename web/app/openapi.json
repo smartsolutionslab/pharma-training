@@ -1185,6 +1185,36 @@
         }
       }
     },
+    "/editorial/course-versions/{id}/test-draft": {
+      "post": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorialTestDraftDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/editorial/course-versions/{id}/uploads": {
       "post": {
         "tags": [
@@ -2721,6 +2751,29 @@
               "string"
             ],
             "format": "int32"
+          }
+        }
+      },
+      "EditorialTestDraftDto": {
+        "required": [
+          "draftedQuestionIds",
+          "leftOutChapterIds"
+        ],
+        "type": "object",
+        "properties": {
+          "draftedQuestionIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "leftOutChapterIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         }
       },
