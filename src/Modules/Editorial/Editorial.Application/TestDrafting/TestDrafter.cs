@@ -15,6 +15,14 @@ public static class TestDrafter
 {
     public const string SchemaName = "test_draft";
 
+    /// <summary>
+    /// The answer's output tokens allowed per question asked for, so a runaway answer is cut off rather than billed in
+    /// full. A sound question with four options is some 150 to 250 tokens of JSON, and gpt-5-mini counts its reasoning
+    /// against the same limit, so 1,280 leaves ample room; at <see cref="QuestionCount.Maximum"/> questions it is 64,000,
+    /// half the model's own output ceiling.
+    /// </summary>
+    public const int MaxOutputTokensPerQuestion = 1_280;
+
     private static readonly JsonSerializerOptions AnswerJson = new(JsonSerializerDefaults.Web)
     {
         RespectNullableAnnotations = true,
@@ -33,7 +41,11 @@ public static class TestDrafter
         Ensure.That(model).IsNotNull();
         Ensure.That(request).IsNotNull();
 
-        var options = new ChatOptions { ResponseFormat = ResponseFormat };
+        var options = new ChatOptions
+        {
+            ResponseFormat = ResponseFormat,
+            MaxOutputTokens = request.Questions.Value * MaxOutputTokensPerQuestion,
+        };
         var response = await model.GetResponseAsync(TestDraftPrompt.Messages(request), options, cancellationToken);
         return Read(response.Text);
     }
