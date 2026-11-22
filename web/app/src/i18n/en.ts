@@ -128,7 +128,7 @@ export const en: MessageSchema = {
       },
       alreadyMember: {
         title: 'Already a member',
-        text: 'You are already a member of this pharmacy. Choose it under "Pharmacy" in the sidebar.',
+        text: 'You are already a member of this pharmacy. Choose it under “Pharmacy” in the sidebar.',
       },
       goToCourses: 'Go to My courses',
       tooMany: {
@@ -139,6 +139,8 @@ export const en: MessageSchema = {
         title: 'Invitation not accepted',
         text: 'The invitation could not be accepted. Try again.',
       },
+      retryNotFound:
+        'The invitation is no longer valid. If you have just accepted it, you will find the pharmacy under “My courses”.',
     },
   },
   editorial: {

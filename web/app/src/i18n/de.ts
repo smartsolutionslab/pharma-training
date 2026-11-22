@@ -145,6 +145,8 @@ export const de = {
         title: 'Einladung nicht angenommen',
         text: 'Die Einladung konnte nicht angenommen werden. Versuchen Sie es erneut.',
       },
+      retryNotFound:
+        'Die Einladung ist nicht mehr gültig. Wenn Sie sie eben schon angenommen haben, finden Sie die Apotheke unter „Meine Schulungen“.',
     },
   },
   editorial: {

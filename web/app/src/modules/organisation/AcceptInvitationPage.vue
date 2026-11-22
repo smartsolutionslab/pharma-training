@@ -1,26 +1,71 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, nextTick, useTemplateRef, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { RouterLink } from 'vue-router';
+import { onBeforeRouteUpdate, RouterLink } from 'vue-router';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { captureFrom } from './invitationLink';
 import { useAcceptInvitation } from './useAcceptInvitation';
 
 // The invitation mail's link: the invitation is accepted as the page opens, with the token its route kept for this
 // tab. Who accepts comes from the access token; the page never shows the token.
 const { t } = useI18n();
-const { state, retry } = useAcceptInvitation();
+const { state, retry, start } = useAcceptInvitation();
 
-// Too many attempts and a failure are worth trying again, with the same token; every other refusal is final.
-const retryable = computed(
-  () => state.value.kind === 'refused' && (state.value.refusal === 'tooMany' || state.value.refusal === 'failed'),
+// A second link opened while the page is shown changes only the address's fragment: the route's beforeEnter does not
+// run, so the page takes the token out of the address itself and starts again with it. The address without the
+// fragment is the one already shown, so the redirect may end as a duplicate navigation; the fragment is gone either way.
+onBeforeRouteUpdate((to) => {
+  const answer = captureFrom(to);
+  if (answer !== true) {
+    start();
+  }
+  return answer;
+});
+
+// Retry only where trying again can succeed (too many attempts, a lost concurrent save, the host unavailable, the
+// network); every other refusal is final.
+const retryable = computed(() => state.value.kind === 'refused' && state.value.retryable === true);
+
+// What the page says for a refusal: a Retry answered not found may follow a first attempt that was accepted.
+const title = computed(() =>
+  state.value.kind !== 'refused' || state.value.refusal === 'notFoundAfterRetry'
+    ? t('organisation.accept.failed.title')
+    : t(`organisation.accept.${state.value.refusal}.title`),
 );
-// A member already goes on to their courses; everyone else home.
-const way = computed(() =>
-  state.value.kind === 'refused' && state.value.refusal === 'alreadyMember'
-    ? { to: '/learning', label: t('organisation.accept.goToCourses') }
-    : { to: '/', label: t('shell.gate.goHome') },
-);
+const text = computed(() => {
+  if (state.value.kind !== 'refused') {
+    return '';
+  }
+  if (state.value.refusal === 'notFoundAfterRetry') {
+    return t('organisation.accept.retryNotFound');
+  }
+  return state.value.serverMessage ?? t(`organisation.accept.${state.value.refusal}.text`);
+});
+
+// A member already goes on to their courses, and so may someone whose Retry found the invitation used; everyone else
+// home.
+const ways = computed(() => {
+  const courses = { to: '/learning', label: t('organisation.accept.goToCourses') };
+  const home = { to: '/', label: t('shell.gate.goHome') };
+  if (state.value.kind !== 'refused') {
+    return [];
+  }
+  if (state.value.refusal === 'alreadyMember') {
+    return [courses];
+  }
+  if (state.value.refusal === 'notFoundAfterRetry') {
+    return [courses, home];
+  }
+  return [home];
+});
+
+// Every change of state after the first render moves focus to the page's heading, so a screen reader announces it.
+const heading = useTemplateRef<HTMLHeadingElement>('heading');
+watch(state, async () => {
+  await nextTick();
+  heading.value?.focus();
+});
 </script>
 
 <!-- One landmark through every state: what the user reads in it changes, the page's main does not. -->
@@ -30,16 +75,22 @@ const way = computed(() =>
     :aria-busy="state.kind === 'accepting' ? 'true' : undefined"
   >
     <template v-if="state.kind === 'accepting'">
-      <h1 class="text-title">{{ t('organisation.accept.title') }}</h1>
+      <h1 ref="heading" tabindex="-1" class="text-title focus:outline-none">{{ t('organisation.accept.title') }}</h1>
       <span class="sr-only">{{ t('organisation.accept.accepting') }}</span>
       <Skeleton class="h-4 w-2/3" />
       <Skeleton class="h-4 w-1/2" />
     </template>
     <template v-else>
-      <h1 class="text-title">{{ t(`organisation.accept.${state.refusal}.title`) }}</h1>
-      <p class="text-body">{{ state.serverMessage ?? t(`organisation.accept.${state.refusal}.text`) }}</p>
+      <h1 ref="heading" tabindex="-1" class="text-title focus:outline-none">{{ title }}</h1>
+      <p class="text-body">{{ text }}</p>
       <Button v-if="retryable" variant="outline" @click="retry">{{ t('shell.retry') }}</Button>
-      <RouterLink :to="way.to" class="text-body text-primary underline underline-offset-4">{{ way.label }}</RouterLink>
+      <RouterLink
+        v-for="way in ways"
+        :key="way.to"
+        :to="way.to"
+        class="text-body text-primary underline underline-offset-4"
+        >{{ way.label }}</RouterLink
+      >
     </template>
   </main>
 </template>
