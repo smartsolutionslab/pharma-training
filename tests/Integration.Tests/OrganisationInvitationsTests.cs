@@ -98,16 +98,19 @@ public partial class OrganisationInvitationsTests(AspireFixture aspire)
         var cancellationToken = TestContext.Current.CancellationToken;
         using var owner = await aspire.CreateHostClientAsync("owner");
         var pharmacy = await RegisterAsync(owner, cancellationToken);
-        var membership = await InviteAsync(owner, pharmacy, Invitee(), cancellationToken);
+        var address = Invitee();
+        var (membership, _) = await InviteAsync(owner, pharmacy, address, cancellationToken);
         var before = await database.TokenHashAsync(membership, cancellationToken);
 
         using var renewed = await owner.PostAsync(RenewUri(pharmacy, membership), content: null, cancellationToken);
 
         await ShouldAnswerAsync(renewed, HttpStatusCode.OK, cancellationToken);
+        var second = TokenIn((await mailpit.MessagesToAsync(address, 2, cancellationToken))[1]);
         var after = await database.TokenHashAsync(membership, cancellationToken);
         before.ShouldNotBeNull();
         after.ShouldNotBeNull();
         after.ShouldNotBe(before);
+        after.ShouldBe(HashOf(second));
         (await database.MembershipAsync(membership, cancellationToken)).Status.ShouldBe("Invited");
     }
 
@@ -118,7 +121,7 @@ public partial class OrganisationInvitationsTests(AspireFixture aspire)
         using var owner = await aspire.CreateHostClientAsync("owner");
         var pharmacy = await RegisterAsync(owner, cancellationToken);
         var address = Invitee();
-        var membership = await InviteAsync(owner, pharmacy, address, cancellationToken);
+        var (membership, _) = await InviteAsync(owner, pharmacy, address, cancellationToken);
 
         using var revoked = await owner.DeleteAsync(InvitationUri(pharmacy, membership), cancellationToken);
 
@@ -129,7 +132,7 @@ public partial class OrganisationInvitationsTests(AspireFixture aspire)
         await ShouldBeRefusedAsync(renewed, HttpStatusCode.NotFound, "organisation.no-open-invitation", cancellationToken);
         using var revokedAgain = await owner.DeleteAsync(InvitationUri(pharmacy, membership), cancellationToken);
         await ShouldBeRefusedAsync(revokedAgain, HttpStatusCode.NotFound, "organisation.no-open-invitation", cancellationToken);
-        await InviteAsync(owner, pharmacy, address, cancellationToken);
+        await InviteAsync(owner, pharmacy, address, cancellationToken, earlierMails: 1);
         (await database.StatusesOfAsync(pharmacy, address, cancellationToken)).ShouldBe(["Revoked", "Invited"]);
     }
 
@@ -140,7 +143,7 @@ public partial class OrganisationInvitationsTests(AspireFixture aspire)
         using var owner = await aspire.CreateHostClientAsync("owner");
         var pharmacy = await RegisterAsync(owner, cancellationToken);
         var otherPharmacy = await RegisterAsync(owner, cancellationToken);
-        var elsewhere = await InviteAsync(owner, otherPharmacy, Invitee(), cancellationToken);
+        var (elsewhere, _) = await InviteAsync(owner, otherPharmacy, Invitee(), cancellationToken);
         var own = await MembershipOfAsync(owner, pharmacy, cancellationToken);
         List<Guid> notOpenHere = [Guid.Empty, Guid.CreateVersion7(), own, elsewhere];
 
@@ -165,7 +168,7 @@ public partial class OrganisationInvitationsTests(AspireFixture aspire)
         using var employee = await aspire.CreateHostClientAsync("employee-a");
         var pharmacy = await RegisterAsync(owner, cancellationToken);
         await database.SeedMemberAsync(pharmacy, "employee-a", "Employee", "Pta", cancellationToken);
-        var membership = await InviteAsync(owner, pharmacy, Invitee(), cancellationToken);
+        var (membership, _) = await InviteAsync(owner, pharmacy, Invitee(), cancellationToken);
         var hash = await database.TokenHashAsync(membership, cancellationToken);
         var address = Invitee();
 
@@ -188,7 +191,7 @@ public partial class OrganisationInvitationsTests(AspireFixture aspire)
         using var owner = await aspire.CreateHostClientAsync("owner");
         using var visitor = await aspire.CreateHostClientAsync("visitor");
         var pharmacy = await RegisterAsync(owner, cancellationToken);
-        var membership = await InviteAsync(owner, pharmacy, Invitee(), cancellationToken);
+        var (membership, _) = await InviteAsync(owner, pharmacy, Invitee(), cancellationToken);
 
         using var invited = await visitor.PostAsJsonAsync(InvitationsUri(pharmacy), new { email = Invitee(), jobFunction = "Pta", role = "Employee" }, cancellationToken);
         using var renewed = await visitor.PostAsync(RenewUri(pharmacy, membership), content: null, cancellationToken);
@@ -206,7 +209,7 @@ public partial class OrganisationInvitationsTests(AspireFixture aspire)
         var cancellationToken = TestContext.Current.CancellationToken;
         using var owner = await aspire.CreateHostClientAsync("owner");
         var pharmacy = await RegisterAsync(owner, cancellationToken);
-        var membership = await InviteAsync(owner, pharmacy, Invitee(), cancellationToken);
+        var (membership, _) = await InviteAsync(owner, pharmacy, Invitee(), cancellationToken);
 
         using var invited = await owner.PostAsJsonAsync(InvitationsUri(Guid.Empty), new { email = Invitee(), jobFunction = "Pta", role = "Employee" }, cancellationToken);
         using var renewed = await owner.PostAsync(RenewUri(Guid.Empty, membership), content: null, cancellationToken);
@@ -224,7 +227,7 @@ public partial class OrganisationInvitationsTests(AspireFixture aspire)
         using var owner = await aspire.CreateHostClientAsync("owner");
         using var anonymous = aspire.CreateHostClient();
         var pharmacy = await RegisterAsync(owner, cancellationToken);
-        var membership = await InviteAsync(owner, pharmacy, Invitee(), cancellationToken);
+        var (membership, _) = await InviteAsync(owner, pharmacy, Invitee(), cancellationToken);
 
         using var invited = await anonymous.PostAsJsonAsync(InvitationsUri(pharmacy), new { email = Invitee(), jobFunction = "Pta", role = "Employee" }, cancellationToken);
         using var renewed = await anonymous.PostAsync(RenewUri(pharmacy, membership), content: null, cancellationToken);
@@ -332,7 +335,7 @@ public partial class OrganisationInvitationsTests(AspireFixture aspire)
         var cancellationToken = TestContext.Current.CancellationToken;
         using var owner = await aspire.CreateHostClientAsync("owner");
         var pharmacy = await RegisterAsync(owner, cancellationToken);
-        var membership = await InviteAsync(owner, pharmacy, Invitee(), cancellationToken);
+        var (membership, _) = await InviteAsync(owner, pharmacy, Invitee(), cancellationToken);
 
         HttpResponseMessage[] responses;
         await using (var gate = await database.LockPharmacyAsync(pharmacy, cancellationToken))
@@ -370,7 +373,7 @@ public partial class OrganisationInvitationsTests(AspireFixture aspire)
         var pharmacy = await RegisterAsync(owner, cancellationToken);
         var address = Invitee();
 
-        var membership = await InviteAsync(owner, pharmacy, address, cancellationToken);
+        var (membership, _) = await InviteAsync(owner, pharmacy, address, cancellationToken);
 
         var mail = (await mailpit.MessagesToAsync(address, 1, cancellationToken)).ShouldHaveSingleItem();
         mail.To.ShouldBe([address]);
@@ -386,7 +389,7 @@ public partial class OrganisationInvitationsTests(AspireFixture aspire)
         using var owner = await aspire.CreateHostClientAsync("owner");
         var pharmacy = await RegisterAsync(owner, cancellationToken);
         var address = Invitee();
-        var membership = await InviteAsync(owner, pharmacy, address, cancellationToken);
+        var (membership, _) = await InviteAsync(owner, pharmacy, address, cancellationToken);
         var first = TokenIn((await mailpit.MessagesToAsync(address, 1, cancellationToken)).ShouldHaveSingleItem());
 
         using var renewed = await owner.PostAsync(RenewUri(pharmacy, membership), content: null, cancellationToken);
@@ -411,12 +414,20 @@ public partial class OrganisationInvitationsTests(AspireFixture aspire)
 
     private static Uri RenewUri(Guid pharmacy, Guid membership) => new($"/organisation/pharmacies/{pharmacy}/invitations/{membership}/renew", UriKind.Relative);
 
-    /// <summary>Invites the address as an employee through the API and answers the new membership's id.</summary>
-    private static async Task<Guid> InviteAsync(HttpClient client, Guid pharmacy, string address, CancellationToken cancellationToken)
+    /// <summary>
+    /// Invites the address as an employee through the API, waits until its mail has arrived, and answers the new
+    /// membership's id and the mail's token. Writing the link's hash and sending the mail may come after the 201 and
+    /// write the pharmacy, so a test that acts on the pharmacy next waits for it, or the write would race its own.
+    /// <paramref name="earlierMails"/> is the number of mails the address already got, so the wait is for a new one.
+    /// </summary>
+    private async Task<(Guid Membership, string Token)> InviteAsync(HttpClient client, Guid pharmacy, string address, CancellationToken cancellationToken, int earlierMails = 0)
     {
         using var invited = await client.PostAsJsonAsync(InvitationsUri(pharmacy), new { email = address, jobFunction = "Pta", role = "Employee" }, cancellationToken);
         await ShouldAnswerAsync(invited, HttpStatusCode.Created, cancellationToken);
-        return await invited.Content.ReadFromJsonAsync<Guid>(cancellationToken);
+        var membership = await invited.Content.ReadFromJsonAsync<Guid>(cancellationToken);
+        var mails = await mailpit.MessagesToAsync(address, earlierMails + 1, cancellationToken);
+        mails.Count.ShouldBe(earlierMails + 1, $"the invitation of {address} sent more than one mail");
+        return (membership, TokenIn(mails[^1]));
     }
 
     private static async Task<Guid> MembershipOfAsync(HttpClient client, Guid pharmacy, CancellationToken cancellationToken)
