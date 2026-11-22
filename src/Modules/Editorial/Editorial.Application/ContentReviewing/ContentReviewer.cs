@@ -16,16 +16,27 @@ public static class ContentReviewer
 {
     public const string SchemaName = "content_review";
 
-    private static readonly JsonSerializerOptions AnswerJson = new(JsonSerializerDefaults.Web)
-    {
-        RespectNullableAnnotations = true,
-        RespectRequiredConstructorParameters = true,
-        TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
-        Converters = { new JsonStringEnumConverter<ContentReviewAnswerKind>(namingPolicy: null, allowIntegerValues: false) },
-    };
+    /// <summary>
+    /// The model's per-hint allowance in output tokens beyond its text: at least one token per character counted
+    /// generously, plus the hint's JSON.
+    /// </summary>
+    private const int OutputTokensPerHint = ContentHint.MaxTextLength + 100;
+
+    /// <summary>
+    /// What a reasoning deployment (gpt-5 and its kind) may spend thinking: its reasoning tokens count against the same
+    /// <see cref="ChatOptions.MaxOutputTokens"/> as the answer, so a cap of the answer alone would cut it off.
+    /// </summary>
+    private const int ReasoningTokens = 16_384;
+
+    /// <summary>Strict numbers; kinds by their names alone, read by <see cref="ContentReviewAnswerKindConverter"/>.</summary>
+    private static readonly JsonSerializerOptions AnswerJson = Options(new ContentReviewAnswerKindConverter());
+
+    /// <summary>The same shape for the schema, whose exporter lists the kinds' names only for the enum converter.</summary>
+    private static readonly JsonSerializerOptions SchemaJson =
+        Options(new JsonStringEnumConverter<ContentReviewAnswerKind>(namingPolicy: null, allowIntegerValues: false));
 
     private static readonly ChatResponseFormat ResponseFormat =
-        ChatResponseFormat.ForJsonSchema<ContentReviewAnswer>(AnswerJson, SchemaName, "Hints on a course's chapters.");
+        ChatResponseFormat.ForJsonSchema<ContentReviewAnswer>(SchemaJson, SchemaName, "Hints on a course's chapters.");
 
     /// <summary>Asks the model for the review and reads its answer into <see cref="ContentReviewAnswer"/>, or reports it unreadable.</summary>
     public static async Task<Result<ContentReviewAnswer, ApiError>> AskAsync(IChatClient model, ContentReviewRequest request, CancellationToken cancellationToken)
@@ -33,7 +44,13 @@ public static class ContentReviewer
         Ensure.That(model).IsNotNull();
         Ensure.That(request).IsNotNull();
 
-        var options = new ChatOptions { ResponseFormat = ResponseFormat };
+        // A full answer is at most MaxHintsPerChapter hints on every chapter sent; the model's reasoning tokens count
+        // against the same budget, so the cap leaves room for them too.
+        var options = new ChatOptions
+        {
+            ResponseFormat = ResponseFormat,
+            MaxOutputTokens = (ContentReviewAnswer.MaxHintsPerChapter * request.Chapters.Count * OutputTokensPerHint) + ReasoningTokens,
+        };
         var response = await model.GetResponseAsync(ContentReviewPrompt.Messages(request), options, cancellationToken);
         return Read(response.Text);
     }
@@ -87,6 +104,15 @@ public static class ContentReviewer
 
         return Success(answer);
     }
+
+    private static JsonSerializerOptions Options(JsonConverter kinds) => new(JsonSerializerDefaults.Web)
+    {
+        NumberHandling = JsonNumberHandling.Strict,
+        RespectNullableAnnotations = true,
+        RespectRequiredConstructorParameters = true,
+        TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+        Converters = { kinds },
+    };
 
     private static Result<ContentReviewAnswer, ApiError> Unreadable() =>
         Failure(ContentReviewFailures.Malformed(ContentReviewDefect.Unreadable));
