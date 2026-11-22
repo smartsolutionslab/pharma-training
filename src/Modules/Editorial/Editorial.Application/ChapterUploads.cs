@@ -51,7 +51,7 @@ public static class ChapterUploads
         return name.Length == prefix.Length + GuidLength + extension.Length
             && name.StartsWith(prefix, StringComparison.Ordinal)
             && name.EndsWith(extension, StringComparison.Ordinal)
-            && Guid.TryParseExact(name.AsSpan(prefix.Length, GuidLength), "D", out _);
+            && IsIssuedGuid(name.Substring(prefix.Length, GuidLength));
     }
 
     /// <summary>The content type the browser uploads a file of the kind with.</summary>
@@ -73,7 +73,7 @@ public static class ChapterUploads
     /// <summary>
     /// Whether the file may become the content of a chapter of the version and kind: a name issued for them, under which
     /// a block blob of the kind's content type (in any case, with any parameters), not empty and at most the kind's size,
-    /// was uploaded.
+    /// was put directly, not created by a server-side copy, which an upload URL also allows.
     /// </summary>
     public static async Task<Result<Unit, ApiError>> AcceptAsync(IStoredBlobs blobs, BlobReference file, CourseVersionId version, ChapterKind kind, CancellationToken cancellationToken)
     {
@@ -103,6 +103,7 @@ public static class ChapterUploads
     {
         var mediaType = blob.ContentType.Split(';', 2)[0].Trim();
         return blob.IsBlockBlob
+            && !blob.IsCopy
             && blob.Length > 0
             && blob.Length <= MaxBytesOf(kind)
             && string.Equals(mediaType, ContentTypeOf(kind), StringComparison.OrdinalIgnoreCase);
@@ -114,6 +115,10 @@ public static class ChapterUploads
         Ensure.That((int)kind, nameof(kind)).Satisfies(_ => kind is ChapterKind.Pdf or ChapterKind.Video, "Only a PDF or video chapter has a file.");
         return kind;
     }
+
+    /// <summary>A Guid as <see cref="NameFor"/> writes it, in lower case: "D" parsing alone would take upper case too.</summary>
+    private static bool IsIssuedGuid(string segment) =>
+        Guid.TryParseExact(segment, "D", out var parsed) && string.Equals(segment, parsed.ToString("D"), StringComparison.Ordinal);
 
     private static string PrefixOf(CourseVersionId version) => $"{Prefix}/{version.Value:D}/";
 
