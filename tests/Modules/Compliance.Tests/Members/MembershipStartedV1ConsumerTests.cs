@@ -127,14 +127,27 @@ public class MembershipStartedV1ConsumerTests
     }
 
     [Fact]
-    public async Task A_display_name_longer_than_organisation_allows_today_is_still_stored()
+    public async Task A_display_name_as_long_as_organisation_allows_is_stored()
     {
         var store = new InMemoryMemberStore();
-        var displayName = new string('a', 500);
+        var displayName = new string('a', 100);
 
         await new MembershipStartedV1Consumer(store, store).HandleAsync(MembershipEvents.Started(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), displayName), TestContext.Current.CancellationToken);
 
         store.Members.ShouldHaveSingleItem().Name.ShouldBe(MemberName.From(displayName));
+    }
+
+    [Fact]
+    public async Task A_display_name_longer_than_organisation_allows_is_refused_by_its_name_and_nothing_stored()
+    {
+        var store = new InMemoryMemberStore();
+        var started = MembershipEvents.Started(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), new string('a', 101));
+
+        var refused = await Should.ThrowAsync<GuardException>(() => new MembershipStartedV1Consumer(store, store).HandleAsync(started, TestContext.Current.CancellationToken));
+
+        refused.ParamName.ShouldBe(nameof(MembershipStartedV1.DisplayName));
+        store.Members.ShouldBeEmpty();
+        store.Commits.ShouldBe(0);
     }
 
     [Fact]

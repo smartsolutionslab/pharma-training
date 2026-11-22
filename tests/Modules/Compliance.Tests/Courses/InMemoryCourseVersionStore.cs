@@ -23,6 +23,11 @@ internal sealed class InMemoryCourseVersionStore : ICourseVersionStore, IComplia
     public Task<bool> ExistsAsync(CourseVersionId version, CancellationToken cancellationToken) =>
         Task.FromResult(Versions.Any(stored => stored.Id == version));
 
+    public Task<Option<CourseVersionId>> FindByNumberAsync(CourseId course, VersionNumber number, CancellationToken cancellationToken) =>
+        Task.FromResult(Versions.FirstOrDefault(stored => stored.Course == course && stored.Number == number) is { } version
+            ? Option<CourseVersionId>.Some(version.Id)
+            : Option<CourseVersionId>.None);
+
     public void Add(CourseVersion version) => addedVersions.Add(version);
 
     public Task<bool> IsRetiredAsync(CourseVersionId version, CancellationToken cancellationToken) =>

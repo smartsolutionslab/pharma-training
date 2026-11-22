@@ -16,6 +16,14 @@ public static class CourseVersionFailures
 
     public static ApiError InvalidCourseVersionStatus() => new InvalidCourseVersionStatus();
 
+    public static ApiError InvalidQuestionText() => new InvalidQuestionText();
+
+    public static ApiError InvalidQuestionType() => new InvalidQuestionType();
+
+    public static ApiError InvalidAnswerOptions() => new InvalidAnswerOptions();
+
+    public static ApiError InvalidAnswerText() => new InvalidAnswerText();
+
     public static ApiError IdentityIncomplete() => new IdentityIncomplete();
 
     public static ApiError NotFound(Guid id) => new CourseVersionNotFound(id);
@@ -25,13 +33,23 @@ public static class CourseVersionFailures
 
     public static ApiError UnknownChapter(Guid version, Guid chapter) => new UnknownChapter(version, chapter);
 
+    public static ApiError UnknownQuestion(Guid version, Guid question) => new UnknownQuestion(version, question);
+
+    public static ApiError InvalidQuestionCount() => new InvalidQuestionCount();
+
+    public static ApiError InvalidPassingScore() => new InvalidPassingScore();
+
+    public static ApiError InvalidValidity() => new InvalidValidity();
+
     /// <summary>
-    /// A rule of the version, with its own code: a chapter it does not hold is not found, anything else is a conflict
-    /// with its state. <see cref="DomainError"/> is no closed union, so the last arm takes the rules no arm names.
+    /// A rule of the version, with its own code: a chapter or question it does not hold is not found, a question whose
+    /// content breaks the rules of its shape cannot be processed until it is edited, anything else is a conflict with
+    /// its state. <see cref="DomainError"/> is no closed union, so the last arm takes the rules no arm names.
     /// </summary>
     public static ApiError From(DomainError error) => error switch
     {
-        ChapterNotFound => ApiError.From(error, HttpStatusCode.NotFound),
+        ChapterNotFound or QuestionNotFound => ApiError.From(error, HttpStatusCode.NotFound),
+        TooFewOptions or SingleChoiceNeedsOneCorrect or MultipleChoiceNeedsACorrect => ApiError.From(error, HttpStatusCode.UnprocessableEntity),
         NotADraft or OrderDoesNotMatchChapters => ApiError.From(error, HttpStatusCode.Conflict),
         _ => ApiError.From(error, HttpStatusCode.Conflict),
     };

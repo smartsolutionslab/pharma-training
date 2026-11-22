@@ -17,13 +17,19 @@ public class EditorialCourseVersionRoleTests(AspireFixture aspire)
     [InlineData("PUT", "course-versions/{id}/chapters/{chapterId}")]
     [InlineData("DELETE", "course-versions/{id}/chapters/{chapterId}")]
     [InlineData("PUT", "course-versions/{id}/chapters/order")]
+    [InlineData("POST", "course-versions/{id}/questions")]
+    [InlineData("PUT", "course-versions/{id}/questions/{questionId}")]
+    [InlineData("DELETE", "course-versions/{id}/questions/{questionId}")]
+    [InlineData("POST", "course-versions/{id}/questions/{questionId}/approve")]
+    [InlineData("PUT", "course-versions/{id}/blueprint")]
     public async Task An_editor_reaches_the_route(string method, string route)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await aspire.CreateHostClientAsync("editor");
         var id = await CreateAsync(client, cancellationToken);
         var chapter = await AddChapterAsync(client, id, cancellationToken);
-        using var request = Request(method, route, id, chapter);
+        var question = route.Contains("{questionId}", StringComparison.Ordinal) ? await AddQuestionAsync(client, id, chapter, cancellationToken) : Guid.CreateVersion7();
+        using var request = Request(method, route, id, chapter, question);
 
         using var response = await client.SendAsync(request, cancellationToken);
 
@@ -38,11 +44,16 @@ public class EditorialCourseVersionRoleTests(AspireFixture aspire)
     [InlineData("PUT", "course-versions/{id}/chapters/{chapterId}")]
     [InlineData("DELETE", "course-versions/{id}/chapters/{chapterId}")]
     [InlineData("PUT", "course-versions/{id}/chapters/order")]
+    [InlineData("POST", "course-versions/{id}/questions")]
+    [InlineData("PUT", "course-versions/{id}/questions/{questionId}")]
+    [InlineData("DELETE", "course-versions/{id}/questions/{questionId}")]
+    [InlineData("POST", "course-versions/{id}/questions/{questionId}/approve")]
+    [InlineData("PUT", "course-versions/{id}/blueprint")]
     public async Task A_pharmacy_owner_is_forbidden(string method, string route)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await aspire.CreateHostClientAsync("owner");
-        using var request = Request(method, route, Guid.CreateVersion7(), Guid.CreateVersion7());
+        using var request = Request(method, route, Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7());
 
         using var response = await client.SendAsync(request, cancellationToken);
 
@@ -57,20 +68,28 @@ public class EditorialCourseVersionRoleTests(AspireFixture aspire)
     [InlineData("PUT", "course-versions/{id}/chapters/{chapterId}")]
     [InlineData("DELETE", "course-versions/{id}/chapters/{chapterId}")]
     [InlineData("PUT", "course-versions/{id}/chapters/order")]
+    [InlineData("POST", "course-versions/{id}/questions")]
+    [InlineData("PUT", "course-versions/{id}/questions/{questionId}")]
+    [InlineData("DELETE", "course-versions/{id}/questions/{questionId}")]
+    [InlineData("POST", "course-versions/{id}/questions/{questionId}/approve")]
+    [InlineData("PUT", "course-versions/{id}/blueprint")]
     public async Task An_anonymous_caller_is_unauthorized(string method, string route)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = aspire.CreateHostClient();
-        using var request = Request(method, route, Guid.CreateVersion7(), Guid.CreateVersion7());
+        using var request = Request(method, route, Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7());
 
         using var response = await client.SendAsync(request, cancellationToken);
 
         response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }
 
-    private static HttpRequestMessage Request(string method, string route, Guid id, Guid chapter)
+    private static HttpRequestMessage Request(string method, string route, Guid id, Guid chapter, Guid question)
     {
-        var path = route.Replace("{id}", id.ToString(), StringComparison.Ordinal).Replace("{chapterId}", chapter.ToString(), StringComparison.Ordinal);
+        var path = route
+            .Replace("{id}", id.ToString(), StringComparison.Ordinal)
+            .Replace("{chapterId}", chapter.ToString(), StringComparison.Ordinal)
+            .Replace("{questionId}", question.ToString(), StringComparison.Ordinal);
         return new HttpRequestMessage(new HttpMethod(method), new Uri($"/editorial/{path}", UriKind.Relative))
         {
             Content = (method, route) switch
@@ -79,9 +98,27 @@ public class EditorialCourseVersionRoleTests(AspireFixture aspire)
                 ("POST", "course-versions/{id}/chapters") or ("PUT", "course-versions/{id}/chapters/{chapterId}") =>
                     JsonContent.Create(new { title = "Händehygiene", text = "Vor und nach …" }),
                 ("PUT", "course-versions/{id}/chapters/order") => JsonContent.Create(new { chapters = new[] { chapter } }),
+                ("POST", "course-versions/{id}/questions") or ("PUT", "course-versions/{id}/questions/{questionId}") => JsonContent.Create(QuestionBody(chapter)),
+                ("PUT", "course-versions/{id}/blueprint") => JsonContent.Create(new { questions = 10, passingScorePercent = 80, validityMonths = 12 }),
                 _ => null,
             },
         };
+    }
+
+    private static object QuestionBody(Guid chapter) =>
+        new
+        {
+            chapterId = chapter,
+            text = "Wann desinfizieren Sie die Hände?",
+            type = "SingleChoice",
+            options = new[] { new { text = "Vor der Rezeptur", correct = true }, new { text = "Einmal am Tag", correct = false } },
+        };
+
+    private static async Task<Guid> AddQuestionAsync(HttpClient client, Guid id, Guid chapter, CancellationToken cancellationToken)
+    {
+        using var added = await client.PostAsJsonAsync(new Uri($"/editorial/course-versions/{id}/questions", UriKind.Relative), QuestionBody(chapter), cancellationToken);
+        added.StatusCode.ShouldBe(HttpStatusCode.Created, $"POST /editorial/course-versions/{id}/questions answered {(int)added.StatusCode}.");
+        return await added.Content.ReadFromJsonAsync<Guid>(cancellationToken);
     }
 
     private static async Task<Guid> CreateAsync(HttpClient client, CancellationToken cancellationToken)

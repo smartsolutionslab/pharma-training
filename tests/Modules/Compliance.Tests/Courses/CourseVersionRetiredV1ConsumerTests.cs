@@ -47,7 +47,7 @@ public class CourseVersionRetiredV1ConsumerTests
 
         store.Versions.ShouldHaveSingleItem();
         var course = (await store.FindCourseAsync(CourseId.From(courseId), TestContext.Current.CancellationToken)).Value;
-        course.IsRetired.ShouldBeTrue();
+        course.State.ShouldBe(PublishedCourseState.Retired);
         course.CurrentVersion().HasValue.ShouldBeFalse();
     }
 
@@ -64,7 +64,7 @@ public class CourseVersionRetiredV1ConsumerTests
         store.Retirements.ShouldHaveSingleItem();
         store.Versions.ShouldHaveSingleItem();
         var course = (await store.FindCourseAsync(CourseId.From(courseId), TestContext.Current.CancellationToken)).Value;
-        course.IsRetired.ShouldBeTrue();
+        course.State.ShouldBe(PublishedCourseState.Retired);
         course.CurrentVersion().HasValue.ShouldBeFalse();
     }
 

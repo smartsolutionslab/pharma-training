@@ -2,7 +2,7 @@ using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.DTOs;
 
-/// <summary>A course version as the module's endpoints answer it, with its chapters numbered in their order.</summary>
+/// <summary>A course version as the module's endpoints answer it, with its chapters and questions numbered in their order.</summary>
 public static class CourseVersionMappings
 {
     public static EditorialCourseVersionDto ToDto(this CourseVersion version)
@@ -11,7 +11,8 @@ public static class CourseVersionMappings
 
         List<EditorialChapterDto> chapters = [.. version.Chapters.Select((chapter, index) =>
             new EditorialChapterDto(chapter.Id.Value, index + 1, chapter.Title.Value, chapter.Kind.ToDto(), chapter.Text?.Value))];
-        return new EditorialCourseVersionDto(version.Id.Value, version.Course.Value, version.Number.Value, version.Title.Value, version.Status.ToDto(), chapters);
+        List<EditorialQuestionDto> questions = [.. version.Questions.Select((question, index) => question.ToEditorialQuestionDto(index + 1))];
+        return new EditorialCourseVersionDto(version.Id.Value, version.Course.Value, version.Number.Value, version.Title.Value, version.Status.ToDto(), chapters, questions, version.Blueprint.ToDto());
     }
 
     public static EditorialCourseVersionSummaryDto ToSummaryDto(this CourseVersion version)

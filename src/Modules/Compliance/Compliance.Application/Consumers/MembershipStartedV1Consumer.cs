@@ -6,6 +6,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application.Consum
 /// <summary>
 /// Stores a membership Organisation started, once. A membership starts once, so a member already stored means its event
 /// was handled, whatever the event's identifier or payload: a second delivery changes nothing, and the first one wins.
+/// It deduplicates on the membership id, not on <c>Metadata.EventIdentifier</c>: for a fact only ever inserted that is stronger, since it also absorbs a re-publish under a new identifier.
 /// </summary>
 public sealed class MembershipStartedV1Consumer(IMemberStore members, IComplianceUnitOfWork unitOfWork)
 {
@@ -16,7 +17,7 @@ public sealed class MembershipStartedV1Consumer(IMemberStore members, IComplianc
         Ensure.That(message.MembershipId, nameof(message.MembershipId)).IsNotEmpty();
         Ensure.That(message.PersonId, nameof(message.PersonId)).IsNotEmpty();
         Ensure.That(message.PharmacyId, nameof(message.PharmacyId)).IsNotEmpty();
-        ConsumerGuards.IsText(message.DisplayName, nameof(message.DisplayName));
+        ConsumerGuards.IsText(message.DisplayName, nameof(message.DisplayName), MemberName.MaxLength);
         Ensure.That((int)message.JobFunction, nameof(message.JobFunction)).Satisfies(value => Enum.IsDefined((JobFunctionV1)value), "is no job function Compliance knows.");
         Ensure.That((int)message.Role, nameof(message.Role)).Satisfies(value => Enum.IsDefined((MembershipRoleV1)value), "is no role Compliance knows.");
 

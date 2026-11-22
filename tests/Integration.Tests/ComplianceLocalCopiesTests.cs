@@ -1,8 +1,5 @@
-using System.Text.Json;
 using Aspire.Hosting.Testing;
 using Npgsql;
-using RabbitMQ.Client;
-using RabbitMQ.Client.Exceptions;
 
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 
@@ -23,6 +20,8 @@ public class ComplianceLocalCopiesTests(AspireFixture aspire)
     private const string VersionsByCourse = "select count(*) from compliance.course_versions where course_id = @id";
 
     private static readonly TimeSpan WaitTimeout = TimeSpan.FromSeconds(30);
+    // Seven attempts, the waits doubling from 1 to 32 seconds, take about a minute before the dead letter.
+    private static readonly TimeSpan DeadLetterTimeout = TimeSpan.FromMinutes(3);
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(250);
 
     [Fact]
@@ -148,6 +147,25 @@ public class ComplianceLocalCopiesTests(AspireFixture aspire)
         (await CountAsync(VersionsByCourse, courseId, cancellationToken)).ShouldBe(2);
     }
 
+    [Fact]
+    public async Task Another_version_with_a_number_its_course_already_has_is_dead_lettered_naming_the_stored_version()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var courseId = Guid.CreateVersion7();
+        var stored = Published(courseId, Guid.CreateVersion7(), 1);
+        await DeliverAsync(PublishedType, stored, cancellationToken);
+        var conflicting = Published(courseId, Guid.CreateVersion7(), 1);
+        var messageId = Guid.CreateVersion7();
+
+        await SendAsync(PublishedType, conflicting, messageId, cancellationToken);
+
+        var reason = await DeadLetteredAsync(messageId, cancellationToken);
+        reason.ShouldContain(conflicting.CourseVersionId.ToString());
+        reason.ShouldContain(stored.CourseVersionId.ToString());
+        (await CourseVersionsAsync(conflicting.CourseVersionId, cancellationToken)).ShouldBeEmpty();
+        (await CountAsync(VersionsByCourse, courseId, cancellationToken)).ShouldBe(1);
+    }
+
     private static StartedEvent Started(Guid membershipId, Guid personId, Guid pharmacyId) =>
         new(membershipId, personId, pharmacyId, $"Ada Lovelace {Guid.CreateVersion7()}", "Pta", "Employee", TimeProvider.System.GetUtcNow(), NewMetadata());
 
@@ -174,50 +192,8 @@ public class ComplianceLocalCopiesTests(AspireFixture aspire)
         await WaitUntilHandledAsync(messageId, cancellationToken);
     }
 
-    /// <summary>
-    /// Sends an event as the publishing module's Wolverine does: to the fanout exchange named after its type, with the
-    /// type and the envelope id in the message's properties and the event as camelCase JSON.
-    /// </summary>
-    private async Task SendAsync<T>(string type, T message, Guid messageId, CancellationToken cancellationToken)
-    {
-        var factory = new ConnectionFactory { Uri = new Uri(await aspire.App.GetConnectionStringAsync("messaging", cancellationToken) ?? throw new InvalidOperationException("The broker has no connection string.")) };
-        await using var connection = await factory.CreateConnectionAsync(cancellationToken);
-        await WaitForExchangeAsync(connection, type, cancellationToken);
-        await using var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
-        var properties = new BasicProperties
-        {
-            Type = type,
-            ContentType = "application/json",
-            MessageId = messageId.ToString(),
-            DeliveryMode = DeliveryModes.Persistent,
-        };
-
-        await channel.BasicPublishAsync(type, routingKey: string.Empty, mandatory: false, properties, JsonSerializer.SerializeToUtf8Bytes(message, JsonSerializerOptions.Web), cancellationToken);
-    }
-
-    /// <summary>Asks for the exchange a consumer's Wolverine declares at startup, without declaring it, so the test never conflicts with its arguments.</summary>
-    private static async Task WaitForExchangeAsync(IConnection connection, string exchange, CancellationToken cancellationToken)
-    {
-        var started = TimeProvider.System.GetTimestamp();
-        while (true)
-        {
-            // A passive declare of a missing exchange closes its channel, so every attempt gets a channel of its own.
-            await using var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
-            try
-            {
-                await channel.ExchangeDeclarePassiveAsync(exchange, cancellationToken);
-                return;
-            }
-            catch (OperationInterruptedException) when (TimeProvider.System.GetElapsedTime(started) < WaitTimeout)
-            {
-                await Task.Delay(PollInterval, cancellationToken);
-            }
-            catch (OperationInterruptedException missing)
-            {
-                throw new TimeoutException($"The exchange {exchange} did not exist after {WaitTimeout.TotalSeconds} s.", missing);
-            }
-        }
-    }
+    private Task SendAsync<T>(string type, T message, Guid messageId, CancellationToken cancellationToken) =>
+        Broker.SendAsync(aspire, type, message, messageId, cancellationToken);
 
     /// <summary>
     /// The barrier: Compliance's durable inbox marks the envelope handled once its consumer is done with it. A later
@@ -240,6 +216,32 @@ public class ComplianceLocalCopiesTests(AspireFixture aspire)
             if (TimeProvider.System.GetElapsedTime(started) >= WaitTimeout)
             {
                 throw new TimeoutException($"Compliance's inbox held envelope {messageId} as {status ?? "nothing"}, not Handled, after {WaitTimeout.TotalSeconds} s.");
+            }
+
+            await Task.Delay(PollInterval, cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Waits until Compliance has given up on the envelope, after its retries (about a minute), and answers the reason
+    /// its dead letter holds.
+    /// </summary>
+    private async Task<string> DeadLetteredAsync(Guid messageId, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenComplianceDatabaseAsync(cancellationToken);
+        var started = TimeProvider.System.GetTimestamp();
+        while (true)
+        {
+            await using var command = new NpgsqlCommand("select exception_message from wolverine.wolverine_dead_letters where id = @id", connection);
+            command.Parameters.AddWithValue("id", messageId);
+            if (await command.ExecuteScalarAsync(cancellationToken) is string reason)
+            {
+                return reason;
+            }
+
+            if (TimeProvider.System.GetElapsedTime(started) >= DeadLetterTimeout)
+            {
+                throw new TimeoutException($"Compliance had not dead-lettered envelope {messageId} after {DeadLetterTimeout.TotalSeconds} s.");
             }
 
             await Task.Delay(PollInterval, cancellationToken);

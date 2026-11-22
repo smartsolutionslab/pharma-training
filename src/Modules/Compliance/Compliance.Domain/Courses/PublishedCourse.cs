@@ -7,11 +7,11 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Courses;
 /// </summary>
 public sealed class PublishedCourse
 {
-    private PublishedCourse(CourseId course, CourseVersion latest, bool isRetired)
+    private PublishedCourse(CourseId course, CourseVersion latest, PublishedCourseState state)
     {
         Course = course;
         Latest = latest;
-        IsRetired = isRetired;
+        State = state;
     }
 
     public CourseId Course { get; }
@@ -21,8 +21,8 @@ public sealed class PublishedCourse
 
     public CourseTitle Title => Latest.Title;
 
-    /// <summary>Whether the latest version is retired, which leaves the course without a current version.</summary>
-    public bool IsRetired { get; }
+    /// <summary>Whether the latest version is available or retired, which leaves the course without a current version.</summary>
+    public PublishedCourseState State { get; }
 
     /// <summary>The course from its versions and retirements; none while no version of it has arrived.</summary>
     public static Option<PublishedCourse> Of(CourseId course, IReadOnlyCollection<CourseVersion> versions, IReadOnlyCollection<CourseVersionRetirement> retirements)
@@ -48,14 +48,14 @@ public sealed class PublishedCourse
         }
 
         var latest = versions.OrderByDescending(version => version.Number).First();
-        var isRetired = retirements.Any(retirement => retirement.Id == latest.Id);
-        return Option<PublishedCourse>.Some(new PublishedCourse(course, latest, isRetired));
+        var state = retirements.Any(retirement => retirement.Id == latest.Id) ? PublishedCourseState.Retired : PublishedCourseState.Available;
+        return Option<PublishedCourse>.Some(new PublishedCourse(course, latest, state));
     }
 
     /// <summary>The version new sessions start on: the latest, unless it is retired.</summary>
     public Option<CourseVersion> CurrentVersion()
     {
-        if (IsRetired)
+        if (State == PublishedCourseState.Retired)
         {
             return Option<CourseVersion>.None;
         }
