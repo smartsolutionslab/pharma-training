@@ -40,8 +40,8 @@ public static class EvalRun
         // No sampling options: the evaluators ask for Temperature 0 and TopP 1, which some models refuse; every provider's
         // defaults apply instead.
         var judgeConfiguration = new ChatConfiguration(judge.AsBuilder().ConfigureOptions(WithoutSamplingOptions).Build());
-        var withoutContext = Reporting(resultsDirectory, executionName, judgeConfiguration, new RelevanceEvaluator(), new AnsweredEvaluator());
-        var withContext = Reporting(resultsDirectory, executionName, judgeConfiguration, new RelevanceEvaluator(), new GroundednessEvaluator(), new AnsweredEvaluator());
+        var withoutContext = Reporting(resultsDirectory, executionName, judgeConfiguration, new RelevanceEvaluator(), new AnsweredEvaluator(), new TestDraftEvaluator());
+        var withContext = Reporting(resultsDirectory, executionName, judgeConfiguration, new RelevanceEvaluator(), new GroundednessEvaluator(), new AnsweredEvaluator(), new TestDraftEvaluator());
 
         List<EvalScore> scores = [];
         foreach (var useCase in useCases)
