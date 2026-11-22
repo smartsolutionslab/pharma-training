@@ -16,8 +16,8 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Api.Endpoints;
 
 /// <summary>
 /// The editorial workflow: an editor submits a draft for review, returns it to draft, publishes it and retires it.
-/// Each step is a body-less POST on the version; submit, publish and retire record the caller. The empty Guid is no
-/// version.
+/// Each step is a body-less POST on the version, taken by an editor whose token names a person; submit, publish and
+/// retire record the caller. The empty Guid is no version.
 /// </summary>
 public sealed class WorkflowEndpoints : IEndpoint
 {
@@ -29,15 +29,10 @@ public sealed class WorkflowEndpoints : IEndpoint
             ByEditorAsync(id, user, editor => dispatcher.SendAsync(new SubmitForReview(CourseVersionId.From(id), editor), cancellationToken)))
             .RequireAuthorization(EditorialPolicyNames.Edit);
 
-        endpoints.MapPost("/course-versions/{id:guid}/return", async (Guid id, IDispatcher dispatcher, CancellationToken cancellationToken) =>
-        {
-            if (id == Guid.Empty)
-            {
-                return Result<Unit, ApiError>.Failure(CourseVersionFailures.NotFound(id)).ToHttpResult();
-            }
-
-            return (await dispatcher.SendAsync(new ReturnToDraft(CourseVersionId.From(id)), cancellationToken)).ToHttpResult();
-        }).RequireAuthorization(EditorialPolicyNames.Edit);
+        // Who returned the version is not recorded, but a caller without a person is refused here as on every other step.
+        endpoints.MapPost("/course-versions/{id:guid}/return", (Guid id, ClaimsPrincipal user, IDispatcher dispatcher, CancellationToken cancellationToken) =>
+            ByEditorAsync(id, user, _ => dispatcher.SendAsync(new ReturnToDraft(CourseVersionId.From(id)), cancellationToken)))
+            .RequireAuthorization(EditorialPolicyNames.Edit);
 
         endpoints.MapPost("/course-versions/{id:guid}/publish", (Guid id, ClaimsPrincipal user, IDispatcher dispatcher, CancellationToken cancellationToken) =>
             ByEditorAsync(id, user, editor => dispatcher.SendAsync(new PublishCourseVersion(CourseVersionId.From(id), editor), cancellationToken)))
