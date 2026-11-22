@@ -283,6 +283,35 @@ public partial class ContentReviewerAskTests
         cap.ShouldBeGreaterThanOrEqualTo(hints * 100);
     }
 
+    [Theory]
+    [InlineData(21)]
+    [InlineData(30)]
+    [InlineData(50)]
+    public async Task The_cap_never_passes_the_output_ceiling_a_gpt5_deployment_accepts(int count)
+    {
+        // gpt-5 and gpt-5-mini refuse a max_completion_tokens above 128 000 with a 400, which would make every review of a
+        // version with 21 or more text chapters fail.
+        string[] titles = [.. Enumerable.Range(1, count).Select(number => $"Kapitel {number}")];
+        var version = ContentReviewVersions.WithTextChapters(titles);
+        using var model = new FakeChatClient(Sound(1));
+
+        await AskAsync(model, version);
+
+        model.Options.ShouldHaveSingleItem().ShouldNotBeNull().MaxOutputTokens.ShouldNotBeNull().ShouldBeLessThanOrEqualTo(128_000);
+    }
+
+    [Fact]
+    public async Task An_answer_with_a_raw_lone_surrogate_is_malformed_as_unreadable_not_an_exception()
+    {
+        // The OpenAI adapter cannot produce one, but another IChatClient could; System.Text.Json throws ArgumentException on it.
+        var version = ContentReviewVersions.WithTextChapters("Händehygiene");
+        using var model = new FakeChatClient("{\"hints\":[{\"chapter\":1,\"kind\":\"Gap\",\"text\":\"Schritt \uD800 fehlt.\"}]}");
+
+        var result = await AskAsync(model, version);
+
+        Malformed(result, ContentReviewDefect.Unreadable);
+    }
+
     [Fact]
     public void The_malformed_answer_failure_has_its_code_status_and_one_English_message_and_keeps_its_defect()
     {

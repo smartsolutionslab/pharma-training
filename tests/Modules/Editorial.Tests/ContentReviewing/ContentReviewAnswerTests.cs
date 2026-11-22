@@ -117,7 +117,11 @@ public class ContentReviewAnswerTests
     [InlineData("\u200B")]
     [InlineData("\u200B\u200C\u200D\u2060\uFEFF")]
     [InlineData(" \u200B \u200B ")]
-    public void A_hint_text_with_a_control_or_bidi_character_or_only_zero_width_ones_is_malformed_as_invalid_hint_text(string text)
+    [InlineData("Schritt 3\u2028fehlt.")]
+    [InlineData("Schritt 3\u2029fehlt.")]
+    [InlineData("Schritt 3 \uE000 fehlt.")]
+    [InlineData("Schritt 3 \u0378 fehlt.")]
+    public void A_hint_text_with_a_control_bidi_separator_private_or_unassigned_character_is_malformed_as_invalid_hint_text(string text)
     {
         var request = Request("Händehygiene");
         var answer = Answer(Hint(1, ContentReviewAnswerKind.Gap, "Schritt 3 fehlt."), Hint(1, ContentReviewAnswerKind.Readability, text));
