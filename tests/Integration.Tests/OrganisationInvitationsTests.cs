@@ -69,7 +69,9 @@ public partial class OrganisationInvitationsTests(AspireFixture aspire)
 
         await ShouldAnswerAsync(invited, HttpStatusCode.Created, cancellationToken);
         var membership = await invited.Content.ReadFromJsonAsync<Guid>(cancellationToken);
-        invited.Headers.Location.ShouldBe(new Uri($"/organisation/pharmacies/{pharmacy}/invitations/{membership}", UriKind.Relative));
+        invited.Headers.Location.ShouldBe(new Uri($"/organisation/pharmacies/{pharmacy}", UriKind.Relative));
+        using var located = await owner.GetAsync(invited.Headers.Location, cancellationToken);
+        await ShouldAnswerAsync(located, HttpStatusCode.OK, cancellationToken);
         var stored = await database.MembershipAsync(membership, cancellationToken);
         (stored.Status, stored.Role, stored.JobFunction).ShouldBe(("Invited", "Manager", "Pka"));
         (await database.StatusesOfAsync(pharmacy, address, cancellationToken)).ShouldBe(["Invited"]);
