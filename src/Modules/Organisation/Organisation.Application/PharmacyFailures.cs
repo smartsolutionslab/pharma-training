@@ -27,6 +27,13 @@ public static class PharmacyFailures
 
     public static ApiError OpenInvitationNotFound(Guid id) => new OpenInvitationNotFound(id);
 
+    /// <summary>No pharmacy holds the link; the same answer as a pharmacy's <see cref="InvitationNotFound"/>, so the two cannot be told apart.</summary>
+    public static ApiError InvitationLinkNotFound() => new InvitationLinkNotFound();
+
+    public static ApiError EmailNotVerified() => new EmailNotVerified();
+
+    public static ApiError InvalidInvitationToken() => new InvalidInvitationToken();
+
     /// <summary>
     /// The domain's refusals with the status each use case answers them with. An error no use case returns yet has no
     /// status here: it is mapped where it is first returned, never given a guessed one.
@@ -41,6 +48,10 @@ public static class PharmacyFailures
             LastManagerCannotLeave => ApiError.From(error, HttpStatusCode.Conflict),
             AlreadyMemberOrInvited => ApiError.From(error, HttpStatusCode.Conflict),
             NoOpenInvitation => ApiError.From(error, HttpStatusCode.NotFound),
+            InvitationNotFound => InvitationLinkNotFound(),
+            InvitationExpired => ApiError.From(error, HttpStatusCode.Gone),
+            InvitationForAnotherAddress => ApiError.From(error, HttpStatusCode.Forbidden),
+            PersonAlreadyMember => ApiError.From(error, HttpStatusCode.Conflict),
             _ => throw new UnreachableException(
                 $"{error.Code} is not returned by an Organisation use case yet; map it where it is first returned."),
         };
