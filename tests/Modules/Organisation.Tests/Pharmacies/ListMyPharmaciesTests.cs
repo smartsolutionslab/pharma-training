@@ -105,7 +105,9 @@ public class ListMyPharmaciesTests
     private static InvitationToken Invite(Pharmacy pharmacy)
     {
         var token = InvitationToken.From(RandomNumberGenerator.GetHexString(64));
-        pharmacy.Invite(MembershipId.New(), AnnaMail, token, JobFunction.Pta, MembershipRole.Employee, Now).IsSuccess.ShouldBeTrue();
+        var membership = MembershipId.New();
+        pharmacy.Invite(membership, AnnaMail, JobFunction.Pta, MembershipRole.Employee, Now).IsSuccess.ShouldBeTrue();
+        pharmacy.IssueInvitationLink(membership, token, Now).IsSuccess.ShouldBeTrue();
         return token;
     }
 

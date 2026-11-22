@@ -16,6 +16,9 @@
     <PackageReference Include="Marten" />
     <!-- Signs short-lived upload and read URLs for a module's own blob container (src/BuildingBlocks/Storage); no module names it. -->
     <PackageReference Include="Azure.Storage.Blobs" />
+    <!-- Sends a module's plain-text mail over SMTP (src/BuildingBlocks/Mail); no module names it. -->
+    <PackageReference Include="MailKit" />
+    <InternalsVisibleTo Include="Mail.Tests" />
     <ProjectReference Include="../BuildingBlocks.EventSourcing/BuildingBlocks.EventSourcing.csproj" />
     <ProjectReference Include="../BuildingBlocks.Domain/BuildingBlocks.Domain.csproj" />
   </ItemGroup>
