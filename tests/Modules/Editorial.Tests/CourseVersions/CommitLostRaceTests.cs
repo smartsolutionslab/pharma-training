@@ -2,6 +2,8 @@ using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Infrastructure;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Testing;
 using Npgsql;
 using Wolverine.EntityFrameworkCore;
 
@@ -97,6 +99,54 @@ public class CommitLostRaceTests
         thrown.InnerException.ShouldBeOfType<PostgresException>().SqlState.ShouldBe(sqlState);
     }
 
+    [Theory]
+    [InlineData(PostgresErrorCodes.DeadlockDetected)]
+    [InlineData(PostgresErrorCodes.SerializationFailure)]
+    public async Task A_save_postgresql_ended_as_a_lost_race_at_one_of_its_statements_answers_false(string sqlState)
+    {
+        await using var services = OutboxFailingWith(new DbUpdateException("An error occurred while saving the entity changes. See the inner exception for details.", Ended(sqlState)));
+
+        (await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken)).ShouldBeFalse();
+    }
+
+    [Theory]
+    [InlineData(PostgresErrorCodes.DeadlockDetected)]
+    [InlineData(PostgresErrorCodes.SerializationFailure)]
+    public async Task A_save_postgresql_ended_as_a_lost_race_is_logged_as_a_warning_naming_its_sql_state(string sqlState)
+    {
+        await using var services = LoggedOutboxFailingWith(new DbUpdateException("An error occurred while saving the entity changes. See the inner exception for details.", Ended(sqlState)));
+
+        await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken);
+
+        var record = services.GetFakeLogCollector().GetSnapshot().ShouldHaveSingleItem();
+        record.Level.ShouldBe(LogLevel.Warning);
+        record.Message.ShouldContain(sqlState);
+    }
+
+    [Theory]
+    [InlineData(PostgresErrorCodes.DeadlockDetected)]
+    [InlineData(PostgresErrorCodes.SerializationFailure)]
+    public async Task A_lost_race_at_the_commit_ef_core_owns_is_logged_as_a_warning_naming_its_sql_state(string sqlState)
+    {
+        await using var services = LoggedOutboxFailingWith(new DbUpdateConcurrencyException("An error occurred while saving the entity changes. See the inner exception for details.", Ended(sqlState)));
+
+        await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken);
+
+        var record = services.GetFakeLogCollector().GetSnapshot().ShouldHaveSingleItem();
+        record.Level.ShouldBe(LogLevel.Warning);
+        record.Message.ShouldContain(sqlState);
+    }
+
+    [Fact]
+    public async Task A_save_that_moved_a_row_version_logs_nothing()
+    {
+        await using var services = LoggedOutboxFailingWith(new DbUpdateConcurrencyException("The row version moved on."));
+
+        await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken);
+
+        services.GetFakeLogCollector().GetSnapshot().ShouldBeEmpty();
+    }
+
     private static PostgresException Ended(string sqlState) =>
         new($"the transaction was ended ({sqlState})", "ERROR", "ERROR", sqlState);
 
@@ -105,5 +155,12 @@ public class CommitLostRaceTests
         var outbox = Substitute.For<IDbContextOutbox<EditorialDbContext>>();
         outbox.SaveChangesAndFlushMessagesAsync(Arg.Any<CancellationToken>()).Returns(Task.FromException(failure));
         return new ServiceCollection().AddSingleton(outbox).BuildServiceProvider();
+    }
+
+    private static ServiceProvider LoggedOutboxFailingWith(Exception failure)
+    {
+        var outbox = Substitute.For<IDbContextOutbox<EditorialDbContext>>();
+        outbox.SaveChangesAndFlushMessagesAsync(Arg.Any<CancellationToken>()).Returns(Task.FromException(failure));
+        return new ServiceCollection().AddSingleton(outbox).AddFakeLogging().BuildServiceProvider();
     }
 }
