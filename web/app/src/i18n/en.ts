@@ -148,6 +148,8 @@ export const en: MessageSchema = {
       moveUp: 'Move “{title}” up',
       moveDown: 'Move “{title}” down',
       dragHint: 'Drag to move',
+      moved: '“{title}” is now at position {position} of {count}.',
+      reorderFailed: 'The order could not be saved. The previous order is restored.',
       removeConfirm: {
         title: 'Delete the chapter?',
         text: '“{title}” will be deleted.',

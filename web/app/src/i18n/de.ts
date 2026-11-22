@@ -155,6 +155,9 @@ export const de = {
       moveUp: '„{title}“ nach oben verschieben',
       moveDown: '„{title}“ nach unten verschieben',
       dragHint: 'Zum Verschieben ziehen',
+      moved: '„{title}“ steht jetzt an Position {position} von {count}.',
+      reorderFailed:
+        'Die Reihenfolge konnte nicht gespeichert werden. Die vorherige Reihenfolge ist wiederhergestellt.',
       removeConfirm: {
         title: 'Kapitel löschen?',
         text: '„{title}“ wird gelöscht.',

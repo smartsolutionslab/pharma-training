@@ -20,6 +20,7 @@ import ChapterList from './ChapterList.vue';
 import { inboxStatuses } from './inboxQuery';
 import RemoveChapterDialog from './RemoveChapterDialog.vue';
 import { useChapterMutations } from './useChapterMutations';
+import { useReorderChapters } from './useReorderChapters';
 
 // A course version (/editorial/versions/:id): its title, number and status, the way back to its inbox tab, and its
 // chapters. Only a draft can be changed; any other status says why not and shows its chapters read-only.
@@ -27,6 +28,7 @@ const route = useRoute();
 const id = computed(() => String(route.params.id ?? ''));
 const { data: version, isPending, isError, error } = useGetEditorialCourseVersionsId(id);
 const { add, replace, remove, isSaving } = useChapterMutations(id);
+const { reorder } = useReorderChapters(id);
 const { t } = useI18n();
 
 /** The chapter form while it is open: with the chapter it replaces, or none to add one. */
@@ -114,6 +116,7 @@ async function confirmRemove(chapter: EditorialChapterDto) {
           :editable="editable"
           @edit="(chapter) => (form = { chapter })"
           @remove="(chapter) => (removing = chapter)"
+          @reorder="reorder"
         />
         <EmptyState v-else>
           <template #icon><BookOpen /></template>

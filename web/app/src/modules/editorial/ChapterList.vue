@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ArrowDown, ArrowUp, GripVertical, Pencil, Trash2 } from '@lucide/vue';
+import { ref, useTemplateRef, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { EditorialChapterDto } from '@/api/generated';
 import MarkdownView from '@/components/MarkdownView.vue';
@@ -25,89 +26,179 @@ const emit = defineEmits<{
 }>();
 const { t } = useI18n();
 
-/** Moves the chapter at the index one place up (-1) or down (1). */
-function move(index: number, by: -1 | 1) {
+type Direction = 'up' | 'down';
+
+const list = useTemplateRef<HTMLOListElement>('list');
+/** Where the last chapter moved to, as the status region says it. */
+const moved = ref<{ title: string; position: number; count: number }>();
+/** The move button pressed last, which keeps the focus once the list shows the new order. */
+const pressed = ref<{ id: string; direction: Direction }>();
+/** The chapter being dragged by its handle. */
+const dragged = ref<string>();
+
+/** Every chapter's id with the one at `from` put at `to`; reorders and says where it went. */
+function moveTo(from: number, to: number) {
   const order = chapters.map((each) => each.id);
-  const [moved] = order.splice(index, 1);
-  if (moved === undefined) {
+  const [id] = order.splice(from, 1);
+  const chapter = chapters[from];
+  if (id === undefined || chapter === undefined || from === to) {
     return;
   }
-  order.splice(index + by, 0, moved);
+  order.splice(to, 0, id);
+  moved.value = { title: chapter.title, position: to + 1, count: order.length };
   emit('reorder', order);
+}
+
+function move(index: number, direction: Direction) {
+  const chapter = chapters[index];
+  if (chapter !== undefined) {
+    pressed.value = { id: chapter.id, direction };
+  }
+  moveTo(index, direction === 'up' ? index - 1 : index + 1);
+}
+
+/** The chapter's move button in the direction, or the other one once it cannot move that way any more. */
+function moveButton(id: string, direction: Direction) {
+  const find = (towards: Direction) =>
+    list.value?.querySelector<HTMLButtonElement>(`[data-move="${towards}"][data-chapter="${id}"]`) ?? null;
+  const button = find(direction);
+  return button === null || button.disabled ? find(direction === 'up' ? 'down' : 'up') : button;
+}
+
+// A keyed list keeps each chapter's elements, but moving one in the DOM can take the focus from it: give it back.
+watch(
+  () => chapters.map((each) => each.id),
+  () => {
+    const last = pressed.value;
+    if (last === undefined) {
+      return;
+    }
+    const button = moveButton(last.id, last.direction);
+    if (button !== null && document.activeElement !== button) {
+      button.focus();
+    }
+  },
+  { flush: 'post' },
+);
+
+function dragStart(event: DragEvent, chapter: EditorialChapterDto) {
+  dragged.value = chapter.id;
+  pressed.value = undefined;
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', chapter.id);
+  }
+}
+
+// A drop target allows the drop by cancelling dragover (and dragenter); otherwise the browser never fires drop.
+function dragOver(event: DragEvent) {
+  if (dragged.value !== undefined) {
+    event.preventDefault();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'move';
+    }
+  }
+}
+
+function drop(event: DragEvent, target: number) {
+  const id = dragged.value;
+  dragged.value = undefined;
+  if (id === undefined) {
+    return;
+  }
+  event.preventDefault();
+  moveTo(
+    chapters.findIndex((each) => each.id === id),
+    target,
+  );
 }
 </script>
 
 <template>
-  <ol :aria-label="t('editorial.chapters.title')" class="flex flex-col gap-2">
-    <li
-      v-for="(chapter, index) in chapters"
-      :key="chapter.id"
-      class="bg-card flex items-start gap-3 rounded-md border p-3"
-    >
-      <span
-        v-if="editable"
-        aria-hidden="true"
-        :title="t('editorial.chapters.dragHint')"
-        draggable="true"
-        class="text-muted-foreground mt-1 cursor-grab"
+  <div>
+    <ol ref="list" :aria-label="t('editorial.chapters.title')" class="flex flex-col gap-2">
+      <li
+        v-for="(chapter, index) in chapters"
+        :key="chapter.id"
+        class="bg-card flex items-start gap-3 rounded-md border p-3"
+        v-on="
+          editable ? { dragenter: dragOver, dragover: dragOver, drop: (event: DragEvent) => drop(event, index) } : {}
+        "
       >
-        <GripVertical class="size-4" />
-      </span>
-      <div class="flex min-w-0 flex-1 flex-col gap-1">
-        <div class="text-caption text-muted-foreground flex flex-wrap gap-x-3 gap-y-1 tabular-nums">
-          <span>{{ t('editorial.chapters.position', { position: index + 1 }) }}</span>
-          <span>{{ t(`glossary.chapterKind.${chapter.kind}`) }}</span>
-          <span v-if="chapter.kind === 'Video' && chapter.durationSeconds !== null">
-            {{ t('editorial.chapters.duration', { duration: formatDuration(chapter.durationSeconds) }) }}
-          </span>
-          <span v-if="chapter.kind !== 'Text' && chapter.file !== null">{{ t('editorial.chapters.file') }}</span>
+        <span
+          v-if="editable"
+          aria-hidden="true"
+          :title="t('editorial.chapters.dragHint')"
+          draggable="true"
+          class="text-muted-foreground mt-1 cursor-grab"
+          @dragstart="dragStart($event, chapter)"
+          @dragend="dragged = undefined"
+        >
+          <GripVertical class="size-4" />
+        </span>
+        <div class="flex min-w-0 flex-1 flex-col gap-1">
+          <div class="text-caption text-muted-foreground flex flex-wrap gap-x-3 gap-y-1 tabular-nums">
+            <span>{{ t('editorial.chapters.position', { position: index + 1 }) }}</span>
+            <span>{{ t(`glossary.chapterKind.${chapter.kind}`) }}</span>
+            <span v-if="chapter.kind === 'Video' && chapter.durationSeconds !== null">
+              {{ t('editorial.chapters.duration', { duration: formatDuration(chapter.durationSeconds) }) }}
+            </span>
+            <span v-if="chapter.kind !== 'Text' && chapter.file !== null">{{ t('editorial.chapters.file') }}</span>
+          </div>
+          <details v-if="!editable && chapter.kind === 'Text' && chapter.text !== null">
+            <summary class="text-body cursor-pointer font-medium">{{ chapter.title }}</summary>
+            <MarkdownView class="pt-2" :source="chapter.text" :heading-offset="2" />
+          </details>
+          <span v-else class="text-body font-medium">{{ chapter.title }}</span>
         </div>
-        <details v-if="!editable && chapter.kind === 'Text' && chapter.text !== null">
-          <summary class="text-body cursor-pointer font-medium">{{ chapter.title }}</summary>
-          <MarkdownView class="pt-2" :source="chapter.text" :heading-offset="2" />
-        </details>
-        <span v-else class="text-body font-medium">{{ chapter.title }}</span>
-      </div>
-      <div v-if="editable" class="flex shrink-0 gap-1">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          :aria-label="t('editorial.chapters.moveUp', { title: chapter.title })"
-          :disabled="index === 0"
-          @click="move(index, -1)"
-        >
-          <ArrowUp aria-hidden="true" />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          :aria-label="t('editorial.chapters.moveDown', { title: chapter.title })"
-          :disabled="index === chapters.length - 1"
-          @click="move(index, 1)"
-        >
-          <ArrowDown aria-hidden="true" />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          :aria-label="t('editorial.chapters.edit', { title: chapter.title })"
-          @click="emit('edit', chapter)"
-        >
-          <Pencil aria-hidden="true" />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          :aria-label="t('editorial.chapters.remove', { title: chapter.title })"
-          @click="emit('remove', chapter)"
-        >
-          <Trash2 aria-hidden="true" />
-        </Button>
-      </div>
-    </li>
-  </ol>
+        <div v-if="editable" class="flex shrink-0 gap-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            :aria-label="t('editorial.chapters.moveUp', { title: chapter.title })"
+            data-move="up"
+            :data-chapter="chapter.id"
+            :disabled="index === 0"
+            @click="move(index, 'up')"
+          >
+            <ArrowUp aria-hidden="true" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            :aria-label="t('editorial.chapters.moveDown', { title: chapter.title })"
+            data-move="down"
+            :data-chapter="chapter.id"
+            :disabled="index === chapters.length - 1"
+            @click="move(index, 'down')"
+          >
+            <ArrowDown aria-hidden="true" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            :aria-label="t('editorial.chapters.edit', { title: chapter.title })"
+            @click="emit('edit', chapter)"
+          >
+            <Pencil aria-hidden="true" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            :aria-label="t('editorial.chapters.remove', { title: chapter.title })"
+            @click="emit('remove', chapter)"
+          >
+            <Trash2 aria-hidden="true" />
+          </Button>
+        </div>
+      </li>
+    </ol>
+    <p v-if="editable" role="status" class="sr-only">
+      <template v-if="moved">{{ t('editorial.chapters.moved', moved) }}</template>
+    </p>
+  </div>
 </template>
