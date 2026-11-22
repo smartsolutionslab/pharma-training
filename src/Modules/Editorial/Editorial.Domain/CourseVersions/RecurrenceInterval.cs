@@ -20,10 +20,10 @@ public sealed record RecurrenceInterval : IValueObject<int>
         return new RecurrenceInterval(value);
     }
 
-    // Red-first stub for #17: wrong on purpose until the change lands.
+    /// <summary>Succeeds exactly when <see cref="From"/> would.</summary>
     public static bool TryFrom(int value, [NotNullWhen(true)] out RecurrenceInterval? result)
     {
-        result = new RecurrenceInterval(-1);
-        return true;
+        result = value is >= MinimumMonths and <= MaximumMonths ? new RecurrenceInterval(value) : null;
+        return result is not null;
     }
 }

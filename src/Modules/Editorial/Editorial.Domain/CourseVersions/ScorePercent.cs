@@ -5,9 +5,8 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersio
 /// <summary>A share of the test's points, from 0 to 100 percent.</summary>
 public sealed record ScorePercent : IValueObject<int>
 {
-    // Red-first stub for #17: the values and TryFrom are wrong on purpose until the change lands.
-    public const int Minimum = -1;
-    public const int Maximum = -1;
+    public const int Minimum = 0;
+    public const int Maximum = 100;
 
     private ScorePercent(int value) => Value = value;
 
@@ -15,13 +14,14 @@ public sealed record ScorePercent : IValueObject<int>
 
     public static ScorePercent From(int value)
     {
-        Ensure.That(value).InRange(0, 100);
+        Ensure.That(value).InRange(Minimum, Maximum);
         return new ScorePercent(value);
     }
 
+    /// <summary>Succeeds exactly when <see cref="From"/> would.</summary>
     public static bool TryFrom(int value, [NotNullWhen(true)] out ScorePercent? result)
     {
-        result = new ScorePercent(-1);
-        return true;
+        result = value is >= Minimum and <= Maximum ? new ScorePercent(value) : null;
+        return result is not null;
     }
 }
