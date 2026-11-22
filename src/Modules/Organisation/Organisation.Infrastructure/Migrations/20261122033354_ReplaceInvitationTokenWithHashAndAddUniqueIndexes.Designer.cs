@@ -12,8 +12,8 @@ using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Infrastructure.Persi
 namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Infrastructure.Migrations;
 
 [DbContext(typeof(OrganisationDbContext))]
-[Migration("20261122000311_AddInvitationUniqueness")]
-partial class _20261122000311_AddInvitationUniqueness
+[Migration("20261122033354_ReplaceInvitationTokenWithHashAndAddUniqueIndexes")]
+partial class _20261122033354_ReplaceInvitationTokenWithHashAndAddUniqueIndexes
 {
     /// <inheritdoc />
     protected override void BuildTargetModel(ModelBuilder modelBuilder)
