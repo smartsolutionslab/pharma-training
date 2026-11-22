@@ -90,10 +90,14 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
 
     // ── Content ──
 
-    /// <summary>Red-test stub for #15 (task A2): accepts in every state. B3 accepts uploads for a draft only.</summary>
+    /// <summary>Whether a chapter's file may be uploaded for the version: only while it is a draft, which alone takes chapters.</summary>
     public Result<Unit, DomainError> AcceptsUploads()
     {
-        Ensure.That(Id).IsNotNull();
+        if (!IsDraft)
+        {
+            return Failure(CourseVersionErrors.NotADraft(Id, Status));
+        }
+
         return Success(Unit.Value);
     }
 
