@@ -55,6 +55,15 @@ public static class CourseVersionFailures
 
     public static ApiError InvalidValidity() => new InvalidValidity();
 
+    /// <summary>The AI test draft asks only about text chapters, and the version has none.</summary>
+    public static ApiError NoTextChapters() => new NoTextChapters();
+
+    /// <summary>The approved questions already fill the blueprint, so the AI test draft has nothing to add.</summary>
+    public static ApiError NothingToDraft() => new NothingToDraft();
+
+    /// <summary>The text chapters are too long to send to the model in one AI test draft request.</summary>
+    public static ApiError TooMuchContentToDraft() => new TooMuchContentToDraft();
+
     /// <summary>
     /// A rule of the version, with its own code: a chapter or question it does not hold is not found, a question whose
     /// content breaks the rules of its shape cannot be processed until it is edited, anything else is a conflict with
