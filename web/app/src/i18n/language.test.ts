@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import page from '../../index.html?raw';
+import { i18n } from './index';
 import { applyLanguage, type Language, preferredLanguage, storedLanguage, storeLanguage } from './language';
 
 // The script index.html runs before the app, so <html lang> is the user's language from the first paint.
@@ -166,5 +167,19 @@ describe("index.html's script before the first paint", () => {
 
     expect(document.documentElement.classList.contains('dark')).toBe(true);
     expect(document.documentElement.lang).toBe('en-GB');
+  });
+});
+
+// Whatever changes the locale, setLanguage or code that sets vue-i18n's locale itself, <html lang> says the language
+// the page is in: a screen reader reads the page in the wrong voice otherwise.
+describe('<html lang> and the locale', () => {
+  test('follows a locale set on vue-i18n directly', async () => {
+    i18n.global.locale.value = 'en-GB';
+
+    await vi.waitFor(() => expect(document.documentElement.lang).toBe('en-GB'));
+
+    i18n.global.locale.value = 'de-DE';
+
+    await vi.waitFor(() => expect(document.documentElement.lang).toBe('de-DE'));
   });
 });

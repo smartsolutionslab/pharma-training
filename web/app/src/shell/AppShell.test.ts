@@ -744,7 +744,7 @@ test('switching the language renames the pharmacy switcher and the reason a page
 
   expect(await screen.findByRole('heading', { name: 'Not available', level: 1 })).toBeInTheDocument();
   expect(screen.getByText('This page is not available to you in Apotheke am Dom.')).toBeInTheDocument();
-  expect(screen.getByRole('link', { name: 'Go to Home' })).toHaveAttribute('href', '/');
+  expect(screen.getByRole('link', { name: 'Back to Home' })).toHaveAttribute('href', '/');
   const pharmacy = within(screen.getByRole('region', { name: 'Pharmacy' }));
   expect(pharmacy.getByRole('button', { name: 'Pharmacy: Apotheke am Dom' })).toHaveTextContent('Employee');
   expect(pharmacy.getByRole('link', { name: 'Register a pharmacy' })).toBeInTheDocument();

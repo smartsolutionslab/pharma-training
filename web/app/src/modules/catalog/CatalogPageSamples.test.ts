@@ -157,3 +157,30 @@ test('switched to English, the page, its form and its refusals speak English', a
   expect(await screen.findByRole('alert')).toHaveTextContent(t('samples.form.nameRequired'));
   expect(t('samples.form.nameRequired')).not.toBe(i18n.global.t('samples.form.nameRequired', {}, { locale: 'de-DE' }));
 });
+
+// The German texts themselves, not only their keys: a key that resolved to the wrong text would pass the t() queries.
+test('the page speaks German by default', async () => {
+  samples.list = { samples: [], page: undefined, isLoading: false, isError: false };
+  render(CatalogPage);
+
+  expect(screen.getByRole('heading', { level: 2, name: 'Beispiele' })).toBeInTheDocument();
+  expect(screen.getByText('Noch keine Beispiele.')).toBeVisible();
+  expect(screen.getByRole('form', { name: 'Neues Beispiel' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Anlegen' })).toBe(submit());
+  await userEvent.click(screen.getByRole('button', { name: 'Erstes Beispiel anlegen' }));
+
+  expect(screen.getByRole('textbox', { name: 'Name' })).toHaveFocus();
+});
+
+// A message already shown follows a switch of the language too: the user does not have to submit again to read it.
+test('a refusal already shown follows a switch to English without submitting again', async () => {
+  render(CatalogPage);
+  await userEvent.click(submit());
+  expect(await screen.findByRole('alert')).toHaveTextContent('Geben Sie dem Beispiel einen Namen.');
+
+  setLanguage('en-GB', { remember: false });
+
+  await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(t('samples.form.nameRequired')));
+  expect(t('samples.form.nameRequired')).not.toBe('Geben Sie dem Beispiel einen Namen.');
+  expect(samples.create).not.toHaveBeenCalled();
+});

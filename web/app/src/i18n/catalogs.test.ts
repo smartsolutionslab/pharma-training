@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { de } from './de';
 import { en } from './en';
+import { i18n, type Language } from './index';
 
 /** Every message of a catalog under its dotted key path (app.name, glossary.jobFunction.Pta, ...). */
 function flatten(catalog: object, prefix = ''): Map<string, unknown> {
@@ -66,4 +67,44 @@ test.each([
   ['language.en', 'English'],
 ])('%s reads %s in both catalogs', (key, text) => {
   expect([catalogs.de.get(key), catalogs.en.get(key)]).toEqual([text, text]);
+});
+
+// What vue-i18n makes of a message is the message itself, its placeholders aside: a | (plural), @: or @. (a linked
+// message), $ or a brace that is no placeholder would change what the user reads, or fail to compile.
+const translate = i18n.global.t as unknown as (
+  key: string,
+  named: Record<string, string>,
+  options: { locale: Language },
+) => string;
+
+describe.each([
+  ['de', 'de-DE'],
+  ['en', 'en-GB'],
+] as const)('every %s message', (catalog, locale) => {
+  test.each([...catalogs[catalog]].map(([key, message]) => [key, message]))(
+    '%s reads as written once its placeholders are filled in',
+    (key, message) => {
+      const named = Object.fromEntries(placeholders(message).map((name) => [name, `{${name}}`]));
+
+      expect(translate(String(key), named, { locale })).toBe(message);
+    },
+  );
+});
+
+// Words chosen in review: each says what the user sees, in the user's words.
+test.each([
+  ['de', 'glossary.jobFunction.Other', 'Sonstige'],
+  ['en', 'shell.gate.goHome', 'Back to Home'],
+  [
+    'de',
+    'organisation.register.registeredNotOpened',
+    'Die Apotheke {name} wurde registriert, konnte aber nicht geöffnet werden. Wählen Sie sie unter \u201eApotheke\u201c in der Seitenleiste.',
+  ],
+  [
+    'en',
+    'organisation.register.registeredNotOpened',
+    'The pharmacy {name} was registered, but it could not be opened. Choose it under \u201cPharmacy\u201d in the sidebar.',
+  ],
+] as const)('the %s catalog has %s read %s', (catalog, key, text) => {
+  expect(catalogs[catalog].get(key)).toBe(text);
 });

@@ -157,3 +157,17 @@ test('switched to English, the page, its form and its refusals speak English', a
   expect(await screen.findByRole('alert')).toHaveTextContent(t('samples.form.nameRequired'));
   expect(t('samples.form.nameRequired')).not.toBe(i18n.global.t('samples.form.nameRequired', {}, { locale: 'de-DE' }));
 });
+
+// The German texts themselves, not only their keys: a key that resolved to the wrong text would pass the t() queries.
+test('the page speaks German by default', async () => {
+  samples.list = { samples: [], page: undefined, isLoading: false, isError: false };
+  render(CompliancePage);
+
+  expect(screen.getByRole('heading', { level: 2, name: 'Beispiele' })).toBeInTheDocument();
+  expect(screen.getByText('Noch keine Beispiele.')).toBeVisible();
+  expect(screen.getByRole('form', { name: 'Neues Beispiel' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Anlegen' })).toBe(submit());
+  await userEvent.click(screen.getByRole('button', { name: 'Erstes Beispiel anlegen' }));
+
+  expect(screen.getByRole('textbox', { name: 'Name' })).toHaveFocus();
+});
