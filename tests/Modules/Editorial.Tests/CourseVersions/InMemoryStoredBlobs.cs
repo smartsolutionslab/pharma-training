@@ -86,9 +86,4 @@ internal sealed class InMemoryStoredBlobs : IStoredBlobs
 
         return HtmlStart;
     }
-
-    public Task<ReadOnlyMemory<byte>> ReadStartAsync(BlobName name, int count, CancellationToken cancellationToken)
-    {
-        throw new NotImplementedException();
-    }
 }
