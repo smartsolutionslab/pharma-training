@@ -17,6 +17,12 @@ public sealed class AcceptInvitationHandler(IPharmacyStore pharmacies, IOrganisa
     {
         Ensure.That(command).IsNotNull();
 
+        // Before the link is looked up, so an unverified account learns nothing about it.
+        if (!command.Email.IsVerified)
+        {
+            return Failure(PharmacyFailures.EmailNotVerified());
+        }
+
         var found = await pharmacies.LoadByInvitationAsync(InvitationTokenHash.Of(command.Token), cancellationToken);
         if (!found.HasValue)
         {
@@ -24,7 +30,7 @@ public sealed class AcceptInvitationHandler(IPharmacyStore pharmacies, IOrganisa
         }
 
         var pharmacy = found.Value;
-        var accepted = pharmacy.AcceptInvitation(command.Token, command.Person, command.Name, command.Email, Timestamp.From(time.GetUtcNow()));
+        var accepted = pharmacy.AcceptInvitation(command.Token, command.Person, command.Name, command.Email.Value, Timestamp.From(time.GetUtcNow()));
         if (accepted.IsFailure)
         {
             return Failure(PharmacyFailures.From(accepted.Error));
@@ -37,7 +43,7 @@ public sealed class AcceptInvitationHandler(IPharmacyStore pharmacies, IOrganisa
 
         if (!await unitOfWork.TryCommitAsync(cancellationToken))
         {
-            return Failure(PharmacyFailures.Changed(pharmacy.Id.Value));
+            return Failure(PharmacyFailures.InvitationChanged());
         }
 
         return Success(pharmacy.Id.Value);

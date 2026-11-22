@@ -106,18 +106,14 @@ public sealed class InvitationEndpoints : IEndpoint
                 return Result<Guid, ApiError>.Failure(PharmacyFailures.IdentityIncomplete()).ToHttpResult();
             }
 
-            // The verified address is the only proof that the caller is the invitee.
-            if (!CallerClaims.HasVerifiedEmail(user))
-            {
-                return Result<Guid, ApiError>.Failure(PharmacyFailures.EmailNotVerified()).ToHttpResult();
-            }
-
             if (!InvitationToken.TryFrom(request.Token, out var token))
             {
                 return Result<Guid, ApiError>.Failure(PharmacyFailures.InvalidInvitationToken()).ToHttpResult();
             }
 
-            var command = new AcceptInvitation(token, caller.Value.Person, caller.Value.Name, caller.Value.Email);
+            // The verified address is the only proof that the caller is the invitee; the use case refuses an unverified one.
+            var email = AccountEmail.From(caller.Value.Email, CallerClaims.HasVerifiedEmail(user));
+            var command = new AcceptInvitation(token, caller.Value.Person, caller.Value.Name, email);
             return (await dispatcher.SendAsync(command, cancellationToken)).ToHttpResult();
         }).RequireAuthorization();
     }
