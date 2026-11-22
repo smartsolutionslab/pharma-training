@@ -64,6 +64,29 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         return membership;
     }
 
+    /// <summary>
+    /// Writes a membership row of a person by hand, past the aggregate, as a second writer would: <c>Active</c> since
+    /// now, or <c>Ended</c> now. What the database itself refuses is what these rows show.
+    /// </summary>
+    public async Task<Guid> InsertMembershipOfPersonAsync(Guid pharmacy, Guid person, string email, string status, CancellationToken cancellationToken)
+    {
+        var membership = Guid.CreateVersion7();
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            """
+            INSERT INTO organisation.memberships (id, pharmacy_id, email, token_hash, invitation_expires_at, person_id, name, job_function, role, status, started_at, ended_at)
+            VALUES (@id, @pharmacy, @email, NULL, NULL, @person, 'Anna Employee', 'Pta', 'Employee', @status, now(), CASE WHEN @status = 'Ended' THEN now() END)
+            """,
+            connection);
+        command.Parameters.AddWithValue("id", membership);
+        command.Parameters.AddWithValue("pharmacy", pharmacy);
+        command.Parameters.AddWithValue("email", email);
+        command.Parameters.AddWithValue("person", person);
+        command.Parameters.AddWithValue("status", status);
+        (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1);
+        return membership;
+    }
+
     /// <summary>The membership's stored token hash, or null when it keeps none.</summary>
     public async Task<string?> TokenHashAsync(Guid membership, CancellationToken cancellationToken)
     {
