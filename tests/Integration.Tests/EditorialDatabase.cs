@@ -118,6 +118,18 @@ internal static class EditorialDatabase
         return WaitUntilAsync(connectionString, gate, expected, cancellationToken);
     }
 
+    /// <summary>
+    /// The editorial database's <c>deadlock_timeout</c> (<c>SHOW deadlock_timeout</c>, read as an interval): how long a
+    /// backend waits for a lock before PostgreSQL checks it, once, for a deadlock.
+    /// </summary>
+    public static async Task<TimeSpan> DeadlockTimeoutAsync(string connectionString, CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("SELECT current_setting('deadlock_timeout')::interval", connection);
+        return (TimeSpan)(await command.ExecuteScalarAsync(cancellationToken) ?? throw new InvalidOperationException("The editorial database has no deadlock_timeout."));
+    }
+
     /// <summary>The deadlocks PostgreSQL has detected in the editorial database since its statistics were reset.</summary>
     public static async Task<long> DeadlocksAsync(string connectionString, CancellationToken cancellationToken)
     {

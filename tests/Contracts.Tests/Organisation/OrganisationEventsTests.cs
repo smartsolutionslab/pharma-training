@@ -37,4 +37,13 @@ public class OrganisationEventsTests
             Guid.CreateVersion7(),
             new DateTimeOffset(2026, 11, 30, 17, 0, 0, TimeSpan.FromHours(1))));
     }
+
+    [Fact]
+    public void InvitationMailRequestedV1_survives_the_wire()
+    {
+        var json = Wire.ShouldSurviveTheWire(new InvitationMailRequestedV1(Guid.CreateVersion7(), Guid.CreateVersion7()));
+
+        json.ShouldNotContain("token", Case.Insensitive);
+        json.ShouldNotContain("email", Case.Insensitive);
+    }
 }

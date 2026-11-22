@@ -79,6 +79,9 @@ public sealed class SingletonsLiveOnTheEdge : IArchitectureRule
             builder.UseSetting("ConnectionStrings:messaging", "amqp://localhost");
             builder.UseSetting("Messaging:Queue", "unused");
             builder.UseSetting("Authentication:Authority", "http://localhost/realms/unused");
+            builder.UseSetting("ConnectionStrings:mail", "smtp://localhost");
+            builder.UseSetting("Mail:From", "noreply@example.com");
+            builder.UseSetting("Frontend:BaseUrl", "https://app.example");
             builder.ConfigureServices(services => services.RemoveAll<IHostedService>());
         }
     }
