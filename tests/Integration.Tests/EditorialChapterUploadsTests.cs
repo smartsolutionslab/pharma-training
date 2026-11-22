@@ -11,6 +11,7 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// then adds or replaces the chapter with the name it was given: the module checks that the name was issued for the
 /// version and that the blob is what the kind asks for before it records the chapter.
 /// </summary>
+[Collection(EditorialDrafts.Name)]
 public class EditorialChapterUploadsTests(AspireFixture aspire)
 {
     private static readonly Uri Courses = new("/editorial/courses", UriKind.Relative);

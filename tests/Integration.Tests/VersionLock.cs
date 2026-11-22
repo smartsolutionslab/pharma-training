@@ -7,6 +7,9 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// </summary>
 public sealed class VersionLock(NpgsqlConnection connection, NpgsqlTransaction transaction) : IAsyncDisposable
 {
+    /// <summary>The backend that holds the rows, which the requests waiting on them wait for.</summary>
+    public int ProcessId => connection.ProcessID;
+
     public Task CommitAsync(CancellationToken cancellationToken) => transaction.CommitAsync(cancellationToken);
 
     public Task RollbackAsync(CancellationToken cancellationToken) => transaction.RollbackAsync(cancellationToken);
