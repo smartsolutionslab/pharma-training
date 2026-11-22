@@ -61,10 +61,11 @@ public sealed partial class InvitationMailRequestedV1Consumer(
         // A lost race throws, so Wolverine retries and the retry reloads the pharmacy; nothing is mailed for it.
         await unitOfWork.CommitAsync(cancellationToken);
 
-        // A revoke (or accept, or end) that committed after this commit killed the link just stored. Read the status
-        // again from the store, no-tracking, so the read sees what others committed and not this run's own copy; only
-        // a revoke between this read and the server's acceptance of the mail still reaches the invitee (docs/adr/0004).
-        if (!await IsStillInvitedAsync(pharmacy.Id, membership, cancellationToken))
+        // A revoke, accept, end or renewal that committed after this commit killed the link just stored. Read the
+        // membership again from the store, no-tracking, so the read sees what others committed and not this run's own
+        // copy, and send only while it is still invited with this run's hash; only a change between this read and the
+        // server's acceptance of the mail still reaches the invitee (docs/adr/0004).
+        if (!await StillHoldsThisLinkAsync(pharmacy.Id, membership, InvitationTokenHash.Of(token), cancellationToken))
         {
             ClosedBeforeSend(logger, message.MembershipId);
             return;
@@ -73,11 +74,11 @@ public sealed partial class InvitationMailRequestedV1Consumer(
         await mails.SendAsync(mail, cancellationToken);
     }
 
-    private async Task<bool> IsStillInvitedAsync(PharmacyId pharmacy, MembershipId membership, CancellationToken cancellationToken)
+    private async Task<bool> StillHoldsThisLinkAsync(PharmacyId pharmacy, MembershipId membership, InvitationTokenHash issued, CancellationToken cancellationToken)
     {
         var stored = await pharmacies.FindAsync(pharmacy, cancellationToken);
         return stored.HasValue
-            && stored.Value.Memberships.Any(m => m.Id == membership && m.Status == MembershipStatus.Invited);
+            && stored.Value.Memberships.Any(m => m.Id == membership && m.Status == MembershipStatus.Invited && m.TokenHash == issued);
     }
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "No pharmacy holds membership {Membership}; its invitation mail is dropped.")]
@@ -86,7 +87,7 @@ public sealed partial class InvitationMailRequestedV1Consumer(
     [LoggerMessage(Level = LogLevel.Information, Message = "The invitation mail of membership {Membership} is dropped: {Code}.")]
     private static partial void NotOpen(ILogger logger, string code, Guid membership);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "The invitation of membership {Membership} closed after its link was issued; its mail is dropped.")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "The invitation of membership {Membership} closed or was renewed after its link was issued; its mail is dropped.")]
     private static partial void ClosedBeforeSend(ILogger logger, Guid membership);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "The invitation mail of membership {Membership} arrived after the invitation ran out and is dropped: {Code}.")]
