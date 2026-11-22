@@ -18,6 +18,13 @@ public sealed class AddFileChapterHandler(ICourseVersionStore versions, IEditori
             return Failure(CourseVersionFailures.NotFound(command.Version.Value));
         }
 
+        // The version is checked before the storage is asked: a version that takes no chapter needs no look at a blob.
+        var accepts = found.Value.AcceptsUploads();
+        if (accepts.IsFailure)
+        {
+            return Failure(CourseVersionFailures.From(accepts.Error));
+        }
+
         var accepted = await ChapterUploads.AcceptAsync(blobs, command.File, command.Version, command.Kind, cancellationToken);
         if (accepted.IsFailure)
         {

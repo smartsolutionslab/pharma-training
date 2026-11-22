@@ -18,9 +18,22 @@ public sealed class ReplaceFileChapterHandler(ICourseVersionStore versions, IEdi
             return Failure(CourseVersionFailures.NotFound(command.Version.Value));
         }
 
+        // The version and the chapter are checked before the storage is asked, in the order ReplaceChapter checks them:
+        // a version that is no draft, then a chapter it does not hold.
+        var accepts = found.Value.AcceptsUploads();
+        if (accepts.IsFailure)
+        {
+            return Failure(CourseVersionFailures.From(accepts.Error));
+        }
+
+        if (found.Value.Chapters.SingleOrDefault(chapter => chapter.Id == command.Chapter) is not { } current)
+        {
+            return Failure(CourseVersionFailures.From(CourseVersionErrors.ChapterNotFound(command.Version, command.Chapter)));
+        }
+
         // A chapter that keeps its file of the same kind needs no new upload: a chapter copied into this version names
         // its file under the version it was copied from, and that file was checked when it was first recorded.
-        var keepsItsFile = found.Value.Chapters.Any(chapter => chapter.Id == command.Chapter && chapter.Kind == command.Kind && chapter.File == command.File);
+        var keepsItsFile = current.Kind == command.Kind && current.File == command.File;
         if (!keepsItsFile)
         {
             var accepted = await ChapterUploads.AcceptAsync(blobs, command.File, command.Version, command.Kind, cancellationToken);
