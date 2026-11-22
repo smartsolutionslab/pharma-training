@@ -59,7 +59,7 @@ Starting the AppHost builds every project it runs, once; the edge, the services 
 
 ### Blob storage
 
-The AppHost runs Azurite, the Azure Storage emulator, as the resource `storage`, with a container per module (`<module>-blobs`, named after the module); each service reads only its own, as the connection string `blobs`, and signs short-lived upload and read URLs for it with the emulator's account key (`IBlobUrls`, docs/adr/0002). The web app's origin, `http://localhost:5173`, may `PUT` and `GET` with those URLs straight from the browser: the AppHost sets that CORS rule on the emulator when it starts. Signing in a deployed account, where Aspire disables the account key, is a separate decision (keyless signing).
+The AppHost runs Azurite, the Azure Storage emulator, as the resource `storage`, with a container per module (`<module>-blobs`, named after the module); each service reads only its own, as the connection string `blobs`, and signs short-lived upload and read URLs for it with the emulator's account key (`IBlobUrls`, docs/adr/0002). The web app's origin, `http://localhost:5173`, may `PUT` and `GET` with those URLs straight from the browser: the AppHost sets that CORS rule on the emulator when it starts. Deployed, the account has no key (shared-key access is off): each service signs with a user delegation key under its own managed identity, which may use its own container alone, and the account allows the edge's origin with the same rule.
 
 ### Local users
 
