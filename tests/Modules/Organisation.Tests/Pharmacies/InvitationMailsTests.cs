@@ -1,5 +1,5 @@
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Mail;
-using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Reactions;
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Consumers;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Tests.Pharmacies;

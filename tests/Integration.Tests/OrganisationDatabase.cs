@@ -230,8 +230,8 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         {
             await using var command = new NpgsqlCommand(
                 """
-                SELECT id, received_at, attempts, convert_from(body, 'UTF8') FROM wolverine.wolverine_incoming_envelopes
-                WHERE message_type = @type AND convert_from(body, 'UTF8') LIKE '%' || @membership || '%'
+                SELECT id, received_at, attempts, body FROM wolverine.wolverine_incoming_envelopes
+                WHERE message_type = @type AND position(convert_to(@membership, 'UTF8') in body) > 0
                 """,
                 connection);
             command.Parameters.AddWithValue("type", MailRequestType);
@@ -240,7 +240,7 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
             {
                 if (await reader.ReadAsync(cancellationToken))
                 {
-                    var envelope = new MailRequestEnvelope(reader.GetGuid(0), reader.GetString(1), reader.GetInt32(2), reader.GetString(3));
+                    var envelope = new MailRequestEnvelope(reader.GetGuid(0), reader.GetString(1), reader.GetInt32(2), MessageJson(reader.GetFieldValue<byte[]>(3)));
                     if (envelope.Attempts >= minimumAttempts)
                     {
                         return envelope;
@@ -259,8 +259,8 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
 
     /// <summary>
     /// Polls the service's dead letters (<c>wolverine.wolverine_dead_letters</c>) until it holds the mail request of the
-    /// membership, and answers the row: its id, its exception message, its body as text and the whole row as JSON text
-    /// with the body as text. Fails the test when there is none within <paramref name="within"/>.
+    /// membership, and answers the row: its id, its exception message, its message's JSON and the whole row as JSON text
+    /// with the body escaped. Fails the test when there is none within <paramref name="within"/>.
     /// </summary>
     public async Task<MailRequestDeadLetter> MailRequestDeadLetterAsync(Guid membership, TimeSpan within, CancellationToken cancellationToken)
     {
@@ -270,10 +270,10 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         {
             await using var command = new NpgsqlCommand(
                 """
-                SELECT id, exception_message, convert_from(body, 'UTF8'),
-                       (to_jsonb(dead_letter) - 'body' || jsonb_build_object('body', convert_from(dead_letter.body, 'UTF8')))::text
+                SELECT id, exception_message, body,
+                       (to_jsonb(dead_letter) - 'body' || jsonb_build_object('body', encode(dead_letter.body, 'escape')))::text
                 FROM wolverine.wolverine_dead_letters dead_letter
-                WHERE message_type = @type AND convert_from(body, 'UTF8') LIKE '%' || @membership || '%'
+                WHERE message_type = @type AND position(convert_to(@membership, 'UTF8') in body) > 0
                 """,
                 connection);
             command.Parameters.AddWithValue("type", MailRequestType);
@@ -285,7 +285,7 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
                     return new MailRequestDeadLetter(
                         reader.GetGuid(0),
                         await reader.IsDBNullAsync(1, cancellationToken) ? string.Empty : reader.GetString(1),
-                        reader.GetString(2),
+                        MessageJson(reader.GetFieldValue<byte[]>(2)),
                         reader.GetString(3));
                 }
             }
@@ -306,6 +306,18 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         await using var command = new NpgsqlCommand("UPDATE wolverine.wolverine_dead_letters SET replayable = true WHERE id = @id", connection);
         command.Parameters.AddWithValue("id", deadLetter);
         (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1);
+    }
+
+    /// <summary>
+    /// The message's JSON inside a stored envelope. Wolverine stores the whole envelope in <c>body</c>
+    /// (<c>EnvelopeSerializer</c>: length-prefixed headers, then the message's bytes), so it is no UTF-8 text as a whole.
+    /// </summary>
+    private static string MessageJson(byte[] envelope)
+    {
+        var start = Array.IndexOf(envelope, (byte)'{');
+        var end = Array.LastIndexOf(envelope, (byte)'}');
+        (start >= 0 && end > start).ShouldBeTrue("the stored envelope holds no JSON message");
+        return Encoding.UTF8.GetString(envelope, start, end - start + 1);
     }
 
     private async Task<JsonDocument> ClaimsOfAsync(string user)
@@ -332,10 +344,10 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         }
     }
 
-    /// <summary>An envelope of the service's durable inbox as the tests read it: its body as text.</summary>
+    /// <summary>An envelope of the service's durable inbox as the tests read it: its message's JSON.</summary>
     internal sealed record MailRequestEnvelope(Guid Id, string ReceivedAt, int Attempts, string Body);
 
-    /// <summary>A dead letter as the tests read it: its body as text, and the whole row as JSON text.</summary>
+    /// <summary>A dead letter as the tests read it: its message's JSON, and the whole row as JSON text with the body escaped.</summary>
     internal sealed record MailRequestDeadLetter(Guid Id, string ExceptionMessage, string Body, string Row);
 
     /// <summary>A membership row as the tests read it back.</summary>
