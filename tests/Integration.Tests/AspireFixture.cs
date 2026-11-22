@@ -4,25 +4,33 @@ using System.Text.Json.Serialization;
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Testing;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 [assembly: AssemblyFixture(typeof(SmartSolutionsLab.PharmaTraining.Integration.Tests.AspireFixture))]
 
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 
 /// <summary>The whole application, started once per test run on empty containers.</summary>
-public sealed class AspireFixture : IAsyncLifetime
+public sealed partial class AspireFixture : IAsyncLifetime
 {
-    // Everything starts at once: the containers, a migration runner and a host per module. On a 4-vCPU CI runner that took
-    // 3.5 to over 5 minutes on 2026-11-21, growing with every module; 5 minutes failed whole runs before any test ran.
-    private static readonly TimeSpan StartupTimeout = TimeSpan.FromMinutes(10);
+    // Twice the largest start-up of the green CI runs listed in #134 (204 s), rounded up to the minute. Before #126 the
+    // edge and every service host were rebuilt at each start, which took 3.5 to over 5 minutes; now every project starts
+    // from the AppHost's build. The fixture logs each run's start-up beside this limit.
+    private static readonly TimeSpan StartupTimeout = TimeSpan.FromMinutes(7);
 
     private DistributedApplication? app;
+
+    private ILogger? logger;
+
+    private TimeSpan startedIn;
 
     public DistributedApplication App => app ?? throw new InvalidOperationException("The application has not started.");
 
     public async ValueTask InitializeAsync()
     {
         using var timeout = new CancellationTokenSource(StartupTimeout);
+        var started = TimeProvider.System.GetTimestamp();
         var builder = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AppHost>(timeout.Token);
 
         // Tests start from empty containers: never a developer's data, never a password a volume remembers.
@@ -42,6 +50,11 @@ public sealed class AspireFixture : IAsyncLifetime
         app = await builder.BuildAsync(timeout.Token);
         await app.StartAsync(timeout.Token);
         await app.ResourceNotifications.WaitForResourceHealthyAsync("host", timeout.Token);
+
+        // In the run's log, so a slow start shows how close it came to the limit before it ever reaches it.
+        startedIn = TimeProvider.System.GetElapsedTime(started);
+        logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger<AspireFixture>();
+        LogStarted(logger, startedIn, StartupTimeout);
     }
 
     public HttpClient CreateHostClient() => App.CreateHttpClient("host");
@@ -78,9 +91,18 @@ public sealed class AspireFixture : IAsyncLifetime
     {
         if (app is not null)
         {
+            // Again at the end, where a CI log's tail (all a job-log viewer may show) still has it.
+            if (logger is not null)
+            {
+                LogStarted(logger, startedIn, StartupTimeout);
+            }
+
             await app.DisposeAsync();
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "The application started in {Elapsed} (limit {StartupTimeout})")]
+    private static partial void LogStarted(ILogger logger, TimeSpan elapsed, TimeSpan startupTimeout);
 
     private sealed record TokenResponse([property: JsonPropertyName("access_token")] string AccessToken);
 }

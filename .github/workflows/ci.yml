@@ -14,6 +14,8 @@ concurrency:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    # Measured (#126): green runs took at most 12.0 minutes, failing ones 10.8; twice the longest, with room.
+    timeout-minutes: 25
     # The integration tests start the AppHost through Aspire's testing host.
     # Aspire's orchestrator also asks podman whether it runs unless the runtime is named; GitHub's runners carry podman,
     # and that call can hang past the job and fail the AppHost's dependency check.
@@ -41,6 +43,8 @@ jobs:
 
   frontend:
     runs-on: ubuntu-latest
+    # Measured (#126): runs took at most 3.5 minutes.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
@@ -65,6 +69,8 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
+    # Measured (#126): green runs took at most 13.0 minutes, failing ones with Playwright's retries 20.4.
+    timeout-minutes: 30
     # The end-to-end tests start the AppHost.
     # Aspire's orchestrator also asks podman whether it runs unless the runtime is named; GitHub's runners carry podman,
     # and that call can hang past the job and fail the AppHost's dependency check.

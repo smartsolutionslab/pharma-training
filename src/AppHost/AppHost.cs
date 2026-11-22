@@ -43,7 +43,7 @@ var azureOpenAIEndpoint = builder.AddParameter("azure-openai-endpoint", () => bu
 var azureOpenAIDeployment = builder.AddParameter("azure-openai-deployment", "gpt-5-mini", publishValueAsDefault: true);
 var azureOpenAIApiKey = builder.AddParameter("azure-openai-api-key", () => builder.Configuration["Parameters:azure-openai-api-key"] ?? string.Empty, publishValueAsDefault: false, secret: true);
 
-var host = builder.AddProject("host", "../Edge/Edge.csproj")
+var host = builder.AddProject<Projects.Edge>("host")
     .WithHttpHealthCheck("/health")
     .WithReference(keycloak.GetEndpoint("http"))
     .WaitFor(keycloak)
@@ -63,7 +63,7 @@ foreach (var (module, project) in builder.ServiceHosts())
         .WaitFor(database);
 
     // Every service's launch profile names the same port; under the AppHost each gets one of its own.
-    var service = builder.AddProject(module, project)
+    var service = builder.AddServiceHost(module, project)
         .WithEndpoint("http", endpoint => endpoint.Port = null)
         .WithHttpHealthCheck("/health")
         .WaitForCompletion(migrations)
