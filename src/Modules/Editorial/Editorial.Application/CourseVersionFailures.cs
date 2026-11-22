@@ -26,6 +26,21 @@ public static class CourseVersionFailures
 
     public static ApiError IdentityIncomplete() => new IdentityIncomplete();
 
+    // Red-test stubs for #15 (task A3): each answers NotYetImplemented until B4 and B5 give it its own record and code.
+    public static ApiError InvalidUploadKind() => new NotYetImplemented();
+
+    public static ApiError InvalidChapterKind() => new NotYetImplemented();
+
+    public static ApiError ChapterContentDoesNotMatchKind() => new NotYetImplemented();
+
+    public static ApiError InvalidChapterFile() => new NotYetImplemented();
+
+    public static ApiError InvalidVideoDuration() => new NotYetImplemented();
+
+    public static ApiError UploadNotFound() => new NotYetImplemented();
+
+    public static ApiError UploadNotAccepted() => new NotYetImplemented();
+
     public static ApiError NotFound(Guid id) => new CourseVersionNotFound(id);
 
     /// <summary>A save that lost a race: another change to the same version was saved since this one loaded it.</summary>

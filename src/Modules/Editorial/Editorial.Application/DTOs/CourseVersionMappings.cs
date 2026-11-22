@@ -5,12 +5,13 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.DTOs;
 /// <summary>A course version as the module's endpoints answer it, with its chapters and questions numbered in their order.</summary>
 public static class CourseVersionMappings
 {
+    /// <summary>Red-test stub for #15 (task A3): a chapter's file and duration are left out until B6 maps them.</summary>
     public static EditorialCourseVersionDto ToDto(this CourseVersion version)
     {
         Ensure.That(version).IsNotNull();
 
         List<EditorialChapterDto> chapters = [.. version.Chapters.Select((chapter, index) =>
-            new EditorialChapterDto(chapter.Id.Value, index + 1, chapter.Title.Value, chapter.Kind.ToDto(), chapter.Text?.Value))];
+            new EditorialChapterDto(chapter.Id.Value, index + 1, chapter.Title.Value, chapter.Kind.ToDto(), chapter.Text?.Value, File: null, DurationSeconds: null))];
         List<EditorialQuestionDto> questions = [.. version.Questions.Select((question, index) => question.ToEditorialQuestionDto(index + 1))];
         return new EditorialCourseVersionDto(version.Id.Value, version.Course.Value, version.Number.Value, version.Title.Value, version.Status.ToDto(), chapters, questions);
     }
