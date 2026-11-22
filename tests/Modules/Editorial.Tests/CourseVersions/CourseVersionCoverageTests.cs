@@ -423,8 +423,8 @@ public class CourseVersionCoverageTests
         var draft = Draft();
         var inReview = InReview();
 
-        var fromDraft = draft.ReturnToDraft();
-        var fromReview = inReview.ReturnToDraft();
+        var fromDraft = draft.ReturnToDraft(Reviewer, Now);
+        var fromReview = inReview.ReturnToDraft(Reviewer, Now);
 
         fromDraft.Error.ShouldBe(new NotInReview(draft.Id, CourseVersionStatus.Draft));
         fromDraft.Error.Code.ShouldBe("editorial.not-in-review");
