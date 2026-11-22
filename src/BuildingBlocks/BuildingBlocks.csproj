@@ -16,6 +16,8 @@
     <PackageReference Include="Marten" />
     <!-- Signs short-lived upload and read URLs for a module's own blob container (src/BuildingBlocks/Storage); no module names it. -->
     <PackageReference Include="Azure.Storage.Blobs" />
+    <!-- Published, a service signs and reads under its own managed identity: shared-key access is off (docs/adr/0002). -->
+    <PackageReference Include="Azure.Identity" />
     <ProjectReference Include="../BuildingBlocks.EventSourcing/BuildingBlocks.EventSourcing.csproj" />
     <ProjectReference Include="../BuildingBlocks.Domain/BuildingBlocks.Domain.csproj" />
   </ItemGroup>
