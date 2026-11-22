@@ -78,6 +78,7 @@ export const de = {
       title: 'Redaktion',
       details: {
         version: { title: 'Schulungsversion' },
+        test: { title: 'Test' },
       },
     },
   },
@@ -135,6 +136,7 @@ export const de = {
       loadFailed: 'Die Version konnte nicht geladen werden.',
       notFound: 'Diese Version gibt es nicht.',
       backToInbox: 'Zurück zum Eingang',
+      openTest: 'Test: Vorgaben und Fragen',
       readOnly: {
         InReview: 'Diese Version ist in Prüfung und kann nicht bearbeitet werden.',
         Published:
@@ -206,6 +208,10 @@ export const de = {
       cancel: 'Upload abbrechen',
       cancelled: 'Der Upload wurde abgebrochen; das Kapitel wurde nicht gespeichert.',
       failed: 'Der Upload ist fehlgeschlagen. Versuchen Sie es erneut.',
+    },
+    test: {
+      heading: 'Test zu „{title}“',
+      backToVersion: 'Zurück zur Version',
     },
   },
   samples: {

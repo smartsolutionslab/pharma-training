@@ -72,6 +72,7 @@ export const en: MessageSchema = {
       title: 'Editorial',
       details: {
         version: { title: 'Course version' },
+        test: { title: 'Test' },
       },
     },
   },
@@ -129,6 +130,7 @@ export const en: MessageSchema = {
       loadFailed: 'The version could not be loaded.',
       notFound: 'This version does not exist.',
       backToInbox: 'Back to the inbox',
+      openTest: 'Test: blueprint and questions',
       readOnly: {
         InReview: 'This version is in review and cannot be edited.',
         Published: 'This version is published and can no longer be changed. Make changes in a new version.',
@@ -197,6 +199,10 @@ export const en: MessageSchema = {
       cancel: 'Cancel upload',
       cancelled: 'The upload was cancelled; the chapter was not saved.',
       failed: 'The upload failed. Try again.',
+    },
+    test: {
+      heading: 'Test for “{title}”',
+      backToVersion: 'Back to the version',
     },
   },
   samples: {
