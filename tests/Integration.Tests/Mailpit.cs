@@ -48,6 +48,15 @@ internal sealed class Mailpit(AspireFixture aspire, TimeSpan? timeout = null)
         return mails;
     }
 
+    /// <summary>The number of mails Mailpit holds to the address now, without waiting for any.</summary>
+    public async Task<int> CountToAsync(string address, CancellationToken cancellationToken)
+    {
+        using var client = new HttpClient { BaseAddress = aspire.App.GetEndpoint("mailpit", "http") };
+        var search = new Uri($"/api/v1/search?query={Uri.EscapeDataString($"to:{address}")}", UriKind.Relative);
+        var result = await client.GetFromJsonAsync<SearchResult>(search, cancellationToken);
+        return result?.Messages.Count ?? 0;
+    }
+
     /// <summary>A mail as the tests read it.</summary>
     internal sealed record CaughtMail(string Subject, string Text, string From, IReadOnlyList<string> To, DateTimeOffset Created);
 

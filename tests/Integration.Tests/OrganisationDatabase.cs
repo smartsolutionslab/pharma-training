@@ -299,6 +299,25 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         }
     }
 
+    /// <summary>
+    /// The exception message of the membership's dead-lettered mail request, or null while
+    /// <c>wolverine.wolverine_dead_letters</c> holds none for it; asks once, without waiting.
+    /// </summary>
+    public async Task<string?> MailRequestDeadLetterReasonAsync(Guid membership, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT coalesce(exception_message, '') FROM wolverine.wolverine_dead_letters
+            WHERE message_type = @type AND position(convert_to(@membership, 'UTF8') in body) > 0
+            LIMIT 1
+            """,
+            connection);
+        command.Parameters.AddWithValue("type", MailRequestType);
+        command.Parameters.AddWithValue("membership", membership.ToString());
+        return (string?)await command.ExecuteScalarAsync(cancellationToken);
+    }
+
     /// <summary>Marks the dead letter replayable, so Wolverine delivers it again.</summary>
     public async Task ReplayAsync(Guid deadLetter, CancellationToken cancellationToken)
     {
