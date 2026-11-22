@@ -1,6 +1,9 @@
 import type {
   EditorialChapterKind,
   EditorialCourseVersionStatus,
+  EditorialQuestionProvenance,
+  EditorialQuestionReview,
+  EditorialQuestionType,
   OrganisationJobFunction,
   OrganisationMembershipRole,
 } from '@/api/generated';
@@ -40,6 +43,18 @@ export const de = {
       Pdf: 'PDF',
       Video: 'Video',
     } satisfies Record<EditorialChapterKind, string>,
+    questionType: {
+      SingleChoice: 'Single Choice',
+      MultipleChoice: 'Multiple Choice',
+    } satisfies Record<EditorialQuestionType, string>,
+    questionProvenance: {
+      Human: 'Von Hand geschrieben',
+      AiDrafted: 'KI-entworfen',
+    } satisfies Record<EditorialQuestionProvenance, string>,
+    questionReview: {
+      Unreviewed: 'Ungeprüft',
+      Approved: 'Geprüft',
+    } satisfies Record<EditorialQuestionReview, string>,
   },
   auth: {
     signedIn: 'Angemeldet',
@@ -226,6 +241,28 @@ export const de = {
         questionsInvalid: 'Ein Test hat {min} bis {max} Fragen.',
         passingScoreInvalid: 'Die Bestehensgrenze liegt zwischen {min} und {max} Prozent.',
         validityInvalid: 'Die Gültigkeit liegt zwischen {min} und {max} Monaten.',
+      },
+      summary: {
+        reviewed: '{reviewed} von einer Frage geprüft | {reviewed} von {count} Fragen geprüft',
+        held: 'Der Test hat {held} von einer verlangten Frage. | Der Test hat {held} von {count} verlangten Fragen.',
+        tooMany:
+          'Entfernen Sie eine Frage, damit der Test den Vorgaben entspricht. | Entfernen Sie {count} Fragen, damit der Test den Vorgaben entspricht.',
+        unreviewed: 'Eine Frage ist noch ungeprüft. | {count} Fragen sind noch ungeprüft.',
+        allReviewed: 'Alle Fragen sind geprüft.',
+      },
+      questions: {
+        title: 'Fragen',
+        empty: 'Dieser Test hat noch keine Fragen.',
+        noChapters: 'Jede Frage bezieht sich auf ein Kapitel. Legen Sie zuerst ein Kapitel an.',
+        add: 'Frage hinzufügen',
+        position: 'Frage {position}',
+        chapter: 'Kapitel: {title}',
+        unknownChapter: 'Kapitel: unbekannt',
+        correct: 'Richtig',
+        incorrect: 'Falsch',
+        provenance: {
+          unreviewed: '{origin}, noch nicht geprüft',
+        },
       },
     },
   },

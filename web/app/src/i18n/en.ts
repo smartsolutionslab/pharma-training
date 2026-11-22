@@ -34,6 +34,18 @@ export const en: MessageSchema = {
       Pdf: 'PDF',
       Video: 'Video',
     },
+    questionType: {
+      SingleChoice: 'Single choice',
+      MultipleChoice: 'Multiple choice',
+    },
+    questionProvenance: {
+      Human: 'Written by hand',
+      AiDrafted: 'AI-drafted',
+    },
+    questionReview: {
+      Unreviewed: 'Unreviewed',
+      Approved: 'Approved',
+    },
   },
   auth: {
     signedIn: 'Signed in',
@@ -217,6 +229,27 @@ export const en: MessageSchema = {
         questionsInvalid: 'A test has {min} to {max} questions.',
         passingScoreInvalid: 'The passing score is between {min} and {max} percent.',
         validityInvalid: 'Validity is between {min} and {max} months.',
+      },
+      summary: {
+        reviewed: '{reviewed} of one question approved | {reviewed} of {count} questions approved',
+        held: 'The test has {held} of the one question required. | The test has {held} of the {count} questions required.',
+        tooMany: 'Remove one question to match the blueprint. | Remove {count} questions to match the blueprint.',
+        unreviewed: 'One question is still unreviewed. | {count} questions are still unreviewed.',
+        allReviewed: 'Every question is approved.',
+      },
+      questions: {
+        title: 'Questions',
+        empty: 'This test has no questions yet.',
+        noChapters: 'Each question is about a chapter. Add a chapter first.',
+        add: 'Add a question',
+        position: 'Question {position}',
+        chapter: 'Chapter: {title}',
+        unknownChapter: 'Chapter: unknown',
+        correct: 'Correct',
+        incorrect: 'Incorrect',
+        provenance: {
+          unreviewed: '{origin}, not yet approved',
+        },
       },
     },
   },
