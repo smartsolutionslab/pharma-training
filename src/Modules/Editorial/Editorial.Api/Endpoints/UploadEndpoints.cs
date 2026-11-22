@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Api;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
@@ -7,6 +8,7 @@ using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Queries.Req
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Net.Http.Headers;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Api.Endpoints;
 
@@ -38,12 +40,13 @@ public sealed class UploadEndpoints : IEndpoint
     }
 
     /// <summary>
-    /// The body, or null when it is no JSON or names a kind that is no upload's. A body without a kind reads as 0, which
-    /// is no kind either; the converter also reads numbers, so an undefined one is left to the caller's check.
+    /// The body, or null when it is no JSON, is in a charset the host does not know, or names a kind that is no upload's.
+    /// A body without a kind reads as 0, which is no kind either; the converter also reads numbers, so an undefined one is
+    /// left to the caller's check.
     /// </summary>
     private static async Task<EditorialUploadRequest?> ReadAsync(HttpRequest http, CancellationToken cancellationToken)
     {
-        if (!http.HasJsonContentType())
+        if (!http.HasJsonContentType() || !HasKnownCharset(http))
         {
             return null;
         }
@@ -55,6 +58,28 @@ public sealed class UploadEndpoints : IEndpoint
         catch (JsonException)
         {
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Whether the content type names no charset or one the host can decode. Reading the body looks the charset up the
+    /// same way and throws an <see cref="InvalidOperationException"/> for one it does not know, which would answer 500.
+    /// </summary>
+    private static bool HasKnownCharset(HttpRequest http)
+    {
+        var charset = HeaderUtilities.RemoveQuotes(MediaTypeHeaderValue.Parse(http.ContentType).Charset);
+        if (!charset.HasValue || charset.Length == 0)
+        {
+            return true;
+        }
+
+        try
+        {
+            return Encoding.GetEncoding(charset.ToString()) is not null;
+        }
+        catch (ArgumentException)
+        {
+            return false;
         }
     }
 }
