@@ -74,7 +74,9 @@ Keycloak imports these from `src/AppHost/realms/realm.json`, development only. E
 - `editor`: the realm role `editor`, the platform's editors (the Redaktion), which `editorial.edit` requires.
 - `owner`, `employee-a`, `employee-b`: no realm role; their pharmacy roles (owner, employee) come from the Organisation module, not from Keycloak.
 
-Keycloak imports the realm only when it does not exist yet, and keeps it in a data volume. After `realm.json` gains a role or a user, an existing local Keycloak keeps the old realm: stop the AppHost, find the volume with `docker volume ls` (its name contains `keycloak`), remove it with `docker volume rm <name>`, and start the AppHost again.
+The development realm allows self-registration: Keycloak's login page has a Register link, and an account created there (or through the admin API) must verify its address before it can sign in. Keycloak mails the verification link to Mailpit (http://localhost:8025). The imported users are not asked to verify, `unverified` (whose address Keycloak has not verified) included. The published realm (#114) may allow registration only once #158 (limits on invitation mail) is merged (docs/adr/0010).
+
+Keycloak imports the realm only when it does not exist yet, and keeps it in a data volume. After `realm.json` changes (a role, a user, a realm setting such as registration), an existing local Keycloak keeps the old realm: stop the AppHost, find the volume with `docker volume ls` (its name contains `keycloak`), remove it with `docker volume rm <name>`, and start the AppHost again.
 
 ## Test
 
