@@ -6,7 +6,7 @@ async function openEditorial(page: Page) {
   await page.getByLabel('Username or email').fill('editor');
   await page.getByLabel('Password', { exact: true }).fill('editor');
   await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.getByText('Signed in as editor')).toBeVisible();
+  await expect(page.getByText('Angemeldet als editor')).toBeVisible();
   await page.goto('/editorial');
   await expect(page.getByRole('heading', { name: 'Samples' })).toBeVisible();
 }

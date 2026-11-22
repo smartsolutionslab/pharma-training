@@ -8,7 +8,7 @@ async function openCertification(page: Page) {
   await page.getByLabel('Username or email').fill('developer');
   await page.getByLabel('Password', { exact: true }).fill('developer');
   await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.getByText('Signed in as developer')).toBeVisible();
+  await expect(page.getByText('Angemeldet als developer')).toBeVisible();
   await page.goto('/certification');
   await expect(page.getByRole('heading', { name: 'Samples' })).toBeVisible();
 }

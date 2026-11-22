@@ -9,7 +9,7 @@ async function signIn(page: Page) {
   await page.getByLabel('Username or email').fill('developer');
   await page.getByLabel('Password', { exact: true }).fill('developer');
   await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.getByText('Signed in as developer')).toBeVisible();
+  await expect(page.getByText('Angemeldet als developer')).toBeVisible();
 }
 
 test('a signed-in user registers a pharmacy and works in it, after a reload too', async ({ page }) => {
