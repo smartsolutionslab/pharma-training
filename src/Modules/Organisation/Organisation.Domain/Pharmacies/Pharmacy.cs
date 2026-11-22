@@ -107,12 +107,24 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
     /// <summary>Issues the link of an open invitation that has not run out: the token's hash replaces any earlier one. Answers its expiry.</summary>
     public Result<Timestamp, DomainError> IssueInvitationLink(MembershipId membership, InvitationToken token, Timestamp now)
     {
-        // Red-first stub (T1): answers success and changes nothing.
         Ensure.That(membership).IsNotNull();
         Ensure.That(token).IsNotNull();
         Ensure.That(now).IsNotNull();
-        _ = Find(membership);
-        return Success(now);
+
+        if (Find(membership) is not { Status: MembershipStatus.Invited, InvitationExpiresAt: { } expiresAt } invited)
+        {
+            return Failure(PharmacyErrors.NoOpenInvitation(Id, membership));
+        }
+
+        // A link that would be dead on arrival is never issued; the manager renews a lapsed invitation.
+        if (expiresAt < now)
+        {
+            return Failure(PharmacyErrors.InvitationExpired(Id, membership));
+        }
+
+        invited.IssueLink(InvitationTokenHash.Of(token));
+        Raise(new InvitationLinkIssued(Id, membership));
+        return Success(expiresAt);
     }
 
     /// <param name="token">The secret from the invitation link.</param>

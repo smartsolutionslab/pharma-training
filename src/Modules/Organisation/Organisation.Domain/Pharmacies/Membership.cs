@@ -67,6 +67,9 @@ public sealed class Membership : Entity<MembershipId>
         Role = role;
     }
 
+    /// <summary>The link mailed now; an earlier link's hash matches nothing any more.</summary>
+    internal void IssueLink(InvitationTokenHash tokenHash) => TokenHash = tokenHash;
+
     internal void RenewInvitation(InvitationTokenHash tokenHash, Timestamp expiresAt)
     {
         TokenHash = tokenHash; // the old link's hash matches nothing any more
