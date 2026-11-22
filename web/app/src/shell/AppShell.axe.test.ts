@@ -9,6 +9,7 @@ import type { MyPharmacyDto, PagedResultOfMyPharmacyDto } from '@/api/generated'
 import App from '@/App.vue';
 import { signedInAsDeveloper } from '@/auth/signedInAsDeveloper';
 import { createAppRouter } from '@/router';
+import { t } from '@/i18n';
 
 // The user menu asks the host's /me for the name; here it answers at once.
 vi.mock('@/api/useCurrentUser', () => ({ useCurrentUser: () => computed(() => 'developer') }));
@@ -128,7 +129,7 @@ test('the collapsed sidebar leaves no accessibility violations axe can find', as
   const user = userEvent.setup();
   const container = await renderShell();
 
-  await user.click(within(screen.getByRole('banner')).getByRole('button', { name: 'Toggle Sidebar' }));
+  await user.click(within(screen.getByRole('banner')).getByRole('button', { name: t('ui.sidebar.toggle') }));
 
   expect(await axe(container)).toHaveNoViolations();
 });

@@ -3,6 +3,8 @@ import { cleanup, render, screen, waitFor } from '@testing-library/vue';
 import { afterEach, expect, test, vi } from 'vitest';
 import { createPinia } from 'pinia';
 import { createMemoryHistory } from 'vue-router';
+import { toast } from 'vue-sonner';
+import { setLanguage, t } from '@/i18n';
 import { signedInAsDeveloper } from './auth/signedInAsDeveloper';
 import App from './App.vue';
 import { createAppRouter } from './router';
@@ -38,6 +40,7 @@ vi.mock('@/shell/useMyPharmacies', async () => {
 // Without Vitest's globals, Testing Library does not unmount between tests by itself.
 afterEach(() => {
   cleanup();
+  toast.dismiss();
   Reflect.deleteProperty(document, 'startViewTransition');
 });
 
@@ -82,4 +85,29 @@ test('without the View Transitions API the Home link goes to the start page as b
 
   await waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/'));
   expect(screen.getByRole('heading', { name: 'pharma-training' })).toBeInTheDocument();
+});
+
+// The toasts' region, and a toast's close button where one has it, are named in the language shown.
+test('the toasts are named in the language shown', async () => {
+  const router = createAppRouter(createMemoryHistory());
+  await router.push('/');
+  render(App, { global: { plugins: [router, createPinia(), signedInAsDeveloper] } });
+
+  // vue-sonner adds the hotkey that reaches the region to its name.
+  expect(screen.getByRole('region', { name: `${t('toasts.region')} alt+T` })).toBeInTheDocument();
+  expect(screen.getByRole('region', { name: 'Benachrichtigungen alt+T' })).toBeInTheDocument();
+  toast('Gespeichert.', { closeButton: true });
+  expect(await screen.findByRole('button', { name: t('toasts.close') })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Benachrichtigung schließen' })).toBeInTheDocument();
+});
+
+test('in English the toasts are named in English', async () => {
+  setLanguage('en-GB', { remember: false });
+  const router = createAppRouter(createMemoryHistory());
+  await router.push('/');
+  render(App, { global: { plugins: [router, createPinia(), signedInAsDeveloper] } });
+
+  expect(screen.getByRole('region', { name: 'Notifications alt+T' })).toBeInTheDocument();
+  toast('Saved.', { closeButton: true });
+  expect(await screen.findByRole('button', { name: 'Close notification' })).toBeInTheDocument();
 });

@@ -10,6 +10,7 @@ import App from '@/App.vue';
 import { type Auth, authKey } from '@/auth/useAuth';
 import { moduleRoutes } from '@/modules';
 import { createAppRouter } from '@/router';
+import { t } from '@/i18n';
 
 // The user menu has its own test; here it stands in, so this test checks the shell around it.
 vi.mock('@/auth/UserMenu.vue', async () => {
@@ -348,7 +349,7 @@ test('the breadcrumbs show a module the user may not see as its segment of the a
 
   await renderAt('/organisation/members', { roles: [] });
 
-  const breadcrumbs = within(screen.getByRole('navigation', { name: 'breadcrumb' }));
+  const breadcrumbs = within(screen.getByRole('navigation', { name: t('ui.breadcrumb.label') }));
   expect(breadcrumbs.getByRole('link', { name: 'organisation' })).toHaveAttribute('href', '/organisation');
   expect(breadcrumbs.queryByText('Organisation')).not.toBeInTheDocument();
   expect(breadcrumbs.getByText('members')).toHaveAttribute('aria-current', 'page');
@@ -360,17 +361,17 @@ test('the sidebar collapses from its trigger and opens again', async () => {
   const sidebar = () => document.querySelector('[data-slot="sidebar"]');
   expect(sidebar()).toHaveAttribute('data-state', 'expanded');
 
-  await user.click(within(screen.getByRole('banner')).getByRole('button', { name: 'Toggle Sidebar' }));
+  await user.click(within(screen.getByRole('banner')).getByRole('button', { name: t('ui.sidebar.toggle') }));
   await vi.waitFor(() => expect(sidebar()).toHaveAttribute('data-state', 'collapsed'));
 
-  await user.click(within(screen.getByRole('banner')).getByRole('button', { name: 'Toggle Sidebar' }));
+  await user.click(within(screen.getByRole('banner')).getByRole('button', { name: t('ui.sidebar.toggle') }));
   await vi.waitFor(() => expect(sidebar()).toHaveAttribute('data-state', 'expanded'));
 });
 
 test('on the start page the breadcrumbs name only it', async () => {
   await renderAt('/');
 
-  const breadcrumbs = within(screen.getByRole('navigation', { name: 'breadcrumb' }));
+  const breadcrumbs = within(screen.getByRole('navigation', { name: t('ui.breadcrumb.label') }));
   expect(breadcrumbs.getByText('Home')).toHaveAttribute('aria-current', 'page');
   expect(breadcrumbs.getByText('Home')).not.toHaveAttribute('href');
 });
@@ -379,7 +380,7 @@ test('on the start page the breadcrumbs name only it', async () => {
 test('the page the user is on is text in the breadcrumbs, not a second link to it', async () => {
   await renderAt('/reports');
 
-  const breadcrumbs = within(screen.getByRole('navigation', { name: 'breadcrumb' }));
+  const breadcrumbs = within(screen.getByRole('navigation', { name: t('ui.breadcrumb.label') }));
   expect(breadcrumbs.queryByRole('link', { name: 'Reports' })).not.toBeInTheDocument();
   expect(breadcrumbs.getByText('Reports')).toHaveAttribute('aria-current', 'page');
   expect(screen.getAllByRole('link', { name: 'Reports' })).toHaveLength(1);
@@ -388,7 +389,7 @@ test('the page the user is on is text in the breadcrumbs, not a second link to i
 test("the breadcrumbs lead from the start page to a module's page and below it", async () => {
   await renderAt('/reports/details');
 
-  const breadcrumbs = within(screen.getByRole('navigation', { name: 'breadcrumb' }));
+  const breadcrumbs = within(screen.getByRole('navigation', { name: t('ui.breadcrumb.label') }));
   expect(breadcrumbs.getByRole('link', { name: 'Home' })).toHaveAttribute('href', '/');
   expect(breadcrumbs.getByRole('link', { name: 'Reports' })).toHaveAttribute('href', '/reports');
   expect(breadcrumbs.getByText('details')).toHaveAttribute('aria-current', 'page');
@@ -506,7 +507,7 @@ test('a page below a module for editors is there for an editor of no pharmacy', 
 test("the breadcrumbs name a page below a module by its title, after the module's", async () => {
   await renderAt('/organisation/register');
 
-  const breadcrumbs = within(screen.getByRole('navigation', { name: 'breadcrumb' }));
+  const breadcrumbs = within(screen.getByRole('navigation', { name: t('ui.breadcrumb.label') }));
   expect(breadcrumbs.getByRole('link', { name: 'Home' })).toHaveAttribute('href', '/');
   expect(breadcrumbs.getByRole('link', { name: 'Organisation' })).toHaveAttribute('href', '/organisation');
   expect(breadcrumbs.getByText('Register a pharmacy')).toHaveAttribute('aria-current', 'page');
@@ -519,7 +520,7 @@ test('the breadcrumbs name a page the user may see by its title, and its module 
 
   await renderAt('/organisation/register', { roles: [] });
 
-  const breadcrumbs = within(screen.getByRole('navigation', { name: 'breadcrumb' }));
+  const breadcrumbs = within(screen.getByRole('navigation', { name: t('ui.breadcrumb.label') }));
   expect(breadcrumbs.queryByRole('link', { name: /organisation/i })).not.toBeInTheDocument();
   const module = breadcrumbs.getByText('Organisation');
   expect(module.closest('a')).toBeNull();
@@ -533,7 +534,7 @@ test('the breadcrumbs name a page below a module by its title only where the use
   answer([dom]);
   const { router } = await renderAt('/reports/review', { roles: [] });
 
-  const breadcrumbs = within(screen.getByRole('navigation', { name: 'breadcrumb' }));
+  const breadcrumbs = within(screen.getByRole('navigation', { name: t('ui.breadcrumb.label') }));
   expect(breadcrumbs.getByRole('link', { name: 'Reports' })).toHaveAttribute('href', '/reports');
   expect(breadcrumbs.getByText('review')).toHaveAttribute('aria-current', 'page');
   expect(breadcrumbs.queryByText('Review reports')).not.toBeInTheDocument();

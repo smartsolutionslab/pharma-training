@@ -10,6 +10,7 @@ import App from '@/App.vue';
 import { type Auth, authKey } from '@/auth/useAuth';
 import { SIDEBAR_MOBILE_BREAKPOINT } from '@/components/ui/sidebar/utils';
 import { createAppRouter } from '@/router';
+import { t } from '@/i18n';
 
 // The user menu has its own test; here it stands in, so this test checks the shell around it.
 vi.mock('@/auth/UserMenu.vue', async () => {
@@ -128,8 +129,9 @@ test('below 768 px the sidebar is a sheet the trigger opens, which closes once t
   const router = await renderShell();
   expect(screen.queryByRole('navigation', { name: 'Modules' })).not.toBeInTheDocument();
 
-  await typing.click(within(screen.getByRole('banner')).getByRole('button', { name: 'Toggle Sidebar' }));
-  const sheet = await screen.findByRole('dialog', { name: 'Sidebar' });
+  await typing.click(within(screen.getByRole('banner')).getByRole('button', { name: t('ui.sidebar.toggle') }));
+  const sheet = await screen.findByRole('dialog', { name: t('ui.sidebar.title') });
+  expect(sheet).toHaveAccessibleDescription(t('ui.sidebar.description'));
   expect(within(sheet).getByRole('button', { name: 'Pharmacy: Apotheke am Markt' })).toBeInTheDocument();
   await typing.click(
     within(within(sheet).getByRole('navigation', { name: 'Modules' })).getByRole('link', { name: 'Learning' }),
@@ -146,8 +148,8 @@ test('below 768 px tapping the link of the page the user is on closes the sheet 
   viewportOf(767);
   const router = await renderShell();
 
-  await typing.click(within(screen.getByRole('banner')).getByRole('button', { name: 'Toggle Sidebar' }));
-  const sheet = await screen.findByRole('dialog', { name: 'Sidebar' });
+  await typing.click(within(screen.getByRole('banner')).getByRole('button', { name: t('ui.sidebar.toggle') }));
+  const sheet = await screen.findByRole('dialog', { name: t('ui.sidebar.title') });
   await typing.click(
     within(within(sheet).getByRole('navigation', { name: 'Modules' })).getByRole('link', { name: 'Home' }),
   );
@@ -161,8 +163,8 @@ test("below 768 px the switcher's link to register a pharmacy closes the sheet o
   viewportOf(767);
   const router = await renderShell();
 
-  await typing.click(within(screen.getByRole('banner')).getByRole('button', { name: 'Toggle Sidebar' }));
-  const sheet = await screen.findByRole('dialog', { name: 'Sidebar' });
+  await typing.click(within(screen.getByRole('banner')).getByRole('button', { name: t('ui.sidebar.toggle') }));
+  const sheet = await screen.findByRole('dialog', { name: t('ui.sidebar.title') });
   await typing.click(
     within(within(sheet).getByRole('region', { name: 'Pharmacy' })).getByRole('link', { name: 'Register a pharmacy' }),
   );
@@ -170,4 +172,17 @@ test("below 768 px the switcher's link to register a pharmacy closes the sheet o
   await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/organisation/register'));
   await vi.waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   expect(await screen.findByRole('heading', { name: 'Register a pharmacy', level: 1 })).toBeInTheDocument();
+});
+
+test('below 768 px the sheet is named and described in German by default', async () => {
+  const typing = userEvent.setup();
+  viewportOf(767);
+  await renderShell();
+
+  await typing.click(
+    within(screen.getByRole('banner')).getByRole('button', { name: 'Seitenleiste ein- oder ausblenden' }),
+  );
+
+  const sheet = await screen.findByRole('dialog', { name: 'Seitenleiste' });
+  expect(sheet).toHaveAccessibleDescription('Zeigt die Seitenleiste auf kleinen Bildschirmen.');
 });
