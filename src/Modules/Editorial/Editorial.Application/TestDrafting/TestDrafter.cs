@@ -20,6 +20,7 @@ public static class TestDrafter
         RespectNullableAnnotations = true,
         RespectRequiredConstructorParameters = true,
         TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+        NumberHandling = JsonNumberHandling.Strict,
         Converters = { new JsonStringEnumConverter<TestDraftAnswerType>(namingPolicy: null, allowIntegerValues: false) },
     };
 
@@ -39,9 +40,9 @@ public static class TestDrafter
 
     /// <summary>
     /// The whole draft: the request from the version (refused before the model is called when it cannot be drafted),
-    /// the model's answer, and the drafted questions it maps onto. A failure returns no questions at all.
+    /// the model's answer, the drafted questions it maps onto and the chapters left out. A failure returns no questions at all.
     /// </summary>
-    public static async Task<Result<IReadOnlyList<DraftedQuestion>, ApiError>> DraftAsync(IChatClient model, CourseVersion version, CancellationToken cancellationToken)
+    public static async Task<Result<TestDraft, ApiError>> DraftAsync(IChatClient model, CourseVersion version, CancellationToken cancellationToken)
     {
         Ensure.That(model).IsNotNull();
         Ensure.That(version).IsNotNull();
@@ -58,7 +59,13 @@ public static class TestDrafter
             return Failure(answer.Error);
         }
 
-        return answer.Value.ToDraftedQuestions(request.Value);
+        var drafted = answer.Value.ToDraftedQuestions(request.Value);
+        if (drafted.IsFailure)
+        {
+            return Failure(drafted.Error);
+        }
+
+        return Success(new TestDraft(drafted.Value, request.Value.LeftOutChapters));
     }
 
     private static Result<TestDraftAnswer, ApiError> Read(string text)

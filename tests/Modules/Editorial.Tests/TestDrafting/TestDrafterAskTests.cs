@@ -110,6 +110,25 @@ public partial class TestDrafterAskTests
     }
 
     [Fact]
+    public async Task Pdf_and_video_chapters_are_never_sent_to_the_model()
+    {
+        var version = TestDraftVersions.WithTextPdfAndVideoChapters(2);
+        using var model = new FakeChatClient(Sound(1, 2));
+
+        await AskAsync(model, version);
+
+        var messages = model.Requests.ShouldHaveSingleItem();
+        var user = messages.Where(message => message.Role == ChatRole.User).ShouldHaveSingleItem().Text;
+        Chapters(user).EnumerateArray().Select(chapter => chapter.GetProperty("title").GetString()).ShouldBe(["Händehygiene", "Flächen"]);
+        var sent = string.Join("\n", messages.Select(message => message.Text));
+        foreach (var chapter in version.Chapters.Where(chapter => chapter.Kind != ChapterKind.Text))
+        {
+            sent.ShouldNotContain(chapter.Title.Value);
+            sent.ShouldNotContain(chapter.File.ShouldNotBeNull().Value);
+        }
+    }
+
+    [Fact]
     public async Task The_request_asks_for_the_answers_json_schema_without_temperature()
     {
         var version = TestDraftVersions.WithTextChapters(2, "Händehygiene");

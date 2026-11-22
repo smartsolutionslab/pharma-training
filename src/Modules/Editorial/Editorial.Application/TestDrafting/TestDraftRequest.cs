@@ -5,9 +5,10 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.TestDra
 /// <summary>
 /// What the AI test draft asks the model for, worked out from the version before the model is called (ADR 0008): its
 /// text chapters, numbered from one in the version's order, and the blueprint's count less the approved questions,
-/// split evenly over them with the remainder on the first ones.
+/// split evenly over them with the remainder on the first ones. The PDF and video chapters are left out, in the
+/// version's order, and named so the editor knows.
 /// </summary>
-public sealed record TestDraftRequest(IReadOnlyList<TestDraftChapter> Chapters, QuestionCount Questions)
+public sealed record TestDraftRequest(IReadOnlyList<TestDraftChapter> Chapters, QuestionCount Questions, IReadOnlyList<ChapterId> LeftOutChapters)
 {
     /// <summary>The most characters of chapter titles and texts one request sends, about 100k tokens.</summary>
     public const int MaxCharacters = 400_000;
@@ -22,11 +23,16 @@ public sealed record TestDraftRequest(IReadOnlyList<TestDraftChapter> Chapters, 
         }
 
         List<(ChapterId Id, ChapterTitle Title, MarkdownText Text)> texts = [];
+        List<ChapterId> leftOut = [];
         foreach (var chapter in version.Chapters)
         {
             if (chapter is { Kind: ChapterKind.Text, Text: { } text })
             {
                 texts.Add((chapter.Id, chapter.Title, text));
+            }
+            else
+            {
+                leftOut.Add(chapter.Id);
             }
         }
 
@@ -58,6 +64,6 @@ public sealed record TestDraftRequest(IReadOnlyList<TestDraftChapter> Chapters, 
             chapters.Add(new TestDraftChapter(index + 1, id, title, text, quota));
         }
 
-        return Success(new TestDraftRequest(chapters, QuestionCount.From(requested)));
+        return Success(new TestDraftRequest(chapters, QuestionCount.From(requested), leftOut));
     }
 }
