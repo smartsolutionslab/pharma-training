@@ -20,13 +20,22 @@ internal static class CourseVersionBuilder
         return version;
     }
 
-    /// <summary>A draft with one chapter and one approved question, as many as its blueprint asks, submitted by the author.</summary>
-    public static CourseVersion InReview(out ChapterId chapter, string title = "Hygiene 2027")
+    /// <summary>A draft with one chapter and one approved question, as many as its blueprint asks: ready to be submitted.</summary>
+    public static CourseVersion ReadyToSubmit(out ChapterId chapter, string title = "Hygiene 2027")
     {
         var version = DraftWithChapter(out chapter, title);
         version.SetBlueprint(new TestBlueprint(QuestionCount.From(1), ScorePercent.From(80), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
         var question = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
         version.ApproveQuestion(question, Author, Now).IsSuccess.ShouldBeTrue();
+        return version;
+    }
+
+    public static CourseVersion ReadyToSubmit(string title = "Hygiene 2027") => ReadyToSubmit(out _, title);
+
+    /// <summary>A draft with one chapter and one approved question, as many as its blueprint asks, submitted by the author.</summary>
+    public static CourseVersion InReview(out ChapterId chapter, string title = "Hygiene 2027")
+    {
+        var version = ReadyToSubmit(out chapter, title);
         version.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
         return version;
     }
@@ -41,6 +50,14 @@ internal static class CourseVersionBuilder
     }
 
     public static CourseVersion Published(string title = "Hygiene 2027") => Published(out _, title);
+
+    /// <summary>The next version of a published one, its copied question still approved, submitted by the author.</summary>
+    public static CourseVersion NextInReview(CourseVersion published)
+    {
+        var next = published.DraftNext(CourseVersionId.New(), Author, ChapterId.New, QuestionId.New, AnswerOptionId.New).Value;
+        next.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
+        return next;
+    }
 
     public static Chapter TextChapter(ChapterId id, string title = "Händehygiene", string text = "Hände vor und nach …") =>
         Chapter.OfText(id, ChapterTitle.From(title), MarkdownText.From(text));
