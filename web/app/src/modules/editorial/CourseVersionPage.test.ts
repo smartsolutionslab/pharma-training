@@ -1,5 +1,6 @@
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/vue';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { createMemoryHistory } from 'vue-router';
@@ -434,4 +435,292 @@ test('the editorial detail versions/:id opens the course version page', () => {
 
   expect(detail?.component).toBe(CourseVersionPage);
   expect(Object.keys(import.meta.glob('./CourseVersionPlaceholder.vue'))).toEqual([]);
+});
+
+// Text chapters (T7): "Kapitel hinzufügen" and a chapter's edit button open the chapter form in a dialog; a chapter's
+// delete button asks first. A module's refusal is shown in the host's words (ApiError.serverMessage), else the
+// catalog's; either way the version is read again, so the page shows what is now so.
+
+const notADraft = () =>
+  new Response(
+    JSON.stringify({
+      title: 'Conflict',
+      status: 409,
+      detail: 'Die Version ist kein Entwurf mehr und kann nicht geändert werden.',
+      code: 'editorial.not-a-draft',
+    }),
+    { status: 409, headers: { 'Content-Type': 'application/problem+json' } },
+  );
+
+/** What the page sent to change the version, as the host received it. */
+const changes = () =>
+  host.mock.calls
+    .filter(([, init]) => (init?.method ?? 'GET') !== 'GET')
+    .map(([input, init]) => ({
+      method: init?.method,
+      path: new URL(String(input), 'http://localhost').pathname.replace(/^\/api/, ''),
+      body: init?.body === undefined ? undefined : (JSON.parse(String(init.body)) as unknown),
+    }));
+
+/** The dialog that asks before a chapter is deleted, an alert dialog or a dialog. */
+const confirmation = () =>
+  screen.queryByRole('alertdialog', { name: t('editorial.chapters.removeConfirm.title') }) ??
+  screen.queryByRole('dialog', { name: t('editorial.chapters.removeConfirm.title') });
+
+async function openConfirmation(user: ReturnType<typeof userEvent.setup>, chapter: EditorialChapterDto) {
+  await user.click(screen.getByRole('button', { name: t('editorial.chapters.remove', { title: chapter.title }) }));
+  await waitFor(() => expect(confirmation()).not.toBeNull());
+  return within(confirmation() as HTMLElement);
+}
+
+/** Fills the chapter form's fields it is given, each replacing what it held, and saves. */
+async function fillAndSave(
+  user: ReturnType<typeof userEvent.setup>,
+  dialog: ReturnType<typeof within>,
+  { title, text }: { title?: string; text?: string },
+) {
+  if (title !== undefined) {
+    const field = dialog.getByRole('textbox', { name: t('editorial.chapterForm.title') });
+    await user.clear(field);
+    await user.click(field);
+    await user.paste(title);
+  }
+  if (text !== undefined) {
+    const field = dialog.getByRole('textbox', { name: t('editorial.chapterForm.text') });
+    await user.clear(field);
+    await user.click(field);
+    await user.paste(text);
+  }
+  await user.click(dialog.getByRole('button', { name: t('editorial.chapterForm.submit') }));
+}
+
+describe('adding a text chapter', () => {
+  test('opens the form in a dialog, posts the chapter, reports it, closes and reads the version again', async () => {
+    const user = userEvent.setup();
+    changing = async () => Response.json('0198c1a0-0000-7000-8000-0000000000e4', { status: 201 });
+    await renderPage();
+
+    await user.click(screen.getByRole('button', { name: t('editorial.chapters.add') }));
+    const dialog = within(await screen.findByRole('dialog', { name: t('editorial.chapterForm.addTitle') }));
+    await fillAndSave(user, dialog, { title: 'Lagerung', text: 'Kühl und **trocken**.' });
+
+    await waitFor(() =>
+      expect(notify.success).toHaveBeenCalledWith(t('editorial.chapters.saved', { title: 'Lagerung' })),
+    );
+    expect(notify.success.mock.calls[0]?.[0]).toMatch(/^Das Kapitel „Lagerung. wurde gespeichert\.$/);
+    expect(changes()).toEqual([
+      {
+        method: 'POST',
+        path: `/editorial/course-versions/${versionId}/chapters`,
+        body: { title: 'Lagerung', kind: 'Text', text: 'Kühl und **trocken**.', file: null, durationSeconds: null },
+      },
+    ]);
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() => expect(reads().length).toBeGreaterThan(1));
+    expect(notify.failure).not.toHaveBeenCalled();
+  });
+
+  test('from the empty state opens the same form', async () => {
+    const user = userEvent.setup();
+    version = versionOf('Draft', []);
+    await renderPage();
+
+    const sentence = await screen.findByText(t('editorial.chapters.empty'));
+    const emptyState = within(sentence.closest('[data-slot="empty-state"]') as HTMLElement);
+    await user.click(emptyState.getByRole('button', { name: t('editorial.chapters.add') }));
+
+    expect(await screen.findByRole('dialog', { name: 'Neues Kapitel' })).toBeInTheDocument();
+  });
+
+  test('a form left with Abbrechen sends nothing', async () => {
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(screen.getByRole('button', { name: t('editorial.chapters.add') }));
+    const dialog = within(await screen.findByRole('dialog', { name: t('editorial.chapterForm.addTitle') }));
+    await user.click(dialog.getByRole('button', { name: t('editorial.cancel') }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(changes()).toEqual([]);
+  });
+});
+
+describe('editing a text chapter', () => {
+  test('opens the form filled with the chapter, puts the chapter in its place and reports it', async () => {
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(screen.getByRole('button', { name: t('editorial.chapters.edit', { title: introduction.title }) }));
+    const dialog = within(await screen.findByRole('dialog', { name: t('editorial.chapterForm.editTitle') }));
+    expect(dialog.getByRole('textbox', { name: t('editorial.chapterForm.title') })).toHaveValue(introduction.title);
+    expect(dialog.getByRole('textbox', { name: t('editorial.chapterForm.text') })).toHaveValue(introduction.text);
+    // Its approved question is reviewed again once the chapter is replaced.
+    expect(dialog.getByText(t('editorial.chapterForm.requalify', { count: 1 }, 1))).toBeInTheDocument();
+    await fillAndSave(user, dialog, { title: 'Einführung' });
+
+    await waitFor(() =>
+      expect(notify.success).toHaveBeenCalledWith(t('editorial.chapters.saved', { title: 'Einführung' })),
+    );
+    expect(changes()).toEqual([
+      {
+        method: 'PUT',
+        path: `/editorial/course-versions/${versionId}/chapters/${introduction.id}`,
+        body: { title: 'Einführung', kind: 'Text', text: introduction.text, file: null, durationSeconds: null },
+      },
+    ]);
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() => expect(reads().length).toBeGreaterThan(1));
+  });
+
+  test('the dialog is named in German', async () => {
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(screen.getByRole('button', { name: /^„Einleitung. bearbeiten$/ }));
+
+    expect(await screen.findByRole('dialog', { name: 'Kapitel bearbeiten' })).toBeInTheDocument();
+  });
+});
+
+test.each([
+  ['a 409 of the module', notADraft, () => 'Die Version ist kein Entwurf mehr und kann nicht geändert werden.'],
+  ['a 500', () => new Response('', { status: 500 }), () => t('editorial.chapters.saveFailed', { title: 'Lagerung' })],
+])(
+  'a chapter the host refuses with %s is reported, the dialog stays open with what was entered, and the version is read again',
+  async (_answer, answer, message) => {
+    const user = userEvent.setup();
+    changing = async () => answer();
+    await renderPage();
+
+    await user.click(screen.getByRole('button', { name: t('editorial.chapters.add') }));
+    const dialog = within(await screen.findByRole('dialog', { name: t('editorial.chapterForm.addTitle') }));
+    await fillAndSave(user, dialog, { title: 'Lagerung', text: 'Kühl und trocken.' });
+
+    await waitFor(() => expect(notify.failure).toHaveBeenCalledWith(message()));
+    expect(notify.failure).toHaveBeenCalledOnce();
+    expect(notify.success).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog', { name: t('editorial.chapterForm.addTitle') })).toBeInTheDocument();
+    expect(dialog.getByRole('textbox', { name: t('editorial.chapterForm.title') })).toHaveValue('Lagerung');
+    expect(dialog.getByRole('textbox', { name: t('editorial.chapterForm.text') })).toHaveValue('Kühl und trocken.');
+    await waitFor(() => expect(reads().length).toBeGreaterThan(1));
+  },
+);
+
+test('a save that failed in German names the chapter', async () => {
+  const user = userEvent.setup();
+  changing = async () => new Response('', { status: 500 });
+  await renderPage();
+
+  await user.click(screen.getByRole('button', { name: t('editorial.chapters.add') }));
+  const dialog = within(await screen.findByRole('dialog', { name: t('editorial.chapterForm.addTitle') }));
+  await fillAndSave(user, dialog, { title: 'Lagerung', text: 'Kühl und trocken.' });
+
+  await waitFor(() => expect(notify.failure).toHaveBeenCalledOnce());
+  expect(notify.failure.mock.calls[0]?.[0]).toMatch(/^Das Kapitel „Lagerung. konnte nicht gespeichert werden\.$/);
+});
+
+describe('deleting a chapter', () => {
+  test('asks first, naming the chapter and the questions deleted with it, then deletes it and reports it', async () => {
+    const user = userEvent.setup();
+    await renderPage();
+
+    const dialog = await openConfirmation(user, introduction);
+    expect(
+      dialog.getByText(t('editorial.chapters.removeConfirm.text', { title: introduction.title })),
+    ).toBeInTheDocument();
+    expect(dialog.getByText(t('editorial.chapters.removeConfirm.questions', { count: 2 }, 2))).toBeInTheDocument();
+    expect(changes()).toEqual([]);
+    await user.click(dialog.getByRole('button', { name: t('editorial.chapters.removeConfirm.confirm') }));
+
+    await waitFor(() =>
+      expect(notify.success).toHaveBeenCalledWith(t('editorial.chapters.removed', { title: introduction.title })),
+    );
+    expect(changes()).toEqual([
+      {
+        method: 'DELETE',
+        path: `/editorial/course-versions/${versionId}/chapters/${introduction.id}`,
+        body: undefined,
+      },
+    ]);
+    await waitFor(() => expect(confirmation()).toBeNull());
+    await waitFor(() => expect(reads().length).toBeGreaterThan(1));
+  });
+
+  test('asks in German, a question in the singular and several in the plural', async () => {
+    const user = userEvent.setup();
+    await renderPage();
+
+    let dialog = await openConfirmation(user, introduction);
+    expect(confirmation()).toHaveAccessibleName('Kapitel löschen?');
+    expect(dialog.getByText(/^„Einleitung. wird gelöscht\.$/)).toBeInTheDocument();
+    expect(dialog.getByText('Mit dem Kapitel werden 2 Fragen gelöscht, die sich darauf beziehen.')).toBeInTheDocument();
+    expect(dialog.getByRole('button', { name: 'Löschen' })).toBeInTheDocument();
+    await user.click(dialog.getByRole('button', { name: 'Abbrechen' }));
+    await waitFor(() => expect(confirmation()).toBeNull());
+
+    dialog = await openConfirmation(user, handwashing);
+    expect(dialog.getByText('Mit dem Kapitel wird eine Frage gelöscht, die sich darauf bezieht.')).toBeInTheDocument();
+  });
+
+  test('a chapter no question is about deletes no question', async () => {
+    const user = userEvent.setup();
+    await renderPage();
+
+    const dialog = await openConfirmation(user, handout);
+
+    expect(dialog.getByText(t('editorial.chapters.removeConfirm.text', { title: handout.title }))).toBeInTheDocument();
+    expect(dialog.queryByText(/Frage/)).not.toBeInTheDocument();
+  });
+
+  test('cancelled, deletes nothing', async () => {
+    const user = userEvent.setup();
+    await renderPage();
+
+    const dialog = await openConfirmation(user, introduction);
+    await user.click(dialog.getByRole('button', { name: t('editorial.cancel') }));
+
+    await waitFor(() => expect(confirmation()).toBeNull());
+    expect(changes()).toEqual([]);
+    expect(notify.success).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ['a 409 of the module', notADraft, () => 'Die Version ist kein Entwurf mehr und kann nicht geändert werden.'],
+    [
+      'a 500',
+      () => new Response('', { status: 500 }),
+      () => t('editorial.chapters.removeFailed', { title: introduction.title }),
+    ],
+  ])('refused with %s, is reported and the version is read again', async (_answer, answer, message) => {
+    const user = userEvent.setup();
+    changing = async () => answer();
+    await renderPage();
+
+    const dialog = await openConfirmation(user, introduction);
+    await user.click(dialog.getByRole('button', { name: t('editorial.chapters.removeConfirm.confirm') }));
+
+    await waitFor(() => expect(notify.failure).toHaveBeenCalledWith(message()));
+    expect(notify.success).not.toHaveBeenCalled();
+    await waitFor(() => expect(reads().length).toBeGreaterThan(1));
+  });
+
+  // Someone submitted the version for review meanwhile: the host refuses with NotADraft, and the page, reading the
+  // version again, shows it read-only.
+  test('refused because the version is no draft any more, shows the version read-only', async () => {
+    const user = userEvent.setup();
+    changing = async () => {
+      version = versionOf('InReview');
+      return notADraft();
+    };
+    await renderPage();
+
+    const dialog = await openConfirmation(user, introduction);
+    await user.click(dialog.getByRole('button', { name: t('editorial.chapters.removeConfirm.confirm') }));
+
+    expect(await screen.findByText(t('editorial.version.readOnly.InReview'))).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: t('editorial.chapters.remove', { title: introduction.title }) }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: t('editorial.chapters.add') })).not.toBeInTheDocument();
+  });
 });
