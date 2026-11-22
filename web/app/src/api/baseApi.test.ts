@@ -116,6 +116,18 @@ test.each([
     () =>
       problem(503, { title: 'Service Unavailable', status: 503, detail: 'No model.', code: 'model-not-configured' }),
   ],
+  // A framework backstop's code has no module prefix (UniqueConstraintResponses.cs, DuplicateStreamResponses.cs): its
+  // title is the framework's English, not a module's message.
+  [
+    'a 409 with a framework code',
+    () =>
+      problem(409, {
+        title: 'The resource already exists.',
+        status: 409,
+        detail: 'Another request created it first.',
+        code: 'already-exists',
+      }),
+  ],
   ['a code that is not a string', () => problem(400, { title: 'Der Name fehlt.', status: 400, code: 42 })],
   ['a blank code', () => problem(400, { title: 'Der Name fehlt.', status: 400, code: ' ' })],
 ])('a refusal with %s carries no server message', async (_body, response) => {
