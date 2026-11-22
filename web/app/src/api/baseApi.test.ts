@@ -135,3 +135,37 @@ test.each([
 
   expect(error.serverMessage).toBeUndefined();
 });
+
+// A page tells refusals of one status apart by the module's code (the two 403s and the two 409s of accepting an
+// invitation): the code travels with the refusal on the same terms as the server's message.
+test("a module's refusal carries its code", async () => {
+  const error = await refusalOf(
+    problem(410, {
+      type: 'https://tools.ietf.org/html/rfc9110#section-15.5.11',
+      title: 'Die Einladung ist abgelaufen.',
+      status: 410,
+      code: 'organisation.invitation-expired',
+    }),
+  );
+
+  expect(error.status).toBe(410);
+  expect(error.code).toBe('organisation.invitation-expired');
+});
+
+test.each([
+  ['already-exists', 409],
+  ['invalid-argument', 400],
+])("a framework's code is not a module's code: %s", async (code, status) => {
+  const error = await refusalOf(problem(status, { title: 'The request is invalid.', status, detail: 'No.', code }));
+
+  expect(error.code).toBeUndefined();
+});
+
+test('a 5xx carries no code', async () => {
+  const error = await refusalOf(
+    problem(503, { title: 'Der Dienst ist nicht erreichbar.', status: 503, code: 'organisation.unavailable' }),
+  );
+
+  expect(error.status).toBe(503);
+  expect(error.code).toBeUndefined();
+});
