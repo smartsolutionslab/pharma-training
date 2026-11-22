@@ -1,6 +1,6 @@
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query';
 import { cleanup, render } from '@testing-library/vue';
-import { afterEach, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { defineComponent } from 'vue';
 import { type EditorialQuestionRequest, getGetEditorialCourseVersionsIdQueryKey } from '@/api/generated';
 import { introduction, refusal, versionId } from './courseTestFixtures';
@@ -124,4 +124,39 @@ test.each(changes)('%s that never reached the host answers a failure', async (_c
 
   await expect(change(mutations)).resolves.toEqual({ ok: false });
   expect(queryClient.getQueryState(versionKey)?.isInvalidated).toBe(true);
+});
+
+describe('approving', () => {
+  test('approving posts to the question’s approve, without a body, and marks the version stale', async () => {
+    host.mockImplementation(async () => Response.json({ value: null }));
+    const { mutations, queryClient } = renderMutations();
+
+    await expect(mutations.approve(questionId)).resolves.toEqual({ ok: true });
+
+    expect(sent()).toEqual([{ url: `${questionsUrl}/${questionId}/approve`, method: 'POST', body: undefined }]);
+    expect(queryClient.getQueryState(versionKey)?.isInvalidated).toBe(true);
+  });
+
+  test.each([
+    [422, 'editorial.too-few-options', 'Eine Frage braucht mindestens zwei Antwortoptionen.'],
+    [422, 'editorial.multiple-choice-a-correct', 'Bei Multiple Choice ist mindestens eine Antwortoption richtig.'],
+    [409, 'editorial.question-already-approved', 'Die Frage ist bereits freigegeben.'],
+  ])(
+    "approving refused with %i %s answers the host's words and marks the version stale",
+    async (status, code, detail) => {
+      host.mockImplementation(async () => refusal(status, code, detail));
+      const { mutations, queryClient } = renderMutations();
+
+      await expect(mutations.approve(questionId)).resolves.toEqual({ ok: false, serverMessage: detail });
+      expect(queryClient.getQueryState(versionKey)?.isInvalidated).toBe(true);
+    },
+  );
+
+  test('approving the host cannot do answers a failure without words of the host', async () => {
+    host.mockImplementation(async () => new Response('', { status: 500 }));
+    const { mutations, queryClient } = renderMutations();
+
+    await expect(mutations.approve(questionId)).resolves.toEqual({ ok: false });
+    expect(queryClient.getQueryState(versionKey)?.isInvalidated).toBe(true);
+  });
 });
