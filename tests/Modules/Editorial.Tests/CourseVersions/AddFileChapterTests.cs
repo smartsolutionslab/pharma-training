@@ -148,6 +148,40 @@ public class AddFileChapterTests
         store.Commits.ShouldBe(0);
     }
 
+    [Theory]
+    [InlineData(ChapterKind.Pdf, ".pdf", "application/pdf")]
+    [InlineData(ChapterKind.Video, ".mp4", "video/mp4")]
+    public async Task A_file_another_chapter_of_the_version_holds_is_in_use_and_nothing_is_committed(ChapterKind kind, string extension, string contentType)
+    {
+        var version = Draft();
+        store.Stored.Add(version);
+        var file = IssuedName(version.Id, extension);
+        blobs.Upload(file, contentType, 1024);
+        var first = await Handler().HandleAsync(Command(version.Id, kind, file, Duration(kind)), TestContext.Current.CancellationToken);
+        first.IsSuccess.ShouldBeTrue(first.IsFailure ? first.Error.Code : string.Empty);
+
+        var second = await Handler().HandleAsync(Command(version.Id, kind, file, Duration(kind)), TestContext.Current.CancellationToken);
+
+        ShouldBeRefused(second.IsFailure ? second.Error : null, "editorial.file-in-use", HttpStatusCode.Conflict, "one blob is the file of one chapter of a version");
+        version.Chapters.ShouldHaveSingleItem().Id.Value.ShouldBe(first.Value);
+        store.Commits.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task Html_declared_as_a_pdf_is_refused_and_nothing_is_committed()
+    {
+        var version = Draft();
+        store.Stored.Add(version);
+        var file = IssuedName(version.Id, ".pdf");
+        blobs.Upload(file, "application/pdf", 1024, content: InMemoryStoredBlobs.HtmlStart);
+
+        var added = await Handler().HandleAsync(Command(version.Id, ChapterKind.Pdf, file), TestContext.Current.CancellationToken);
+
+        ShouldBeRefused(added.IsFailure ? added.Error : null, "editorial.upload-not-accepted", HttpStatusCode.BadRequest, "the declared content type is the uploader's word, not the file's");
+        version.Chapters.ShouldBeEmpty();
+        store.Commits.ShouldBe(0);
+    }
+
     [Fact]
     public async Task A_published_version_gets_no_file_chapter_and_nothing_is_committed()
     {
@@ -206,10 +240,51 @@ public class AddFileChapterTests
         store.Commits.ShouldBe(0);
     }
 
+    [Fact]
+    public async Task A_file_a_chapter_copied_into_the_version_holds_is_in_use_without_asking_the_storage()
+    {
+        var (next, copied, file) = ReplaceFileChapterTests.NextOfPublishedWithPdf();
+        store.Stored.Add(next);
+
+        var added = await Handler().HandleAsync(Command(next.Id, ChapterKind.Pdf, file.Value), TestContext.Current.CancellationToken);
+
+        ShouldBeRefused(added.IsFailure ? added.Error : null, "editorial.file-in-use", HttpStatusCode.Conflict, "the copied chapter holds the file, which sits under the version it was copied from");
+        blobs.Lookups.ShouldBe(0, "a file the version already holds is in use whatever the storage would say");
+        blobs.StartReads.ShouldBe(0);
+        next.Chapters.ShouldHaveSingleItem().Id.ShouldBe(copied);
+        store.Commits.ShouldBe(0);
+    }
+
+    [Theory]
+    [InlineData(ChapterKind.Pdf, ".pdf")]
+    [InlineData(ChapterKind.Video, ".mp4")]
+    public async Task A_file_another_chapter_holds_is_in_use_even_when_the_storage_has_no_such_blob(ChapterKind kind, string extension)
+    {
+        var version = Draft();
+        var holder = ChapterId.New();
+        var file = BlobReference.From(IssuedName(version.Id, extension));
+        version.AddChapter(FileChapter(holder, kind, file)).IsSuccess.ShouldBeTrue();
+        store.Stored.Add(version);
+
+        var added = await Handler().HandleAsync(Command(version.Id, kind, file.Value, Duration(kind)), TestContext.Current.CancellationToken);
+
+        ShouldBeRefused(added.IsFailure ? added.Error : null, "editorial.file-in-use", HttpStatusCode.Conflict, "another chapter of the version holds the file; the in-use check comes before the storage's");
+        blobs.Lookups.ShouldBe(0);
+        blobs.StartReads.ShouldBe(0);
+        version.Chapters.ShouldHaveSingleItem().Id.ShouldBe(holder);
+        store.Commits.ShouldBe(0);
+    }
+
     internal static string IssuedName(CourseVersionId version, string extension) =>
         $"course-versions/{version.Value:D}/{Guid.CreateVersion7():D}{extension}";
 
     internal static VideoDuration? Duration(ChapterKind kind) => kind == ChapterKind.Video ? VideoDuration.From(90) : null;
+
+    /// <summary>A PDF or video chapter recorded on the aggregate itself, as a copy or an earlier add left it, whatever the storage holds.</summary>
+    internal static Chapter FileChapter(ChapterId id, ChapterKind kind, BlobReference file) =>
+        kind == ChapterKind.Video
+            ? Chapter.OfVideo(id, ChapterTitle.From("Vorführung"), file, VideoDuration.From(90))
+            : Chapter.OfPdf(id, ChapterTitle.From("Hygieneplan"), file);
 
     internal static void ShouldBeRefused(ApiError? error, string code, HttpStatusCode status, string because = "")
     {
