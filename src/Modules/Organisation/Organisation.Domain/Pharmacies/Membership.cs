@@ -33,8 +33,8 @@ public sealed class Membership : Entity<MembershipId>
 
     internal bool IsActiveManager => Status == MembershipStatus.Active && Role == MembershipRole.Manager;
 
-    internal static Membership Invited(MembershipId id, EmailAddress email, InvitationTokenHash tokenHash, JobFunction jobFunction, MembershipRole role, Timestamp expiresAt) =>
-        new(id) { Email = email, TokenHash = tokenHash, InvitationExpiresAt = expiresAt, JobFunction = jobFunction, Role = role, Status = MembershipStatus.Invited };
+    internal static Membership Invited(MembershipId id, EmailAddress email, JobFunction jobFunction, MembershipRole role, Timestamp expiresAt) =>
+        new(id) { Email = email, InvitationExpiresAt = expiresAt, JobFunction = jobFunction, Role = role, Status = MembershipStatus.Invited };
 
     internal static Membership Founder(MembershipId id, EmailAddress email, PersonId person, DisplayName name, JobFunction jobFunction, Timestamp now) =>
         new(id) { Email = email, Person = person, Name = name, JobFunction = jobFunction, Role = MembershipRole.Manager, Status = MembershipStatus.Active, StartedAt = now };
@@ -70,9 +70,9 @@ public sealed class Membership : Entity<MembershipId>
     /// <summary>The link mailed now; an earlier link's hash matches nothing any more.</summary>
     internal void IssueLink(InvitationTokenHash tokenHash) => TokenHash = tokenHash;
 
-    internal void RenewInvitation(InvitationTokenHash tokenHash, Timestamp expiresAt)
+    internal void RenewInvitation(Timestamp expiresAt)
     {
-        TokenHash = tokenHash; // the old link's hash matches nothing any more
+        TokenHash = null; // the old link stops working at once; the renewal's mail issues the new one
         InvitationExpiresAt = expiresAt;
     }
 }

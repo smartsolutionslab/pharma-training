@@ -2,10 +2,6 @@ using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Domain;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies.Events;
 
-/// <summary>
-/// An address was invited, or its invitation renewed with a new link. Carries the raw token for the invitation mail;
-/// never store, publish or log it. That is safe only because a domain event of this module lives in memory: it is
-/// neither stored nor published, and <see cref="InvitationToken"/> does not print its value.
-/// </summary>
+/// <summary>An address was invited, or its invitation renewed, valid until <see cref="ExpiresAt"/>. Carries no token, address or name.</summary>
 [DeliberatelyUnhandled("The command that invites or renews publishes InvitationMailRequestedV1; its consumer issues the link and mails it.")]
-public sealed record MemberInvited(PharmacyId Pharmacy, PharmacyName Name, MembershipId Membership, EmailAddress Email, InvitationToken Token, Timestamp ExpiresAt) : IDomainEvent;
+public sealed record MemberInvited(PharmacyId Pharmacy, MembershipId Membership, Timestamp ExpiresAt) : IDomainEvent;

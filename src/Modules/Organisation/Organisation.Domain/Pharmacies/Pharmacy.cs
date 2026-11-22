@@ -54,17 +54,14 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
         return pharmacy;
     }
 
-    public Result<MembershipId, DomainError> Invite(
-        MembershipId id,
-        EmailAddress email,
-        InvitationToken token,
-        JobFunction jobFunction,
-        MembershipRole role,
-        Timestamp now)
+    /// <summary>
+    /// Invites the address, valid for 14 days from now. The invitation holds no link yet: its mail issues one
+    /// (<see cref="IssueInvitationLink"/>), so no token exists before the mail is sent.
+    /// </summary>
+    public Result<MembershipId, DomainError> Invite(MembershipId id, EmailAddress email, JobFunction jobFunction, MembershipRole role, Timestamp now)
     {
         Ensure.That(id).IsNotNull();
         Ensure.That(email).IsNotNull();
-        Ensure.That(token).IsNotNull();
         Ensure.That(now).IsNotNull();
 
         if (memberships.Any(m => m.Email == email && m.Status is MembershipStatus.Invited or MembershipStatus.Active))
@@ -73,24 +70,18 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
         }
 
         var expiresAt = now.PlusDays(InvitationValidityDays);
-        memberships.Add(Membership.Invited(id, email, InvitationTokenHash.Of(token), jobFunction, role, expiresAt));
-        Raise(new MemberInvited(Id, Name, id, email, token, expiresAt));
+        memberships.Add(Membership.Invited(id, email, jobFunction, role, expiresAt));
+        Raise(new MemberInvited(Id, id, expiresAt));
         return Success(id);
     }
 
-    /// <summary>Red-first stub (T3b): delegates to the token-taking invitation with a fixed token.</summary>
-    public Result<MembershipId, DomainError> Invite(MembershipId id, EmailAddress email, JobFunction jobFunction, MembershipRole role, Timestamp now) =>
-        Invite(id, email, InvitationToken.From(new string('x', 43)), jobFunction, role, now);
-
-    /// <summary>Red-first stub (T3b): delegates to the token-taking renewal with a fixed token.</summary>
-    public Result<Unit, DomainError> RenewInvitation(MembershipId membership, Timestamp now) =>
-        RenewInvitation(membership, InvitationToken.From(new string('x', 43)), now);
-
-    /// <summary>Sends a fresh link for an invitation that is still open or has run out.</summary>
-    public Result<Unit, DomainError> RenewInvitation(MembershipId membership, InvitationToken token, Timestamp now)
+    /// <summary>
+    /// Renews an invitation that is still open or has run out: valid for 14 days from now, and the old link stops
+    /// working at once. Its new mail issues the new link.
+    /// </summary>
+    public Result<Unit, DomainError> RenewInvitation(MembershipId membership, Timestamp now)
     {
         Ensure.That(membership).IsNotNull();
-        Ensure.That(token).IsNotNull();
         Ensure.That(now).IsNotNull();
 
         if (Find(membership) is not { Status: MembershipStatus.Invited } invited)
@@ -99,8 +90,8 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
         }
 
         var expiresAt = now.PlusDays(InvitationValidityDays);
-        invited.RenewInvitation(InvitationTokenHash.Of(token), expiresAt);
-        Raise(new MemberInvited(Id, Name, membership, invited.Email, token, expiresAt));
+        invited.RenewInvitation(expiresAt);
+        Raise(new MemberInvited(Id, membership, expiresAt));
         return Success(Unit.Value);
     }
 

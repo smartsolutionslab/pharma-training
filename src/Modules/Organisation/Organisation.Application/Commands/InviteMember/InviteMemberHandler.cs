@@ -32,7 +32,6 @@ public sealed class InviteMemberHandler(IPharmacyStore pharmacies, IOrganisation
         var invited = pharmacy.Invite(
             MembershipId.New(),
             command.Email,
-            InvitationTokens.Next(),
             command.JobFunction,
             command.Role,
             Timestamp.From(time.GetUtcNow()));

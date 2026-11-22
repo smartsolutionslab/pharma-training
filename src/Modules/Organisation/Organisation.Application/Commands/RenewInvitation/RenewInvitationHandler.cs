@@ -26,7 +26,7 @@ public sealed class RenewInvitationHandler(IPharmacyStore pharmacies, IOrganisat
             return Failure(access.Error);
         }
 
-        var changed = pharmacy.RenewInvitation(command.Membership, InvitationTokens.Next(), Timestamp.From(time.GetUtcNow()));
+        var changed = pharmacy.RenewInvitation(command.Membership, Timestamp.From(time.GetUtcNow()));
         if (changed.IsFailure)
         {
             return Failure(PharmacyFailures.From(changed.Error));
