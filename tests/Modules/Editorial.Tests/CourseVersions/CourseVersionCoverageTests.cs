@@ -475,7 +475,7 @@ public class CourseVersionCoverageTests
     {
         var version = Draft();
 
-        var retired = version.Retire(Reviewer);
+        var retired = version.Retire(Reviewer, Now);
 
         retired.Error.ShouldBe(new NotPublished(version.Id, CourseVersionStatus.Draft));
         retired.Error.Code.ShouldBe("editorial.not-published");
@@ -487,7 +487,7 @@ public class CourseVersionCoverageTests
     {
         var version = Published();
 
-        version.Retire(Reviewer).IsSuccess.ShouldBeTrue();
+        version.Retire(Reviewer, Now).IsSuccess.ShouldBeTrue();
 
         version.Status.ShouldBe(CourseVersionStatus.Retired);
         version.DomainEvents.OfType<CourseVersionRetired>().ShouldHaveSingleItem().ShouldBe(new CourseVersionRetired(version.Id, version.Course, Reviewer));
@@ -499,7 +499,7 @@ public class CourseVersionCoverageTests
         var version = Published();
         version.Supersede();
 
-        version.Retire(Reviewer).IsSuccess.ShouldBeTrue();
+        version.Retire(Reviewer, Now).IsSuccess.ShouldBeTrue();
 
         version.Status.ShouldBe(CourseVersionStatus.Retired);
         version.DomainEvents.OfType<CourseVersionRetired>().ShouldHaveSingleItem();
@@ -525,10 +525,10 @@ public class CourseVersionCoverageTests
     public void A_retired_version_is_neither_superseded_nor_retired_again()
     {
         var version = Published();
-        version.Retire(Reviewer).IsSuccess.ShouldBeTrue();
+        version.Retire(Reviewer, Now).IsSuccess.ShouldBeTrue();
 
         version.Supersede();
-        var again = version.Retire(Reviewer);
+        var again = version.Retire(Reviewer, Now);
 
         version.Status.ShouldBe(CourseVersionStatus.Retired);
         again.Error.ShouldBe(new NotPublished(version.Id, CourseVersionStatus.Retired));
