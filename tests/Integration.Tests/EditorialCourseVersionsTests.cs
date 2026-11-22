@@ -1,7 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
-using Aspire.Hosting.Testing;
-using Npgsql;
+using static SmartSolutionsLab.PharmaTraining.Integration.Tests.EditorialDatabase;
 
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 
@@ -9,6 +8,7 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// An editor creates a course and edits the Markdown chapters of its first version through the edge: every change is
 /// read back in order, the inbox lists versions by status, and a published version refuses every chapter change.
 /// </summary>
+[Collection(EditorialDrafts.Name)]
 public class EditorialCourseVersionsTests(AspireFixture aspire)
 {
     private static readonly Uri Courses = new("/editorial/courses", UriKind.Relative);
@@ -107,7 +107,7 @@ public class EditorialCourseVersionsTests(AspireFixture aspire)
         var title = $"Hygiene {Guid.CreateVersion7()}";
         var id = await CreateAsync(client, title, cancellationToken);
         var chapter = await AddChapterAsync(client, id, "Händehygiene", "Vor und nach …", cancellationToken);
-        await SeedPublishedAsync(id, cancellationToken);
+        await SeedPublishedAsync(await EditorialConnectionStringAsync(cancellationToken), id, cancellationToken);
         var before = await ReadAsync(client, id, cancellationToken);
         before.Status.ShouldBe("Published");
 
@@ -270,7 +270,7 @@ public class EditorialCourseVersionsTests(AspireFixture aspire)
         {
             var first = client.DeleteAsync(Chapter(id, chapter), cancellationToken);
             var second = client.DeleteAsync(Chapter(id, chapter), cancellationToken);
-            await WaitUntilBlockedAsync(connectionString, 2, cancellationToken);
+            await WaitUntilBlockedAsync(connectionString, gate, 2, cancellationToken);
             await gate.CommitAsync(cancellationToken);
             responses = await Task.WhenAll(first, second);
         }
@@ -305,7 +305,7 @@ public class EditorialCourseVersionsTests(AspireFixture aspire)
         {
             var first = client.PostAsJsonAsync(Chapters(id), new { title = "Flächendesinfektion", text = "Wischen." }, cancellationToken);
             var second = client.PostAsJsonAsync(Chapters(id), new { title = "Instrumente", text = "Aufbereiten." }, cancellationToken);
-            await WaitUntilBlockedAsync(connectionString, 2, cancellationToken);
+            await WaitUntilBlockedAsync(connectionString, gate, 2, cancellationToken);
             await gate.CommitAsync(cancellationToken);
             responses = await Task.WhenAll(first, second);
         }
@@ -344,7 +344,7 @@ public class EditorialCourseVersionsTests(AspireFixture aspire)
         {
             var removed = client.DeleteAsync(Chapter(id, chapter), cancellationToken);
             var replaced = client.PutAsJsonAsync(Chapter(id, chapter), new { title = "Händehygiene, überarbeitet", text = "Neu." }, cancellationToken);
-            await WaitUntilBlockedAsync(connectionString, 2, cancellationToken);
+            await WaitUntilBlockedAsync(connectionString, gate, 2, cancellationToken);
             await gate.CommitAsync(cancellationToken);
             responses = await Task.WhenAll(removed, replaced);
         }
@@ -389,7 +389,7 @@ public class EditorialCourseVersionsTests(AspireFixture aspire)
         {
             var removed = client.DeleteAsync(Chapter(id, c), cancellationToken);
             var reordered = client.PutAsJsonAsync(Order(id), new { chapters = new[] { b, a, c } }, cancellationToken);
-            await WaitUntilBlockedAsync(connectionString, 2, cancellationToken);
+            await WaitUntilBlockedAsync(connectionString, gate, 2, cancellationToken);
             await gate.CommitAsync(cancellationToken);
             responses = await Task.WhenAll(removed, reordered);
         }
@@ -423,12 +423,19 @@ public class EditorialCourseVersionsTests(AspireFixture aspire)
         using var client = await aspire.CreateHostClientAsync("editor");
         var connectionString = await EditorialConnectionStringAsync(cancellationToken);
 
-        // Removing c3 of [c3, c1, c2] deletes its row, then moves c1 and c2 up; the order [c2, c3, c1] writes c1, c2
-        // and c3. Each save locks its chapters' rows before the version's, so the two take c1 and c3 in opposite
-        // orders and PostgreSQL often ends one of them as a deadlock (40P01). Five rounds make sure some do, and the
-        // database's deadlock count shows that some did.
-        var deadlocksBefore = await DeadlocksAsync(connectionString, cancellationToken);
-        for (var round = 0; round < 5; round++)
+        // Removing c3 of [c3, c1, c2] sends DELETE c3, UPDATE c1, UPDATE c2, then the version's UPDATE; the order
+        // [c2, c3, c1] sends UPDATE c1, UPDATE c2, UPDATE c3, then the version's (EF Core writes a table's deletes
+        // before its updates, and its updates by key; the chapters' keys ascend in the order they were added). That is
+        // read from PostgreSQL's statement log, not assumed. So each takes c1 and c3 in the other's order, and the test
+        // makes them meet every round instead of hoping they do. Holding both first rows and letting both go at once is
+        // not enough: a row whose holder has ended is free to whoever gets there first, so the removal can write c1
+        // before the order's woken backend takes it, finish, and leave the order to fail on its row version without a
+        // deadlock. So the gate holds c2 alone, the order's second row and the last the removal would write:
+        //   1. the order writes c1 and waits on c2, for the gate;
+        //   2. the removal deletes c3 and waits on c1, for the order, and so behind the gate;
+        //   3. the gate rolls back: the order writes c2 and waits on c3, for the removal, which waits for the order.
+        // PostgreSQL then ends one of the two as a deadlock (40P01) every round, and the deadlock count rises each round.
+        for (var round = 0; round < 2; round++)
         {
             var id = await CreateAsync(client, $"Hygiene {Guid.CreateVersion7()}", cancellationToken);
             var c1 = await AddChapterAsync(client, id, "Händehygiene", "Vor und nach …", cancellationToken);
@@ -439,13 +446,15 @@ public class EditorialCourseVersionsTests(AspireFixture aspire)
                 first.StatusCode.ShouldBe(HttpStatusCode.OK);
             }
 
+            var deadlocksBefore = await SettledDeadlocksAsync(connectionString, cancellationToken);
             HttpResponseMessage[] responses;
-            await using (var gate = await LockVersionAsync(connectionString, id, cancellationToken))
+            await using (var gate = await LockChaptersAsync(connectionString, [c2], cancellationToken))
             {
-                var removed = client.DeleteAsync(Chapter(id, c3), cancellationToken);
                 var reordered = client.PutAsJsonAsync(Order(id), new { chapters = new[] { c2, c3, c1 } }, cancellationToken);
-                await WaitUntilBlockedAsync(connectionString, 2, cancellationToken);
-                await gate.CommitAsync(cancellationToken);
+                await WaitUntilBlockedAsync(connectionString, gate, 1, cancellationToken);
+                var removed = client.DeleteAsync(Chapter(id, c3), cancellationToken);
+                await WaitUntilBlockedAsync(connectionString, gate, 2, cancellationToken);
+                await gate.RollbackAsync(cancellationToken);
                 responses = await Task.WhenAll(removed, reordered);
             }
 
@@ -460,9 +469,11 @@ public class EditorialCourseVersionsTests(AspireFixture aspire)
                     response.Dispose();
                 }
             }
-        }
 
-        await ShouldHaveDeadlockedSinceAsync(connectionString, deadlocksBefore, cancellationToken);
+            await ShouldHaveDeadlockedSinceAsync(connectionString, deadlocksBefore, cancellationToken);
+            TestContext.Current.TestOutputHelper?.WriteLine(
+                $"Round {round + 1}: {(int)responses[0].StatusCode} for the removal, {(int)responses[1].StatusCode} for the order; deadlocks {deadlocksBefore} -> {await DeadlocksAsync(connectionString, cancellationToken)}.");
+        }
     }
 
     [Fact]
@@ -535,119 +546,8 @@ public class EditorialCourseVersionsTests(AspireFixture aspire)
         (await CodeOfAsync(lost, cancellationToken)).ShouldBe("editorial.course-version-changed");
     }
 
-    private async Task<string> EditorialConnectionStringAsync(CancellationToken cancellationToken) =>
-        await aspire.App.GetConnectionStringAsync("editorial-database", cancellationToken)
-            ?? throw new InvalidOperationException("The editorial database has no connection string.");
-
-    /// <summary>
-    /// Opens a transaction that holds the version's row and its chapters' rows, so every request that writes them
-    /// waits after it has loaded the version until the transaction ends. Disposing the gate closes its connection.
-    /// </summary>
-    private static async Task<VersionLock> LockVersionAsync(string connectionString, Guid id, CancellationToken cancellationToken)
-    {
-        var connection = new NpgsqlConnection(connectionString);
-        try
-        {
-            await connection.OpenAsync(cancellationToken);
-            var transaction = await connection.BeginTransactionAsync(cancellationToken);
-            await using (var version = new NpgsqlCommand("SELECT 1 FROM editorial.course_versions WHERE id = @id FOR UPDATE", connection, transaction))
-            {
-                version.Parameters.AddWithValue("id", id);
-                (await version.ExecuteScalarAsync(cancellationToken)).ShouldNotBeNull();
-            }
-
-            await using (var chapters = new NpgsqlCommand("SELECT 1 FROM editorial.course_version_chapters WHERE course_version_id = @id FOR UPDATE", connection, transaction))
-            {
-                chapters.Parameters.AddWithValue("id", id);
-                await chapters.ExecuteNonQueryAsync(cancellationToken);
-            }
-
-            return new VersionLock(connection, transaction);
-        }
-        catch
-        {
-            await connection.DisposeAsync();
-            throw;
-        }
-    }
-
-    /// <summary>
-    /// Polls the editorial database until the given number of statements on course versions wait for a lock, and
-    /// fails the test when they do not within 30 seconds.
-    /// </summary>
-    private static async Task WaitUntilBlockedAsync(string connectionString, int expected, CancellationToken cancellationToken)
-    {
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromSeconds(30));
-        await using var connection = new NpgsqlConnection(connectionString);
-        await connection.OpenAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(
-            """
-            SELECT count(*) FROM pg_stat_activity
-            WHERE wait_event_type = 'Lock' AND datname = current_database() AND pid <> pg_backend_pid()
-              AND query ILIKE '%course_version%'
-            """,
-            connection);
-
-        var blocked = 0L;
-        while (blocked < expected)
-        {
-            if (timeout.IsCancellationRequested)
-            {
-                blocked.ShouldBe(expected, "the concurrent requests never waited for the lock on the version");
-            }
-
-            blocked = (long)(await command.ExecuteScalarAsync(cancellationToken) ?? 0L);
-            if (blocked < expected)
-            {
-                await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken);
-            }
-        }
-
-        blocked.ShouldBe(expected);
-    }
-
-    /// <summary>The deadlocks PostgreSQL has detected in the editorial database since its statistics were reset.</summary>
-    private static async Task<long> DeadlocksAsync(string connectionString, CancellationToken cancellationToken)
-    {
-        await using var connection = new NpgsqlConnection(connectionString);
-        await connection.OpenAsync(cancellationToken);
-        await using var command = new NpgsqlCommand("SELECT deadlocks FROM pg_stat_database WHERE datname = current_database()", connection);
-        return (long)(await command.ExecuteScalarAsync(cancellationToken) ?? 0L);
-    }
-
-    /// <summary>
-    /// Polls the editorial database's deadlock count until it rose above the given one, and fails the test when it does
-    /// not within 30 seconds. A backend reports its statistics when it goes idle, up to about ten seconds late.
-    /// </summary>
-    private static async Task ShouldHaveDeadlockedSinceAsync(string connectionString, long before, CancellationToken cancellationToken)
-    {
-        var started = TimeProvider.System.GetTimestamp();
-        var deadlocks = await DeadlocksAsync(connectionString, cancellationToken);
-        while (deadlocks <= before && TimeProvider.System.GetElapsedTime(started) < TimeSpan.FromSeconds(30))
-        {
-            await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken);
-            deadlocks = await DeadlocksAsync(connectionString, cancellationToken);
-        }
-
-        deadlocks.ShouldBeGreaterThan(before, "no round ended in a deadlock, so the test never exercised the path it guards");
-    }
-
-    /// <summary>
-    /// Publishing through the API needs submitting and publishing (#18), which need approved questions (#16) and a
-    /// blueprint (#17). Until then the test publishes the version in its own database; #18 replaces this seed with
-    /// the real submit and publish calls.
-    /// </summary>
-    private async Task SeedPublishedAsync(Guid id, CancellationToken cancellationToken)
-    {
-        var connectionString = await EditorialConnectionStringAsync(cancellationToken);
-        await using var connection = new NpgsqlConnection(connectionString);
-        await connection.OpenAsync(cancellationToken);
-        await using var command = new NpgsqlCommand("UPDATE editorial.course_versions SET status = 'Published' WHERE id = @id", connection);
-        command.Parameters.AddWithValue("id", id);
-
-        (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1);
-    }
+    private Task<string> EditorialConnectionStringAsync(CancellationToken cancellationToken) =>
+        EditorialDatabase.ConnectionStringAsync(aspire, cancellationToken);
 
     private sealed record CourseVersion(Guid Id, Guid CourseId, int Number, string Title, string Status, IReadOnlyList<ChapterView> Chapters);
 

@@ -43,6 +43,15 @@ public sealed class QuestionConfiguration : IEntityTypeConfiguration<Question>
         // (23503) instead of answering 409. The model keeps Restrict, which EF Core handles like NoAction on the
         // client. EF Core does not model deferrability: a later migration that drops and recreates either key must
         // make it DEFERRABLE INITIALLY DEFERRED again, and this one NO ACTION.
+        // Deferred, the key turns one interleaving into a deadlock instead of an xmin miss: removing a chapter saves
+        // DELETE chapter, then UPDATE version; adding a question to it saves INSERT question, UPDATE version, INSERT
+        // options. When the addition's version UPDATE lands between the removal's two statements, the addition's
+        // commit-time check of this key waits for the deleted chapter while the removal waits for the version row.
+        // PostgreSQL ends one of them after deadlock_timeout (40P01, an error in its log), and EFCore.PG reports that
+        // as a DbUpdateConcurrencyException, so the caller still gets 409 editorial.course-version-changed.
+        // EditorialQuestionRacesTests forces the interleaving and fails if a deadlocked round answers anything else.
+        // Updating the version's row before its children would avoid it, but that is RowVersionBump, which every
+        // module shares.
         builder.HasOne<Chapter>()
             .WithMany()
             .HasForeignKey(question => question.Chapter)

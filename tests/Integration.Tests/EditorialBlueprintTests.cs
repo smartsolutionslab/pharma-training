@@ -10,6 +10,7 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// and how long a certificate is valid. A version is read back with its blueprint; what a caller gets wrong is
 /// refused with its own code and never reaches 500; a version that is no draft keeps its blueprint.
 /// </summary>
+[Collection(EditorialDrafts.Name)]
 public class EditorialBlueprintTests(AspireFixture aspire)
 {
     private static readonly Uri Courses = new("/editorial/courses", UriKind.Relative);

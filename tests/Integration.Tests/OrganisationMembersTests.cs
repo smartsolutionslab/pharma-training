@@ -325,7 +325,7 @@ public class OrganisationMembersTests(AspireFixture aspire)
         {
             var ownerEndsOther = owner.DeleteAsync(MemberUri(pharmacy, other), cancellationToken);
             var otherEndsOwner = second.DeleteAsync(MemberUri(pharmacy, own), cancellationToken);
-            await database.WaitUntilBlockedAsync(2, cancellationToken);
+            await database.WaitUntilBlockedAsync(gate, 2, cancellationToken);
             await gate.CommitAsync(cancellationToken);
             responses = await Task.WhenAll(ownerEndsOther, otherEndsOwner);
         }
@@ -361,7 +361,7 @@ public class OrganisationMembersTests(AspireFixture aspire)
         {
             var end = owner.DeleteAsync(MemberUri(pharmacy, membership), cancellationToken);
             var change = owner.PatchAsJsonAsync(MemberUri(pharmacy, membership), new { jobFunction = "Pka", role = "Manager" }, cancellationToken);
-            await database.WaitUntilBlockedAsync(2, cancellationToken);
+            await database.WaitUntilBlockedAsync(gate, 2, cancellationToken);
             await gate.CommitAsync(cancellationToken);
             responses = await Task.WhenAll(end, change);
         }

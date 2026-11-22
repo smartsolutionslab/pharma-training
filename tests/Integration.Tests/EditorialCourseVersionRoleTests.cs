@@ -7,6 +7,7 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// Every course version route requires the policy editorial.edit, which the realm role editor holds: an editor reaches
 /// each of them, a pharmacy owner is forbidden, and a caller without a token is unauthorized.
 /// </summary>
+[Collection(EditorialDrafts.Name)]
 public class EditorialCourseVersionRoleTests(AspireFixture aspire)
 {
     [Theory]

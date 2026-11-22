@@ -10,9 +10,12 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// version changed (or, adding to a chapter that is gone, that the chapter is not found), never a server error, and the
 /// version is read back as the winner left it. Each round lets a different request through first.
 /// </summary>
+[Collection(EditorialDrafts.Name)]
 public class EditorialQuestionRacesTests(AspireFixture aspire)
 {
     private const int Rounds = 4;
+
+    private const int DeadlockRounds = 3;
 
     private static readonly Uri Courses = new("/editorial/courses", UriKind.Relative);
 
@@ -117,6 +120,152 @@ public class EditorialQuestionRacesTests(AspireFixture aspire)
         wrong.ShouldBeEmpty();
     }
 
+    [Fact]
+    public async Task A_question_added_to_a_chapter_whose_removal_deadlocks_with_it_answers_409_or_201_never_a_server_error()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var connectionString = await EditorialDatabase.ConnectionStringAsync(aspire, cancellationToken);
+        List<string> wrong = [];
+
+        // The addition saves INSERT question, UPDATE version, INSERT options, and checks the deferred question->chapter
+        // key at COMMIT (FOR KEY SHARE on the chapter); the removal saves DELETE chapter, UPDATE version. That is read
+        // from PostgreSQL's statement log, not assumed. Holding the version's row makes both wait on it, and once the
+        // gate ends, whichever backend gets there first updates it: often the removal, which then commits, and the
+        // addition loses on its row version without a deadlock. So the gate holds no row both need. It locks the
+        // options' table against writes (SHARE), which only the addition writes, and only after its version UPDATE:
+        //   1. the addition inserts the question, updates the version and waits to insert its options, for the gate;
+        //   2. the removal deletes the chapter and waits to update the version, for the addition, so behind the gate;
+        //   3. the gate rolls back: the addition inserts its options and, at COMMIT, waits for the deleted chapter,
+        //      for the removal, which waits for the addition.
+        // PostgreSQL then ends one of the two as a deadlock (40P01) every round, and the deadlock count rises each round.
+        for (var round = 1; round <= DeadlockRounds; round++)
+        {
+            var id = await CreateAsync(client, cancellationToken);
+            var chapter = await AddChapterAsync(client, id, cancellationToken);
+
+            var deadlocksBefore = await EditorialDatabase.SettledDeadlocksAsync(connectionString, cancellationToken);
+            Task<HttpResponseMessage> added;
+            Task<HttpResponseMessage> removed;
+            await using (var gate = await EditorialDatabase.LockAnswerOptionsAsync(connectionString, cancellationToken))
+            {
+                added = client.PostAsJsonAsync(Questions(id), SingleChoice(chapter), cancellationToken);
+                await EditorialDatabase.WaitUntilBlockedAsync(connectionString, gate, 1, cancellationToken);
+                removed = client.DeleteAsync(Chapter(id, chapter), cancellationToken);
+                await EditorialDatabase.WaitUntilBlockedAsync(connectionString, gate, 2, cancellationToken);
+                await gate.RollbackAsync(cancellationToken);
+            }
+
+            using var removal = await removed;
+            using var addition = await added;
+            var described = $"round {round}: DELETE chapter answered {(int)removal.StatusCode}, POST question answered {(int)addition.StatusCode}";
+            if (await OutcomeAsync(removal, addition, HttpStatusCode.OK, HttpStatusCode.Created, [], cancellationToken) is null)
+            {
+                wrong.Add($"{described}; expected one success and the other 409 editorial.course-version-changed ({await CodesAsync(removal, addition, cancellationToken)}).");
+            }
+
+            await EditorialDatabase.ShouldHaveDeadlockedSinceAsync(connectionString, deadlocksBefore, cancellationToken);
+            TestContext.Current.TestOutputHelper?.WriteLine($"{described}; deadlocks {deadlocksBefore} -> {await EditorialDatabase.DeadlocksAsync(connectionString, cancellationToken)}.");
+        }
+
+        wrong.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task A_question_added_to_a_chapter_whose_removal_deadlocks_with_it_at_commit_is_told_the_version_changed_never_a_server_error()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var connectionString = await EditorialDatabase.ConnectionStringAsync(aspire, cancellationToken);
+        List<string> wrong = [];
+
+        // The same gate as above, held past deadlock_timeout (1 s) once the removal waits. PostgreSQL checks a lock wait
+        // for a deadlock once, deadlock_timeout after it starts: the removal's check runs while the addition still waits
+        // for the gate, finds no cycle and is not repeated. Once the gate rolls back, the addition closes the cycle at
+        // COMMIT (its deferred question->chapter key check waits for the deleted chapter) and is the one ended, every
+        // round. The removal then updates the version and commits; the addition lost the race on the version.
+        for (var round = 1; round <= DeadlockRounds; round++)
+        {
+            var id = await CreateAsync(client, cancellationToken);
+            var chapter = await AddChapterAsync(client, id, cancellationToken);
+
+            var deadlocksBefore = await EditorialDatabase.SettledDeadlocksAsync(connectionString, cancellationToken);
+            Task<HttpResponseMessage> added;
+            Task<HttpResponseMessage> removed;
+            await using (var gate = await EditorialDatabase.LockAnswerOptionsAsync(connectionString, cancellationToken))
+            {
+                added = client.PostAsJsonAsync(Questions(id), SingleChoice(chapter), cancellationToken);
+                await EditorialDatabase.WaitUntilBlockedAsync(connectionString, gate, 1, cancellationToken);
+                removed = client.DeleteAsync(Chapter(id, chapter), cancellationToken);
+                await EditorialDatabase.WaitUntilBlockedAsync(connectionString, gate, 2, cancellationToken);
+                await Task.Delay(TimeSpan.FromSeconds(1.5), cancellationToken);
+                await gate.RollbackAsync(cancellationToken);
+            }
+
+            using var removal = await removed;
+            using var addition = await added;
+            var described = $"round {round}: DELETE chapter answered {(int)removal.StatusCode}, POST question answered {(int)addition.StatusCode}";
+            if (removal.StatusCode != HttpStatusCode.OK || !await IsChangedAsync(addition, [], cancellationToken))
+            {
+                wrong.Add($"{described}; expected 200 for the removal and 409 editorial.course-version-changed for the addition ({await CodesAsync(removal, addition, cancellationToken)}).");
+            }
+
+            await EditorialDatabase.ShouldHaveDeadlockedSinceAsync(connectionString, deadlocksBefore, cancellationToken);
+            TestContext.Current.TestOutputHelper?.WriteLine($"{described}; deadlocks {deadlocksBefore} -> {await EditorialDatabase.DeadlocksAsync(connectionString, cancellationToken)}.");
+        }
+
+        wrong.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task A_version_read_while_a_question_and_its_options_change_is_read_back_as_one_snapshot()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var connectionString = await EditorialDatabase.ConnectionStringAsync(aspire, cancellationToken);
+        var id = await CreateAsync(client, cancellationToken);
+        var chapter = await AddChapterAsync(client, id, cancellationToken);
+        var question = await AddQuestionAsync(client, id, SingleChoice(chapter), cancellationToken);
+
+        // The read loads the version, its chapters, its questions and their options in one query each. The gate locks
+        // the options' table, so the read has read the question when it waits for the options; the gate then changes
+        // the question's text and its options' texts and commits. Read in one snapshot, both are as they were.
+        Task<HttpResponseMessage> read;
+        var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await using (var gate = new VersionLock(connection, transaction))
+        {
+            await using (var locked = new NpgsqlCommand("LOCK TABLE editorial.course_version_answer_options IN ACCESS EXCLUSIVE MODE", connection, transaction))
+            {
+                await locked.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            read = client.GetAsync(new Uri($"/editorial/course-versions/{id}", UriKind.Relative), cancellationToken);
+            await EditorialDatabase.WaitUntilBlockedAsync(connectionString, gate, 1, cancellationToken);
+            await using (var changed = new NpgsqlCommand(
+                """
+                UPDATE editorial.course_version_questions SET text = 'Geändert' WHERE id = @question;
+                UPDATE editorial.course_version_answer_options SET text = 'Geändert' WHERE question_id = @question;
+                """,
+                connection,
+                transaction))
+            {
+                changed.Parameters.AddWithValue("question", question);
+                await changed.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await gate.CommitAsync(cancellationToken);
+        }
+
+        using var response = await read;
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var version = await response.Content.ReadFromJsonAsync<VersionView>(cancellationToken);
+        var readBack = (version?.Questions ?? []).ShouldHaveSingleItem();
+        readBack.Text.ShouldBe("Wann desinfizieren Sie die Hände?");
+        readBack.Options.Select(option => option.Text).ShouldBe(["Vor der Rezeptur", "Einmal am Tag"], "the options were read in another snapshot than their question");
+    }
+
     /// <summary>
     /// Holds the version, its chapters, questions and options, lets one request and then the other load the version
     /// and wait on those rows, and releases them by rolling back: the request let through first is first in line.
@@ -126,22 +275,22 @@ public class EditorialQuestionRacesTests(AspireFixture aspire)
     {
         Task<HttpResponseMessage> removed;
         Task<HttpResponseMessage> changed;
-        await using (var gate = await LockAsync(connectionString, id, cancellationToken))
+        await using (var gate = await EditorialDatabase.LockVersionAsync(connectionString, id, cancellationToken))
         {
             if (removalFirst)
             {
                 removed = removal();
-                await WaitUntilBlockedAsync(connectionString, 1, cancellationToken);
+                await EditorialDatabase.WaitUntilBlockedAsync(connectionString, gate, 1, cancellationToken);
                 changed = other();
             }
             else
             {
                 changed = other();
-                await WaitUntilBlockedAsync(connectionString, 1, cancellationToken);
+                await EditorialDatabase.WaitUntilBlockedAsync(connectionString, gate, 1, cancellationToken);
                 removed = removal();
             }
 
-            await WaitUntilBlockedAsync(connectionString, 2, cancellationToken);
+            await EditorialDatabase.WaitUntilBlockedAsync(connectionString, gate, 2, cancellationToken);
             await gate.RollbackAsync(cancellationToken);
         }
 
@@ -184,64 +333,6 @@ public class EditorialQuestionRacesTests(AspireFixture aspire)
 
     private static async Task<string> CodesAsync(HttpResponseMessage first, HttpResponseMessage second, CancellationToken cancellationToken) =>
         $"bodies: {await first.Content.ReadAsStringAsync(cancellationToken)} | {await second.Content.ReadAsStringAsync(cancellationToken)}";
-
-    private static async Task<VersionLock> LockAsync(string connectionString, Guid id, CancellationToken cancellationToken)
-    {
-        var connection = new NpgsqlConnection(connectionString);
-        try
-        {
-            await connection.OpenAsync(cancellationToken);
-            var transaction = await connection.BeginTransactionAsync(cancellationToken);
-            string[] locks =
-            [
-                "SELECT 1 FROM editorial.course_versions WHERE id = @id FOR UPDATE",
-                "SELECT 1 FROM editorial.course_version_chapters WHERE course_version_id = @id FOR UPDATE",
-                "SELECT 1 FROM editorial.course_version_questions WHERE course_version_id = @id FOR UPDATE",
-                "SELECT 1 FROM editorial.course_version_answer_options WHERE question_id IN (SELECT id FROM editorial.course_version_questions WHERE course_version_id = @id) FOR UPDATE",
-            ];
-            foreach (var sql in locks)
-            {
-                await using var command = new NpgsqlCommand(sql, connection, transaction);
-                command.Parameters.AddWithValue("id", id);
-                await command.ExecuteNonQueryAsync(cancellationToken);
-            }
-
-            return new VersionLock(connection, transaction);
-        }
-        catch
-        {
-            await connection.DisposeAsync();
-            throw;
-        }
-    }
-
-    /// <summary>Polls until at least the given number of statements on course versions wait for a lock, for at most 30 seconds.</summary>
-    private static async Task WaitUntilBlockedAsync(string connectionString, int expected, CancellationToken cancellationToken)
-    {
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromSeconds(30));
-        await using var connection = new NpgsqlConnection(connectionString);
-        await connection.OpenAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(
-            """
-            SELECT count(*) FROM pg_stat_activity
-            WHERE wait_event_type = 'Lock' AND datname = current_database() AND pid <> pg_backend_pid()
-              AND query ILIKE '%course_version%'
-            """,
-            connection);
-
-        var blocked = (long)(await command.ExecuteScalarAsync(cancellationToken) ?? 0L);
-        while (blocked < expected)
-        {
-            if (timeout.IsCancellationRequested)
-            {
-                blocked.ShouldBeGreaterThanOrEqualTo(expected, "the concurrent requests never waited for the locks on the version");
-            }
-
-            await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken);
-            blocked = (long)(await command.ExecuteScalarAsync(cancellationToken) ?? 0L);
-        }
-    }
 
     private static async Task<long> OptionCountAsync(string connectionString, Guid question, CancellationToken cancellationToken)
     {
@@ -310,7 +401,9 @@ public class EditorialQuestionRacesTests(AspireFixture aspire)
 
     private sealed record ChapterView(Guid Id);
 
-    private sealed record QuestionView(Guid Id, Guid ChapterId, string Type);
+    private sealed record QuestionView(Guid Id, Guid ChapterId, string Type, string Text, IReadOnlyList<OptionView> Options);
+
+    private sealed record OptionView(string Text);
 
     private sealed record Problem(string Code);
 }
