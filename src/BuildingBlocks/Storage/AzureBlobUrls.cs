@@ -48,6 +48,14 @@ public sealed class AzureBlobUrls : IBlobUrls
             BlobName = blob.Name,
             Resource = "b",
         };
+
+        // A signature for an https endpoint works only over https (spr=https), so it never travels in the clear. The
+        // emulator, Azurite, serves http, which that would refuse; its URLs name no protocol.
+        if (blob.Uri.Scheme == Uri.UriSchemeHttps)
+        {
+            sas.Protocol = SasProtocol.Https;
+        }
+
         return Task.FromResult(new BlobUrl(blob.GenerateSasUri(sas), expiresAt));
     }
 }
