@@ -101,6 +101,11 @@ test('every detail below a module declares its audience and its title by key', (
       titleKey: 'modules.editorial.details.version.title',
       audience: 'editor',
     },
+    {
+      address: '/editorial/versions/:id/test',
+      titleKey: 'modules.editorial.details.test.title',
+      audience: 'editor',
+    },
   ]);
   expect(t('modules.editorial.details.version.title')).toBe('Schulungsversion');
   setLanguage('en-GB', { remember: false });
