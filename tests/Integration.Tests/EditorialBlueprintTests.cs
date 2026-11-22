@@ -63,6 +63,19 @@ public class EditorialBlueprintTests(AspireFixture aspire)
         version.Questions.Select(read => (read.Id, read.Review)).ShouldBe([(question, "Approved")]);
     }
 
+    [Fact]
+    public async Task Numbers_sent_as_strings_are_read_as_numbers()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var id = await CreateAsync(client, cancellationToken);
+
+        using var set = await client.PutAsync(Blueprint(id), Json("""{"questions":"5","passingScorePercent":"70","validityMonths":"24"}"""), cancellationToken);
+
+        set.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await ReadAsync(client, id, cancellationToken)).Blueprint.ShouldBe(new BlueprintView(5, 70, 24));
+    }
+
     [Theory]
     [InlineData("{'questions':0,'passingScorePercent':80,'validityMonths':12}", "editorial.invalid-question-count")]
     [InlineData("{'questions':-1,'passingScorePercent':80,'validityMonths':12}", "editorial.invalid-question-count")]
