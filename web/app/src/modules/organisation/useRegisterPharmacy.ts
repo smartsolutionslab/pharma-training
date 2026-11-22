@@ -9,6 +9,7 @@ import {
   usePostOrganisationPharmacies,
 } from '@/api/generated';
 import { ApiError } from '@/api/baseApi';
+import { t } from '@/i18n';
 import { notify } from '@/lib/notify';
 import { myPharmaciesParams } from '@/shell/useMyPharmacies';
 import { useSelectedPharmacyStore } from '@/stores/selectedPharmacy';
@@ -22,15 +23,15 @@ const teamPage = '/organisation';
 /** Where the user goes when the new pharmacy cannot be opened: the start page, whose switcher lists it. */
 const startPage = '/';
 
-/** What the user reads when the host refuses a registration, by its status. */
+/**
+ * What the user reads when a registration is refused: the host's own words as it sent them (until #147 translates its
+ * codes), or the catalog's when it sent none (a network failure, a 5xx without a body).
+ */
 function refusal(error: unknown): string {
-  if (error instanceof ApiError && error.status === 400) {
-    return 'The pharmacy could not be registered: check its name and your job function.';
+  if (error instanceof ApiError && error.serverMessage !== undefined) {
+    return error.serverMessage;
   }
-  if (error instanceof ApiError && error.status === 403) {
-    return 'Your account has no name or email address, so it cannot register a pharmacy.';
-  }
-  return 'The pharmacy could not be registered. Try again.';
+  return t('organisation.register.failed');
 }
 
 /**
@@ -69,7 +70,7 @@ export function useRegisterPharmacy() {
     const id = z.uuid().safeParse(answer);
     if (!id.success) {
       await queryClient.invalidateQueries({ queryKey: getGetOrganisationPharmaciesMineQueryKey() });
-      notify.success(`The pharmacy ${values.name} was registered.`);
+      notify.success(t('organisation.register.registered', { name: values.name }));
       await router.push(startPage);
       return;
     }
@@ -84,14 +85,12 @@ export function useRegisterPharmacy() {
       // The memberships could not be read again: the new pharmacy cannot be opened.
     }
     if (!opened) {
-      notify.success(
-        `The pharmacy ${values.name} was registered, but it could not be opened. Choose it in the pharmacy switcher.`,
-      );
+      notify.success(t('organisation.register.registeredNotOpened', { name: values.name }));
       await router.push(startPage);
       return;
     }
     selected.choose(id.data);
-    notify.success(`The pharmacy ${values.name} was registered.`);
+    notify.success(t('organisation.register.registered', { name: values.name }));
     await router.push(teamPage);
   }
 

@@ -59,6 +59,24 @@ export const de = {
     },
     editorial: { title: 'Redaktion' },
   },
+  organisation: {
+    register: {
+      title: 'Apotheke registrieren',
+      intro: 'Sie verwalten die Apotheke: Sie laden Ihr Team ein und weisen ihm Schulungen zu.',
+      name: 'Name der Apotheke',
+      jobFunction: 'Ihre Tätigkeit',
+      choose: 'Bitte wählen…',
+      submit: 'Registrieren',
+      nameRequired: 'Geben Sie den Namen der Apotheke an.',
+      nameTooLong: 'Der Name einer Apotheke hat höchstens 120 Zeichen.',
+      nameHasNul: 'Der Name einer Apotheke darf kein Nullzeichen enthalten.',
+      jobFunctionRequired: 'Wählen Sie Ihre Tätigkeit in der Apotheke.',
+      registered: 'Die Apotheke {name} wurde registriert.',
+      registeredNotOpened:
+        'Die Apotheke {name} wurde registriert, konnte aber nicht geöffnet werden. Wählen Sie sie in der Apothekenauswahl.',
+      failed: 'Die Apotheke konnte nicht registriert werden. Versuchen Sie es erneut.',
+    },
+  },
   samples: {
     form: {
       name: 'Name',

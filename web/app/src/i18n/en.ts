@@ -58,6 +58,24 @@ export const en: MessageSchema = {
     },
     editorial: { title: 'Editorial' },
   },
+  organisation: {
+    register: {
+      title: 'Register a pharmacy',
+      intro: 'You will manage the pharmacy: invite your team and assign their training.',
+      name: 'Pharmacy name',
+      jobFunction: 'Your job function',
+      choose: 'Choose…',
+      submit: 'Register pharmacy',
+      nameRequired: 'Give the pharmacy a name.',
+      nameTooLong: "A pharmacy's name is at most 120 characters.",
+      nameHasNul: "A pharmacy's name cannot contain a nul character.",
+      jobFunctionRequired: 'Choose what you do in the pharmacy.',
+      registered: 'The pharmacy {name} was registered.',
+      registeredNotOpened:
+        'The pharmacy {name} was registered, but it could not be opened. Choose it in the pharmacy switcher.',
+      failed: 'The pharmacy could not be registered. Try again.',
+    },
+  },
   samples: {
     form: {
       name: 'Name',
