@@ -115,6 +115,21 @@ public partial class InvitationMailRequestedV1ConsumerTests
         sent.ShouldBeEmpty("the invitation was revoked after the link's commit and before the send, yet its invitee was mailed a dead link");
     }
 
+    [Fact]
+    public async Task An_invitation_renewed_after_the_links_commit_and_before_its_send_is_not_mailed_by_this_run()
+    {
+        var (pharmacy, membership) = Invited();
+        store.OnCommit(() => RenewedByAnotherWriter(pharmacy, membership));
+
+        await Consumer().HandleAsync(new InvitationMailRequestedV1(membership.Value, pharmacy.Id.Value), TestContext.Current.CancellationToken);
+
+        store.Commits.ShouldBe(1);
+        var stored = store.Stored.Single(stored => stored.Id == pharmacy.Id).Membership(membership);
+        stored.Status.ShouldBe(MembershipStatus.Invited);
+        stored.TokenHash.ShouldBeNull();
+        sent.ShouldBeEmpty("the invitation was renewed after the link's commit and before the send, which killed the link, yet this run mailed it");
+    }
+
     [Theory]
     [InlineData("revoked")]
     [InlineData("unknown membership")]
@@ -204,6 +219,30 @@ public partial class InvitationMailRequestedV1ConsumerTests
         revoked.ClearDomainEvents();
         store.Stored[store.Stored.IndexOf(pharmacy)] = revoked;
         pharmacy.Membership(membership).Status.ShouldBe(MembershipStatus.Invited, "the consumer's own copy must stay as it loaded it");
+    }
+
+    /// <summary>
+    /// What a manager's renewal leaves in the store once it commits between the consumer's commit and its send: the
+    /// membership still invited, its expiry moved on and its link cleared, so the link this run committed is dead. The
+    /// renewal's own mail request mails the new link; this run's copy stays stale.
+    /// </summary>
+    private void RenewedByAnotherWriter(Pharmacy pharmacy, MembershipId membership)
+    {
+        var founder = pharmacy.Membership(TestPharmacies.FounderOf(pharmacy));
+        var renewed = Pharmacy.Register(
+            pharmacy.Id,
+            pharmacy.Name,
+            founder.Id,
+            Owner,
+            DisplayName.From("Olaf Owner"),
+            founder.Email,
+            JobFunction.Pharmacist,
+            TestPharmacies.RegisteredAt);
+        renewed.Invite(membership, Anna, JobFunction.Pta, MembershipRole.Employee, TestPharmacies.RegisteredAt).IsSuccess.ShouldBeTrue();
+        renewed.RenewInvitation(membership, Timestamp.From(time.GetUtcNow())).IsSuccess.ShouldBeTrue();
+        renewed.ClearDomainEvents();
+        store.Stored[store.Stored.IndexOf(pharmacy)] = renewed;
+        pharmacy.Membership(membership).TokenHash.ShouldNotBeNull("the consumer's own copy must keep the link it committed");
     }
 
     private static FrontendLinks Links() => new(new ConfigurationBuilder()
