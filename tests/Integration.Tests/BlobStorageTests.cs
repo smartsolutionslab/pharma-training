@@ -261,6 +261,27 @@ public class BlobStorageTests(AspireFixture aspire)
     }
 
     [Fact]
+    public async Task Stored_blobs_read_the_first_bytes_of_a_blob_or_all_of_a_shorter_one()
+    {
+        var urls = await UrlsAsync("editorial", TimeProvider.System.GetUtcNow());
+        var blobs = await StoredBlobsAsync("editorial");
+        var longer = NewName();
+        var shorter = NewName();
+        var longerContent = RandomNumberGenerator.GetBytes(300);
+        var shorterContent = RandomNumberGenerator.GetBytes(5);
+
+        using var putLonger = await PutAsync((await urls.CreateUploadUrlAsync(longer, FiveMinutes, TestContext.Current.CancellationToken)).Url, longerContent);
+        using var putShorter = await PutAsync((await urls.CreateUploadUrlAsync(shorter, FiveMinutes, TestContext.Current.CancellationToken)).Url, shorterContent);
+        var startOfLonger = await blobs.ReadStartAsync(longer, 8, TestContext.Current.CancellationToken);
+        var startOfShorter = await blobs.ReadStartAsync(shorter, 8, TestContext.Current.CancellationToken);
+
+        putLonger.StatusCode.ShouldBe(HttpStatusCode.Created);
+        putShorter.StatusCode.ShouldBe(HttpStatusCode.Created);
+        startOfLonger.ToArray().ShouldBe(longerContent[..8], "a ranged read answers the first bytes asked for, and no more");
+        startOfShorter.ToArray().ShouldBe(shorterContent, "a blob shorter than the range answers what it has");
+    }
+
+    [Fact]
     public async Task Stored_blobs_report_a_blob_a_server_side_copy_created_as_a_copy_and_an_uploaded_one_as_none()
     {
         var urls = await UrlsAsync("editorial", TimeProvider.System.GetUtcNow());

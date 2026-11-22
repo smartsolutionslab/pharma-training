@@ -8,4 +8,10 @@ public interface IStoredBlobs
 {
     /// <summary>The blob's properties, or none when nothing was uploaded under <paramref name="name"/>.</summary>
     Task<Option<StoredBlob>> FindAsync(BlobName name, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The blob's first <paramref name="count"/> bytes, or all of them when it is shorter, so the module can check what
+    /// was uploaded rather than the content type its uploader declared.
+    /// </summary>
+    Task<ReadOnlyMemory<byte>> ReadStartAsync(BlobName name, int count, CancellationToken cancellationToken);
 }
