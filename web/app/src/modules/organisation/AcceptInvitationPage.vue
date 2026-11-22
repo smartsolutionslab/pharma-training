@@ -11,7 +11,16 @@ import { useAcceptInvitation } from './useAcceptInvitation';
 const { t } = useI18n();
 const { state, retry } = useAcceptInvitation();
 
-const retryable = computed(() => state.value.kind === 'refused' && state.value.refusal === 'failed');
+// Too many attempts and a failure are worth trying again, with the same token; every other refusal is final.
+const retryable = computed(
+  () => state.value.kind === 'refused' && (state.value.refusal === 'tooMany' || state.value.refusal === 'failed'),
+);
+// A member already goes on to their courses; everyone else home.
+const way = computed(() =>
+  state.value.kind === 'refused' && state.value.refusal === 'alreadyMember'
+    ? { to: '/learning', label: t('organisation.accept.goToCourses') }
+    : { to: '/', label: t('shell.gate.goHome') },
+);
 </script>
 
 <!-- One landmark through every state: what the user reads in it changes, the page's main does not. -->
@@ -28,11 +37,9 @@ const retryable = computed(() => state.value.kind === 'refused' && state.value.r
     </template>
     <template v-else>
       <h1 class="text-title">{{ t(`organisation.accept.${state.refusal}.title`) }}</h1>
-      <p class="text-body">{{ t(`organisation.accept.${state.refusal}.text`) }}</p>
+      <p class="text-body">{{ state.serverMessage ?? t(`organisation.accept.${state.refusal}.text`) }}</p>
       <Button v-if="retryable" variant="outline" @click="retry">{{ t('shell.retry') }}</Button>
-      <RouterLink to="/" class="text-body text-primary underline underline-offset-4">{{
-        t('shell.gate.goHome')
-      }}</RouterLink>
+      <RouterLink :to="way.to" class="text-body text-primary underline underline-offset-4">{{ way.label }}</RouterLink>
     </template>
   </main>
 </template>

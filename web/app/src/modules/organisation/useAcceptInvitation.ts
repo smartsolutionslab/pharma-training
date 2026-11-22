@@ -7,16 +7,62 @@ import {
   getGetOrganisationPharmaciesMineQueryKey,
   usePostOrganisationInvitationsAccept,
 } from '@/api/generated';
+import { ApiError } from '@/api/baseApi';
 import { t } from '@/i18n';
 import { notify } from '@/lib/notify';
 import { takeInvitationToken } from './invitationLink';
 import { useOpenPharmacy } from './useOpenPharmacy';
 
 /** Why the invitation was not accepted, each a state of the page with its title and text in the catalogs. */
-export type AcceptRefusal = 'missing' | 'failed';
+export type AcceptRefusal =
+  | 'missing'
+  | 'notFound'
+  | 'expired'
+  | 'anotherAddress'
+  | 'emailNotVerified'
+  | 'identityIncomplete'
+  | 'alreadyMember'
+  | 'tooMany'
+  | 'failed';
 
-/** What the page shows: the invitation on its way (or accepted and the page not moved on yet), or why it was not. */
-export type AcceptState = { kind: 'accepting' } | { kind: 'refused'; refusal: AcceptRefusal };
+/**
+ * What the page shows: the invitation on its way (or accepted and the page not moved on yet), or why it was not, with
+ * the module's own words for a refusal the page has no text of its own for.
+ */
+export type AcceptState = { kind: 'accepting' } | { kind: 'refused'; refusal: AcceptRefusal; serverMessage?: string };
+
+/** The organisation module's refusals the page knows, by code (POST /organisation/invitations/accept). */
+const refusalsByCode: Record<string, AcceptRefusal> = {
+  'organisation.invalid-invitation-token': 'missing',
+  'organisation.invitation-not-found': 'notFound',
+  'organisation.invitation-expired': 'expired',
+  'organisation.invitation-for-another-address': 'anotherAddress',
+  'organisation.email-not-verified': 'emailNotVerified',
+  'organisation.identity-incomplete': 'identityIncomplete',
+  'organisation.person-already-member': 'alreadyMember',
+  // Lost a concurrent save (ADR 0002): worth trying again.
+  'organisation.pharmacy-changed': 'failed',
+};
+
+/**
+ * The state a failed acceptance leaves the page in: a known refusal by its code, too many attempts by its status
+ * whatever its code, and anything else failed, with a module's own words where the host sent them (ADR 0007).
+ */
+function refusedBy(error: unknown): AcceptState {
+  if (!(error instanceof ApiError)) {
+    return { kind: 'refused', refusal: 'failed' };
+  }
+  if (error.status === 429) {
+    return { kind: 'refused', refusal: 'tooMany' };
+  }
+  const known = error.code === undefined ? undefined : refusalsByCode[error.code];
+  if (known !== undefined) {
+    return { kind: 'refused', refusal: known };
+  }
+  return error.serverMessage === undefined
+    ? { kind: 'refused', refusal: 'failed' }
+    : { kind: 'refused', refusal: 'failed', serverMessage: error.serverMessage };
+}
 
 /** Where an employee goes once they have joined: Meine Schulungen. */
 const coursesPage = '/learning';
@@ -47,8 +93,8 @@ export function useAcceptInvitation() {
     let answer: unknown;
     try {
       answer = await mutateAsync({ data: { token } });
-    } catch {
-      state.value = { kind: 'refused', refusal: 'failed' };
+    } catch (error) {
+      state.value = refusedBy(error);
       return;
     }
     await moveOn(answer);

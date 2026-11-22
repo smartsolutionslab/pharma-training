@@ -106,6 +106,35 @@ export const en: MessageSchema = {
         title: 'No valid invitation link',
         text: 'Open the link in your invitation e-mail again, in full and in this browser. As you are signed in now, the invitation will then be accepted straight away.',
       },
+      notFound: {
+        title: 'Invitation not found',
+        text: "This invitation link is no longer valid: it has been used, withdrawn or replaced by a newer one. Use the link in your latest invitation e-mail, or ask your pharmacy's manager for a new invitation.",
+      },
+      expired: {
+        title: 'Invitation expired',
+        text: "This invitation has expired. Ask your pharmacy's manager to send it again.",
+      },
+      anotherAddress: {
+        title: 'Invitation for another address',
+        text: "This invitation is for a different e-mail address from your account's. If it was forwarded to you, ask the pharmacy's manager to invite your own address. If it is yours, sign in with the invited address and open the link again.",
+      },
+      emailNotVerified: {
+        title: 'E-mail address not verified',
+        text: 'Your e-mail address has not been verified yet. Verify it with the link in the verification e-mail, then open the invitation link again.',
+      },
+      identityIncomplete: {
+        title: 'Account incomplete',
+        text: 'Your account has no name or no valid e-mail address. Complete your profile, then open the invitation link again.',
+      },
+      alreadyMember: {
+        title: 'Already a member',
+        text: 'You are already a member of this pharmacy. Choose it under "Pharmacy" in the sidebar.',
+      },
+      goToCourses: 'Go to My courses',
+      tooMany: {
+        title: 'Too many attempts',
+        text: 'Try again in a few minutes.',
+      },
       failed: {
         title: 'Invitation not accepted',
         text: 'The invitation could not be accepted. Try again.',

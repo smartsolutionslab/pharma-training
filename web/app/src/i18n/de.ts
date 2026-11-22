@@ -112,6 +112,35 @@ export const de = {
         title: 'Kein gültiger Einladungslink',
         text: 'Öffnen Sie den Link aus Ihrer Einladungs-E-Mail noch einmal, vollständig und in diesem Browser. Da Sie jetzt angemeldet sind, wird die Einladung dann sofort angenommen.',
       },
+      notFound: {
+        title: 'Einladung nicht gefunden',
+        text: 'Dieser Einladungslink gilt nicht mehr: Er wurde schon benutzt, zurückgezogen oder durch einen neueren ersetzt. Nutzen Sie den Link aus der neuesten Einladungs-E-Mail, oder bitten Sie Ihre Apothekenleitung um eine neue Einladung.',
+      },
+      expired: {
+        title: 'Einladung abgelaufen',
+        text: 'Diese Einladung ist abgelaufen. Bitten Sie Ihre Apothekenleitung, sie erneut zu senden.',
+      },
+      anotherAddress: {
+        title: 'Einladung für eine andere Adresse',
+        text: 'Diese Einladung gilt für eine andere E-Mail-Adresse als die Ihres Kontos. Wurde sie an Sie weitergeleitet, bitten Sie die Apothekenleitung, Ihre eigene Adresse einzuladen. Ist es Ihre Einladung, melden Sie sich mit der eingeladenen Adresse an und öffnen Sie den Link erneut.',
+      },
+      emailNotVerified: {
+        title: 'E-Mail-Adresse nicht bestätigt',
+        text: 'Ihre E-Mail-Adresse ist noch nicht bestätigt. Bestätigen Sie sie über den Link in der Bestätigungs-E-Mail, und öffnen Sie dann den Einladungslink erneut.',
+      },
+      identityIncomplete: {
+        title: 'Konto unvollständig',
+        text: 'Ihr Konto nennt keinen Namen oder keine gültige E-Mail-Adresse. Ergänzen Sie Ihr Profil, und öffnen Sie dann den Einladungslink erneut.',
+      },
+      alreadyMember: {
+        title: 'Bereits Mitglied',
+        text: 'Sie sind bereits Mitglied dieser Apotheke. Wählen Sie sie unter „Apotheke“ in der Seitenleiste.',
+      },
+      goToCourses: 'Zu „Meine Schulungen“',
+      tooMany: {
+        title: 'Zu viele Versuche',
+        text: 'Versuchen Sie es in einigen Minuten erneut.',
+      },
       failed: {
         title: 'Einladung nicht angenommen',
         text: 'Die Einladung konnte nicht angenommen werden. Versuchen Sie es erneut.',
