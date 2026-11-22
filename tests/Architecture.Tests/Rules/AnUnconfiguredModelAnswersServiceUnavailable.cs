@@ -112,6 +112,9 @@ public sealed class AnUnconfiguredModelAnswersServiceUnavailable : IArchitecture
             builder.UseSetting("ConnectionStrings:messaging", "amqp://localhost");
             builder.UseSetting("Messaging:Queue", "unused");
             builder.UseSetting("Authentication:Authority", "http://localhost/realms/unused");
+            builder.UseSetting("ConnectionStrings:mail", "smtp://localhost");
+            builder.UseSetting("Mail:From", "noreply@example.com");
+            builder.UseSetting("Frontend:BaseUrl", "https://app.example");
             builder.UseSetting("AzureOpenAI:Endpoint", string.Empty);
             builder.UseSetting("AzureOpenAI:Deployment", string.Empty);
             builder.UseSetting("AzureOpenAI:ApiKey", string.Empty);

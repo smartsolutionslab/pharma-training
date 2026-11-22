@@ -12,7 +12,8 @@ public sealed class Membership : Entity<MembershipId>
 
     public EmailAddress Email { get; private set; } = default!;
 
-    public InvitationToken? Token { get; private set; }
+    /// <summary>The hash of the open invitation's token; the token itself is never kept.</summary>
+    public InvitationTokenHash? TokenHash { get; private set; }
 
     public Timestamp? InvitationExpiresAt { get; private set; }
 
@@ -32,8 +33,8 @@ public sealed class Membership : Entity<MembershipId>
 
     internal bool IsActiveManager => Status == MembershipStatus.Active && Role == MembershipRole.Manager;
 
-    internal static Membership Invited(MembershipId id, EmailAddress email, InvitationToken token, JobFunction jobFunction, MembershipRole role, Timestamp expiresAt) =>
-        new(id) { Email = email, Token = token, InvitationExpiresAt = expiresAt, JobFunction = jobFunction, Role = role, Status = MembershipStatus.Invited };
+    internal static Membership Invited(MembershipId id, EmailAddress email, JobFunction jobFunction, MembershipRole role, Timestamp expiresAt) =>
+        new(id) { Email = email, InvitationExpiresAt = expiresAt, JobFunction = jobFunction, Role = role, Status = MembershipStatus.Invited };
 
     internal static Membership Founder(MembershipId id, EmailAddress email, PersonId person, DisplayName name, JobFunction jobFunction, Timestamp now) =>
         new(id) { Email = email, Person = person, Name = name, JobFunction = jobFunction, Role = MembershipRole.Manager, Status = MembershipStatus.Active, StartedAt = now };
@@ -44,14 +45,14 @@ public sealed class Membership : Entity<MembershipId>
         Name = name;
         Status = MembershipStatus.Active;
         StartedAt = now;
-        Token = null; // a used link never works again
+        TokenHash = null; // a used link never works again
         InvitationExpiresAt = null;
     }
 
     internal void Revoke()
     {
         Status = MembershipStatus.Revoked;
-        Token = null;
+        TokenHash = null;
     }
 
     internal void End(Timestamp now)
@@ -66,9 +67,12 @@ public sealed class Membership : Entity<MembershipId>
         Role = role;
     }
 
-    internal void RenewInvitation(InvitationToken token, Timestamp expiresAt)
+    /// <summary>The link mailed now; an earlier link's hash matches nothing any more.</summary>
+    internal void IssueLink(InvitationTokenHash tokenHash) => TokenHash = tokenHash;
+
+    internal void RenewInvitation(Timestamp expiresAt)
     {
-        Token = token;
+        TokenHash = null; // the old link stops working at once; the renewal's mail issues the new one
         InvitationExpiresAt = expiresAt;
     }
 }

@@ -38,6 +38,7 @@ jobs:
       Parameters__smtp-from: placeholder
       Parameters__smtp-username: placeholder
       Parameters__smtp-password: placeholder
+      Parameters__frontend-url: https://placeholder.example
       Parameters__azure-openai-endpoint: https://eu.api.openai.com/v1
       Parameters__azure-openai-api-key: placeholder
     steps:

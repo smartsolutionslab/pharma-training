@@ -18,6 +18,9 @@
     <PackageReference Include="Azure.Storage.Blobs" />
     <!-- Published, a service signs and reads under its own managed identity: shared-key access is off (docs/adr/0002). -->
     <PackageReference Include="Azure.Identity" />
+    <!-- Sends a module's plain-text mail over SMTP (src/BuildingBlocks/Mail); no module names it. -->
+    <PackageReference Include="MailKit" />
+    <InternalsVisibleTo Include="Mail.Tests" />
     <ProjectReference Include="../BuildingBlocks.EventSourcing/BuildingBlocks.EventSourcing.csproj" />
     <ProjectReference Include="../BuildingBlocks.Domain/BuildingBlocks.Domain.csproj" />
   </ItemGroup>
