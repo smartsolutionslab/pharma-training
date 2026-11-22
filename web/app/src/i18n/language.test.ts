@@ -67,6 +67,8 @@ describe('the language the browser prefers', () => {
 const withoutLanguages: [string, Record<string, unknown>, Language][] = [
   ['its one language decides', { language: 'en-US' }, 'en-GB'],
   ['with neither it falls back to German', {}, 'de-DE'],
+  // An empty most preferred language says nothing: the one the browser names next decides, in the app as in index.html.
+  ['an empty most preferred language gives way to its one language', { languages: [''], language: 'en-US' }, 'en-GB'],
 ];
 
 describe('a browser without navigator.languages', () => {
