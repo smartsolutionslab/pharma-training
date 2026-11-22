@@ -71,17 +71,20 @@ public class AcceptInvitationErrorTests
         var pharmacy = TestPharmacies.Register(PersonId.From(Guid.CreateVersion7()));
         var unknown = InvitationToken.From(Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(32)));
 
-        Result<Unit, AcceptInvitationError> accepted = pharmacy.AcceptInvitation(
+        var accepted = Refusal(pharmacy.AcceptInvitation(
             unknown,
             PersonId.From(Guid.CreateVersion7()),
             DisplayName.From("Anna Berger"),
             EmailAddress.From("anna@example.org"),
-            TestPharmacies.RegisteredAt);
+            TestPharmacies.RegisteredAt));
 
         accepted.IsFailure.ShouldBeTrue();
         accepted.Error.Value.ShouldBeOfType<InvitationNotFound>();
         PharmacyFailures.From(accepted.Error).Code.ShouldBe("organisation.invitation-not-found");
     }
+
+    /// <summary>Compiles only for an accept that returns the union: <see cref="Result{TValue, TError}"/> is invariant.</summary>
+    private static Result<Unit, AcceptInvitationError> Refusal(Result<Unit, AcceptInvitationError> result) => result;
 
     private static ApiError Mapped(AcceptInvitationError error) => PharmacyFailures.From(error);
 

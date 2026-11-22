@@ -38,8 +38,8 @@ public class AccountEmailTests
     [Fact]
     public void It_is_a_value_object_of_the_address()
     {
-        IValueObject<EmailAddress> email = AccountEmail.From(Anna, verified: true);
+        var email = AccountEmail.From(Anna, verified: true);
 
-        email.Value.ShouldBe(Anna);
+        email.ShouldBeAssignableTo<IValueObject<EmailAddress>>().ShouldNotBeNull().Value.ShouldBe(Anna);
     }
 }
