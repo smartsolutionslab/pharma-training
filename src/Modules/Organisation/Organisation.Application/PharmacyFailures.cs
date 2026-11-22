@@ -23,8 +23,7 @@ public static class PharmacyFailures
 
     public static ApiError Changed(Guid id) => new PharmacyChanged(id);
 
-    /// <summary>Stub for #9's red tests (T3).</summary>
-    public static ApiError InvalidEmail() => throw new NotImplementedException();
+    public static ApiError InvalidEmail() => new InvalidEmail();
 
     /// <summary>Stub for #9's red tests (T4).</summary>
     public static ApiError OpenInvitationNotFound(Guid id) => throw new NotImplementedException();
@@ -41,6 +40,8 @@ public static class PharmacyFailures
         {
             NoActiveMembership => ApiError.From(error, HttpStatusCode.NotFound),
             LastManagerCannotLeave => ApiError.From(error, HttpStatusCode.Conflict),
+            AlreadyMemberOrInvited => ApiError.From(error, HttpStatusCode.Conflict),
+            NoOpenInvitation => ApiError.From(error, HttpStatusCode.NotFound),
             _ => throw new UnreachableException(
                 $"{error.Code} is not returned by an Organisation use case yet; map it where it is first returned."),
         };
