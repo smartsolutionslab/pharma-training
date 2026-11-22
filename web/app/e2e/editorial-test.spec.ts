@@ -2,8 +2,9 @@ import { expect, type Locator, type Page, test } from '@playwright/test';
 
 // The test page of a course version (#25), as the realm's local user `editor` (realm role editor) works on it against
 // the AppHost. Each test starts a course of its own, so runs never share a version. Keycloak's login is English.
-// The AppHost runs without the model's settings unless a developer set them: the AI draft then answers 503
-// model-not-configured, and the draft's 200 path is proven by the page's component tests instead.
+// No test calls a real model (AGENTS.md): e2e.sh starts the AppHost with Azure OpenAI parameters that name no resource,
+// so the host would try a model and a developer's real settings would pay one. The AI draft's POST is answered in the
+// browser instead, and never reaches the host; the draft's 200 path is proven by the page's component tests.
 
 /** Signs in as editor and starts a course from the inbox; resolves on its first version's page. */
 async function startCourse(page: Page, title: string) {
@@ -120,7 +121,7 @@ test('a hand-written question is added, marked unreviewed, approved and counted'
   await expect(page.getByText('1 von 2 Fragen geprüft')).toBeVisible();
 });
 
-test('an AI draft asks first, warns about the unreviewed question and without a model changes nothing', async ({
+test('an AI draft asks first, warns about the unreviewed question and, refused without a model, changes nothing', async ({
   page,
 }) => {
   const title = `E2E KI-Entwurf ${Date.now()}`;
@@ -130,6 +131,22 @@ test('an AI draft asks first, warns about the unreviewed question and without a 
   await setBlueprint(page, '1', '80', '12');
   await addSingleChoiceQuestion(page, 'Wie lange waschen Sie die Hände?', ['30 Sekunden', '5 Sekunden']);
   await expect(questions(page)).toHaveCount(1);
+  // The host's answer without a model, given in the browser: the request never leaves it.
+  let intercepted = 0;
+  await page.route('**/api/editorial/course-versions/*/test-draft', async (route) => {
+    intercepted += 1;
+    await route.fulfill({
+      status: 503,
+      contentType: 'application/problem+json',
+      body: JSON.stringify({
+        type: 'https://tools.ietf.org/html/rfc9110#section-15.6.4',
+        title: 'No language model is configured.',
+        status: 503,
+        code: 'model-not-configured',
+      }),
+    });
+  });
+  const drafted = page.waitForResponse('**/api/editorial/course-versions/*/test-draft');
 
   await page.getByRole('button', { name: 'KI-Entwurf erstellen', exact: true }).click();
   const confirming = page
@@ -140,12 +157,15 @@ test('an AI draft asks first, warns about the unreviewed question and without a 
     confirming.getByText('Eine ungeprüfte Frage wird ersetzt, auch wenn sie von Hand geschrieben ist.'),
   ).toBeVisible();
   await confirming.getByRole('button', { name: 'Entwurf erstellen' }).click();
+  expect((await drafted).status()).toBe(503);
 
   await expect(
     page.getByRole('alert').filter({
       hasText: 'Für KI-Entwürfe ist kein Sprachmodell eingerichtet. Wenden Sie sich an den Betrieb der Plattform.',
     }),
   ).toBeVisible();
+  // Every draft the page asked for was answered by the route above: none reached the host.
+  expect(intercepted).toBe(1);
   await expect(questions(page)).toHaveCount(1);
   await expect(questions(page).first()).toContainText('Wie lange waschen Sie die Hände?');
   await page.reload();
