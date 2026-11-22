@@ -31,6 +31,8 @@ if (builder.ExecutionContext.IsRunMode)
 // upload and read URLs for its own container only: with Azurite's account key in run mode; published, with a user
 // delegation key under its own identity, which may use its own container alone (Wiring/BlobContainerAccess.cs).
 var storage = builder.AddBlobStorage();
+// The broker, with a user of its own for every service, who may use its own queue, publish its own module's events and
+// bind to the events it consumes alone (Wiring/Messaging.cs, docs/adr/0011).
 var messaging = builder.AddMessaging(secrets);
 // Models deployed in your own Azure OpenAI resource in an EU region, through its OpenAI v1 endpoint; nothing is
 // provisioned (docs/adr/0001). Set the endpoint (https://<resource>.openai.azure.com) and the key with dotnet user-secrets
@@ -101,8 +103,7 @@ foreach (var (module, project) in builder.ServiceHosts())
         .WithReference(keycloak.GetEndpoint("http"))
         .WaitFor(keycloak)
         .WithEnvironment("Authentication__Authority", ReferenceExpression.Create($"{keycloak.GetEndpoint("http")}/realms/pharma-training"))
-        .WithMessaging(messaging, secrets)
-        .WithEnvironment("Messaging__Queue", module)
+        .WithMessaging(messaging, secrets, module)
         .WithBlobContainer(blobs, "blobs")
         .WithEnvironment("AzureOpenAI__Endpoint", azureOpenAIEndpoint)
         .WithEnvironment("AzureOpenAI__Deployment", azureOpenAIDeployment)
