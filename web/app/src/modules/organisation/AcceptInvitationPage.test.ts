@@ -827,5 +827,7 @@ test('a token kept more than 30 minutes before the page opens is not posted', as
     await screen.findByRole('heading', { level: 1, name: t('organisation.accept.missing.title') }),
   ).toBeInTheDocument();
   expect(acceptances()).toEqual([]);
-  expect(sessionStorage.length).toBe(0);
+  // Our two keys are gone; vue-router keeps its own scroll positions in sessionStorage beside them.
+  expect(sessionStorage.getItem('invitation-token')).toBeNull();
+  expect(sessionStorage.getItem('invitation-token-kept-at')).toBeNull();
 });
