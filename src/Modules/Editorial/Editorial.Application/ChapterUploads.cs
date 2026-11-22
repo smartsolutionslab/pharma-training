@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Storage;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 
@@ -30,6 +31,20 @@ public static class ChapterUploads
     /// <summary>Where an MP4's first box names its type, <c>ftyp</c>: after the box's four-byte size.</summary>
     private const int BoxTypeOffset = 4;
 
+    /// <summary>Where an MP4's ftyp box names its major brand: after the box's size and type.</summary>
+    private const int MajorBrandOffset = 8;
+
+    /// <summary>The length of a brand, four ASCII characters.</summary>
+    private const int BrandLength = 4;
+
+    /// <summary>
+    /// The major brands of an MP4 file: the ISO base media brands an MP4 writer names (ISO/IEC 14496-12, <c>isom</c> and
+    /// <c>iso2</c> to <c>iso6</c>), MP4 itself (ISO/IEC 14496-14, <c>mp41</c>, <c>mp42</c>), AVC in MP4 (<c>avc1</c>),
+    /// DASH segments (<c>dash</c>) and Apple's MP4 video, <c>M4V </c>. A QuickTime movie, a HEIF or AVIF image or a 3GP
+    /// file also starts with an ftyp box, but names a brand of its own.
+    /// </summary>
+    private static readonly string[] Mp4MajorBrands = ["isom", "iso2", "iso3", "iso4", "iso5", "iso6", "mp41", "mp42", "avc1", "dash", "M4V "];
+
     /// <summary>The header every PDF file starts with.</summary>
     private static ReadOnlySpan<byte> PdfHeader => "%PDF-"u8;
 
@@ -37,7 +52,7 @@ public static class ChapterUploads
     private static ReadOnlySpan<byte> FileTypeBox => "ftyp"u8;
 
     /// <summary>How many leading bytes tell a PDF or an MP4: the longer of the two signatures, read from the start.</summary>
-    private static int SignatureLength => Math.Max(PdfHeader.Length, BoxTypeOffset + FileTypeBox.Length);
+    private static int SignatureLength => Math.Max(PdfHeader.Length, MajorBrandOffset + BrandLength);
 
     /// <summary>A new name for one upload of a PDF or video for the version.</summary>
     public static BlobName NameFor(CourseVersionId version, ChapterKind kind)
@@ -86,8 +101,8 @@ public static class ChapterUploads
     /// Whether the file may become the content of a chapter of the version and kind: a name issued for them, under which
     /// a block blob of the kind's content type (in any case, with any parameters), not empty and at most the kind's size,
     /// was put directly, not created by a server-side copy, which an upload URL also allows, and whose own leading bytes
-    /// are the kind's: a PDF starts with <c>%PDF-</c>, an MP4 has <c>ftyp</c> at bytes 4 to 7. The declared content type
-    /// is the uploader's word; the bytes are the file's.
+    /// are the kind's: a PDF starts with <c>%PDF-</c>, an MP4 has <c>ftyp</c> at bytes 4 to 7 and an MP4 major brand at
+    /// bytes 8 to 11. The declared content type is the uploader's word; the bytes are the file's.
     /// </summary>
     public static async Task<Result<Unit, ApiError>> AcceptAsync(IStoredBlobs blobs, BlobReference file, CourseVersionId version, ChapterKind kind, CancellationToken cancellationToken)
     {
@@ -132,9 +147,13 @@ public static class ChapterUploads
     private static bool StartsAsTheKindDoes(ReadOnlySpan<byte> start, ChapterKind kind) => kind switch
     {
         ChapterKind.Pdf => start.StartsWith(PdfHeader),
-        ChapterKind.Video => start.Length >= BoxTypeOffset + FileTypeBox.Length && start.Slice(BoxTypeOffset, FileTypeBox.Length).SequenceEqual(FileTypeBox),
+        ChapterKind.Video => start.Length >= MajorBrandOffset + BrandLength
+            && start.Slice(BoxTypeOffset, FileTypeBox.Length).SequenceEqual(FileTypeBox)
+            && IsMp4MajorBrand(start.Slice(MajorBrandOffset, BrandLength)),
         _ => throw new UnreachableException($"A {kind} chapter has no file."),
     };
+
+    private static bool IsMp4MajorBrand(ReadOnlySpan<byte> brand) => Mp4MajorBrands.Contains(Encoding.ASCII.GetString(brand), StringComparer.Ordinal);
 
     /// <summary>The kind, when it takes a file; a text chapter's has none, and asking for it is a bug.</summary>
     private static ChapterKind TakingAFile(ChapterKind kind)
