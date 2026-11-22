@@ -20,7 +20,7 @@ public class AiTestDraftApplyTests
         var second = QuestionId.New();
         var handedOut = new Queue<QuestionId>([first, second]);
 
-        Result<IReadOnlyList<QuestionId>, DomainError> applied = version.ApplyAiTestDraft([SingleChoice(chapter), SingleChoice(chapter)], handedOut.Dequeue, AnswerOptionId.New);
+        var applied = version.ApplyAiTestDraft([SingleChoice(chapter), SingleChoice(chapter)], handedOut.Dequeue, AnswerOptionId.New);
 
         applied.IsSuccess.ShouldBeTrue();
         applied.Value.ShouldBe([first, second]);
@@ -34,7 +34,7 @@ public class AiTestDraftApplyTests
         var version = InReview(out var chapter);
         List<QuestionId> before = [.. version.Questions.Select(question => question.Id)];
 
-        Result<IReadOnlyList<QuestionId>, DomainError> applied = version.ApplyAiTestDraft([SingleChoice(chapter)], QuestionId.New, AnswerOptionId.New);
+        var applied = version.ApplyAiTestDraft([SingleChoice(chapter)], QuestionId.New, AnswerOptionId.New);
 
         applied.IsFailure.ShouldBeTrue();
         applied.Error.ShouldBeOfType<NotADraft>();
