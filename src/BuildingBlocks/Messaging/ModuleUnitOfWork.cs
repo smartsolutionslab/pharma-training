@@ -41,8 +41,8 @@ public abstract partial class ModuleUnitOfWork<TContext>(IServiceProvider servic
     /// at one of its statements, where EF Core wraps it in a plain <see cref="DbUpdateException"/>; at the commit EF Core
     /// owns, where it wraps it in <see cref="DbUpdateConcurrencyException"/>; and, once a handler publishes, at the commit
     /// of Wolverine's envelope transaction through <c>Database.CommitTransactionAsync</c>, where it arrives as a bare
-    /// <see cref="PostgresException"/> or inside another exception. Each is logged as a warning naming its SqlState, with
-    /// the <see cref="PostgresException"/> attached so its stack shows where the deadlock happened (Npgsql redacts
+    /// <see cref="PostgresException"/> or inside another exception, any inner exception of an <see cref="AggregateException"/>
+    /// included. Each is logged as a warning naming its SqlState, with the <see cref="PostgresException"/> attached so its stack shows where the deadlock happened (Npgsql redacts
     /// PostgreSQL's Detail unless <c>Include Error Detail</c> is set, so keep it off; Where names the relation and tuple,
     /// never values), so a deadlock that keeps happening (two handlers taking locks in opposite orders) shows in the
     /// telemetry, not only as 409s; a row version that moved on is ordinary and is not logged. The filter also covers Wolverine's flush after
@@ -69,10 +69,17 @@ public abstract partial class ModuleUnitOfWork<TContext>(IServiceProvider servic
         }
     }
 
-    private static PostgresException? EndedAsLostRace(Exception exception) =>
-        exception is PostgresException { SqlState: PostgresErrorCodes.DeadlockDetected or PostgresErrorCodes.SerializationFailure } ended
-            ? ended
-            : exception.InnerException is { } inner ? EndedAsLostRace(inner) : null;
+    /// <summary>
+    /// The deadlock or serialization failure that ended the save, wherever it is wrapped: an <see cref="AggregateException"/>
+    /// is searched through all its inner exceptions, since <see cref="Exception.InnerException"/> names only its first.
+    /// </summary>
+    private static PostgresException? EndedAsLostRace(Exception exception) => exception switch
+    {
+        PostgresException { SqlState: PostgresErrorCodes.DeadlockDetected or PostgresErrorCodes.SerializationFailure } ended => ended,
+        AggregateException aggregate => aggregate.InnerExceptions.Select(EndedAsLostRace).FirstOrDefault(ended => ended is not null),
+        { InnerException: { } inner } => EndedAsLostRace(inner),
+        _ => null,
+    };
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "PostgreSQL ended a save of {Context} with SqlState {SqlState}; answered as a lost race.")]
     private static partial void LogLostRace(ILogger logger, Exception exception, string sqlState, string context);
