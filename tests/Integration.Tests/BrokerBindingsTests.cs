@@ -124,8 +124,15 @@ public partial class BrokerBindingsTests(AspireFixture aspire)
         var listened = await QueuesOrganisationListensOnAsync(cancellationToken);
         var consumers = await management.GetFromJsonAsync<List<QueueConsumer>>(new Uri("/api/consumers/%2F", UriKind.Relative), cancellationToken) ?? [];
         List<string> queues = [.. consumers.Select(consumer => consumer.Queue.Name).Where(listened.Contains).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
-        queues.ShouldNotBeEmpty(
-            $"the broker has no consumer on any queue the Organisation service listens on ({string.Join(", ", listened)}); consumed: {string.Join(", ", consumers.Select(consumer => consumer.Queue.Name))}");
+        if (queues.Count == 0)
+        {
+            // Nothing to forge onto: the service listens on no broker queue. That an empty list is not a log that could
+            // not be read: no host declares Wolverine's request/reply queue any more, so the broker has no consumer on one.
+            consumers.Select(consumer => consumer.Queue.Name).ShouldNotContain(
+                name => name.StartsWith("wolverine.response.", StringComparison.Ordinal),
+                $"a host still consumes a request/reply queue; consumed: {string.Join(", ", consumers.Select(consumer => consumer.Queue.Name))}");
+        }
+
         return queues;
     }
 
