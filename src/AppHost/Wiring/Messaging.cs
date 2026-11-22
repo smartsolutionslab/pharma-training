@@ -5,7 +5,7 @@ namespace Aspire.Hosting;
 
 /// <summary>
 /// The broker, RabbitMQ, as a container whose data outlives a restart on a named volume. In run mode it has its management
-/// UI and the user and password Aspire generates, as it always had. Published (docs/adr/0004), it is a Container App that
+/// UI and the user and password Aspire generates, as it always had. Published (docs/adr/0005), it is a Container App that
 /// never runs a second replica, without the management UI, with the user and password the deployment sets; the password
 /// and the connection string the services read are secrets in the Key Vault, which both sides read as Key Vault
 /// references.
@@ -36,7 +36,7 @@ public static class Messaging
         // write amqp://user:password@ without host and port. A Container App with TCP ingress is reached inside the
         // environment by its name on its target port, which is what Aspire writes for a service that references the
         // broker; the secret names the same, from the model. Main.bicep does not URI-escape a value it assembles, so the
-        // broker's user and password must be URI-safe (docs/adr/0004).
+        // broker's user and password must be URI-safe (docs/adr/0005).
         var endpoint = broker.Resource.PrimaryEndpoint.EndpointAnnotation;
         var address = $"{broker.Resource.Name}:{endpoint.TargetPort ?? throw new InvalidOperationException($"{Name}'s {endpoint.Name} endpoint has no target port.")}";
         secrets.Store($"{Name}-connection-string", ReferenceExpression.Create($"amqp://{userName.Resource}:{password.Resource}@{address}"));

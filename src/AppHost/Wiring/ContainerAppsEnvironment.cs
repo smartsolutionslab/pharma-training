@@ -4,7 +4,7 @@ namespace Aspire.Hosting;
 
 /// <summary>
 /// Where the published AppHost runs: one Azure Container Apps environment, <c>aca</c>, in publish mode alone
-/// (docs/adr/0004). Its Aspire dashboard is not deployed: it would show logs and traces, personal data among them, on a
+/// (docs/adr/0005). Its Aspire dashboard is not deployed: it would show logs and traces, personal data among them, on a
 /// public URL; they stay in Log Analytics. No region is named here; the deployment chooses it.
 /// </summary>
 public static class ContainerAppsEnvironment

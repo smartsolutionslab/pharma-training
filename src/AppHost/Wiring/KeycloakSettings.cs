@@ -5,7 +5,7 @@ namespace Aspire.Hosting;
 /// <summary>
 /// Keycloak's administrator and the mail server it sends verification and reset-password email through. In run mode the
 /// administrator is "admin", with a password Aspire generates once and keeps in the AppHost's user secrets, and email lands
-/// in Mailpit, as it always did. Published (docs/adr/0004), the deployment sets the administrator, its password and the
+/// in Mailpit, as it always did. Published (docs/adr/0005), the deployment sets the administrator, its password and the
 /// SMTP server; the passwords and the SMTP user are Key Vault secrets Keycloak reads as Key Vault references.
 /// </summary>
 public static class KeycloakSettings

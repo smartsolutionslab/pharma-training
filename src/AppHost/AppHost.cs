@@ -1,7 +1,7 @@
 var builder = DistributedApplication.CreateBuilder(args);
 
 // Published (aspire publish -e staging|production), everything runs in one Azure Container Apps environment and every
-// secret is a parameter the deployment sets, kept in a Key Vault; run mode has neither (docs/adr/0004).
+// secret is a parameter the deployment sets, kept in a Key Vault; run mode has neither (docs/adr/0005).
 builder.AddContainerAppsEnvironment();
 var secrets = DeploymentSecrets.For(builder);
 
@@ -44,7 +44,7 @@ var messaging = builder.AddMessaging(secrets);
 // default. The deployment must name one in that resource (gpt-5 for harder questions).
 var azureOpenAIEndpoint = builder.AddParameter("azure-openai-endpoint", () => builder.Configuration["Parameters:azure-openai-endpoint"] ?? string.Empty, publishValueAsDefault: false);
 var azureOpenAIDeployment = builder.AddParameter("azure-openai-deployment", "gpt-5-mini", publishValueAsDefault: true);
-// Published, the key is a secret the deployment must set, kept in the Key Vault (docs/adr/0005).
+// Published, the key is a secret the deployment must set, kept in the Key Vault (docs/adr/0006).
 var azureOpenAIApiKey = secrets.IsPublishing
     ? secrets.Secret("azure-openai-api-key")
     : builder.AddParameter("azure-openai-api-key", () => builder.Configuration["Parameters:azure-openai-api-key"] ?? string.Empty, publishValueAsDefault: false, secret: true);
@@ -95,7 +95,7 @@ foreach (var (module, project) in builder.ServiceHosts())
         .WaitFor(service);
 }
 
-// The web app's dev server, run mode only: it is not a Container App of its own once published (docs/adr/0004).
+// The web app's dev server, run mode only: it is not a Container App of its own once published (docs/adr/0005).
 if (builder.ExecutionContext.IsRunMode)
 {
     var web = builder.AddViteApp("web", "../../web/app")

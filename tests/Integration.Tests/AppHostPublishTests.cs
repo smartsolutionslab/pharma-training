@@ -5,7 +5,7 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 
 /// <summary>
 /// The AppHost publishes one Azure Container Apps environment, <c>aca</c>, for each environment the deploy workflow names,
-/// and writes the same Bicep for the same commit every time (docs/adr/0004).
+/// and writes the same Bicep for the same commit every time (docs/adr/0005).
 /// </summary>
 public class AppHostPublishTests
 {

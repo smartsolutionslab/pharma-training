@@ -9,7 +9,7 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// In publish mode every secret is a parameter the deployment sets, never one Aspire generates or publishes a default for,
 /// and it reaches Azure through the Key Vault <c>secrets</c>: each Container App reads it as a Key Vault reference, never
 /// as a plain value. The model's endpoint and deployment reach every service as they do today, and the key is one of
-/// those secrets (docs/adr/0004, docs/adr/0005).
+/// those secrets (docs/adr/0005, docs/adr/0006).
 /// </summary>
 public class AppHostPublishParametersTests
 {

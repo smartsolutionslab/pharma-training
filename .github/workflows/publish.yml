@@ -1,7 +1,7 @@
 name: publish
 
 # Publishes the AppHost for both environments the deploy workflow names, as Bicep, on every pull request and on main
-# (docs/adr/0004): the publish must succeed, its Bicep must compile, and a second publish of the same commit must write the
+# (docs/adr/0005): the publish must succeed, its Bicep must compile, and a second publish of the same commit must write the
 # same files. Nothing here signs in to Azure or deploys anything.
 on:
   push:
@@ -57,9 +57,17 @@ jobs:
         run: dnx --yes aspire.cli@13.6.5 -- publish --apphost src/AppHost/AppHost.csproj -e "${{ matrix.environment }}" -o "publish/${{ matrix.environment }}/second" --non-interactive --nologo --no-build
       - name: Both publishes wrote the same files
         run: diff -r "publish/${{ matrix.environment }}/first" "publish/${{ matrix.environment }}/second"
-      # Compiles main.bicep and every module it names.
+      # Every file the publish wrote: Aspire 13.6.5's main.bicep does not name the Container App modules (each service,
+      # Keycloak, the broker), so compiling main.bicep alone would skip exactly the modules this AppHost customises.
       - name: The Bicep compiles
-        run: az bicep build --file "publish/${{ matrix.environment }}/first/main.bicep" --stdout > /dev/null
+        run: |
+          count=0
+          while IFS= read -r -d '' file; do
+            az bicep build --file "$file" --stdout > /dev/null
+            count=$((count + 1))
+          done < <(find "publish/${{ matrix.environment }}/first" -name '*.bicep' -print0)
+          echo "Compiled $count Bicep files."
+          test "$count" -gt 1
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() && hashFiles(format('publish/{0}/first/main.bicep', matrix.environment)) != '' }}
         with:

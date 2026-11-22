@@ -3,7 +3,7 @@ using Azure.Provisioning.PostgreSql;
 namespace Aspire.Hosting;
 
 /// <summary>
-/// The Flexible Server's size and backups for each environment the deploy workflow publishes (docs/adr/0004). Staging is
+/// The Flexible Server's size and backups for each environment the deploy workflow publishes (docs/adr/0005). Staging is
 /// the smallest Burstable size that has connections enough for every service's pools and Keycloak (Standard_B1ms allows
 /// 50); production the smallest General Purpose size. Neither has high availability or geo-redundant backups.
 /// </summary>

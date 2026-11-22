@@ -1,6 +1,6 @@
 # 0001: Azure OpenAI is optional to start and lives in the EU
 
-**Status:** Accepted. Superseded in part by [0005](0005-openai-eu-endpoint-for-deployments.md): for deployments, the model is OpenAI's EU endpoint until Azure OpenAI is set up in Germany West Central; "The resource and its deployment are in the EU" stays for run mode and the evals.
+**Status:** Accepted. Superseded in part by [0006](0006-openai-eu-endpoint-for-deployments.md): for deployments, the model is OpenAI's EU endpoint until Azure OpenAI is set up in Germany West Central; "The resource and its deployment are in the EU" stays for run mode and the evals.
 
 ## Context
 

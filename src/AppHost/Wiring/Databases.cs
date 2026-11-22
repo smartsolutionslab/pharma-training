@@ -9,7 +9,7 @@ namespace Aspire.Hosting;
 /// volume, as it always was. Published, it is an Azure Flexible Server, <c>postgres</c>, with password authentication: the
 /// deployment sets the administrator and the password, which the Key Vault keeps together with every database's connection
 /// string, so a service reads its own as a Key Vault reference. Its size and backups follow the environment
-/// (<see cref="DatabaseServerSize"/>), and it has a database for Keycloak beside the modules' (docs/adr/0004).
+/// (<see cref="DatabaseServerSize"/>), and it has a database for Keycloak beside the modules' (docs/adr/0005).
 /// </summary>
 public static class Databases
 {

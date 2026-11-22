@@ -1,4 +1,4 @@
-# 0005: OpenAI's EU endpoint for MVP 1 deployments
+# 0006: OpenAI's EU endpoint for MVP 1 deployments
 
 **Status:** Accepted. Supersedes in part ADR 0001 ("The resource and its deployment are in the EU"), for deployments only, until Azure OpenAI is set up in Germany West Central.
 
@@ -10,7 +10,7 @@
 
 ## Decision
 
-- **A deployment's model is an OpenAI project with EU data residency.** Its `azure-openai-endpoint` is `https://eu.api.openai.com/v1` and its `azure-openai-api-key` the project's key, a Key Vault secret like every other publish-mode secret (ADR 0004). `azure-openai-deployment` names the OpenAI model (`gpt-5-mini` by default).
+- **A deployment's model is an OpenAI project with EU data residency.** Its `azure-openai-endpoint` is `https://eu.api.openai.com/v1` and its `azure-openai-api-key` the project's key, a Key Vault secret like every other publish-mode secret (ADR 0005). `azure-openai-deployment` names the OpenAI model (`gpt-5-mini` by default).
 - **Nothing changes in code.** No Azure OpenAI or Cognitive Services resource is provisioned (`AppHostPublishParametersTests` fails on one), no code branches on the endpoint, and no second client or provider switch is added.
 - **The project's data residency settings are the owner's.** The OpenAI project is created with EU data residency and its key is set in each GitHub environment's secrets; that is part of the first deploy (#129), not of the code.
 - **Run mode and the evals are unchanged.** A developer and the evals workflow may still point the parameters at an Azure OpenAI resource in the EU, as ADR 0001 says; the rest of ADR 0001 (empty defaults, `503 model-not-configured`, unconfigured integration tests) stands for every environment.
