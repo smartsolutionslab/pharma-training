@@ -83,3 +83,26 @@ test('every page below a module has a path of one segment', () => {
     expect(path).toMatch(/^[^/]+$/);
   }
 });
+
+// A detail page below a module (its routes.ts's details) has a parameter in its address, `versions/:id`, and is listed
+// in neither the sidebar nor the palette; it declares its own audience and its title by key, which the breadcrumbs name.
+test('every detail below a module declares its audience and its title by key', () => {
+  expect(
+    moduleRoutes.flatMap((route) =>
+      (route.details ?? []).map((detail) => ({
+        address: `/${route.path}/${detail.path}`,
+        titleKey: detail.titleKey,
+        audience: detail.audience,
+      })),
+    ),
+  ).toEqual([
+    {
+      address: '/editorial/versions/:id',
+      titleKey: 'modules.editorial.details.version.title',
+      audience: 'editor',
+    },
+  ]);
+  expect(t('modules.editorial.details.version.title')).toBe('Schulungsversion');
+  setLanguage('en-GB', { remember: false });
+  expect(t('modules.editorial.details.version.title')).toBe('Course version');
+});

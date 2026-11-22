@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../../src/Modules/Editorial/Editorial.Api/Editorial.Api.csproj" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
     <Compile Include="../../Fakes/*.cs" Link="Fakes/%(Filename)%(Extension)" />
   </ItemGroup>
 

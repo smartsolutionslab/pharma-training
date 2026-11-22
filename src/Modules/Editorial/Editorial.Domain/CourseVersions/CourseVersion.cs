@@ -215,9 +215,9 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
 
     /// <summary>
     /// Takes the LLM's draft of the whole test. Approved questions stay; the unreviewed ones are replaced, so a new
-    /// draft never throws away work an editor has signed off.
+    /// draft never throws away work an editor has signed off. Answers the drafted questions' new ids, in the draft's order.
     /// </summary>
-    public Result<Unit, DomainError> ApplyAiTestDraft(IReadOnlyList<DraftedQuestion> drafted, Func<QuestionId> newQuestionId, Func<AnswerOptionId> newOptionId)
+    public Result<IReadOnlyList<QuestionId>, DomainError> ApplyAiTestDraft(IReadOnlyList<DraftedQuestion> drafted, Func<QuestionId> newQuestionId, Func<AnswerOptionId> newOptionId)
     {
         Ensure.That(drafted).IsNotNull();
         Ensure.That(newQuestionId).IsNotNull();
@@ -237,10 +237,12 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
             return Refused(CourseVersionErrors.TooManyQuestions(Id));
         }
 
+        List<Question> added = [.. drafted.Select(draft => Question.From(newQuestionId(), draft, Provenance.AiDrafted, newOptionId))];
         questions.RemoveAll(question => question.Review == ReviewState.Unreviewed);
-        questions.AddRange(drafted.Select(draft => Question.From(newQuestionId(), draft, Provenance.AiDrafted, newOptionId)));
+        questions.AddRange(added);
         Raise(new AiTestDraftApplied(Id, QuestionCount.From(drafted.Count)));
-        return Success(Unit.Value);
+        IReadOnlyList<QuestionId> ids = [.. added.Select(question => question.Id)];
+        return Success(ids);
     }
 
     public Result<QuestionId, DomainError> AddQuestion(QuestionId id, DraftedQuestion draft, Func<AnswerOptionId> newOptionId)

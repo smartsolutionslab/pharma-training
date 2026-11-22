@@ -87,3 +87,22 @@ test('pageOf finds nothing for the start page or an address no module has', () =
   expect(pageOf('/nowhere')).toBeUndefined();
   expect(pageOf('/nowhere/register')).toBeUndefined();
 });
+
+// A detail page below a module (its routes.ts's details) has segments that may hold a parameter, `versions/:id`: a
+// static segment is equal, a parameter matches one segment that is not empty. A detail governs its address before the
+// module's pages and the module.
+const version = '0198c1a0-0000-7000-8000-0000000000c1';
+
+test("pageOf finds a module's detail page by its pattern, a parameter matching one segment and no more", () => {
+  expect(pageOf(`/editorial/versions/${version}`)).toMatchObject({
+    path: 'versions/:id',
+    titleKey: 'modules.editorial.details.version.title',
+    audience: 'editor',
+  });
+  expect(pageOf(`/editorial/versions/${version}/`)).toMatchObject({ path: 'versions/:id', audience: 'editor' });
+
+  // An address in the module that matches no detail's pattern is the module's.
+  expect(pageOf('/editorial/versions')).toMatchObject({ path: 'editorial', titleKey: 'modules.editorial.title' });
+  expect(pageOf(`/editorial/versions/${version}/chapters`)).toMatchObject({ path: 'editorial' });
+  expect(pageOf(`/editorial/courses/${version}`)).toMatchObject({ path: 'editorial' });
+});

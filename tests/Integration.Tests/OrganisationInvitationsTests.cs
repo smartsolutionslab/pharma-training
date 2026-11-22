@@ -222,6 +222,22 @@ public partial class OrganisationInvitationsTests(AspireFixture aspire)
         await ShouldBeRefusedAsync(revoked, HttpStatusCode.NotFound, "organisation.pharmacy-not-found", cancellationToken);
     }
 
+    [Theory]
+    [InlineData("\"email\":\"kein-at\",\"jobFunction\":\"Pta\",\"role\":\"Employee\"")]
+    [InlineData("\"email\":\"invitee@example.com\",\"jobFunction\":\"Pta\",\"role\":42")]
+    [InlineData("\"email\":\"invitee@example.com\",\"jobFunction\":42,\"role\":\"Employee\"")]
+    public async Task The_empty_pharmacy_id_is_no_pharmacy_whatever_the_invitation_gets_wrong(string fields)
+    {
+        // Renew and revoke answer the empty id before anything else; invite must answer it as they do.
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var owner = await aspire.CreateHostClientAsync("owner");
+        using var body = new StringContent($"{{{fields}}}", Encoding.UTF8, "application/json");
+
+        using var invited = await owner.PostAsync(InvitationsUri(Guid.Empty), body, cancellationToken);
+
+        await ShouldBeRefusedAsync(invited, HttpStatusCode.NotFound, "organisation.pharmacy-not-found", cancellationToken);
+    }
+
     [Fact]
     public async Task An_anonymous_caller_neither_invites_nor_renews_nor_revokes()
     {
