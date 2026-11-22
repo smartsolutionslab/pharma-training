@@ -165,26 +165,68 @@ test.each([
   },
 );
 
-// The host's own words, as it sent them (ApiError.serverMessage): nothing translates them until #147. Only a refusal
-// without them, a network failure or a 5xx without a body, is told in the catalog's words.
+// A module's own words, as the host sent them (ApiError.serverMessage): nothing translates them until #147. A refusal
+// without them, a network failure, a 5xx, or a framework's problem (no code, or a failed guard's invalid-argument), is
+// told in the catalog's words: the framework's English titles never reach the user.
 test.each([
   [
-    'a 400 with problem details',
+    "a 400 with the module's problem details and a detail",
     () =>
       new Response(
-        JSON.stringify({ title: 'Bad Request', status: 400, detail: 'Der Name ist zu lang, sagt der Server.' }),
+        JSON.stringify({
+          title: 'Bad Request',
+          status: 400,
+          detail: 'Der Name ist zu lang, sagt der Server.',
+          code: 'organisation.invalid-pharmacy-name',
+        }),
         { status: 400, headers: { 'Content-Type': 'application/problem+json' } },
       ),
     () => 'Der Name ist zu lang, sagt der Server.',
   ],
   [
-    'a 403 with a problem title only',
+    "a 403 with the module's problem title only",
     () =>
-      new Response(JSON.stringify({ title: 'Kein Name im Konto.', status: 403 }), {
-        status: 403,
+      new Response(
+        JSON.stringify({ title: 'Kein Name im Konto.', status: 403, code: 'organisation.identity-incomplete' }),
+        { status: 403, headers: { 'Content-Type': 'application/problem+json' } },
+      ),
+    () => 'Kein Name im Konto.',
+  ],
+  [
+    "a 500 with the framework's problem title",
+    () =>
+      new Response(
+        JSON.stringify({
+          type: 'https://tools.ietf.org/html/rfc9110#section-15.6.1',
+          title: 'An error occurred while processing your request.',
+          status: 500,
+        }),
+        { status: 500, headers: { 'Content-Type': 'application/problem+json' } },
+      ),
+    () => t('organisation.register.failed'),
+  ],
+  [
+    'a 400 binding failure without a code',
+    () =>
+      new Response(JSON.stringify({ title: 'Bad Request', status: 400 }), {
+        status: 400,
         headers: { 'Content-Type': 'application/problem+json' },
       }),
-    () => 'Kein Name im Konto.',
+    () => t('organisation.register.failed'),
+  ],
+  [
+    'a 400 from a failed guard',
+    () =>
+      new Response(
+        JSON.stringify({
+          title: 'The request is invalid.',
+          status: 400,
+          detail: "The value of 'name' must not be null or white space.",
+          code: 'invalid-argument',
+        }),
+        { status: 400, headers: { 'Content-Type': 'application/problem+json' } },
+      ),
+    () => t('organisation.register.failed'),
   ],
   ['a 500 without a body', () => new Response('', { status: 500 }), () => t('organisation.register.failed')],
   [

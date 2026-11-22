@@ -237,27 +237,42 @@ test('the page posts the trimmed name and the chosen job function', async () => 
   );
 });
 
-// The host's own words are shown as it sent them (ApiError.serverMessage); the catalog speaks only when it sent none.
+// A module's own words are shown as the host sent them (ApiError.serverMessage); the catalog speaks when it sent none,
+// and for a framework's problem: a 5xx's English title is not the user's to read.
 test.each([
   [
     400,
     () =>
-      new Response(JSON.stringify({ title: 'Bad Request', status: 400, detail: 'Der Name ist ungültig.' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/problem+json' },
-      }),
+      new Response(
+        JSON.stringify({
+          title: 'Bad Request',
+          status: 400,
+          detail: 'Der Name ist ungültig.',
+          code: 'organisation.invalid-pharmacy-name',
+        }),
+        { status: 400, headers: { 'Content-Type': 'application/problem+json' } },
+      ),
     () => 'Der Name ist ungültig.',
   ],
   [
     403,
     () =>
-      new Response(JSON.stringify({ title: 'Ihr Konto hat keinen Namen.', status: 403 }), {
-        status: 403,
-        headers: { 'Content-Type': 'application/problem+json' },
-      }),
+      new Response(
+        JSON.stringify({ title: 'Ihr Konto hat keinen Namen.', status: 403, code: 'organisation.identity-incomplete' }),
+        { status: 403, headers: { 'Content-Type': 'application/problem+json' } },
+      ),
     () => 'Ihr Konto hat keinen Namen.',
   ],
   [500, () => new Response('', { status: 500 }), () => t('organisation.register.failed')],
+  [
+    500,
+    () =>
+      new Response(JSON.stringify({ title: 'An error occurred while processing your request.', status: 500 }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/problem+json' },
+      }),
+    () => t('organisation.register.failed'),
+  ],
 ])(
   'a registration the host answers with %i is reported, and the user stays with what they entered',
   async (_status, answer, message) => {
@@ -411,4 +426,37 @@ test('switched to English, the page, its job functions and its refusals speak En
       t('organisation.register.jobFunctionRequired'),
     ]),
   );
+});
+
+// A message already shown follows a switch of the language too: the user does not have to submit again to read it.
+test('a refusal already shown follows a switch to English without submitting again', async () => {
+  const user = userEvent.setup();
+  await renderPage();
+  await user.click(submit());
+  expect(await screen.findByText('Geben Sie den Namen der Apotheke an.')).toBeInTheDocument();
+  expect(screen.getByText('Wählen Sie Ihre Tätigkeit in der Apotheke.')).toBeInTheDocument();
+
+  setLanguage('en-GB', { remember: false });
+
+  await waitFor(() =>
+    expect(screen.getAllByRole('alert').map((alert) => alert.textContent.trim())).toEqual([
+      t('organisation.register.nameRequired'),
+      t('organisation.register.jobFunctionRequired'),
+    ]),
+  );
+  expect(t('organisation.register.nameRequired')).not.toBe('Geben Sie den Namen der Apotheke an.');
+  expect(nameField()).toHaveAccessibleDescription(t('organisation.register.nameRequired'));
+  expect(posted()).toEqual([]);
+});
+
+// The German texts themselves, not only their keys: a key that resolved to the wrong text would pass the t() queries.
+test('the page speaks German by default', async () => {
+  await renderPage();
+
+  const main = within(screen.getByRole('main'));
+  expect(main.getByRole('heading', { name: 'Apotheke registrieren', level: 1 })).toBeInTheDocument();
+  expect(main.getByRole('textbox', { name: 'Name der Apotheke' })).toBe(nameField());
+  expect(main.getByRole('combobox', { name: 'Ihre Tätigkeit' })).toBe(jobFunctionField());
+  expect(main.getByRole('button', { name: 'Registrieren' })).toBe(submit());
+  expect(within(jobFunctionField()).getByRole('option', { name: 'Sonstige' })).toHaveValue('Other');
 });
