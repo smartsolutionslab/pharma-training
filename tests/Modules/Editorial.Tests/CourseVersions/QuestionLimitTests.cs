@@ -28,7 +28,7 @@ public class QuestionLimitTests
 
         var submitted = version.SubmitForReview(Author);
 
-        var incomplete = submitted.Error.ShouldBeOfType<TestIncomplete>();
+        var incomplete = submitted.Error.Value.ShouldBeOfType<TestIncomplete>();
         incomplete.Expected.ShouldBe(TestBlueprint.Default.Questions);
         incomplete.Actual.ShouldBe(QuestionCount.From(QuestionCount.Maximum));
     }
@@ -52,7 +52,7 @@ public class QuestionLimitTests
 
         var submitted = Should.NotThrow(() => version.SubmitForReview(Author));
 
-        submitted.Error.ShouldBeOfType<TestIncomplete>().Actual.ShouldBe(QuestionCount.From(QuestionCount.Maximum));
+        submitted.Error.Value.ShouldBeOfType<TestIncomplete>().Actual.ShouldBe(QuestionCount.From(QuestionCount.Maximum));
     }
 
     [Fact]
@@ -70,7 +70,7 @@ public class QuestionLimitTests
         var submitted = Should.NotThrow(() => version.SubmitForReview(Author));
 
         submitted.IsFailure.ShouldBeTrue();
-        submitted.Error.ShouldBeOfType<TooManyQuestions>().Code.ShouldBe("editorial.too-many-questions");
+        submitted.Error.Value.ShouldBeOfType<TooManyQuestions>().Code.ShouldBe("editorial.too-many-questions");
         version.Status.ShouldBe(CourseVersionStatus.Draft);
     }
 

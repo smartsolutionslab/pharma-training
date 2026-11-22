@@ -382,8 +382,8 @@ public class CourseVersionCoverageTests
 
         var submitted = version.SubmitForReview(Author);
 
-        submitted.Error.ShouldBe(new NoChapters(version.Id));
-        submitted.Error.Code.ShouldBe("editorial.no-chapters");
+        submitted.Error.Value.ShouldBe(new NoChapters(version.Id));
+        submitted.Error.Value.ShouldBeOfType<NoChapters>().Code.ShouldBe("editorial.no-chapters");
         version.Status.ShouldBe(CourseVersionStatus.Draft);
     }
 
@@ -394,9 +394,10 @@ public class CourseVersionCoverageTests
 
         var submitted = version.SubmitForReview(Author);
 
-        submitted.Error.ShouldBe(new TestIncomplete(version.Id, QuestionCount.Default, QuestionCount.From(0)));
-        submitted.Error.Code.ShouldBe("editorial.test-incomplete");
-        submitted.Error.Message.ShouldBe("Der Test braucht 10 Fragen.");
+        var incomplete = submitted.Error.Value.ShouldBeOfType<TestIncomplete>();
+        incomplete.ShouldBe(new TestIncomplete(version.Id, QuestionCount.Default, QuestionCount.From(0)));
+        incomplete.Code.ShouldBe("editorial.test-incomplete");
+        incomplete.Message.ShouldBe("Der Test braucht 10 Fragen.");
     }
 
     [Fact]
@@ -414,7 +415,7 @@ public class CourseVersionCoverageTests
     {
         var version = InReview();
 
-        version.SubmitForReview(Author).Error.ShouldBe(new NotADraft(version.Id, CourseVersionStatus.InReview));
+        version.SubmitForReview(Author).Error.Value.ShouldBe(new NotADraft(version.Id, CourseVersionStatus.InReview));
     }
 
     [Fact]
@@ -426,8 +427,8 @@ public class CourseVersionCoverageTests
         var fromDraft = draft.ReturnToDraft(Reviewer, Now);
         var fromReview = inReview.ReturnToDraft(Reviewer, Now);
 
-        fromDraft.Error.ShouldBe(new NotInReview(draft.Id, CourseVersionStatus.Draft));
-        fromDraft.Error.Code.ShouldBe("editorial.not-in-review");
+        fromDraft.Error.Value.ShouldBe(new NotInReview(draft.Id, CourseVersionStatus.Draft));
+        fromDraft.Error.Value.ShouldBeOfType<NotInReview>().Code.ShouldBe("editorial.not-in-review");
         fromReview.IsSuccess.ShouldBeTrue();
         inReview.Status.ShouldBe(CourseVersionStatus.Draft);
     }
@@ -437,7 +438,7 @@ public class CourseVersionCoverageTests
     {
         var version = DraftWithChapter(out _);
 
-        version.Publish(Reviewer, ReviewPolicy.SingleEditor, Now).Error.ShouldBe(new NotInReview(version.Id, CourseVersionStatus.Draft));
+        version.Publish(Reviewer, ReviewPolicy.SingleEditor, Now).Error.Value.ShouldBe(new NotInReview(version.Id, CourseVersionStatus.Draft));
         version.Status.ShouldBe(CourseVersionStatus.Draft);
     }
 
@@ -466,8 +467,8 @@ public class CourseVersionCoverageTests
         unapproved.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
         var approved = InReview();
 
-        unapproved.Publish(Reviewer, ReviewPolicy.SingleEditor, Now).Error.Code.ShouldBe("editorial.question-not-approved");
-        approved.Publish(Author, ReviewPolicy.FourEyes, Now).Error.Code.ShouldBe("editorial.four-eyes");
+        unapproved.Publish(Reviewer, ReviewPolicy.SingleEditor, Now).Error.Value.ShouldBeOfType<QuestionNotApproved>().Code.ShouldBe("editorial.question-not-approved");
+        approved.Publish(Author, ReviewPolicy.FourEyes, Now).Error.Value.ShouldBeOfType<FourEyesRequired>().Code.ShouldBe("editorial.four-eyes");
     }
 
     [Fact]
@@ -477,8 +478,8 @@ public class CourseVersionCoverageTests
 
         var retired = version.Retire(Reviewer, Now);
 
-        retired.Error.ShouldBe(new NotPublished(version.Id, CourseVersionStatus.Draft));
-        retired.Error.Code.ShouldBe("editorial.not-published");
+        retired.Error.Value.ShouldBe(new NotPublished(version.Id, CourseVersionStatus.Draft));
+        retired.Error.Value.ShouldBeOfType<NotPublished>().Code.ShouldBe("editorial.not-published");
         version.Status.ShouldBe(CourseVersionStatus.Draft);
     }
 
@@ -531,7 +532,7 @@ public class CourseVersionCoverageTests
         var again = version.Retire(Reviewer, Now);
 
         version.Status.ShouldBe(CourseVersionStatus.Retired);
-        again.Error.ShouldBe(new NotPublished(version.Id, CourseVersionStatus.Retired));
+        again.Error.Value.ShouldBe(new NotPublished(version.Id, CourseVersionStatus.Retired));
     }
 
     [Fact]
