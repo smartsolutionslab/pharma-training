@@ -1,7 +1,7 @@
 using System.Net;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application;
 
-// Red-first stub for #17: code, message and status are wrong on purpose until the change lands.
 public sealed record InvalidPassingScore()
-    : ApiError("stub", "stub", HttpStatusCode.InternalServerError);
+    : ApiError("editorial.invalid-passing-score", $"A passing score is {ScorePercent.Minimum} to {ScorePercent.Maximum} percent.", HttpStatusCode.BadRequest);
