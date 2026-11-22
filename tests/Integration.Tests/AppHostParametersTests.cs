@@ -90,6 +90,22 @@ public class AppHostParametersTests
         }
     }
 
+    [Fact]
+    public async Task Deployed_mail_from_has_no_published_default_as_frontend_url_has_none()
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(Timeout);
+        await using var builder = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AppHost>(["--operation", "publish"], timeout.Token);
+        Unconfigured(builder);
+        builder.ExecutionContext.IsPublishMode.ShouldBeTrue("the AppHost's model was not built in publish mode");
+
+        var frontendUrl = Parameter(builder, "frontend-url");
+        var mailFrom = Parameter(builder, "mail-from");
+
+        frontendUrl.Default.ShouldBeNull("frontend-url publishes a default");
+        mailFrom.Default.ShouldBeNull("mail-from publishes a default, so a deployment that forgot it sends from that address");
+    }
+
     /// <summary>A developer's user secrets must not decide what these tests see.</summary>
     private static void Unconfigured(IDistributedApplicationTestingBuilder builder)
     {
