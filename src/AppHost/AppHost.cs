@@ -4,6 +4,9 @@ var builder = DistributedApplication.CreateBuilder(args);
 // secret is a parameter the deployment sets, kept in a Key Vault; run mode has neither (docs/adr/0005).
 builder.AddContainerAppsEnvironment();
 var secrets = DeploymentSecrets.For(builder);
+// Published, each app reads the Key Vault secrets it references alone, computed once the model is final, whatever is added
+// after this line (docs/adr/0005).
+await secrets.GrantEachAppTheSecretsItReadsAsync(builder);
 
 // The server alone: every service gets a database of its own on it, in the AppHost's loop over the services.
 var postgres = builder.AddDatabaseServer(secrets);
@@ -56,6 +59,7 @@ var host = builder.AddProject<Projects.Edge>("host")
 // Links in mail lead into the web app: its dev server when run, its public address (the parameter frontend-url) deployed,
 // which no endpoint reference knows.
 ReferenceExpression frontendUrl;
+IResourceBuilder<ParameterResource>? frontendUrlParameter = null;
 if (builder.ExecutionContext.IsRunMode)
 {
     // The web app's dev server, run mode only: it is not a Container App of its own once published (docs/adr/0005).
@@ -73,7 +77,8 @@ if (builder.ExecutionContext.IsRunMode)
 }
 else
 {
-    frontendUrl = ReferenceExpression.Create($"{builder.AddParameter("frontend-url")}");
+    frontendUrlParameter = builder.AddParameter("frontend-url");
+    frontendUrl = ReferenceExpression.Create($"{frontendUrlParameter}");
 }
 
 foreach (var (module, project) in builder.ServiceHosts())
@@ -116,9 +121,11 @@ foreach (var (module, project) in builder.ServiceHosts())
         .WaitFor(service);
 }
 
-// Published, the browser uses the signed URLs from the edge's origin, which serves the web app (docs/adr/0002).
-storage.AllowBrowserAccessFromEdge(host);
-// Published, each app reads the Key Vault secrets it references alone; run once every resource is added (docs/adr/0005).
-await secrets.GrantEachAppTheSecretsItReadsAsync(builder);
+// Published, the browser uses the signed URLs from the edge's origin, which serves the web app, and from the web app's
+// public address, frontend-url, alone (docs/adr/0002).
+if (frontendUrlParameter is not null)
+{
+    storage.AllowBrowserAccessFromEdge(host, frontendUrlParameter);
+}
 
 builder.Build().Run();

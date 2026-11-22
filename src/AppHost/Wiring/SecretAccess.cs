@@ -1,3 +1,4 @@
+using System.Globalization;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Azure;
 using Azure.Provisioning;
@@ -9,26 +10,45 @@ namespace Aspire.Hosting;
 /// <summary>
 /// Published, every app reads the Key Vault secrets it references and no others (docs/adr/0005): its identity is a Key
 /// Vault Secrets User on each of those secrets, never on the vault, in one Bicep module per app,
-/// <c>&lt;app&gt;-roles-secrets</c>. Which secrets an app references is read from its environment once every resource is
-/// added, so a secret given to an app anywhere in the AppHost is granted with it, and nothing is listed by hand. A secret
-/// another resource writes into the vault (the Flexible Server its connection strings) is granted once that resource is
-/// deployed: the module takes the writer's name, so main.bicep deploys it after the writer.
+/// <c>&lt;app&gt;-roles-secrets</c>. Which secrets an app references is read from its environment and its arguments when
+/// the AppHost starts publishing, once the model is final, so a secret or an app added anywhere in the AppHost, before or
+/// after the grants are registered, is granted, and nothing is listed by hand. A secret another resource writes into the
+/// vault (the Flexible Server its connection strings) is granted once that resource is deployed: the module takes the
+/// writer's name, so main.bicep deploys it after the writer. Each app is deployed on its own and takes the module's output
+/// <c>grants</c> as a parameter, so it starts only once its identity may read what it references.
 /// </summary>
 public static class SecretAccess
 {
     private const string VaultName = "secrets_outputs_name";
 
-    /// <summary>Grants each app the secrets it references; call it once, after the last resource is added.</summary>
-    public static async Task GrantEachAppTheSecretsItReadsAsync(this DeploymentSecrets secrets, IDistributedApplicationBuilder builder, CancellationToken cancellationToken = default)
+    // The output of an app's <app>-roles-secrets module the app takes, so its deployment waits for the grants.
+    private const string GrantsOutput = "grants";
+
+    // The tag the app carries it under: how many secrets its identity was granted.
+    private const string GrantsTag = "key-vault-secrets-granted";
+
+    /// <summary>
+    /// Grants each app the secrets it references, computed when publishing starts from the final model; call it once,
+    /// anywhere after <see cref="DeploymentSecrets.For"/>. A second call adds nothing.
+    /// </summary>
+    public static Task GrantEachAppTheSecretsItReadsAsync(this DeploymentSecrets secrets, IDistributedApplicationBuilder builder, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(secrets);
         ArgumentNullException.ThrowIfNull(builder);
+        cancellationToken.ThrowIfCancellationRequested();
 
-        if (!secrets.IsPublishing)
+        if (!secrets.IsPublishing || !secrets.RegisterGrants())
         {
-            return;
+            return Task.CompletedTask;
         }
 
+        // Subscribed on the builder, so it runs before the Container Apps environment turns each app into its Bicep.
+        builder.Eventing.Subscribe<BeforeStartEvent>((@event, token) => GrantAsync(secrets, builder, token));
+        return Task.CompletedTask;
+    }
+
+    private static async Task GrantAsync(DeploymentSecrets secrets, IDistributedApplicationBuilder builder, CancellationToken cancellationToken)
+    {
         var vault = secrets.Vault.Resource;
         foreach (var app in builder.Resources.OfType<IComputeResource>().ToList())
         {
@@ -39,37 +59,57 @@ public static class SecretAccess
             }
 
             var identity = builder.CreateResourceBuilder(app).IdentityOf();
-            var grants = builder.AddAzureInfrastructure($"{app.Name}-roles-secrets", infrastructure => Grant(infrastructure, app.Name, names))
+            // Added as a resource alone: AddAzureInfrastructure would register Azure provisioning again, which the Key Vault
+            // has done, and the services cannot change once the model is built.
+            var grants = builder.AddResource(new AzureProvisioningResource($"{app.Name}-roles-secrets", infrastructure => Grant(infrastructure, app.Name, names)))
                 .WithParameter(RoleAssignments.PrincipalId, identity.PrincipalId)
                 .WithParameter(VaultName, vault.NameOutputReference);
             foreach (var writer in names.Values.OfType<AzureBicepResource>().Distinct())
             {
                 grants.WithParameter(WriterName(writer), new BicepOutputReference("name", writer));
             }
+
+            var granted = new BicepOutputReference(GrantsOutput, grants.Resource);
+            // As PublishAsAzureContainerApp would, for a project, a container or an executable alike.
+            app.Annotations.Add(new AzureContainerAppCustomizationAnnotation((infrastructure, containerApp) =>
+                containerApp.Tags[GrantsTag] = granted.AsProvisioningParameter(infrastructure)));
         }
     }
 
     /// <summary>
-    /// The vault's secrets an app's environment refers to, directly or inside a connection string, by name, each with the
-    /// resource that writes it into the vault where that is not the vault itself.
+    /// The vault's secrets an app's environment or arguments refer to, directly or inside a connection string, by name, each
+    /// with the resource that writes it into the vault where that is not the vault itself.
     /// </summary>
     private static async Task<IReadOnlyDictionary<string, IResource?>> SecretsReadByAsync(IComputeResource app, AzureKeyVaultResource vault, DistributedApplicationExecutionContext executionContext, CancellationToken cancellationToken)
     {
         SortedDictionary<string, IResource?> names = [with(StringComparer.Ordinal)];
-        if (app is not IResourceWithEnvironment withEnvironment || !withEnvironment.TryGetEnvironmentVariables(out var callbacks))
+        List<object> values = [];
+        if (app is IResourceWithEnvironment withEnvironment && withEnvironment.TryGetEnvironmentVariables(out var environmentCallbacks))
         {
-            return names;
+            Dictionary<string, object> environment = [];
+            var context = new EnvironmentCallbackContext(executionContext, withEnvironment, environment, cancellationToken);
+            foreach (var callback in environmentCallbacks)
+            {
+                await callback.Callback(context);
+            }
+
+            values.AddRange(environment.Values);
         }
 
-        Dictionary<string, object> environment = [];
-        var context = new EnvironmentCallbackContext(executionContext, withEnvironment, environment, cancellationToken);
-        foreach (var callback in callbacks)
+        if (app.TryGetAnnotationsOfType<CommandLineArgsCallbackAnnotation>(out var argumentCallbacks))
         {
-            await callback.Callback(context);
+            List<object> arguments = [];
+            var context = new CommandLineArgsCallbackContext(arguments, app, cancellationToken) { ExecutionContext = executionContext };
+            foreach (var callback in argumentCallbacks)
+            {
+                await callback.Callback(context);
+            }
+
+            values.AddRange(arguments);
         }
 
         HashSet<object> seen = [with(ReferenceEqualityComparer.Instance)];
-        foreach (var value in environment.Values)
+        foreach (var value in values)
         {
             Collect(value, vault, names, seen);
         }
@@ -149,6 +189,9 @@ public static class SecretAccess
 
             infrastructure.Add(grant);
         }
+
+        // Read by the app's own deployment, which therefore waits for this module.
+        infrastructure.Add(new ProvisioningOutput(GrantsOutput, typeof(string)) { Value = names.Count.ToString(CultureInfo.InvariantCulture) });
     }
 
     private static string WriterName(IResource writer) => Infrastructure.NormalizeBicepIdentifier($"{writer.Name}_outputs_name");

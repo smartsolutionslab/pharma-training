@@ -7,7 +7,9 @@ namespace Aspire.Hosting;
 /// The managed identity an app runs under once published, <c>&lt;app&gt;-identity</c>, created the first time something
 /// grants it a role and shared by every grant after (docs/adr/0005). Aspire would make one for the roles it assigns by
 /// default; those defaults are off for the storage account and the Key Vault, which grant each app only what it uses
-/// (<see cref="BlobContainerAccess"/>, <see cref="SecretAccess"/>), so the identity is made here.
+/// (<see cref="BlobContainerAccess"/>, <see cref="SecretAccess"/>), so the identity is made here. Publish mode only, where
+/// the Key Vault has registered Azure provisioning already: the identity is added as a resource alone, so it can be made
+/// when publishing starts too, once the model is built (<see cref="SecretAccess"/>).
 /// </summary>
 public static class AppIdentities
 {
@@ -22,7 +24,7 @@ public static class AppIdentities
                 ?? throw new InvalidOperationException($"{app.Resource.Name} runs under an identity that is not a user-assigned one.");
         }
 
-        var identity = app.ApplicationBuilder.AddAzureUserAssignedIdentity($"{app.Resource.Name}-identity");
+        var identity = app.ApplicationBuilder.AddResource(new AzureUserAssignedIdentityResource($"{app.Resource.Name}-identity"));
         app.WithAzureUserAssignedIdentity(identity);
         return identity.Resource;
     }
