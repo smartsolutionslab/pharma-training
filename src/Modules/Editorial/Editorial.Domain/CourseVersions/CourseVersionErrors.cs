@@ -19,6 +19,8 @@ public static class CourseVersionErrors
 
     public static DomainError TestIncomplete(CourseVersionId version, QuestionCount expected, QuestionCount actual) => new TestIncomplete(version, expected, actual);
 
+    public static DomainError TooFewQuestions(QuestionCount requested) => new TooFewQuestions(requested);
+
     public static DomainError QuestionNotApproved(CourseVersionId version, QuestionId question) => new QuestionNotApproved(version, question);
 
     public static DomainError FourEyesRequired(CourseVersionId version) => new FourEyesRequired(version);

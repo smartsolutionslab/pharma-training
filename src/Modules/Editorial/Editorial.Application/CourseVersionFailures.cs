@@ -43,13 +43,15 @@ public static class CourseVersionFailures
 
     /// <summary>
     /// A rule of the version, with its own code: a chapter or question it does not hold is not found, a question whose
-    /// content breaks the rules of its shape cannot be processed until it is edited, anything else is a conflict with
-    /// its state. <see cref="DomainError"/> is no closed union, so the last arm takes the rules no arm names.
+    /// content breaks the rules of its shape cannot be processed until it is edited, a blueprint with too few questions
+    /// is a bad request, anything else is a conflict with its state. <see cref="DomainError"/> is no closed union, so the
+    /// last arm takes the rules no arm names.
     /// </summary>
     public static ApiError From(DomainError error) => error switch
     {
         ChapterNotFound or QuestionNotFound => ApiError.From(error, HttpStatusCode.NotFound),
         TooFewOptions or SingleChoiceNeedsOneCorrect or MultipleChoiceNeedsACorrect => ApiError.From(error, HttpStatusCode.UnprocessableEntity),
+        TooFewQuestions => ApiError.From(error, HttpStatusCode.BadRequest),
         NotADraft or OrderDoesNotMatchChapters => ApiError.From(error, HttpStatusCode.Conflict),
         _ => ApiError.From(error, HttpStatusCode.Conflict),
     };

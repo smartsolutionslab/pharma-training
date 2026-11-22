@@ -23,5 +23,18 @@ public sealed record TestBlueprint
     /// <summary>How long a certificate for this version is valid, and how often a recurring assignment repeats.</summary>
     public RecurrenceInterval Validity { get; }
 
+    /// <summary>The blueprint, or <see cref="TooFewQuestions"/> when it asks for fewer than <see cref="MinimumQuestions"/>.</summary>
+    public static Result<TestBlueprint, DomainError> TryCreate(QuestionCount questions, ScorePercent passingScore, RecurrenceInterval validity)
+    {
+        Ensure.That(questions).IsNotNull();
+
+        if (questions.Value < MinimumQuestions)
+        {
+            return Failure(CourseVersionErrors.TooFewQuestions(questions));
+        }
+
+        return Success(new TestBlueprint(questions, passingScore, validity));
+    }
+
     public static TestBlueprint Default => new(QuestionCount.Default, ScorePercent.From(80), RecurrenceInterval.Yearly);
 }
