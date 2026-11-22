@@ -16,7 +16,7 @@ partial class OrganisationModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261121235834_AddInvitationTokenHashAndUniqueness";
+    public override string LastMigrationId => "20261122000311_AddInvitationUniqueness";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -93,6 +93,13 @@ partial class OrganisationModelSnapshot : ModelSnapshot
                 b.HasIndex("Person");
 
                 b.HasIndex("PharmacyId");
+
+                b.HasIndex("TokenHash")
+                    .IsUnique();
+
+                b.HasIndex("PharmacyId", "Email")
+                    .IsUnique()
+                    .HasFilter("status IN ('Invited', 'Active')");
 
                 b.ToTable("memberships", "organisation");
             });

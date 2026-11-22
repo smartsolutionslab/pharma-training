@@ -33,5 +33,10 @@ public sealed class MembershipConfiguration : IEntityTypeConfiguration<Membershi
 
         builder.HasIndex(membership => membership.Person);
         builder.HasIndex(PharmacyId);
+        // Uniqueness backed twice: Pharmacy.Invite refuses an address that is invited or active, and so does the database
+        // for any writer past it. Statuses are stored as text, so the filter compares their names.
+        builder.HasIndex(PharmacyId, nameof(Membership.Email)).IsUnique().HasFilter("status IN ('Invited', 'Active')");
+        // One row per token hash; NULLs (no open invitation) never collide in PostgreSQL.
+        builder.HasIndex(membership => membership.TokenHash).IsUnique();
     }
 }
