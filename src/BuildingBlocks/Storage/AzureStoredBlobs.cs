@@ -16,6 +16,8 @@ public sealed class AzureStoredBlobs : IStoredBlobs
 {
     private const int RangeNotSatisfiable = 416;
 
+    private const int PreconditionFailed = 412;
+
     private readonly Lazy<BlobContainerClient> container;
 
     public AzureStoredBlobs(IConfiguration configuration)
@@ -33,7 +35,15 @@ public sealed class AzureStoredBlobs : IStoredBlobs
             var properties = (await container.Value.GetBlobClient(name.Value).GetPropertiesAsync(cancellationToken: cancellationToken)).Value;
             // A copy is told by its source or id, not its status: a blob put directly reports a status too (Azurite: Pending).
             var isCopy = properties.CopySource is not null || !string.IsNullOrEmpty(properties.CopyId);
-            return Option<StoredBlob>.Some(new StoredBlob(name, properties.ContentType ?? string.Empty, properties.ContentLength, properties.BlobType == BlobType.Block, isCopy));
+            return Option<StoredBlob>.Some(new StoredBlob(
+                name,
+                properties.ContentType ?? string.Empty,
+                properties.ContentLength,
+                IsBlockBlob: properties.BlobType == BlobType.Block,
+                ETag: properties.ETag.ToString(),
+                IsCopy: isCopy,
+                ContentDisposition: NullIfBlank(properties.ContentDisposition),
+                ContentEncoding: NullIfBlank(properties.ContentEncoding)));
         }
         catch (RequestFailedException failed) when (failed.ErrorCode == BlobErrorCode.BlobNotFound)
         {
@@ -42,23 +52,33 @@ public sealed class AzureStoredBlobs : IStoredBlobs
     }
 
     /// <summary>
-    /// A ranged download of the blob's first <paramref name="count"/> bytes. A shorter blob answers what it has; an empty
-    /// one, whose range the service cannot satisfy, and a missing one answer no bytes.
+    /// A ranged download of the blob's first <paramref name="count"/> bytes, with <c>If-Match</c> on the ETag it was found
+    /// with, so the bytes are of the version whose properties were checked. A shorter blob answers what it has; an empty
+    /// one, whose range the service cannot satisfy, a missing one and one changed since it was found
+    /// (412 <c>ConditionNotMet</c>) answer no bytes.
     /// </summary>
-    public async Task<ReadOnlyMemory<byte>> ReadStartAsync(BlobName name, int count, CancellationToken cancellationToken)
+    public async Task<ReadOnlyMemory<byte>> ReadStartAsync(StoredBlob blob, int count, CancellationToken cancellationToken)
     {
-        Ensure.That(name).IsNotNull();
+        Ensure.That(blob).IsNotNull();
         Ensure.That(count).AtLeast(1);
 
         try
         {
-            var options = new BlobDownloadOptions { Range = new HttpRange(0, count) };
-            var downloaded = (await container.Value.GetBlobClient(name.Value).DownloadContentAsync(options, cancellationToken)).Value;
+            var options = new BlobDownloadOptions
+            {
+                Range = new HttpRange(0, count),
+                Conditions = new BlobRequestConditions { IfMatch = new ETag(blob.ETag) },
+            };
+            var downloaded = (await container.Value.GetBlobClient(blob.Name.Value).DownloadContentAsync(options, cancellationToken)).Value;
             return downloaded.Content.ToMemory();
         }
-        catch (RequestFailedException failed) when (failed.ErrorCode == BlobErrorCode.BlobNotFound || failed.Status == RangeNotSatisfiable)
+        catch (RequestFailedException failed) when (failed.ErrorCode == BlobErrorCode.BlobNotFound
+            || failed.Status == RangeNotSatisfiable
+            || (failed.Status == PreconditionFailed && failed.ErrorCode == BlobErrorCode.ConditionNotMet))
         {
             return ReadOnlyMemory<byte>.Empty;
         }
     }
+
+    private static string? NullIfBlank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
 }

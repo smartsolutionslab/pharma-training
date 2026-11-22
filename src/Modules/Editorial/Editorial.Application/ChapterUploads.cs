@@ -100,7 +100,8 @@ public static class ChapterUploads
     /// <summary>
     /// Whether the file may become the content of a chapter of the version and kind: a name issued for them, under which
     /// a block blob of the kind's content type (in any case, with any parameters), not empty and at most the kind's size,
-    /// was put directly, not created by a server-side copy, which an upload URL also allows, and whose own leading bytes
+    /// was put directly, not created by a server-side copy, which an upload URL also allows, with no content disposition
+    /// or encoding of the uploader's, and whose own leading bytes
     /// are the kind's: a PDF starts with <c>%PDF-</c>, an MP4 has <c>ftyp</c> at bytes 4 to 7 and an MP4 major brand at
     /// bytes 8 to 11. The declared content type is the uploader's word; the bytes are the file's.
     /// </summary>
@@ -125,7 +126,8 @@ public static class ChapterUploads
             return Failure(CourseVersionFailures.UploadNotAccepted());
         }
 
-        var start = await blobs.ReadStartAsync(BlobName.From(file.Value), SignatureLength, cancellationToken);
+        // The read carries the found blob's ETag: a blob replaced since its lookup answers no bytes and is refused.
+        var start = await blobs.ReadStartAsync(stored.Value, SignatureLength, cancellationToken);
         if (!StartsAsTheKindDoes(start.Span, kind))
         {
             return Failure(CourseVersionFailures.UploadNotAccepted());
@@ -137,8 +139,11 @@ public static class ChapterUploads
     private static bool IsWhatTheKindTakes(StoredBlob blob, ChapterKind kind)
     {
         var mediaType = blob.ContentType.Split(';', 2)[0].Trim();
+        // A read URL serves the blob with the disposition and encoding its uploader set: the module sets those, not the uploader.
         return blob.IsBlockBlob
             && !blob.IsCopy
+            && blob.ContentDisposition is null
+            && blob.ContentEncoding is null
             && blob.Length > 0
             && blob.Length <= MaxBytesOf(kind)
             && string.Equals(mediaType, ContentTypeOf(kind), StringComparison.OrdinalIgnoreCase);

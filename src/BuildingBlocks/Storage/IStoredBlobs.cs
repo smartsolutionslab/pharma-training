@@ -10,8 +10,9 @@ public interface IStoredBlobs
     Task<Option<StoredBlob>> FindAsync(BlobName name, CancellationToken cancellationToken);
 
     /// <summary>
-    /// The blob's first <paramref name="count"/> bytes, or all of them when it is shorter, so the module can check what
-    /// was uploaded rather than the content type its uploader declared.
+    /// The first <paramref name="count"/> bytes of the blob <see cref="FindAsync"/> found, or all of them when it is
+    /// shorter, so the module can check what was uploaded rather than the content type its uploader declared. The read is
+    /// of that version only: a blob changed since it was found answers no bytes.
     /// </summary>
-    Task<ReadOnlyMemory<byte>> ReadStartAsync(BlobName name, int count, CancellationToken cancellationToken);
+    Task<ReadOnlyMemory<byte>> ReadStartAsync(StoredBlob blob, int count, CancellationToken cancellationToken);
 }
