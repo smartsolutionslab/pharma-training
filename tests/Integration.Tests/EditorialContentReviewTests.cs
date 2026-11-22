@@ -36,7 +36,7 @@ public class EditorialContentReviewTests(AspireFixture aspire)
     }
 
     [Fact]
-    public async Task A_review_leaves_the_version_unchanged()
+    public async Task A_review_refused_for_want_of_a_model_leaves_the_version_unchanged()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await aspire.CreateHostClientAsync("editor");
