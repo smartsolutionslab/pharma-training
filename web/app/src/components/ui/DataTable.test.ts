@@ -222,3 +222,73 @@ test('the table follows a change of language while it is shown', async () => {
   expect(screen.queryByRole('group', { name: german.density })).not.toBeInTheDocument();
   expect(screen.queryByText(german.summary)).not.toBeInTheDocument();
 });
+
+// The pager: given the page its rows are of and a list longer than a page, the table pages through it below its rows.
+// It does not page itself: it asks for the page with update:page, and the list's owner (the page's query, its address)
+// answers with that page's rows.
+const twentyRows: Person[] = Array.from({ length: 20 }, (_, index) => ({ name: `person ${index + 21}`, team: 'blue' }));
+const pager = () => screen.getByRole('navigation', { name: t('dataTable.pagination') });
+const previous = () => within(pager()).getByRole('button', { name: t('dataTable.previous') });
+const next = () => within(pager()).getByRole('button', { name: t('dataTable.next') });
+
+test('on a middle page of a longer list the pager goes back and forth, asking for the page by its number', async () => {
+  const user = userEvent.setup();
+  const { emitted } = render(DataTable<Person>, {
+    props: { columns, data: twentyRows, paging: { page: 2, pageSize: 20, totalCount: 45 } },
+  });
+
+  expect(previous()).toBeEnabled();
+  expect(next()).toBeEnabled();
+  await user.click(next());
+  expect(emitted()['update:page']).toEqual([[3]]);
+
+  await user.click(previous());
+  expect(emitted()['update:page']).toEqual([[3], [1]]);
+});
+
+test('the pager takes the numbers as the host sends them, as strings too', async () => {
+  const user = userEvent.setup();
+  const { emitted } = render(DataTable<Person>, {
+    props: { columns, data: twentyRows, paging: { page: '2', pageSize: '20', totalCount: '45' } },
+  });
+
+  await user.click(next());
+
+  expect(emitted()['update:page']).toEqual([[3]]);
+});
+
+test('on the first page the pager cannot go back, on the last it cannot go on, and one page has none', async () => {
+  const { rerender } = render(DataTable<Person>, {
+    props: { columns, data: twentyRows, paging: { page: 1, pageSize: 20, totalCount: 45 } },
+  });
+  expect(previous()).toBeDisabled();
+  expect(next()).toBeEnabled();
+
+  await rerender({ columns, data, paging: { page: 3, pageSize: 20, totalCount: 45 } });
+
+  expect(previous()).toBeEnabled();
+  expect(next()).toBeDisabled();
+
+  // A list that fits on one page has no pager.
+  await rerender({ columns, data, paging: { page: 1, pageSize: 20, totalCount: 2 } });
+
+  expect(screen.getByRole('table')).toBeInTheDocument();
+  expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: t('dataTable.next') })).not.toBeInTheDocument();
+});
+
+test('the pager speaks German by default and follows a change of language', async () => {
+  render(DataTable<Person>, {
+    props: { columns, data: twentyRows, paging: { page: 2, pageSize: 20, totalCount: 45 } },
+  });
+
+  const german = screen.getByRole('navigation', { name: 'Seiten' });
+  expect(within(german).getByRole('button', { name: 'Vorherige Seite' })).toBeEnabled();
+  expect(within(german).getByRole('button', { name: 'Nächste Seite' })).toBeEnabled();
+
+  setLanguage('en-GB', { remember: false });
+
+  const english = await screen.findByRole('navigation', { name: 'Pages' });
+  expect(within(english).getByRole('button', { name: 'Previous page' })).toBeInTheDocument();
+  expect(within(english).getByRole('button', { name: 'Next page' })).toBeInTheDocument();
+});

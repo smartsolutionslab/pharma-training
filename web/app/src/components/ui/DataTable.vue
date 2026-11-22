@@ -14,7 +14,8 @@ import { features, type Features } from './data-table-columns';
  * and shows skeleton rows in its own shape instead of data; with no rows it shows its `empty` slot, such as an
  * `<EmptyState>`. The `actions` slot fills a row's last cell, shown while the row is hovered or has focus; given the
  * page its rows are of (`paging`, a `PagedResult` as the host answers it), it says below them which rows it shows of
- * how many ("Einträge 1–25 von 312"). Its texts come from the catalogs (`dataTable.*`), in the language shown.
+ * how many ("Einträge 1–25 von 312") and, for a list longer than a page, pages through it: Previous and Next ask the
+ * list's owner for that page with `update:page`, since the table does not page itself. Its texts come from the catalogs (`dataTable.*`), in the language shown.
  */
 const props = defineProps<{
   columns: ColumnDef<Features, TRow, unknown>[];
@@ -22,6 +23,8 @@ const props = defineProps<{
   loading?: boolean;
   paging?: { page: number | string; pageSize: number | string; totalCount: number | string };
 }>();
+
+const emit = defineEmits<{ 'update:page': [page: number] }>();
 
 const slots = defineSlots<{ empty?: () => unknown; actions?: (props: { row: TRow }) => unknown }>();
 
@@ -59,6 +62,18 @@ const summary = computed(() => {
     last: n(first + rows.value.length - 1, 'integer'),
     total: n(Number(paging.totalCount), 'integer'),
   });
+});
+
+/** The page shown and how many there are, for a list longer than a page; nothing for a list on one page. */
+const pager = computed(() => {
+  const { paging } = props;
+  if (paging === undefined) {
+    return undefined;
+  }
+
+  const page = Number(paging.page);
+  const pages = Math.ceil(Number(paging.totalCount) / Number(paging.pageSize));
+  return pages > 1 ? { page, pages } : undefined;
 });
 
 /** A column's name in the Columns control: its header from the catalogs, its header text, or else its id. */
@@ -184,5 +199,25 @@ function closeOnEscape(event: KeyboardEvent) {
     <p v-if="summary !== undefined" :id="`${id}-showing`" class="text-muted-foreground text-caption">
       {{ summary }}
     </p>
+    <nav v-if="pager !== undefined" :aria-label="t('dataTable.pagination')" class="flex justify-end gap-2">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        :disabled="pager.page <= 1"
+        @click="emit('update:page', pager.page - 1)"
+      >
+        {{ t('dataTable.previous') }}
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        :disabled="pager.page >= pager.pages"
+        @click="emit('update:page', pager.page + 1)"
+      >
+        {{ t('dataTable.next') }}
+      </Button>
+    </nav>
   </div>
 </template>

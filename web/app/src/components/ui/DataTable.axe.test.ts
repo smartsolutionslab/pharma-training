@@ -57,6 +57,11 @@ const states = [
     props: { columns, data, paging: { page: 1, pageSize: 25, totalCount: 312 } },
     open: true,
   },
+  {
+    state: 'with a pager on a middle page',
+    props: { columns, data, paging: { page: 2, pageSize: 2, totalCount: 45 } },
+    pager: true,
+  },
 ];
 const actions = ({ row }: { row: Person }) => h('button', { type: 'button' }, `Edit ${row.name}`);
 
@@ -68,18 +73,22 @@ describe.each(languages)('in %s', (language) => {
 
   // Whichever test renders first in a file also pays for warming up jsdom, Vue and axe.
   test.each(
-    states.flatMap(({ state, props, open = false }) =>
-      themes.map(({ name, switchOn }) => ({ state, props, open, name, switchOn })),
+    states.flatMap(({ state, props, open = false, pager = false }) =>
+      themes.map(({ name, switchOn }) => ({ state, props, open, pager, name, switchOn })),
     ),
   )(
     'the table has no accessibility violations axe can find $state in the $name theme',
     { timeout: 20_000 },
-    async ({ props, open, switchOn }) => {
+    async ({ props, open, pager, switchOn }) => {
       switchOn();
       // A generic component is rendered for one row type, as a template does it from its props.
       const { container } = render(DataTable<Person>, { props, slots: open ? { empty, actions } : { empty } });
       // The table axe checks is the one in this language.
       expect(screen.getByRole('group', { name: t('dataTable.density') })).toBeInTheDocument();
+      // The pager axe checks is there, in this language.
+      if (pager) {
+        expect(screen.getByRole('navigation', { name: t('dataTable.pagination') })).toBeInTheDocument();
+      }
       if (open) {
         await userEvent.click(screen.getByRole('button', { name: t('dataTable.columns') }));
       }
