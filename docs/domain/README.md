@@ -41,7 +41,7 @@ Stand der Diskussion vom 17.11.2026.
 | Feedback | Eigener Context, keine Personen-ID, Mindestanzahl Antworten | Echte Anonymität (MVP 2) |
 | Gesponserte Inhalte | Nie bei Pflichtschulungen, immer gekennzeichnet | Glaubwürdigkeit der Redaktion |
 | Neue Schulungsversion | Begonnene Durchläufe bleiben auf der alten Version, nicht begonnene wechseln auf die neue | Laufende Nachweise brechen nicht; „erfordert Neuschulung“ später |
-| Benachrichtigung | Keine E-Mails in MVP 1; Dashboard listet zugewiesene Schulungen, Überfällige hervorgehoben | Einfach starten, E-Mail später |
+| Benachrichtigung | Keine E-Mails in MVP 1 außer der Einladung, die Organisation selbst per SMTP sendet; Dashboard listet zugewiesene Schulungen, Überfällige hervorgehoben | Einfach starten, E-Mail später; die Einladung braucht den Link (Entscheidung zu #9, 2026-11-21) |
 | Aufbewahrung | 5 Jahre ab Ausstellung der Bestätigung, von der Apotheke verlängerbar, nie unter 2 Jahre; danach löscht die Apotheke ihre Kopie automatisch. Die Bestätigungen der Person bleiben in ihrem Konto | TRGS 555 verlangt mind. 2 Jahre (Gefahrstoffe); AK Westfalen-Lippe empfiehlt 5 Jahre (Gefahrstoffe, Hygiene); datensparsamer als ab Austritt |
 | Abgrenzung zum Wettbewerb | Kern ist Compliance-Steuerung: Zuweisung, Fristen, Wiederholung, Status, Nachweis-Export | Wettbewerber verkaufen Inhalte, wir verkaufen Sicherheit bei der Begehung |
 | Gültigkeit | Pro Schulung festgelegt, Standard 12 Monate, abgeleitet aus dem Wiederholungsintervall | Z. B. Ersthilfe 24 Monate |
@@ -75,7 +75,7 @@ Stand der Diskussion vom 17.11.2026.
 | Projektname | PharmaTraining; Namespace SmartSolutionsLab.PharmaTraining | Entscheidung von Heiko |
 | Bewertung Multiple Choice | Keine Teilpunkte: richtig nur bei genau den richtigen Optionen | Bei Pflichtschulungen üblich und gut begründbar |
 | Gemeinsame Bausteine | Kein Shared Kernel: jeder Service hat eigene PersonId, CourseId, Timestamp | Ein gemeinsames Paket würde die Services wieder koppeln |
-| Mitgliedschaften | Entities in Pharmacy; Name kommt beim Annehmen aus Keycloak; Einladung läuft nach 14 Tagen ab und geht per Mail über den IdP | Regeln zur letzten Leitung und Doppel-Mitgliedschaft in einer Transaktion; Person pflegt ihren Namen selbst |
+| Mitgliedschaften | Entities in Pharmacy; Name kommt beim Annehmen aus Keycloak; Einladung läuft nach 14 Tagen ab und geht per Mail, die Organisation über SMTP sendet; der Link trägt ein Token, gespeichert wird nur sein Hash | Regeln zur letzten Leitung und Doppel-Mitgliedschaft in einer Transaktion; Person pflegt ihren Namen selbst |
 | Tätigkeiten im Code | Pharmacist, Pta, Pka, Trainee, Other | PTA und PKA sind Fachbegriffe ohne saubere Übersetzung |
 | Fragen und Bestätigungen | Fragen gehören zur Version, kein Pool in MVP 1; kein Widerruf von Bestätigungen; PDF einmal beim Ausstellen erzeugt und gespeichert | Nachweis bleibt identisch, auch wenn sich Name oder Layout ändern |
 | Uploads | Direkt vom Browser in den Blob Storage über kurzlebige Upload-URL von Editorial | Große Videos belasten weder API noch Edge |
@@ -236,11 +236,13 @@ Mitgliedschaften sind Entities **innerhalb** der Apotheke. Eine Apotheke hat wen
 | `Register` | Registrierende Person wird sofort aktive Leitung | `PharmacyRegistered`, `MembershipStarted` |
 | `Invite` | E-Mail nicht schon aktiv oder eingeladen; Tätigkeit und Rolle angegeben | `MemberInvited` |
 | `AcceptInvitation` | Einladung offen und nicht abgelaufen; PersonId aus Keycloak | `MembershipStarted` |
+| `RenewInvitation` | Nur offene oder abgelaufene Einladungen; wieder 14 Tage gültig, der alte Link gilt sofort nicht mehr; das neue Token entsteht beim Versand der Mail | `MemberInvited` |
+| `IssueInvitationLink` | Nur offene, nicht abgelaufene Einladungen; beim Versand der Mail, ersetzt den Hash | `InvitationLinkIssued` |
 | `RevokeInvitation` | Nur offene Einladungen | `InvitationRevoked` |
 | `EndMembership` | Nicht die letzte aktive Leitung | `MembershipEnded` |
 | `ChangeJobFunction` / `ChangeRole` | Letzte Leitung kann nicht zum Mitarbeiter werden | `MembershipChanged` |
 
-Value Objects: `PharmacyId`, `PharmacyName`, `MembershipId`, `EmailAddress`, `InvitationToken`, `DisplayName`. Enums: `MembershipRole` (Manager, Employee), `JobFunction` (Pharmacist, Pta, Pka, Trainee, Other), `MembershipStatus` (Invited, Active, Ended, Revoked). Fähigkeiten wie `CanAssignCourses` leiten sich aus der Rolle ab.
+Value Objects: `PharmacyId`, `PharmacyName`, `MembershipId`, `EmailAddress`, `InvitationToken`, `InvitationTokenHash` (SHA-256 des Tokens, nur er wird gespeichert), `DisplayName`. Enums: `MembershipRole` (Manager, Employee), `JobFunction` (Pharmacist, Pta, Pka, Trainee, Other), `MembershipStatus` (Invited, Active, Ended, Revoked). Fähigkeiten wie `CanAssignCourses` leiten sich aus der Rolle ab.
 
 ### CourseVersion (Editorial)
 
@@ -330,7 +332,7 @@ Lokale Kopien, die daraus folgen:
 | P6 | Vue-Shell: Navigation nach Rolle, Apothekenauswahl | frontend | – | P1, O1 |
 | O1 | Pharmacy-Aggregat, Apotheke registrieren | backend | O1 | P5 |
 | O2 | Seite Apotheke registrieren | frontend | O1 | O1, P6 |
-| O3 | Einladen, erneut senden, zurückziehen, Mail über den IdP | backend | O2 | O1, P2 |
+| O3 | Einladen, erneut senden, zurückziehen, Einladungsmail per SMTP | backend | O2 | O1, P2 |
 | O4 | Einladung annehmen mit Name und E-Mail aus Keycloak | backend | O2 | O3 |
 | O5 | Mitglied austragen, Tätigkeit und Rolle ändern | backend | O3 | O1 |
 | O6 | Seiten Mitglieder und Einladungen | frontend | O2, O3 | O3, O5 |

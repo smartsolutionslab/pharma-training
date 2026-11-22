@@ -10,7 +10,10 @@ public interface IPharmacyStore
 {
     void Add(Pharmacy pharmacy);
 
-    /// <summary>The pharmacy with its memberships as it is stored, for a query: nothing that changes it is saved.</summary>
+    /// <summary>
+    /// The pharmacy with its memberships as it is stored, for a query: nothing that changes it is saved. It is read
+    /// afresh, never from what this unit of work already loaded, so it sees what other writers committed since.
+    /// </summary>
     Task<Option<Pharmacy>> FindAsync(PharmacyId id, CancellationToken cancellationToken);
 
     /// <summary>The pharmacy with its memberships, for a command: what it changes is saved when the unit of work commits.</summary>

@@ -1,0 +1,76 @@
+name: publish
+
+# Publishes the AppHost for both environments the deploy workflow names, as Bicep, on every pull request and on main
+# (docs/adr/0005): the publish must succeed, its Bicep must compile, and a second publish of the same commit must write the
+# same files. Nothing here signs in to Azure or deploys anything.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# One run per workflow and ref. A newer push to a pull request makes the run before it pointless, so it is cancelled;
+# a run on main is never cancelled while it runs (one that is still waiting gives way to the newer push's).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: [staging, production]
+    # A placeholder for every parameter the AppHost declares without a default. The Bicep declares each one and never holds
+    # its value, so a placeholder changes nothing it writes. Aspire 13.6.5's `publish --non-interactive` writes the Bicep
+    # without them; they guard against a CLI that prompts for a missing value, as the in-process test harness does.
+    env:
+      Parameters__postgres-username: placeholder
+      Parameters__postgres-password: placeholder
+      Parameters__messaging-username: placeholder
+      Parameters__messaging-password: placeholder
+      Parameters__keycloak-admin-password: placeholder
+      Parameters__smtp-host: placeholder
+      Parameters__smtp-from: placeholder
+      Parameters__smtp-username: placeholder
+      Parameters__smtp-password: placeholder
+      Parameters__frontend-url: https://placeholder.example
+      Parameters__azure-openai-endpoint: https://eu.api.openai.com/v1
+      Parameters__azure-openai-api-key: placeholder
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          global-json-file: global.json
+      # The AppHost uses the Aspire CLI bundle; set it up before anything builds the AppHost.
+      - run: dnx --yes aspire.cli@13.6.5 -- setup --install-path "$HOME/.aspire"
+      - name: Publish ${{ matrix.environment }}
+        run: dnx --yes aspire.cli@13.6.5 -- publish --apphost src/AppHost/AppHost.csproj -e "${{ matrix.environment }}" -o "publish/${{ matrix.environment }}/first" --non-interactive --nologo
+      # The same commit must write the same Bicep every time, or a deploy changes what nobody changed. The first publish
+      # built the AppHost.
+      - name: Publish ${{ matrix.environment }} again
+        run: dnx --yes aspire.cli@13.6.5 -- publish --apphost src/AppHost/AppHost.csproj -e "${{ matrix.environment }}" -o "publish/${{ matrix.environment }}/second" --non-interactive --nologo --no-build
+      - name: Both publishes wrote the same files
+        run: diff -r "publish/${{ matrix.environment }}/first" "publish/${{ matrix.environment }}/second"
+      # Every file the publish wrote: Aspire 13.6.5's main.bicep does not name the Container App modules (each service,
+      # Keycloak, the broker), so compiling main.bicep alone would skip exactly the modules this AppHost customises.
+      - name: The Bicep compiles
+        run: |
+          count=0
+          while IFS= read -r -d '' file; do
+            az bicep build --file "$file" --stdout > /dev/null
+            count=$((count + 1))
+          done < <(find "publish/${{ matrix.environment }}/first" -name '*.bicep' -print0)
+          echo "Compiled $count Bicep files."
+          test "$count" -gt 1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() && hashFiles(format('publish/{0}/first/main.bicep', matrix.environment)) != '' }}
+        with:
+          name: bicep-${{ matrix.environment }}
+          path: publish/${{ matrix.environment }}/first

@@ -29,16 +29,17 @@ internal static class TestPharmacies
         var token = Token();
         var email = EmailAddress.From($"member-{person.Value:N}@example.org");
         var membership = MembershipId.New();
-        pharmacy.Invite(membership, email, token, jobFunction, role, RegisteredAt).IsSuccess.ShouldBeTrue();
+        pharmacy.Invite(membership, email, jobFunction, role, RegisteredAt).IsSuccess.ShouldBeTrue();
+        pharmacy.IssueInvitationLink(membership, token, RegisteredAt).IsSuccess.ShouldBeTrue();
         pharmacy.AcceptInvitation(token, person, DisplayName.From("Anna Berger"), email, RegisteredAt).IsSuccess.ShouldBeTrue();
         return membership;
     }
 
-    /// <summary>An invitation nobody has accepted yet.</summary>
+    /// <summary>An invitation nobody has accepted yet, whose mail has not issued its link yet.</summary>
     public static MembershipId Invite(Pharmacy pharmacy, string email)
     {
         var membership = MembershipId.New();
-        pharmacy.Invite(membership, EmailAddress.From(email), Token(), JobFunction.Pta, MembershipRole.Employee, RegisteredAt).IsSuccess.ShouldBeTrue();
+        pharmacy.Invite(membership, EmailAddress.From(email), JobFunction.Pta, MembershipRole.Employee, RegisteredAt).IsSuccess.ShouldBeTrue();
         return membership;
     }
 

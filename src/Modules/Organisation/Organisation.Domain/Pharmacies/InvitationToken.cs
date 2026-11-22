@@ -15,5 +15,6 @@ public sealed record InvitationToken : IValueObject<string>
         return new InvitationToken(value);
     }
 
-    public override string ToString() => Value;
+    /// <summary>Never the secret itself, so no log or record print shows it; read <see cref="Value"/> for the link.</summary>
+    public override string ToString() => "InvitationToken { *** }";
 }

@@ -1,4 +1,5 @@
 using System.Net;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.TestDrafting;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application;
@@ -55,16 +56,30 @@ public static class CourseVersionFailures
 
     public static ApiError InvalidValidity() => new InvalidValidity();
 
+    /// <summary>The AI test draft asks only about text chapters, and the version has none.</summary>
+    public static ApiError NoTextChapters() => new NoTextChapters();
+
+    /// <summary>The approved questions already fill the blueprint, so the AI test draft has nothing to add.</summary>
+    public static ApiError NothingToDraft() => new NothingToDraft();
+
+    /// <summary>The text chapters are too long to send to the model in one AI test draft request.</summary>
+    public static ApiError TooMuchContentToDraft() => new TooMuchContentToDraft();
+
+    /// <summary>The model's answer to an AI test draft could not be used; <paramref name="defect"/> says why.</summary>
+    public static ApiError AiTestDraftMalformed(TestDraftDefect defect) => new AiTestDraftMalformed(defect);
+
     /// <summary>
     /// A rule of the version, with its own code: a chapter or question it does not hold is not found, a question whose
-    /// content breaks the rules of its shape cannot be processed until it is edited, anything else is a conflict with
-    /// its state. <see cref="DomainError"/> is no closed union, so the last arm takes the rules no arm names.
+    /// content breaks the rules of its shape cannot be processed until it is edited, a blueprint with too few questions
+    /// is a bad request, anything else is a conflict with its state. <see cref="DomainError"/> is no closed union, so the
+    /// last arm takes the rules no arm names.
     /// </summary>
     public static ApiError From(DomainError error) => error switch
     {
         ChapterNotFound or QuestionNotFound => ApiError.From(error, HttpStatusCode.NotFound),
         TooFewOptions or SingleChoiceNeedsOneCorrect or MultipleChoiceNeedsACorrect => ApiError.From(error, HttpStatusCode.UnprocessableEntity),
-        NotADraft or OrderDoesNotMatchChapters => ApiError.From(error, HttpStatusCode.Conflict),
+        TooFewQuestions => ApiError.From(error, HttpStatusCode.BadRequest),
+        NotADraft or OrderDoesNotMatchChapters or TooManyQuestions => ApiError.From(error, HttpStatusCode.Conflict),
         _ => ApiError.From(error, HttpStatusCode.Conflict),
     };
 }
