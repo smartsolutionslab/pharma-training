@@ -21,7 +21,11 @@ function flatten(catalog: object, prefix = ''): Map<string, unknown> {
 /** The named placeholders of a message: {name}, {module}; a literal such as {'@'} is none. */
 function placeholders(message: unknown): string[] {
   const text = typeof message === 'string' ? message : '';
-  return [...new Set([...text.matchAll(/\{\s*([A-Za-z_]\w*)\s*\}/g)].map(([, name]) => name))].sort();
+  return [
+    ...new Set(
+      [...text.matchAll(/\{\s*([A-Za-z_]\w*)\s*\}/g)].flatMap(([, name]) => (name === undefined ? [] : [name])),
+    ),
+  ].sort();
 }
 
 const catalogs = { de: flatten(de), en: flatten(en) };
