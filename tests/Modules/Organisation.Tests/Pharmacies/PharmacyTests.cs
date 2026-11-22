@@ -260,6 +260,47 @@ public class PharmacyTests
     }
 
     [Fact]
+    public void An_invitation_holds_no_link_until_its_mail_issues_one()
+    {
+        var pharmacy = Register();
+        var membership = MembershipId.New();
+
+        pharmacy.Invite(membership, AnnaMail, JobFunction.Pta, MembershipRole.Employee, Now).IsSuccess.ShouldBeTrue();
+
+        var invited = pharmacy.Memberships.Single(m => m.Id == membership);
+        invited.TokenHash.ShouldBeNull();
+        invited.InvitationExpiresAt.ShouldBe(Now.PlusDays(14));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(20)]
+    public void A_renewal_kills_the_old_link_at_once_and_runs_14_days_from_the_renewal(int daysLater)
+    {
+        var pharmacy = Register();
+        var membership = MembershipId.New();
+        pharmacy.Invite(membership, AnnaMail, JobFunction.Pta, MembershipRole.Employee, Now).IsSuccess.ShouldBeTrue();
+        var first = Token();
+        pharmacy.IssueInvitationLink(membership, first, Later(1)).IsSuccess.ShouldBeTrue();
+        var later = Now.PlusDays(daysLater);
+
+        pharmacy.RenewInvitation(membership, later).IsSuccess.ShouldBeTrue();
+
+        var renewed = pharmacy.Memberships.Single(m => m.Id == membership);
+        renewed.TokenHash.ShouldBeNull();
+        renewed.InvitationExpiresAt.ShouldBe(later.PlusDays(14));
+        pharmacy.AcceptInvitation(first, Anna, DisplayName.From("Anna Berger"), AnnaMail, later).Error.ShouldBeOfType<InvitationNotFound>();
+    }
+
+    [Fact]
+    public void MemberInvited_carries_no_token_address_or_name()
+    {
+        var properties = typeof(MemberInvited).GetProperties().Select(property => property.Name).ToList();
+
+        properties.ShouldBe(["Pharmacy", "Membership", "ExpiresAt"], ignoreOrder: true, $"MemberInvited has properties {string.Join(", ", properties)}");
+    }
+
+    [Fact]
     public void Only_a_manager_may_assign_courses()
     {
         MembershipRole.Manager.Grants(Capability.AssignCourses).ShouldBeTrue();

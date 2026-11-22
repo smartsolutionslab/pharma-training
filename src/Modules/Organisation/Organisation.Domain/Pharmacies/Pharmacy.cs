@@ -78,6 +78,14 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
         return Success(id);
     }
 
+    /// <summary>Red-first stub (T3b): delegates to the token-taking invitation with a fixed token.</summary>
+    public Result<MembershipId, DomainError> Invite(MembershipId id, EmailAddress email, JobFunction jobFunction, MembershipRole role, Timestamp now) =>
+        Invite(id, email, InvitationToken.From(new string('x', 43)), jobFunction, role, now);
+
+    /// <summary>Red-first stub (T3b): delegates to the token-taking renewal with a fixed token.</summary>
+    public Result<Unit, DomainError> RenewInvitation(MembershipId membership, Timestamp now) =>
+        RenewInvitation(membership, InvitationToken.From(new string('x', 43)), now);
+
     /// <summary>Sends a fresh link for an invitation that is still open or has run out.</summary>
     public Result<Unit, DomainError> RenewInvitation(MembershipId membership, InvitationToken token, Timestamp now)
     {

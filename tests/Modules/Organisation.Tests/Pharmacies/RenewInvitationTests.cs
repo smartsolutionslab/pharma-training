@@ -67,6 +67,20 @@ public class RenewInvitationTests
     }
 
     [Fact]
+    public async Task A_renewal_is_stored_without_a_link_until_its_mail_issues_one()
+    {
+        var store = new InMemoryPharmacyStore();
+        var pharmacy = TestPharmacies.Register(Owner);
+        var invitation = TestPharmacies.Invite(pharmacy, "invitee@example.org");
+        pharmacy.Stored(store);
+
+        var renewed = await Handler(store).HandleAsync(new RenewInvitation(pharmacy.Id, invitation, Owner), TestContext.Current.CancellationToken);
+
+        renewed.IsSuccess.ShouldBeTrue();
+        pharmacy.Membership(invitation).TokenHash.ShouldBeNull();
+    }
+
+    [Fact]
     public async Task A_membership_that_is_no_open_invitation_of_this_pharmacy_is_not_found()
     {
         var store = new InMemoryPharmacyStore();

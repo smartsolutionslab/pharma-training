@@ -74,6 +74,18 @@ public class InviteMemberTests
     }
 
     [Fact]
+    public async Task An_invitation_is_stored_without_a_link_until_its_mail_issues_one()
+    {
+        var store = new InMemoryPharmacyStore();
+        var pharmacy = TestPharmacies.Register(Owner).Stored(store);
+
+        var invited = await Handler(store).HandleAsync(new InviteMember(pharmacy.Id, Owner, Invitee, JobFunction.Pta, MembershipRole.Employee), TestContext.Current.CancellationToken);
+
+        invited.IsSuccess.ShouldBeTrue();
+        pharmacy.Membership(MembershipId.From(invited.Value)).TokenHash.ShouldBeNull();
+    }
+
+    [Fact]
     public async Task An_employee_may_not_invite()
     {
         var store = new InMemoryPharmacyStore();
