@@ -1,7 +1,11 @@
-import { useQueryClient } from '@tanstack/vue-query';
-import { type MaybeRefOrGetter, toValue } from 'vue';
+import { useIsMutating, useQueryClient } from '@tanstack/vue-query';
+import { computed, type MaybeRefOrGetter, toValue } from 'vue';
 import { z } from 'zod';
-import { getGetEditorialCourseVersionsIdQueryKey, usePostEditorialCourseVersionsIdTestDraft } from '@/api/generated';
+import {
+  getGetEditorialCourseVersionsIdQueryKey,
+  getPostEditorialCourseVersionsIdTestDraftMutationKey,
+  usePostEditorialCourseVersionsIdTestDraft,
+} from '@/api/generated';
 
 /** The draft's answer (EditorialTestDraftDto), checked: whatever the host sends is data, never trusted for its shape. */
 const draftAnswer = z.object({
@@ -18,14 +22,16 @@ export type TestDraftOutcome =
 /**
  * Asks the host for an AI draft of the version's test (POST …/test-draft, no body). Afterwards the version is stale
  * whatever the outcome: the draft replaced its unreviewed questions, or a refusal means the page shows something that
- * is no longer so, or a timeout may have been saved by the service after all.
+ * is no longer so, or a timeout may have been saved by the service after all. Whether a draft of the version runs is
+ * read from the query client, not from this component: it outlives the page, so leaving it and coming back still shows
+ * the draft running until it settles.
  */
 export function useTestDraft(versionId: MaybeRefOrGetter<string>) {
   const queryClient = useQueryClient();
   const drafting = usePostEditorialCourseVersionsIdTestDraft({
     mutation: {
-      onSettled: () =>
-        queryClient.invalidateQueries({ queryKey: getGetEditorialCourseVersionsIdQueryKey(toValue(versionId)) }),
+      onSettled: (_data, _error, variables) =>
+        queryClient.invalidateQueries({ queryKey: getGetEditorialCourseVersionsIdQueryKey(variables.id) }),
     },
   });
 
@@ -46,5 +52,13 @@ export function useTestDraft(versionId: MaybeRefOrGetter<string>) {
       : { status: 'unreadable' };
   }
 
-  return { draft, isDrafting: drafting.isPending };
+  const running = useIsMutating(() => {
+    const id = toValue(versionId);
+    return {
+      mutationKey: getPostEditorialCourseVersionsIdTestDraftMutationKey(),
+      predicate: (mutation) => (mutation.state.variables as { id?: unknown } | undefined)?.id === id,
+    };
+  });
+
+  return { draft, isDrafting: computed(() => running.value > 0) };
 }

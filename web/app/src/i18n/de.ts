@@ -227,6 +227,9 @@ export const de = {
     test: {
       heading: 'Test zu „{title}“',
       backToVersion: 'Zurück zur Version',
+      readOnly: {
+        InReviewApprove: 'Diese Version ist in Prüfung. Fragen können noch freigegeben, aber nicht geändert werden.',
+      },
       blueprint: {
         title: 'Testvorgaben',
         questions: 'Anzahl Fragen',
@@ -309,6 +312,8 @@ export const de = {
           timedOut:
             'Der KI-Entwurf hat zu lange gedauert. Die Fragen werden neu geladen; prüfen Sie, ob er übernommen wurde.',
           failed: 'Der KI-Entwurf ist fehlgeschlagen. Versuchen Sie es erneut.',
+          unknown:
+            'Ob der KI-Entwurf übernommen wurde, ist nicht bekannt. Die Fragen werden neu geladen; prüfen Sie sie, bevor Sie erneut einen Entwurf erstellen.',
         },
       },
       questionForm: {

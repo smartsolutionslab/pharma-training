@@ -20,8 +20,8 @@ export type QuestionChange = { ok: true } | { ok: false; serverMessage?: string 
 export function useQuestionMutations(versionId: MaybeRefOrGetter<string>) {
   const queryClient = useQueryClient();
   const mutation = {
-    onSettled: () =>
-      queryClient.invalidateQueries({ queryKey: getGetEditorialCourseVersionsIdQueryKey(toValue(versionId)) }),
+    onSettled: (_data: unknown, _error: unknown, variables: { id: string }) =>
+      queryClient.invalidateQueries({ queryKey: getGetEditorialCourseVersionsIdQueryKey(variables.id) }),
   };
   const adding = usePostEditorialCourseVersionsIdQuestions({ mutation });
   const replacing = usePutEditorialCourseVersionsIdQuestionsQuestionId({ mutation });

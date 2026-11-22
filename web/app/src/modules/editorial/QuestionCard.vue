@@ -31,6 +31,8 @@ const { t } = useI18n();
 
 <template>
   <li
+    :id="`question-${question.id}`"
+    tabindex="-1"
     :class="
       cn(
         'bg-card text-card-foreground shadow-elevation-1 flex flex-col gap-3 rounded-lg p-4',
@@ -81,6 +83,7 @@ const { t } = useI18n();
     <div v-if="editable || (approvable && question.review === 'Unreviewed')" class="flex flex-wrap justify-end gap-2">
       <Button
         v-if="approvable && question.review === 'Unreviewed'"
+        :id="`question-${question.id}-approve`"
         type="button"
         size="sm"
         :disabled="locked"

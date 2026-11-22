@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { TriangleAlert } from '@lucide/vue';
+import { ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { Button } from '@/components/ui/button';
 import {
@@ -24,13 +25,32 @@ interface TestDraftDialogProps {
 
 // Asks before the AI drafts the test: how many questions it drafts, and how many unreviewed questions it replaces.
 const { open, toDraft, unreviewed, hasFileChapters } = defineProps<TestDraftDialogProps>();
-const emit = defineEmits<{ confirm: []; cancel: [] }>();
+const emit = defineEmits<{ confirm: []; cancel: []; closed: [event: Event] }>();
 const { t, n } = useI18n();
+
+/** Whether the draft was asked for since the dialog opened: one press asks once, a second one is refused. */
+const pressed = ref(false);
+watch(
+  () => open,
+  (now) => {
+    if (now) {
+      pressed.value = false;
+    }
+  },
+);
+
+function confirm() {
+  if (pressed.value) {
+    return;
+  }
+  pressed.value = true;
+  emit('confirm');
+}
 </script>
 
 <template>
   <Dialog :open="open" @update:open="(now) => !now && emit('cancel')">
-    <DialogContent>
+    <DialogContent @close-auto-focus="(event: Event) => emit('closed', event)">
       <DialogHeader>
         <DialogTitle>{{ t('editorial.test.draft.confirm.title') }}</DialogTitle>
         <DialogDescription class="flex flex-col gap-3">
@@ -50,7 +70,9 @@ const { t, n } = useI18n();
         <DialogClose as-child>
           <Button type="button" variant="outline">{{ t('editorial.cancel') }}</Button>
         </DialogClose>
-        <Button type="button" @click="emit('confirm')">{{ t('editorial.test.draft.confirm.submit') }}</Button>
+        <Button type="button" :disabled="pressed" @click="confirm">{{
+          t('editorial.test.draft.confirm.submit')
+        }}</Button>
       </DialogFooter>
     </DialogContent>
   </Dialog>

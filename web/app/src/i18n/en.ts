@@ -215,6 +215,9 @@ export const en: MessageSchema = {
     test: {
       heading: 'Test for “{title}”',
       backToVersion: 'Back to the version',
+      readOnly: {
+        InReviewApprove: 'This version is in review. Questions can still be approved but not changed.',
+      },
       blueprint: {
         title: 'Test blueprint',
         questions: 'Number of questions',
@@ -295,6 +298,8 @@ export const en: MessageSchema = {
           notADraft: 'This version is no longer a draft; its test cannot be drafted again.',
           timedOut: 'The AI draft took too long. The questions are reloaded; check whether it was applied.',
           failed: 'The AI draft failed. Try again.',
+          unknown:
+            'It is not known whether the AI draft was applied. The questions are reloaded; check them before you create another draft.',
         },
       },
       questionForm: {

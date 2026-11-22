@@ -24,7 +24,7 @@ const quoted = 80;
 
 // Asks before a question is deleted, naming it by the start of its text, as plain text (it may come from the model).
 const { question, removing } = defineProps<RemoveQuestionDialogProps>();
-const emit = defineEmits<{ confirm: [question: EditorialQuestionDto]; cancel: [] }>();
+const emit = defineEmits<{ confirm: [question: EditorialQuestionDto]; cancel: []; closed: [event: Event] }>();
 const { t } = useI18n();
 
 const named = computed(() => {
@@ -35,7 +35,7 @@ const named = computed(() => {
 
 <template>
   <Dialog :open="question !== undefined" @update:open="(open) => !open && emit('cancel')">
-    <DialogContent>
+    <DialogContent @close-auto-focus="(event: Event) => emit('closed', event)">
       <DialogHeader>
         <DialogTitle>{{ t('editorial.test.questions.removeConfirm.title') }}</DialogTitle>
         <DialogDescription v-if="question !== undefined" class="whitespace-pre-line">

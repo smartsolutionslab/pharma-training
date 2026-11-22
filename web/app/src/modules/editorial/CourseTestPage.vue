@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ListChecks, LoaderCircle, Sparkles, X } from '@lucide/vue';
-import { computed, ref } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { RouterLink, useRoute } from 'vue-router';
 import { z } from 'zod';
+import { useIsMutating } from '@tanstack/vue-query';
 import { useGetEditorialCourseVersionsId } from '@/api/generated';
 import { ApiError } from '@/api/baseApi';
 import { Button } from '@/components/ui/button';
@@ -82,6 +83,12 @@ async function save(request: EditorialQuestionRequest) {
 const { draft, isDrafting } = useTestDraft(id);
 /** Whether nothing else may change for now: a change while the AI drafts makes the draft's save lose the race. */
 const locked = computed(() => isDrafting.value || isApproving.value);
+/** How many changes to this version run, the draft, a question's or the blueprint's: a draft waits for all of them. */
+const changing = useIsMutating(() => {
+  const versionId = id.value;
+  return { predicate: (mutation) => (mutation.state.variables as { id?: unknown } | undefined)?.id === versionId };
+});
+const busy = computed(() => changing.value > 0 || isDrafting.value || isSaving.value || isRemoving.value);
 /** Whether the AI draft is being confirmed. */
 const confirmingDraft = ref(false);
 /** The chapters the last draft left out, by id, until the note is dismissed; never stored. */
@@ -102,19 +109,58 @@ const draftRefusal = computed((): MessageKey | undefined => {
 });
 const hasFileChapters = computed(() => (version.value?.chapters ?? []).some((chapter) => chapter.kind !== 'Text'));
 
+// Where focus goes after an action (S4): the button pressed may be gone once the version is read again, so focus goes
+// where the editor goes on, never to the body.
+const draftStatus = 'course-test-draft-status';
+const questionsHeading = 'course-test-questions';
+const cardOf = (questionId: string) => `question-${questionId}`;
+const approveButtonOf = (questionId: string) => `question-${questionId}-approve`;
+/** The element a closing dialog gives focus to, instead of the button that opened it. */
+let focusOnClose: string | undefined;
+/** The element to focus once it can take focus (a button the page still disables). */
+const focusWhenReady = ref<string>();
+
+function dialogClosed(event: Event) {
+  const target = focusOnClose === undefined ? null : document.getElementById(focusOnClose);
+  focusOnClose = undefined;
+  if (target !== null) {
+    event.preventDefault();
+    target.focus();
+  }
+}
+
+function focusPending() {
+  if (focusWhenReady.value === undefined) {
+    return;
+  }
+  const target = document.getElementById(focusWhenReady.value);
+  if (target === null) {
+    focusWhenReady.value = undefined;
+  } else if (!(target instanceof HTMLButtonElement && target.disabled)) {
+    focusWhenReady.value = undefined;
+    target.focus();
+  }
+}
+watch([focusWhenReady, questions, locked], focusPending, { flush: 'post' });
+
 /** Asks for the draft once confirmed; it cannot be cancelled, since the model's call would go on. */
 async function startDraft() {
+  if (busy.value) {
+    return;
+  }
+  focusOnClose = draftStatus;
   confirmingDraft.value = false;
   leftOutIds.value = [];
   const outcome = await draft();
   switch (outcome.status) {
     case 'drafted':
-      notify.success(translate('editorial.test.draft.done', { count: outcome.drafted }, outcome.drafted));
+      notify.success(translate('editorial.test.draft.done', { count: n(outcome.drafted, 'integer') }, outcome.drafted));
       leftOutIds.value = outcome.leftOutChapterIds;
       break;
     case 'unreadable':
-      // The host's answer is not the draft's shape: nothing of it is shown, and the version is read again.
-      notify.failure(translate('editorial.test.draft.errors.failed'));
+      // The host's answer is not the draft's shape: nothing of it is shown, whether it was applied is not known, and
+      // the version is read again.
+      notify.failure(translate('editorial.test.draft.errors.unknown'));
       break;
     case 'failed':
       notify.failure(draftFailure(outcome.error));
@@ -125,6 +171,14 @@ async function startDraft() {
 async function approveQuestion(question: EditorialQuestionDto) {
   const position = Number(question.position);
   const result = await approve(question.id);
+  // The version is read again by now: on to the next unreviewed question, else to this question's card.
+  const unreviewed = approvable.value ? questions.value.filter((each) => each.review === 'Unreviewed') : [];
+  const next = unreviewed.find((each) => Number(each.position) >= position) ?? unreviewed[0];
+  const approved = questions.value.some((each) => each.id === question.id);
+  focusWhenReady.value =
+    next !== undefined ? approveButtonOf(next.id) : approved ? cardOf(question.id) : questionsHeading;
+  await nextTick();
+  focusPending();
   if (result.ok) {
     notify.success(translate('editorial.test.questions.approved', { position }));
   } else {
@@ -133,7 +187,15 @@ async function approveQuestion(question: EditorialQuestionDto) {
 }
 
 async function confirmRemove(question: EditorialQuestionDto) {
+  const following = questions.value[questions.value.findIndex((each) => each.id === question.id) + 1]?.id;
   const result = await remove(question.id);
+  if (result.ok) {
+    // The version is read again by now: on to the question that followed, else to the questions' heading.
+    focusOnClose =
+      following !== undefined && questions.value.some((each) => each.id === following)
+        ? cardOf(following)
+        : questionsHeading;
+  }
   removing.value = undefined;
   if (result.ok) {
     notify.success(translate('editorial.test.questions.removed'));
@@ -179,13 +241,16 @@ async function confirmRemove(question: EditorialQuestionDto) {
       <p v-if="version.status !== 'Draft'" class="text-body bg-muted rounded-md p-3">
         {{ t(`editorial.version.readOnly.${version.status}`) }}
       </p>
+      <p v-if="version.status === 'InReview'" class="text-body bg-muted rounded-md p-3">
+        {{ t('editorial.test.readOnly.InReviewApprove') }}
+      </p>
       <TestBlueprintSection :version-id="id" :blueprint="version.blueprint" :editable="editable" :locked="locked">
         <div v-if="editable" class="flex flex-col gap-3 border-t pt-4">
           <p class="text-body text-muted-foreground">{{ t('editorial.test.draft.explain') }}</p>
           <Button
             type="button"
             class="self-start"
-            :disabled="isDrafting || draftRefusal !== undefined"
+            :disabled="busy || draftRefusal !== undefined"
             :aria-describedby="draftRefusal === undefined ? undefined : 'course-test-draft-refusal'"
             @click="confirmingDraft = true"
           >
@@ -200,7 +265,7 @@ async function confirmRemove(question: EditorialQuestionDto) {
           >
             {{ t(draftRefusal) }}
           </p>
-          <p role="status" class="text-body">
+          <p :id="draftStatus" role="status" tabindex="-1" class="text-body">
             <template v-if="isDrafting">{{ t('editorial.test.draft.running') }}</template>
           </p>
           <div v-if="leftOutTitles.length > 0" class="bg-muted flex items-start justify-between gap-2 rounded-md p-3">
@@ -224,7 +289,7 @@ async function confirmRemove(question: EditorialQuestionDto) {
       </TestBlueprintSection>
       <section aria-labelledby="course-test-questions" class="flex flex-col gap-4">
         <div class="flex flex-wrap items-center justify-between gap-2">
-          <h2 id="course-test-questions">{{ t('editorial.test.questions.title') }}</h2>
+          <h2 :id="questionsHeading" tabindex="-1">{{ t('editorial.test.questions.title') }}</h2>
           <Button v-if="canAdd && questions.length > 0" type="button" :disabled="locked" @click="form = {}">
             {{ t('editorial.test.questions.add') }}
           </Button>
@@ -319,12 +384,14 @@ async function confirmRemove(question: EditorialQuestionDto) {
           :has-file-chapters="hasFileChapters"
           @confirm="startDraft"
           @cancel="confirmingDraft = false"
+          @closed="dialogClosed"
         />
         <RemoveQuestionDialog
           :question="removing"
           :removing="isRemoving"
           @confirm="confirmRemove"
           @cancel="removing = undefined"
+          @closed="dialogClosed"
         />
       </template>
     </template>
