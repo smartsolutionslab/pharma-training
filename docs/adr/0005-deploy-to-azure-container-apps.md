@@ -33,6 +33,7 @@
 
 ## Consequences
 
+- Each Container App's module takes its identity's outputs but not its `<app>-roles-secrets` grants, so the deploy may create a revision before its per-secret role exists or has propagated in Entra; its Key Vault references then fail with "unable to fetch secret using managed identity" until a retry. Aspire's own vault-wide grant had the same shape. The first deploy (#129) checks the order; if it fails there, each Container App takes a role module's output as a parameter so it deploys after its grants.
 - Publish mode and run mode now differ in the AppHost: each publish-only branch is an extension in `src/AppHost/Wiring/` guarded by the execution context, so `AppHost.cs` still reads as one model, and the run-mode integration tests (`AppHostParametersTests`, `AppHostBlobContainersTests` and the rest) pass unmodified.
 - The broker's connection string assumes Container Apps' internal addressing (`<app>:<target port>` for TCP ingress), as Aspire's own does. Main.bicep does not URI-escape a value it assembles, so `messaging-username` and `messaging-password` must be URI-safe (letters, digits, `-`, `.`, `_`, `~`); a wrong address or an unsafe password is first seen at the first deploy (#129).
 - RabbitMQ on an Azure Files (SMB) volume, and internal TCP ingress in a Consumption environment, are first observed in #129.
