@@ -4,7 +4,13 @@ import userEvent from '@testing-library/user-event';
 import { createPinia, type Pinia } from 'pinia';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { defineComponent, h, type VNode } from 'vue';
-import { createMemoryHistory, type RouteLocationNormalizedLoaded, type Router, RouterView } from 'vue-router';
+import {
+  createMemoryHistory,
+  createWebHistory,
+  type RouteLocationNormalizedLoaded,
+  type Router,
+  RouterView,
+} from 'vue-router';
 import type { MyPharmacyDto } from '@/api/generated';
 import { setLanguage, t } from '@/i18n';
 import { createAppRouter } from '@/router';
@@ -71,8 +77,11 @@ beforeEach(() => {
 });
 afterEach(() => {
   host.mockReset();
+  vi.restoreAllMocks();
+  vi.useRealTimers();
   sessionStorage.clear();
   localStorage.clear();
+  window.history.replaceState({}, '', '/');
 });
 // Without Vitest's globals, Testing Library does not unmount between tests by itself.
 afterEach(cleanup);
@@ -261,7 +270,8 @@ test('a kept value that is not a token is not posted, and is removed', async () 
 
 // Back from the identity provider: the address has no fragment, the token kept before the sign-in is in storage.
 test('a token kept before the sign-in is accepted on the way back', async () => {
-  sessionStorage.setItem(key, token);
+  // The link opened before the sign-in, in this tab: its guard kept the token, with the time it was kept.
+  await createAppRouter(createMemoryHistory()).push(link);
 
   const { router } = await openPage('/invitations/accept?code=abc&state=def');
 
@@ -593,6 +603,229 @@ test('in English a member already is led to My courses', async () => {
 
   expect(await screen.findByRole('link', { name: 'Go to My courses' })).toHaveAttribute('href', '/learning');
   expect(
-    screen.getByText('You are already a member of this pharmacy. Choose it under "Pharmacy" in the sidebar.'),
+    screen.getByText('You are already a member of this pharmacy. Choose it under “Pharmacy” in the sidebar.'),
   ).toBeInTheDocument();
+});
+
+// The sidebar's switcher is “Pharmacy” in English, in curly quotes, wherever a text sends the user to it.
+test('in English every text that sends the user to the switcher names it alike', () => {
+  setLanguage('en-GB', { remember: false });
+
+  for (const text of [
+    t('organisation.accept.alreadyMember.text'),
+    t('organisation.accept.acceptedNotOpened'),
+    t('organisation.register.registeredNotOpened', { name: 'Apotheke am Markt' }),
+  ]) {
+    expect(text).toContain('under “Pharmacy” in the sidebar');
+  }
+});
+
+// A second link opened in the same tab while the page is shown: the address changes only in its fragment, the route
+// stays, and vue-router runs no beforeEnter for it. The token must still leave the address, and be the one accepted.
+const second = 'Bq3x_Second-InvitationTokenOpenedInThisTab0';
+const secondLink = `/invitations/accept#token=${second}`;
+
+test('a second link opened while the page is shown leaves the address, and its token is accepted once', async () => {
+  const { router, pinia } = await openPage('/invitations/accept');
+  expect(
+    await screen.findByRole('heading', { level: 1, name: t('organisation.accept.missing.title') }),
+  ).toBeInTheDocument();
+
+  await router.push(secondLink);
+
+  expect(router.currentRoute.value.hash).toBe('');
+  expect(router.currentRoute.value.fullPath).not.toContain(second);
+  await waitFor(() => expect(router.currentRoute.value.path).toBe('/learning'));
+  expect(acceptances()).toEqual([{ token: second }]);
+  expect(sessionStorage.getItem(key)).toBeNull();
+  expect(useSelectedPharmacyStore(pinia).pharmacyId).toBe(pharmacyId);
+});
+
+// The first link was forwarded to the wrong person; the right link, opened next in the same tab, is accepted.
+test('a second link opened after a refusal is accepted, and the page shows its outcome', async () => {
+  acceptance = async () => problem(403, 'organisation.invitation-for-another-address', hostWords);
+  const { router } = await openPage();
+  expect(
+    await screen.findByRole('heading', { level: 1, name: t('organisation.accept.anotherAddress.title') }),
+  ).toBeInTheDocument();
+  acceptance = async () => Response.json(pharmacyId);
+
+  await router.push(secondLink);
+
+  expect(router.currentRoute.value.fullPath).not.toContain(second);
+  await waitFor(() => expect(router.currentRoute.value.path).toBe('/learning'));
+  expect(acceptances()).toEqual([{ token }, { token: second }]);
+  expect(sessionStorage.getItem(key)).toBeNull();
+});
+
+test("a second link's refusal is shown in place of the state before it", async () => {
+  const { router } = await openPage('/invitations/accept');
+  expect(
+    await screen.findByRole('heading', { level: 1, name: t('organisation.accept.missing.title') }),
+  ).toBeInTheDocument();
+  acceptance = async () => problem(410, 'organisation.invitation-expired', hostWords);
+
+  await router.push(secondLink);
+
+  expect(
+    await screen.findByRole('heading', { level: 1, name: t('organisation.accept.expired.title') }),
+  ).toBeInTheDocument();
+  expect(router.currentRoute.value.fullPath).not.toContain(second);
+  expect(acceptances()).toEqual([{ token: second }]);
+});
+
+test('a second link with a malformed token leaves the address and the page says to open the link again', async () => {
+  acceptance = async () => problem(403, 'organisation.invitation-for-another-address', hostWords);
+  const { router } = await openPage();
+  expect(
+    await screen.findByRole('heading', { level: 1, name: t('organisation.accept.anotherAddress.title') }),
+  ).toBeInTheDocument();
+
+  await router.push(`/invitations/accept#token=${second.slice(4)}`);
+
+  expect(router.currentRoute.value.hash).toBe('');
+  expect(router.currentRoute.value.fullPath).not.toContain(second.slice(4));
+  expect(
+    await screen.findByRole('heading', { level: 1, name: t('organisation.accept.missing.title') }),
+  ).toBeInTheDocument();
+  expect(acceptances()).toEqual([{ token }]);
+  expect(sessionStorage.getItem(key)).toBeNull();
+});
+
+test("with the browser's history a second link leaves the address without an entry holding its token", async () => {
+  window.history.replaceState({}, '', '/invitations/accept');
+  const router = createAppRouter(createWebHistory());
+  await openPage('/invitations/accept', { router });
+  expect(
+    await screen.findByRole('heading', { level: 1, name: t('organisation.accept.missing.title') }),
+  ).toBeInTheDocument();
+  const pushState = vi.spyOn(window.history, 'pushState');
+  const replaceState = vi.spyOn(window.history, 'replaceState');
+
+  await router.push(secondLink);
+
+  expect(window.location.pathname).toBe('/invitations/accept');
+  expect(window.location.hash).toBe('');
+  expect(window.location.href).not.toContain(second);
+  expect(pushState).not.toHaveBeenCalled();
+  expect(replaceState.mock.calls.map(([, , url]) => String(url)).join('\n')).not.toContain(second);
+  expect(JSON.stringify(window.history.state)).not.toContain(second);
+  await waitFor(() => expect(router.currentRoute.value.path).toBe('/learning'));
+  expect(acceptances()).toEqual([{ token: second }]);
+});
+
+// Retry is offered only where trying again can succeed: too many attempts, a lost concurrent save, the host
+// unavailable, the network. A refusal of the request itself is final.
+test("a framework's invalid-argument shows the failed state without Retry, with a way home", async () => {
+  acceptance = async () => problem(400, 'invalid-argument', 'One or more validation errors occurred.');
+  await openPage();
+
+  const main = within(await screen.findByRole('main'));
+  expect(
+    await main.findByRole('heading', { level: 1, name: t('organisation.accept.failed.title') }),
+  ).toBeInTheDocument();
+  expect(main.queryByRole('button', { name: t('shell.retry') })).not.toBeInTheDocument();
+  expect(main.getByRole('link', { name: t('shell.gate.goHome') })).toHaveAttribute('href', '/');
+});
+
+test("a module's refusal the page does not know offers no Retry, only a way home", async () => {
+  acceptance = async () =>
+    problem(422, 'organisation.pharmacy-closed', 'Die Apotheke nimmt keine Mitglieder mehr auf.');
+  await openPage();
+
+  const main = within(await screen.findByRole('main'));
+  expect(await main.findByText('Die Apotheke nimmt keine Mitglieder mehr auf.')).toBeInTheDocument();
+  expect(main.queryByRole('button', { name: t('shell.retry') })).not.toBeInTheDocument();
+  expect(main.getByRole('link', { name: t('shell.gate.goHome') })).toHaveAttribute('href', '/');
+});
+
+// The first attempt may have been accepted although its answer never arrived: a Retry then finds the invitation used.
+test('a Retry answered not found says the invitation may already be accepted, and leads to Meine Schulungen', async () => {
+  const user = userEvent.setup();
+  acceptance = () => Promise.reject(new TypeError('Failed to fetch'));
+  const { router } = await openPage();
+  const main = within(await screen.findByRole('main'));
+  acceptance = async () => problem(404, 'organisation.invitation-not-found', hostWords);
+
+  await user.click(await main.findByRole('button', { name: t('shell.retry') }));
+
+  expect(await main.findByText(t('organisation.accept.retryNotFound'))).toBeInTheDocument();
+  expect(
+    main.getByText(
+      'Die Einladung ist nicht mehr gültig. Wenn Sie sie eben schon angenommen haben, finden Sie die Apotheke unter „Meine Schulungen“.',
+    ),
+  ).toBeInTheDocument();
+  expect(main.getByRole('heading', { level: 1, name: t('organisation.accept.failed.title') })).toBeInTheDocument();
+  expect(main.getByRole('link', { name: t('organisation.accept.goToCourses') })).toHaveAttribute('href', '/learning');
+  expect(main.getByRole('link', { name: t('shell.gate.goHome') })).toHaveAttribute('href', '/');
+  expect(main.queryByRole('button', { name: t('shell.retry') })).not.toBeInTheDocument();
+  expect(main.queryByText(hostWords)).not.toBeInTheDocument();
+  expect(acceptances()).toEqual([{ token }, { token }]);
+  expect(router.currentRoute.value.path).toBe('/invitations/accept');
+});
+
+test('in English a Retry answered not found says the invitation may already be accepted', () => {
+  setLanguage('en-GB', { remember: false });
+
+  expect(t('organisation.accept.retryNotFound')).toBe(
+    'The invitation is no longer valid. If you have just accepted it, you will find the pharmacy under “My courses”.',
+  );
+});
+
+// The page's heading takes focus whenever its state changes, so a screen reader announces the new state.
+test('a refusal moves focus to the page heading', async () => {
+  acceptance = async () => problem(410, 'organisation.invitation-expired', hostWords);
+  await openPage();
+
+  const heading = await screen.findByRole('heading', { level: 1, name: t('organisation.accept.expired.title') });
+  expect(heading).toHaveAttribute('tabindex', '-1');
+  await waitFor(() => expect(heading).toHaveFocus());
+});
+
+test('a failure moves focus to the page heading', async () => {
+  acceptance = () => Promise.reject(new TypeError('Failed to fetch'));
+  await openPage();
+
+  const heading = await screen.findByRole('heading', { level: 1, name: t('organisation.accept.failed.title') });
+  expect(heading).toHaveAttribute('tabindex', '-1');
+  await waitFor(() => expect(heading).toHaveFocus());
+});
+
+test("pressing Retry moves focus to the heading while accepting, and to the next state's heading after", async () => {
+  const user = userEvent.setup();
+  acceptance = async () => problem(503, undefined, 'Service Unavailable');
+  await openPage();
+  const failed = await screen.findByRole('heading', { level: 1, name: t('organisation.accept.failed.title') });
+  await waitFor(() => expect(failed).toHaveFocus());
+  const answer = deferred();
+  acceptance = () => answer.promise;
+
+  await user.click(screen.getByRole('button', { name: t('shell.retry') }));
+
+  const accepting = await screen.findByRole('heading', { level: 1, name: t('organisation.accept.title') });
+  expect(accepting).toHaveAttribute('tabindex', '-1');
+  await waitFor(() => expect(accepting).toHaveFocus());
+  expect(document.activeElement).not.toBe(document.body);
+
+  answer.settle(problem(429, undefined, 'Too Many Requests'));
+
+  const tooMany = await screen.findByRole('heading', { level: 1, name: t('organisation.accept.tooMany.title') });
+  await waitFor(() => expect(tooMany).toHaveFocus());
+});
+
+// The link opened 30 minutes or more before the page takes its token: the token kept for the tab has lapsed.
+test('a token kept more than 30 minutes before the page opens is not posted', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  const opened = new Date('2026-11-22T10:00:00Z');
+  vi.setSystemTime(opened);
+  await createAppRouter(createMemoryHistory()).push(link);
+  vi.setSystemTime(opened.getTime() + 31 * 60_000);
+
+  await openPage('/invitations/accept?code=abc&state=def');
+
+  expect(
+    await screen.findByRole('heading', { level: 1, name: t('organisation.accept.missing.title') }),
+  ).toBeInTheDocument();
+  expect(acceptances()).toEqual([]);
+  expect(sessionStorage.length).toBe(0);
 });
