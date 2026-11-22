@@ -32,12 +32,38 @@ export const de = {
     signingIn: 'Anmeldung läuft…',
     signingOut: 'Abmeldung läuft…',
   },
+  modules: {
+    learning: { title: 'Meine Schulungen' },
+    assessment: { title: 'Tests' },
+    certification: { title: 'Teilnahmebestätigungen' },
+    compliance: { title: 'Zuweisungen' },
+    catalog: { title: 'Schulungskatalog' },
+    organisation: {
+      title: 'Mitglieder',
+      pages: {
+        register: { title: 'Apotheke registrieren' },
+      },
+    },
+    editorial: { title: 'Redaktion' },
+  },
   samples: {
     form: {
       name: 'Name',
     },
   },
   shell: {
+    home: 'Startseite',
+    navigation: {
+      label: 'Bereiche',
+    },
+    palette: {
+      open: 'Seite suchen…',
+      title: 'Seite öffnen',
+      description: 'Wählen Sie die Seite, die Sie öffnen möchten.',
+      pages: 'Seiten',
+      empty: 'Keine Seite gefunden.',
+      shortcut: 'Strg K',
+    },
     pharmacy: {
       region: 'Apotheke',
     },

@@ -3,7 +3,7 @@ import AssessmentPage from './AssessmentPage.vue';
 
 export const route: ModuleRoute = {
   path: 'assessment',
-  title: 'Assessment',
+  titleKey: 'modules.assessment.title',
   audience: 'employee',
   component: AssessmentPage,
 };

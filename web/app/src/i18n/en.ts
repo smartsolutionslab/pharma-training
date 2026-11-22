@@ -31,12 +31,38 @@ export const en: MessageSchema = {
     signingIn: 'Signing in…',
     signingOut: 'Signing out…',
   },
+  modules: {
+    learning: { title: 'My courses' },
+    assessment: { title: 'Tests' },
+    certification: { title: 'Certificates' },
+    compliance: { title: 'Assignments' },
+    catalog: { title: 'Course catalogue' },
+    organisation: {
+      title: 'Members',
+      pages: {
+        register: { title: 'Register a pharmacy' },
+      },
+    },
+    editorial: { title: 'Editorial' },
+  },
   samples: {
     form: {
       name: 'Name',
     },
   },
   shell: {
+    home: 'Home',
+    navigation: {
+      label: 'Sections',
+    },
+    palette: {
+      open: 'Find a page…',
+      title: 'Open a page',
+      description: 'Choose the page you want to open.',
+      pages: 'Pages',
+      empty: 'No page matches.',
+      shortcut: 'Ctrl K',
+    },
     pharmacy: {
       region: 'Pharmacy',
     },

@@ -3,7 +3,7 @@ import LearningPage from './LearningPage.vue';
 
 export const route: ModuleRoute = {
   path: 'learning',
-  title: 'Learning',
+  titleKey: 'modules.learning.title',
   audience: 'employee',
   component: LearningPage,
 };

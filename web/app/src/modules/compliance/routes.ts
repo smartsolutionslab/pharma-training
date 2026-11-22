@@ -3,7 +3,7 @@ import CompliancePage from './CompliancePage.vue';
 
 export const route: ModuleRoute = {
   path: 'compliance',
-  title: 'Compliance',
+  titleKey: 'modules.compliance.title',
   audience: 'employee',
   component: CompliancePage,
 };
