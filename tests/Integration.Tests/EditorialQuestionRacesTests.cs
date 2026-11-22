@@ -15,6 +15,8 @@ public class EditorialQuestionRacesTests(AspireFixture aspire)
 {
     private const int Rounds = 4;
 
+    private const int DeadlockRounds = 3;
+
     private static readonly Uri Courses = new("/editorial/courses", UriKind.Relative);
 
     [Fact]
@@ -116,6 +118,50 @@ public class EditorialQuestionRacesTests(AspireFixture aspire)
         }
 
         wrong.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task A_question_added_to_a_chapter_whose_removal_deadlocks_with_it_answers_409_or_201_never_a_server_error()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var connectionString = await EditorialDatabase.ConnectionStringAsync(aspire, cancellationToken);
+        List<string> wrong = [];
+
+        // The addition saves INSERT question, UPDATE version, INSERT options and checks the deferred question->chapter
+        // key at commit; the removal saves DELETE chapter, UPDATE version. The gate holds the version's row FOR NO KEY
+        // UPDATE, which lets the question's key to the version check it, so the addition waits at its version UPDATE,
+        // first; the removal then deletes the chapter and waits behind it. Released, the addition updates the version
+        // first (the row's first waiter does), and its commit waits for the deleted chapter while the removal waits for
+        // the version: a deadlock (40P01) in every round, which the database's count shows. No timing decides it.
+        var deadlocksBefore = await EditorialDatabase.DeadlocksAsync(connectionString, cancellationToken);
+        for (var round = 1; round <= DeadlockRounds; round++)
+        {
+            var id = await CreateAsync(client, cancellationToken);
+            var chapter = await AddChapterAsync(client, id, cancellationToken);
+
+            Task<HttpResponseMessage> added;
+            Task<HttpResponseMessage> removed;
+            await using (var gate = await EditorialDatabase.LockVersionRowAsync(connectionString, id, cancellationToken))
+            {
+                added = client.PostAsJsonAsync(Questions(id), SingleChoice(chapter), cancellationToken);
+                await EditorialDatabase.WaitUntilBlockedAsync(connectionString, gate, 1, cancellationToken);
+                removed = client.DeleteAsync(Chapter(id, chapter), cancellationToken);
+                await EditorialDatabase.WaitUntilBlockedAsync(connectionString, gate, 2, cancellationToken);
+                await gate.RollbackAsync(cancellationToken);
+            }
+
+            using var removal = await removed;
+            using var addition = await added;
+            var described = $"round {round}: DELETE chapter answered {(int)removal.StatusCode}, POST question answered {(int)addition.StatusCode}";
+            if (await OutcomeAsync(removal, addition, HttpStatusCode.OK, HttpStatusCode.Created, [], cancellationToken) is null)
+            {
+                wrong.Add($"{described}; expected one success and the other 409 editorial.course-version-changed ({await CodesAsync(removal, addition, cancellationToken)}).");
+            }
+        }
+
+        wrong.ShouldBeEmpty();
+        await EditorialDatabase.ShouldHaveDeadlockedSinceAsync(connectionString, deadlocksBefore + DeadlockRounds - 1, cancellationToken);
     }
 
     /// <summary>

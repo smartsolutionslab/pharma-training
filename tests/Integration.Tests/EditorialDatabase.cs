@@ -43,6 +43,7 @@ internal static class EditorialDatabase
         LockAsync(
             connectionString,
             id,
+            "FOR UPDATE",
             [
                 "SELECT 1 FROM editorial.course_version_chapters WHERE course_version_id = @id FOR UPDATE",
                 "SELECT 1 FROM editorial.course_version_questions WHERE course_version_id = @id FOR UPDATE",
@@ -51,11 +52,12 @@ internal static class EditorialDatabase
             cancellationToken);
 
     /// <summary>
-    /// Opens a transaction that holds the version's row alone: a request writes the rows beneath it and then waits for
-    /// the version's. Of requests that wait, the one that waited first updates the version first.
+    /// Opens a transaction that holds the version's row alone, FOR NO KEY UPDATE: a request writes the rows beneath it,
+    /// whose keys to the version may still check the row (FOR KEY SHARE), and then waits to update the version. Of
+    /// requests that wait, the one that waited first updates the version first.
     /// </summary>
     public static Task<VersionLock> LockVersionRowAsync(string connectionString, Guid id, CancellationToken cancellationToken) =>
-        LockAsync(connectionString, id, [], cancellationToken);
+        LockAsync(connectionString, id, "FOR NO KEY UPDATE", [], cancellationToken);
 
     /// <summary>
     /// Polls the editorial database until the given number of statements on course versions wait for a lock, and
@@ -116,14 +118,14 @@ internal static class EditorialDatabase
         (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1);
     }
 
-    private static async Task<VersionLock> LockAsync(string connectionString, Guid id, string[] beneath, CancellationToken cancellationToken)
+    private static async Task<VersionLock> LockAsync(string connectionString, Guid id, string versionLock, string[] beneath, CancellationToken cancellationToken)
     {
         var connection = new NpgsqlConnection(connectionString);
         try
         {
             await connection.OpenAsync(cancellationToken);
             var transaction = await connection.BeginTransactionAsync(cancellationToken);
-            await using (var version = new NpgsqlCommand("SELECT 1 FROM editorial.course_versions WHERE id = @id FOR UPDATE", connection, transaction))
+            await using (var version = new NpgsqlCommand($"SELECT 1 FROM editorial.course_versions WHERE id = @id {versionLock}", connection, transaction))
             {
                 version.Parameters.AddWithValue("id", id);
                 (await version.ExecuteScalarAsync(cancellationToken)).ShouldNotBeNull();
