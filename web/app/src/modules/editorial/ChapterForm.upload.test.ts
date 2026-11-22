@@ -318,7 +318,10 @@ describe('uploading', () => {
 
     await waitFor(() => expect(progressBar()).toHaveAttribute('aria-valuenow', '50'));
     expect(
-      screen.getByText(t('editorial.upload.progressValue', { percent: i18n.global.n(0.5, 'percent') })),
+      // Testing Library collapses the page's whitespace, the no-break space before % included, but not the matcher's.
+      screen.getByText(
+        t('editorial.upload.progressValue', { percent: i18n.global.n(0.5, 'percent') }).replace(/\s+/g, ' '),
+      ),
     ).toBeInTheDocument();
     expect(screen.getByText('50 % hochgeladen')).toBeInTheDocument();
 
