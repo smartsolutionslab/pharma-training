@@ -62,6 +62,29 @@ describe('the language the browser prefers', () => {
   });
 });
 
+// Some webviews and older browsers have navigator.language but no navigator.languages; the app must still start.
+describe('a browser without navigator.languages', () => {
+  test('its one language decides', () => {
+    vi.stubGlobal('navigator', { language: 'en-US' });
+
+    expect(preferredLanguage()).toBe('en-GB');
+  });
+
+  test('with neither it falls back to German', () => {
+    vi.stubGlobal('navigator', {});
+
+    expect(preferredLanguage()).toBe('de-DE');
+  });
+
+  test("index.html's script agrees", () => {
+    vi.stubGlobal('navigator', { language: 'en-US' });
+
+    runScript();
+
+    expect(document.documentElement.lang).toBe('en-GB');
+  });
+});
+
 describe('the stored choice', () => {
   test('a stored choice wins over the browser', () => {
     browserPrefers('de-DE');
