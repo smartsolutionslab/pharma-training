@@ -116,6 +116,17 @@ public class PharmacyFailuresTests
     }
 
     [Fact]
+    public void An_invitation_that_changed_while_it_was_accepted_is_a_conflict_that_names_no_pharmacy()
+    {
+        var changed = PharmacyFailures.InvitationChanged();
+
+        changed.Code.ShouldBe("organisation.invitation-changed");
+        changed.Status.ShouldBe(HttpStatusCode.Conflict);
+        changed.Message.ShouldNotBeNullOrWhiteSpace();
+        changed.ShouldBe(PharmacyFailures.InvitationChanged());
+    }
+
+    [Fact]
     public void A_token_that_is_no_token_is_the_callers_mistake()
     {
         PharmacyFailures.InvalidInvitationToken().Code.ShouldBe("organisation.invalid-invitation-token");

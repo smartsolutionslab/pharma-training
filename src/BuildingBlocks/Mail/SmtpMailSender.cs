@@ -1,3 +1,5 @@
+using System.Net.Sockets;
+using MailKit;
 using MailKit.Net.Smtp;
 using MailKit.Security;
 using Microsoft.Extensions.Configuration;
@@ -21,6 +23,8 @@ public sealed class SmtpMailSender : IMailSender
 
     private readonly TimeProvider time;
 
+    private readonly Func<ISmtpClient> clients;
+
     public SmtpMailSender(IConfiguration configuration)
         : this(configuration, TimeProvider.System)
     {
@@ -29,11 +33,21 @@ public sealed class SmtpMailSender : IMailSender
     /// <param name="configuration">Where the server and the sender address are read at each send.</param>
     /// <param name="time">The clock the whole send's bound is measured on.</param>
     public SmtpMailSender(IConfiguration configuration, TimeProvider time)
+        : this(configuration, time, () => new SmtpClient())
+    {
+    }
+
+    /// <param name="configuration">Where the server and the sender address are read at each send.</param>
+    /// <param name="time">The clock the whole send's bound is measured on.</param>
+    /// <param name="clients">Makes the client of one send; a test gives one whose failures it chooses.</param>
+    internal SmtpMailSender(IConfiguration configuration, TimeProvider time, Func<ISmtpClient> clients)
     {
         Ensure.That(configuration).IsNotNull();
         Ensure.That(time).IsNotNull();
+        Ensure.That(clients).IsNotNull();
         this.configuration = configuration;
         this.time = time;
+        this.clients = clients;
     }
 
     /// <summary>
@@ -48,7 +62,8 @@ public sealed class SmtpMailSender : IMailSender
         using var message = Compose(mail, From(configuration));
         var settings = SmtpSettings.From(configuration);
         using var bound = new CancellationTokenSource(Bound, time);
-        using var client = new SmtpClient { Timeout = (int)Bound.TotalMilliseconds };
+        using var client = clients();
+        client.Timeout = (int)Bound.TotalMilliseconds;
         try
         {
             await client.ConnectAsync(settings.Host, settings.Port, settings.Security, bound.Token);
@@ -60,12 +75,18 @@ public sealed class SmtpMailSender : IMailSender
             await client.SendAsync(message, bound.Token);
             await client.DisconnectAsync(quit: true, bound.Token);
         }
+        catch (Exception) when (bound.IsCancellationRequested)
+        {
+            // Once the bound has fired, MailKit may answer it with an IOException or anything else carrying the server's
+            // text; whatever it threw, the send ran out of time, and only the bound's own cancellation goes on.
+            throw new OperationCanceledException(bound.Token);
+        }
         catch (SmtpCommandException refused)
         {
             // The server's text (550 5.1.1 <anna@example.org>: ...) stays out of the exception, its logs and dead letters.
             throw new MailNotSentException($"The SMTP server refused the mail at {refused.ErrorCode} with {(int)refused.StatusCode} {refused.StatusCode}.");
         }
-        catch (Exception failed) when (!bound.IsCancellationRequested && IsTransportFailure(failed))
+        catch (Exception failed) when (IsTransportFailure(failed))
         {
             // A reply the client cannot read, a failed TLS handshake or login, or a dropped connection may carry the
             // server's text or the recipient as well; only the kind of failure goes on. The bound's own cancellation passes.
@@ -74,7 +95,13 @@ public sealed class SmtpMailSender : IMailSender
     }
 
     private static bool IsTransportFailure(Exception failed) =>
-        failed is SmtpProtocolException or SslHandshakeException or AuthenticationException or IOException;
+        failed is SmtpProtocolException
+            or SslHandshakeException
+            or AuthenticationException
+            or IOException
+            or SocketException
+            or ServiceNotConnectedException
+            or ServiceNotAuthenticatedException;
 
     /// <summary>
     /// The message, its headers set only through MimeKit, so no subject or address can add a header. The recipient is
