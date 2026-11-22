@@ -8,6 +8,7 @@ internal static class CourseVersionBuilder
     public static readonly Timestamp Now = Timestamp.From(new DateTimeOffset(2027, 3, 1, 9, 0, 0, TimeSpan.Zero));
     public static readonly PersonId Author = PersonId.From(Guid.CreateVersion7());
     public static readonly PersonId Reviewer = PersonId.From(Guid.CreateVersion7());
+    public static readonly PersonId Approver = PersonId.From(Guid.CreateVersion7());
 
     public static CourseVersion Draft(string title = "Hygiene 2027") =>
         CourseVersion.DraftFirst(CourseVersionId.New(), CourseId.New(), CourseTitle.From(title), Author);
@@ -41,6 +42,31 @@ internal static class CourseVersionBuilder
     }
 
     public static CourseVersion InReview(string title = "Hygiene 2027") => InReview(out _, title);
+
+    /// <summary>
+    /// A version of two questions, submitted by the author: the author approved the first before submitting, the
+    /// given editor the second, before the submission or while the version is in review.
+    /// </summary>
+    public static CourseVersion InReviewWithASecondApprover(PersonId approver, bool approvedWhileInReview = true)
+    {
+        var version = DraftWithChapter(out var chapter);
+        version.SetBlueprint(new TestBlueprint(QuestionCount.From(2), ScorePercent.From(80), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
+        var first = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
+        var second = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
+        version.ApproveQuestion(first, Author, Now).IsSuccess.ShouldBeTrue();
+        if (!approvedWhileInReview)
+        {
+            version.ApproveQuestion(second, approver, Now).IsSuccess.ShouldBeTrue();
+        }
+
+        version.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
+        if (approvedWhileInReview)
+        {
+            version.ApproveQuestion(second, approver, Now).IsSuccess.ShouldBeTrue();
+        }
+
+        return version;
+    }
 
     public static CourseVersion Published(out ChapterId chapter, string title = "Hygiene 2027")
     {

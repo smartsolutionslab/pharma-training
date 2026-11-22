@@ -79,6 +79,23 @@ public class PublishCourseVersionTests
         store.Commits.ShouldBe(0);
     }
 
+    /// <summary>The owner's decision of 2026-11-22: under four eyes no one who approved a question publishes; forbidden, like the submitter.</summary>
+    [Fact]
+    public async Task With_four_eyes_on_an_editor_who_approved_a_question_cannot_publish()
+    {
+        var version = InReviewWithASecondApprover(Approver);
+        store.Stored.Add(version);
+
+        var published = await Handler(new ReviewSettings(ReviewPolicy.FourEyes)).HandleAsync(new PublishCourseVersion(version.Id, Approver), TestContext.Current.CancellationToken);
+
+        published.IsFailure.ShouldBeTrue("an editor who approved one of the version's questions published it under four eyes");
+        published.Error.Code.ShouldBe("editorial.publisher-approved-questions");
+        published.Error.Status.ShouldBe(HttpStatusCode.Forbidden);
+        version.Status.ShouldBe(CourseVersionStatus.InReview);
+        version.PublishedBy.ShouldBeNull();
+        store.Commits.ShouldBe(0);
+    }
+
     [Fact]
     public async Task With_four_eyes_on_another_editor_publishes()
     {
