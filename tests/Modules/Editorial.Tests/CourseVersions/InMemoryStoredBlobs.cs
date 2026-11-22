@@ -9,11 +9,11 @@ internal sealed class InMemoryStoredBlobs : IStoredBlobs
 
     public int Lookups { get; private set; }
 
-    /// <summary>Stores a blob as the browser would have uploaded it: a block blob unless told otherwise.</summary>
-    public void Upload(string name, string contentType, long length, bool isBlockBlob = true)
+    /// <summary>Stores a blob as the browser would have uploaded it: a block blob, put directly, unless told otherwise.</summary>
+    public void Upload(string name, string contentType, long length, bool isBlockBlob = true, bool isCopy = false)
     {
         var blobName = BlobName.From(name);
-        blobs[blobName] = new StoredBlob(blobName, contentType, length, isBlockBlob);
+        blobs[blobName] = new StoredBlob(blobName, contentType, length, isBlockBlob, isCopy);
     }
 
     public Task<Option<StoredBlob>> FindAsync(BlobName name, CancellationToken cancellationToken)

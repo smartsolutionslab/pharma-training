@@ -4,6 +4,8 @@ using System.Security.Cryptography;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Azure;
 using Aspire.Hosting.Testing;
+using Azure.Storage.Blobs;
+using Azure.Storage.Blobs.Models;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
@@ -242,6 +244,31 @@ public class BlobStorageTests(AspireFixture aspire)
         missing.HasValue.ShouldBeFalse();
     }
 
+    [Fact]
+    public async Task Stored_blobs_report_a_blob_a_server_side_copy_created_as_a_copy_and_an_uploaded_one_as_none()
+    {
+        var urls = await UrlsAsync("editorial", TimeProvider.System.GetUtcNow());
+        var blobs = await StoredBlobsAsync("editorial");
+        var container = await ContainerAsync("editorial");
+        var source = NewName();
+        var copy = NewName();
+
+        using var put = await PutAsync((await urls.CreateUploadUrlAsync(source, FiveMinutes, TestContext.Current.CancellationToken)).Url, RandomNumberGenerator.GetBytes(300), "application/pdf");
+        // Within one account the emulator copies from the source's own URL; a signed one it would fetch from inside its container.
+        var copying = await container.GetBlobClient(copy.Value).StartCopyFromUriAsync(container.GetBlobClient(source.Value).Uri, cancellationToken: TestContext.Current.CancellationToken);
+        await copying.WaitForCompletionAsync(TestContext.Current.CancellationToken);
+        var properties = (await container.GetBlobClient(copy.Value).GetPropertiesAsync(cancellationToken: TestContext.Current.CancellationToken)).Value;
+        var uploaded = await blobs.FindAsync(source, TestContext.Current.CancellationToken);
+        var copied = await blobs.FindAsync(copy, TestContext.Current.CancellationToken);
+
+        put.StatusCode.ShouldBe(HttpStatusCode.Created);
+        properties.CopyStatus.ShouldBe(CopyStatus.Success, "the emulator ran the copy");
+        uploaded.HasValue.ShouldBeTrue("the uploaded blob is found");
+        uploaded.Value.IsCopy.ShouldBeFalse("a blob put directly is no copy");
+        copied.HasValue.ShouldBeTrue("the copied blob is found");
+        copied.Value.ShouldBe(new StoredBlob(copy, "application/pdf", 300, IsBlockBlob: true, IsCopy: true));
+    }
+
     /// <summary>
     /// The modules whose containers the running AppHost created, read from its application model rather than listed, so a
     /// module added or removed with <c>fabric add-module</c> is covered without touching this file.
@@ -298,6 +325,14 @@ public class BlobStorageTests(AspireFixture aspire)
             .AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:blobs"] = await ConnectionStringAsync(module) })
             .Build();
         return new AzureStoredBlobs(configuration);
+    }
+
+    /// <summary>A module's container as an SDK client with the account's key, to do what no signed URL may: a server-side copy.</summary>
+    private async Task<BlobContainerClient> ContainerAsync(string module)
+    {
+        var parts = (await ConnectionStringAsync(module)).Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var account = string.Join(';', parts.Where(part => !part.StartsWith("ContainerName=", StringComparison.OrdinalIgnoreCase)));
+        return new BlobServiceClient(account).GetBlobContainerClient(module);
     }
 
     private async Task<string> ConnectionStringAsync(string module)

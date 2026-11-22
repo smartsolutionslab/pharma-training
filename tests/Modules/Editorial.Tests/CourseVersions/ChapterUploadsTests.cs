@@ -1,3 +1,4 @@
+using System.Net;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 
@@ -65,6 +66,7 @@ public class ChapterUploadsTests
     [InlineData("course-versions/{version}/{n}.pdf", "a guid in another format")]
     [InlineData("course-versions/{version}.pdf", "no guid at all")]
     [InlineData("samples/{version}/{guid}.pdf", "another prefix")]
+    [InlineData("course-versions/{version}/0198A3C4-5E6F-7A8B-9C0D-1E2F3A4B5C6D.pdf", "a guid in upper case, which NameFor never writes")]
     public void A_name_not_issued_for_the_version_and_kind_is_not_its_own(string pattern, string because)
     {
         var guid = Guid.CreateVersion7();
@@ -77,5 +79,20 @@ public class ChapterUploadsTests
 
         ChapterUploads.IsIssuedFor(BlobReference.From(own), Version, ChapterKind.Pdf).ShouldBeTrue("the name it differs from is the version's own");
         ChapterUploads.IsIssuedFor(BlobReference.From(name), Version, ChapterKind.Pdf).ShouldBeFalse($"{name} is {because}");
+    }
+
+    [Theory]
+    [InlineData(ChapterKind.Pdf, ".pdf", "application/pdf")]
+    [InlineData(ChapterKind.Video, ".mp4", "video/mp4")]
+    public async Task A_blob_a_server_side_copy_created_is_not_accepted_although_it_is_what_the_kind_takes(ChapterKind kind, string extension, string contentType)
+    {
+        var blobs = new InMemoryStoredBlobs();
+        var file = AddFileChapterTests.IssuedName(Version, extension);
+        blobs.Upload(file, contentType, 1024, isCopy: true);
+
+        var accepted = await ChapterUploads.AcceptAsync(blobs, BlobReference.From(file), Version, kind, TestContext.Current.CancellationToken);
+
+        AddFileChapterTests.ShouldBeRefused(accepted.IsFailure ? accepted.Error : null, "editorial.upload-not-accepted", HttpStatusCode.BadRequest, "a copy was not put through the upload URL the module signed");
+        blobs.Lookups.ShouldBe(1);
     }
 }
