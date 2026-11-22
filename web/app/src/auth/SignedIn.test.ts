@@ -7,6 +7,7 @@ import SignedIn from './SignedIn.vue';
 import { type AuthClient, authKey, createAuth } from './useAuth';
 
 afterEach(() => {
+  vi.restoreAllMocks();
   window.history.replaceState({}, '', '/');
 });
 
@@ -202,4 +203,32 @@ test("no sign-in starts before the router's first navigation has settled", async
   settle();
 
   await vi.waitFor(() => expect(fake.signinRedirect).toHaveBeenCalledOnce());
+});
+
+// A path may start with two slashes (http://localhost:3000//evil.example/x): taken alone as a URL, it names another
+// host, and replacing the address with it throws a SecurityError. The address is cleaned with an absolute URL of the
+// app's own origin instead.
+test('coming back to a path that starts with two slashes completes the sign-in and cleans the address in place', async () => {
+  window.history.replaceState({}, '', 'http://localhost:3000//evil.example/x?code=the-code&state=the-state');
+  const replaceState = vi.spyOn(window.history, 'replaceState');
+  const fake = client();
+  const auth = createAuth(fake);
+
+  render(SignedIn, {
+    global: { provide: { [authKey]: auth } },
+    slots: { default: '<h1>pharma-training</h1>' },
+  });
+
+  expect(await screen.findByRole('heading', { name: 'pharma-training' })).toBeInTheDocument();
+  expect(fake.signinCallback).toHaveBeenCalledOnce();
+  expect(auth.error.value).toBeNull();
+  expect(auth.isAuthenticated.value).toBe(true);
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  expect(replaceState).toHaveBeenLastCalledWith(
+    expect.anything(),
+    expect.anything(),
+    'http://localhost:3000//evil.example/x',
+  );
+  expect(window.location.href).toBe('http://localhost:3000//evil.example/x');
+  expect(fake.signinRedirect).not.toHaveBeenCalled();
 });
