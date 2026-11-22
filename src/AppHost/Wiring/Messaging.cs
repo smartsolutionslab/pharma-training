@@ -52,9 +52,7 @@ public static class Messaging
             // users on the data volume keep theirs; letters and digits alone, so it needs no escaping in a URI or in JSON.
             var users = Users(builder, module => builder.AddParameter($"{Name}-{module}-password", new GenerateParameterDefault { MinLength = 22, Special = false }, secret: true, persist: true));
             var address = broker.Resource.PrimaryEndpoint.Property(EndpointProperty.HostAndPort);
-            broker.WithEntrypoint("/bin/bash")
-                .WithArgs("-c", Entrypoint)
-                .WithEnvironment(DefinitionsVariable, Definitions(broker.Resource, users));
+            WithDefinitionsAtBoot(broker).WithEnvironment(DefinitionsVariable, Definitions(broker.Resource, users));
             return new MessagingBroker(
                 broker,
                 users.ToDictionary(
@@ -69,14 +67,24 @@ public static class Messaging
             .WithDataVolume()
             .WithSecret("RABBITMQ_DEFAULT_PASS", password, secrets)
             .WithSingleReplica();
+        // Each service's password is a secret the deployment sets (messaging-<module>-password), kept in the Key Vault.
+        var publishedUsers = Users(builder, module => secrets.Secret($"{Name}-{module}-password"));
+        // The definitions hold every password, so the broker reads them as a Key Vault reference, as it reads its own.
+        IAzureKeyVaultSecretReference definitions = secrets.Store($"{Name}-definitions", Definitions(published.Resource, publishedUsers)).Resource;
+        WithDefinitionsAtBoot(published).WithEnvironment(DefinitionsVariable, definitions);
         // The Key Vault's Bicep cannot read a Container App's endpoint: given the broker's own connection string, it would
         // write amqp://user:password@ without host and port. A Container App with TCP ingress is reached inside the
         // environment by its name on its target port, which is what Aspire writes for a service that references the
-        // broker; the secret names the same, from the model. Main.bicep does not URI-escape a value it assembles, so the
-        // broker's user and password must be URI-safe (docs/adr/0005).
+        // broker; each service's secret names the same, from the model. Main.bicep does not URI-escape a value it
+        // assembles, so every user and password on the broker must be URI-safe (docs/adr/0005, 0011). The admin's
+        // connection string is not stored: no app reads it.
         var endpoint = published.Resource.PrimaryEndpoint.EndpointAnnotation;
         var publishedAddress = $"{published.Resource.Name}:{endpoint.TargetPort ?? throw new InvalidOperationException($"{Name}'s {endpoint.Name} endpoint has no target port.")}";
-        secrets.Store($"{Name}-connection-string", ReferenceExpression.Create($"amqp://{userName.Resource}:{password.Resource}@{publishedAddress}"));
+        foreach (var user in publishedUsers)
+        {
+            secrets.Store($"{Name}-{user.Module}-connection-string", ReferenceExpression.Create($"amqp://{user.UserName.Resource}:{user.Password.Resource}@{publishedAddress}"));
+        }
+
         return new MessagingBroker(published, []);
     }
 
@@ -98,7 +106,7 @@ public static class Messaging
             return service.WithEnvironment($"ConnectionStrings__{Name}", broker.ConnectionStringOf(module));
         }
 
-        IAzureKeyVaultSecretReference connectionString = secrets.Stored($"{Name}-connection-string").Resource;
+        IAzureKeyVaultSecretReference connectionString = secrets.Stored($"{Name}-{module}-connection-string").Resource;
         return service.WithEnvironment($"ConnectionStrings__{Name}", connectionString);
     }
 
@@ -112,6 +120,10 @@ public static class Messaging
                 builder.AddParameter($"{Name}-{module}-username", module, publishValueAsDefault: true),
                 password(module),
                 MessagingTopology.Of(module)))];
+
+    /// <summary>The broker's own entrypoint, which has RabbitMQ import <c>BROKER_DEFINITIONS</c> at every boot.</summary>
+    private static IResourceBuilder<RabbitMQServerResource> WithDefinitionsAtBoot(IResourceBuilder<RabbitMQServerResource> broker) =>
+        broker.WithEntrypoint("/bin/bash").WithArgs("-c", Entrypoint);
 
     /// <summary>
     /// The definitions RabbitMQ imports at boot: the vhost, the admin with every permission, and each service's user with
