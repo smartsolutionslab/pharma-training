@@ -1,7 +1,7 @@
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query';
 import { cleanup, render } from '@testing-library/vue';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { defineComponent } from 'vue';
+import { defineComponent, ref } from 'vue';
 import { type EditorialQuestionRequest, getGetEditorialCourseVersionsIdQueryKey } from '@/api/generated';
 import { introduction, refusal, versionId } from './courseTestFixtures';
 import { useQuestionMutations } from './useQuestionMutations';
@@ -160,3 +160,51 @@ describe('approving', () => {
     expect(queryClient.getQueryState(versionKey)?.isInvalidated).toBe(true);
   });
 });
+
+// The version a change was made to is the one marked stale, also when the page's version changed while it ran (the
+// route's id changing mid-flight, #25 review round 2): the id is taken when the change is called.
+const otherVersionId = '0198c1a0-0000-7000-8000-0000000000c2';
+const otherVersionKey = getGetEditorialCourseVersionsIdQueryKey(otherVersionId);
+
+const pendingChanges: [string, (mutations: Mutations) => Promise<unknown>][] = [
+  ...changes,
+  ['approving', (mutations) => mutations.approve(questionId)],
+];
+
+test.each(pendingChanges)(
+  '%s marks stale the version it was called for, though the version changed while it ran',
+  async (_change, change) => {
+    let answer: (response: Response) => void = () => undefined;
+    host.mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          answer = resolve;
+        }),
+    );
+    const id = ref(versionId);
+    const used: { mutations?: Mutations } = {};
+    const Host = defineComponent({
+      setup() {
+        used.mutations = useQuestionMutations(id);
+        return () => null;
+      },
+    });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    queryClient.setQueryData(versionKey, { id: versionId, questions: [] });
+    queryClient.setQueryData(otherVersionKey, { id: otherVersionId, questions: [] });
+    render(Host, { global: { plugins: [[VueQueryPlugin, { queryClient }]] } });
+    if (used.mutations === undefined) {
+      throw new Error('The component did not set up.');
+    }
+
+    const settled = change(used.mutations);
+    await vi.waitFor(() => expect(host).toHaveBeenCalledOnce());
+    expect(String(host.mock.calls[0]?.[0])).toContain(versionId);
+    id.value = otherVersionId;
+    answer(Response.json({ value: null }));
+    await settled;
+
+    await vi.waitFor(() => expect(queryClient.getQueryState(versionKey)?.isInvalidated).toBe(true));
+    expect(queryClient.getQueryState(otherVersionKey)?.isInvalidated).toBe(false);
+  },
+);

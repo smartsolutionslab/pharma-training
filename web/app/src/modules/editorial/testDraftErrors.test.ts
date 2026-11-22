@@ -4,9 +4,11 @@ import { setLanguage, t } from '@/i18n';
 import { draftFailure } from './testDraftErrors';
 
 // What the page says when an AI draft is refused or fails (#25, S8): the text is chosen by the problem's code where the
-// host sends one, by the status otherwise, never the host's words, and in the language the page speaks. A 5xx carries
-// no code (ApiError, baseApi.test.ts), so the 503 (model-not-configured, raised before any handler) and the 502
-// (ai-draft-malformed) are told apart by their status alone.
+// host sends one, by the status otherwise, never the host's words, and in the language the page speaks. The 503
+// (model-not-configured, raised before any handler) and the 502 (ai-draft-malformed) are told apart from an edge's 503
+// or 502 by the problem's code at any status (ApiError.failureCode, baseApi.test.ts); an edge's says the draft failed.
+// A draft that never got an answer the page can read (a network failure, a body that is not JSON) may have been
+// applied all the same: its outcome is unknown.
 
 /** Problem details as the host sends them, with a code where it has one. */
 const problem = (status: number, code?: string) =>
@@ -91,11 +93,46 @@ const answers: [string, () => unknown, Parameters<typeof t>[0], string, string][
     'The AI draft failed. Try again.',
   ],
   [
-    'a network failure',
-    () => new TypeError('Failed to fetch'),
+    '503 from the edge, without a code',
+    () => new ApiError(503, ''),
     'editorial.test.draft.errors.failed',
     'Der KI-Entwurf ist fehlgeschlagen. Versuchen Sie es erneut.',
     'The AI draft failed. Try again.',
+  ],
+  [
+    '503 from the edge, problem details without a code',
+    () => new ApiError(503, problem(503)),
+    'editorial.test.draft.errors.failed',
+    'Der KI-Entwurf ist fehlgeschlagen. Versuchen Sie es erneut.',
+    'The AI draft failed. Try again.',
+  ],
+  [
+    '502 from the edge, without a code',
+    () => new ApiError(502, 'Bad Gateway'),
+    'editorial.test.draft.errors.failed',
+    'Der KI-Entwurf ist fehlgeschlagen. Versuchen Sie es erneut.',
+    'The AI draft failed. Try again.',
+  ],
+  [
+    '502 with a code of another kind',
+    () => new ApiError(502, problem(502, 'model-not-configured')),
+    'editorial.test.draft.errors.failed',
+    'Der KI-Entwurf ist fehlgeschlagen. Versuchen Sie es erneut.',
+    'The AI draft failed. Try again.',
+  ],
+  [
+    'a network failure: whether the host drafted is not known',
+    () => new TypeError('Failed to fetch'),
+    'editorial.test.draft.errors.unknown',
+    'Ob der KI-Entwurf übernommen wurde, ist nicht bekannt. Die Fragen werden neu geladen; prüfen Sie sie, bevor Sie erneut einen Entwurf erstellen.',
+    'It is not known whether the AI draft was applied. The questions are reloaded; check them before you create another draft.',
+  ],
+  [
+    "a 200 whose body is not JSON (apiFetch's SyntaxError)",
+    () => new SyntaxError('Unexpected token < in JSON at position 0'),
+    'editorial.test.draft.errors.unknown',
+    'Ob der KI-Entwurf übernommen wurde, ist nicht bekannt. Die Fragen werden neu geladen; prüfen Sie sie, bevor Sie erneut einen Entwurf erstellen.',
+    'It is not known whether the AI draft was applied. The questions are reloaded; check them before you create another draft.',
   ],
   [
     'a 409 with a code the page does not know',

@@ -201,3 +201,33 @@ test('an approval that failed without words of the host says which question, in 
   expect(notify.failure).toHaveBeenCalledWith('Frage 2 konnte nicht freigegeben werden.');
   await waitFor(() => expect(reads().length).toBeGreaterThan(1));
 });
+
+// In review a question can still be approved, but not changed (#25, review round 2): the page says so, not only that
+// the version cannot be edited.
+test('a version in review says its questions can still be approved but not changed', async () => {
+  version = versionOf('InReview');
+  await renderPage();
+
+  expect(screen.getByText(t('editorial.test.readOnly.InReviewApprove'))).toBeInTheDocument();
+  expect(
+    screen.getByText('Diese Version ist in Prüfung. Fragen können noch freigegeben, aber nicht geändert werden.'),
+  ).toBeInTheDocument();
+
+  setLanguage('en-GB', { remember: false });
+
+  expect(
+    await screen.findByText('This version is in review. Questions can still be approved but not changed.'),
+  ).toBeInTheDocument();
+});
+
+test.each<EditorialCourseVersionStatus>(['Draft', 'Published', 'Superseded', 'Retired'])(
+  'a %s version does not say approving is still possible',
+  async (status) => {
+    version = versionOf(status);
+    await renderPage();
+
+    expect(
+      screen.queryByText('Diese Version ist in Prüfung. Fragen können noch freigegeben, aber nicht geändert werden.'),
+    ).not.toBeInTheDocument();
+  },
+);

@@ -2,7 +2,8 @@ import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/vue';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { createMemoryHistory } from 'vue-router';
+import { defineComponent, h } from 'vue';
+import { createMemoryHistory, RouterView } from 'vue-router';
 import type { EditorialChapterDto, EditorialCourseVersionDto, EditorialQuestionDto } from '@/api/generated';
 import { setLanguage, t } from '@/i18n';
 import { createAppRouter } from '@/router';
@@ -471,6 +472,14 @@ describe('the draft', () => {
     expect(document.querySelector('img')).toBeNull();
     expect(screen.queryByText(t('editorial.test.draft.leftOut'))).not.toBeInTheDocument();
     expect(screen.queryByText(/onerror/)).not.toBeInTheDocument();
+    // Whether the host drafted is not known: the page says so, never that it failed.
+    await waitFor(() => expect(notify.failure).toHaveBeenCalledWith(t('editorial.test.draft.errors.unknown')));
+    expect(notify.failure).toHaveBeenCalledWith(
+      'Ob der KI-Entwurf übernommen wurde, ist nicht bekannt. Die Fragen werden neu geladen; prüfen Sie sie, bevor Sie erneut einen Entwurf erstellen.',
+    );
+    expect(notify.failure).toHaveBeenCalledOnce();
+    expect(notify.failure).not.toHaveBeenCalledWith(t('editorial.test.draft.errors.failed'));
+    expect(notify.success).not.toHaveBeenCalled();
     // The page is still there.
     expect(
       screen.getByRole('heading', { level: 1, name: t('editorial.test.heading', { title: version.title }) }),
@@ -526,6 +535,17 @@ describe('a refused or failed draft', () => {
       'Der KI-Entwurf hat zu lange gedauert. Die Fragen werden neu geladen; prüfen Sie, ob er übernommen wurde.',
     ],
     ['500', () => new Response('', { status: 500 }), 'Der KI-Entwurf ist fehlgeschlagen. Versuchen Sie es erneut.'],
+    // An edge's 503 or 502 is no answer of the host's: it carries no code of its own, and the draft failed.
+    [
+      '503 from the edge',
+      () => new Response('', { status: 503 }),
+      'Der KI-Entwurf ist fehlgeschlagen. Versuchen Sie es erneut.',
+    ],
+    [
+      '502 from the edge',
+      () => new Response('Bad Gateway', { status: 502, headers: { 'Content-Type': 'text/plain' } }),
+      'Der KI-Entwurf ist fehlgeschlagen. Versuchen Sie es erneut.',
+    ],
   ])(
     'a %s is reported in the page’s words, the version read again and the questions unchanged',
     async (_answer, answer, reported) => {
@@ -546,7 +566,7 @@ describe('a refused or failed draft', () => {
     },
   );
 
-  test('a draft that never reached the host is reported as failed', async () => {
+  test('a draft whose answer never came is reported as unknown, not as failed, and the questions reloaded', async () => {
     const user = userEvent.setup();
     drafting = async () => {
       throw new TypeError('Failed to fetch');
@@ -555,8 +575,51 @@ describe('a refused or failed draft', () => {
 
     await confirmDraft(user);
 
-    await waitFor(() => expect(notify.failure).toHaveBeenCalledWith(t('editorial.test.draft.errors.failed')));
+    await waitFor(() => expect(notify.failure).toHaveBeenCalledWith(t('editorial.test.draft.errors.unknown')));
+    expect(notify.failure).toHaveBeenCalledWith(
+      'Ob der KI-Entwurf übernommen wurde, ist nicht bekannt. Die Fragen werden neu geladen; prüfen Sie sie, bevor Sie erneut einen Entwurf erstellen.',
+    );
+    expect(notify.failure).toHaveBeenCalledOnce();
+    await waitFor(() => expect(reads().length).toBeGreaterThan(1));
     await waitFor(() => expect(startButton()).toBeEnabled());
+  });
+
+  test('a 200 whose body is not JSON is reported as unknown, not as failed, and the questions reloaded', async () => {
+    const user = userEvent.setup();
+    drafting = async () =>
+      new Response('<html><body>Proxy</body></html>', { status: 200, headers: { 'Content-Type': 'text/html' } });
+    await renderPage();
+
+    await confirmDraft(user);
+
+    await waitFor(() => expect(notify.failure).toHaveBeenCalledWith(t('editorial.test.draft.errors.unknown')));
+    expect(notify.failure).toHaveBeenCalledWith(
+      'Ob der KI-Entwurf übernommen wurde, ist nicht bekannt. Die Fragen werden neu geladen; prüfen Sie sie, bevor Sie erneut einen Entwurf erstellen.',
+    );
+    expect(notify.failure).toHaveBeenCalledOnce();
+    expect(notify.success).not.toHaveBeenCalled();
+    await waitFor(() => expect(reads().length).toBeGreaterThan(1));
+    await waitFor(() => expect(screen.queryByText(t('editorial.test.draft.running'))).not.toBeInTheDocument());
+  });
+
+  test('an unknown outcome is reported in English when switched', async () => {
+    const user = userEvent.setup();
+    drafting = async () => {
+      throw new TypeError('Failed to fetch');
+    };
+    await renderPage();
+
+    setLanguage('en-GB', { remember: false });
+    await screen.findByRole('button', { name: 'Draft with AI' });
+    await user.click(startButton());
+    await waitFor(() => expect(confirmation()).not.toBeNull());
+    await user.click(within(confirmation() ?? document.body).getByRole('button', { name: 'Draft' }));
+
+    await waitFor(() =>
+      expect(notify.failure).toHaveBeenCalledWith(
+        'It is not known whether the AI draft was applied. The questions are reloaded; check them before you create another draft.',
+      ),
+    );
   });
 
   test('a 503 is reported in English when switched', async () => {
@@ -576,4 +639,123 @@ describe('a refused or failed draft', () => {
       ),
     );
   });
+});
+
+describe('one draft at a time', () => {
+  test('a double-click on the confirmation sends exactly one draft', async () => {
+    const user = userEvent.setup();
+    let answer: (response: Response) => void = () => undefined;
+    drafting = () =>
+      new Promise<Response>((resolve) => {
+        answer = resolve;
+      });
+    await renderPage();
+
+    const dialog = await openConfirmation(user);
+    await user.dblClick(dialog.getByRole('button', { name: t('editorial.test.draft.confirm.submit') }));
+
+    await screen.findByText(t('editorial.test.draft.running'));
+    expect(drafts()).toHaveLength(1);
+    answer(Response.json({ draftedQuestionIds: [], leftOutChapterIds: [] }));
+    await waitFor(() => expect(startButton()).toBeEnabled());
+    expect(drafts()).toHaveLength(1);
+  });
+
+  test('the confirmation’s button is disabled once pressed', async () => {
+    let answer: (response: Response) => void = () => undefined;
+    drafting = () =>
+      new Promise<Response>((resolve) => {
+        answer = resolve;
+      });
+    const user = userEvent.setup();
+    await renderPage();
+
+    const dialog = await openConfirmation(user);
+    const submit = dialog.getByRole('button', { name: t('editorial.test.draft.confirm.submit') });
+    // A press, without letting the page render in between: the button itself refuses a second one.
+    submit.click();
+    submit.click();
+
+    await waitFor(() => expect(drafts()).toHaveLength(1));
+    expect(submit.isConnected ? submit.hasAttribute('disabled') : true).toBe(true);
+    answer(Response.json({ draftedQuestionIds: [], leftOutChapterIds: [] }));
+    await waitFor(() => expect(startButton()).toBeEnabled());
+    expect(drafts()).toHaveLength(1);
+  });
+
+  test('the draft cannot be started while an approval of the page is running', async () => {
+    const user = userEvent.setup();
+    let approved: (response: Response) => void = () => undefined;
+    const fallback = host.getMockImplementation();
+    host.mockImplementation(async (input, init) => {
+      const url = new URL(String(input), 'http://localhost');
+      if (init?.method === 'POST' && url.pathname.endsWith('/approve')) {
+        return new Promise<Response>((resolve) => {
+          approved = resolve;
+        });
+      }
+      return fallback === undefined ? new Response('', { status: 404 }) : fallback(input, init);
+    });
+    await renderPage();
+    expect(startButton()).toBeEnabled();
+
+    await user.click(screen.getByRole('button', { name: t('editorial.test.questions.approve', { position: 2 }) }));
+
+    await waitFor(() => expect(startButton()).toBeDisabled());
+    expect(drafts()).toHaveLength(0);
+    approved(Response.json({ value: null }));
+    await waitFor(() => expect(startButton()).toBeEnabled());
+  });
+});
+
+describe('the running draft outlives the page', () => {
+  /** The app's router view, so leaving the test page unmounts it, as in the app. */
+  const App = defineComponent({ render: () => h(RouterView) });
+
+  test('leaving the page while the draft runs and coming back still shows it running, until it settles', async () => {
+    const user = userEvent.setup();
+    let answer: (response: Response) => void = () => undefined;
+    drafting = () =>
+      new Promise<Response>((resolve) => {
+        answer = resolve;
+      });
+    const router = createAppRouter(createMemoryHistory());
+    await router.push(`/editorial/versions/${versionId}/test`);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(App, { global: { plugins: [router, [VueQueryPlugin, { queryClient }]] } });
+    await screen.findByRole('heading', { level: 1, name: t('editorial.test.heading', { title: version.title }) });
+
+    await confirmDraft(user);
+    await screen.findByText(t('editorial.test.draft.running'));
+
+    await router.push(`/editorial/versions/${versionId}`);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('heading', { level: 1, name: t('editorial.test.heading', { title: version.title }) }),
+      ).not.toBeInTheDocument(),
+    );
+    await router.push(`/editorial/versions/${versionId}/test`);
+    await screen.findByRole('heading', { level: 1, name: t('editorial.test.heading', { title: version.title }) });
+
+    expect(await screen.findByText(t('editorial.test.draft.running'))).toBeInTheDocument();
+    expect(startButton()).toBeDisabled();
+    expect(drafts()).toHaveLength(1);
+
+    answer(Response.json({ draftedQuestionIds: [], leftOutChapterIds: [] }));
+
+    await waitFor(() => expect(screen.queryByText(t('editorial.test.draft.running'))).not.toBeInTheDocument());
+    await waitFor(() => expect(startButton()).toBeEnabled());
+  });
+});
+
+test('the done report counts in the page’s number format', async () => {
+  const user = userEvent.setup();
+  const many = Array.from({ length: 1000 }, (_, index) => `0198c1a0-0000-7000-8002-${String(index).padStart(12, '0')}`);
+  drafting = async () => Response.json({ draftedQuestionIds: many, leftOutChapterIds: [] });
+  await renderPage();
+
+  await confirmDraft(user);
+
+  await waitFor(() => expect(notify.success).toHaveBeenCalledOnce());
+  expect(notify.success).toHaveBeenCalledWith('Die KI hat 1.000 Fragen entworfen. Bitte prüfen Sie sie.');
 });
