@@ -91,6 +91,7 @@ public class EditorialBlueprintTests(AspireFixture aspire)
     [InlineData("{'questions':10,'passingScorePercent':80,'validityMonths':61}", "editorial.invalid-validity")]
     [InlineData("{'questions':10,'passingScorePercent':80}", "editorial.invalid-validity")]
     [InlineData("{'questions':10,'passingScorePercent':80,'validityMonths':null}", "editorial.invalid-validity")]
+    [InlineData("{'questions':0,'passingScorePercent':101,'validityMonths':12}", "editorial.invalid-passing-score")]
     [InlineData("{}", "editorial.invalid-question-count")]
     public async Task A_blueprint_value_out_of_range_is_refused_as_the_callers_mistake(string body, string code)
     {
