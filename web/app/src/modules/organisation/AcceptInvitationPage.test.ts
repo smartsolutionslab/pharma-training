@@ -139,12 +139,18 @@ test('with a kept token the page accepts it once and the employee lands on Meine
 
 // The address is replaced, not pushed: Back does not lead to the page again, which would find no token.
 test('the page replaces its address with Meine Schulungen, so Back does not return to it', async () => {
-  const { router } = await openPage();
+  // Memory history keeps no back/current state as web history does; what it is asked to do shows replace over push.
+  const history = createMemoryHistory();
+  const push = vi.spyOn(history, 'push');
+  const replace = vi.spyOn(history, 'replace');
+  const router = createAppRouter(history);
+  await openPage(link, { router });
+  push.mockClear();
+  replace.mockClear();
 
   await waitFor(() => expect(router.currentRoute.value.path).toBe('/learning'));
-  const entry = router.options.history.state as { back: unknown; current: unknown };
-  expect(entry.current).toBe('/learning');
-  expect(entry.back).toBeNull();
+  expect(replace.mock.calls.map(([to]) => to)).toEqual(['/learning']);
+  expect(push).not.toHaveBeenCalled();
 });
 
 test('the pharmacy is opened only once the memberships read again hold it', async () => {
@@ -472,15 +478,15 @@ test('the two refusals of one status are told apart by their code', async () => 
 const retryable = [
   {
     answer: 'a 429',
-    refusal: () => problem(429, undefined, 'Too Many Requests'),
+    refusal: async () => problem(429, undefined, 'Too Many Requests'),
     state: 'tooMany',
   },
   {
     answer: 'a 409 pharmacy-changed',
-    refusal: () => problem(409, 'organisation.pharmacy-changed', 'Die Apotheke wurde gerade geändert.'),
+    refusal: async () => problem(409, 'organisation.pharmacy-changed', 'Die Apotheke wurde gerade geändert.'),
     state: 'failed',
   },
-  { answer: 'a 503', refusal: () => problem(503, undefined, 'Service Unavailable'), state: 'failed' },
+  { answer: 'a 503', refusal: async () => problem(503, undefined, 'Service Unavailable'), state: 'failed' },
   { answer: 'a 500 without a body', refusal: async () => new Response('', { status: 500 }), state: 'failed' },
   {
     answer: 'a network failure',
@@ -514,7 +520,7 @@ test.each(retryable)(
 );
 
 test('too many attempts says so in German', async () => {
-  acceptance = () => problem(429, undefined, 'Too Many Requests');
+  acceptance = async () => problem(429, undefined, 'Too Many Requests');
   await openPage();
 
   expect(await screen.findByRole('heading', { level: 1, name: 'Zu viele Versuche' })).toBeInTheDocument();
@@ -523,7 +529,7 @@ test('too many attempts says so in German', async () => {
 });
 
 test('a failure the host gives no words for shows the catalog text, in German', async () => {
-  acceptance = () => problem(503, undefined, 'Service Unavailable');
+  acceptance = async () => problem(503, undefined, 'Service Unavailable');
   await openPage();
 
   expect(await screen.findByRole('heading', { level: 1, name: 'Einladung nicht angenommen' })).toBeInTheDocument();
@@ -535,7 +541,8 @@ test('a failure the host gives no words for shows the catalog text, in German', 
 
 // A refusal of the module's the page has no text of its own for: the module's words as it sent them (ADR 0007).
 test("a module's refusal the page does not know shows the module's words under the failed title", async () => {
-  acceptance = () => problem(422, 'organisation.pharmacy-closed', 'Die Apotheke nimmt keine Mitglieder mehr auf.');
+  acceptance = async () =>
+    problem(422, 'organisation.pharmacy-closed', 'Die Apotheke nimmt keine Mitglieder mehr auf.');
   await openPage();
 
   const main = within(await screen.findByRole('main'));

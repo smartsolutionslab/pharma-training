@@ -14,7 +14,10 @@ const resolver = createRouter({
   history: createMemoryHistory(),
   routes: [{ path: '/invitations/accept', component: { render: () => null } }],
 });
-const at = (address: string): RouteLocationNormalized => resolver.resolve(address);
+const at = (address: string): RouteLocationNormalized => {
+  const resolved = resolver.resolve(address);
+  return { ...resolved, name: resolved.name ?? undefined };
+};
 
 /** What the guard answers for an address, called as vue-router calls a route's beforeEnter on entering it. */
 const capture = (address: string) => captureInvitationLink.call(undefined, at(address), START_LOCATION, vi.fn());
