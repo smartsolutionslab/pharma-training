@@ -20,6 +20,18 @@ public sealed class PharmacyStore(OrganisationDbContext context) : IPharmacyStor
             ? Option<Pharmacy>.Some(pharmacy)
             : Option<Pharmacy>.None;
 
+    public async Task<Option<Pharmacy>> LoadByInvitationAsync(InvitationTokenHash hash, CancellationToken cancellationToken)
+    {
+        Ensure.That(hash).IsNotNull();
+
+        // Across every pharmacy: the link names none. The unique index on token_hash finds at most one.
+        return await context.Set<Pharmacy>()
+            .Include(pharmacy => pharmacy.Memberships)
+            .SingleOrDefaultAsync(pharmacy => pharmacy.Memberships.Any(membership => membership.TokenHash == hash), cancellationToken) is { } pharmacy
+            ? Option<Pharmacy>.Some(pharmacy)
+            : Option<Pharmacy>.None;
+    }
+
     public async Task<PagedResult<Pharmacy>> ListWithActiveMemberAsync(PersonId person, Page page, PageSize pageSize, CancellationToken cancellationToken)
     {
         Ensure.That(person).IsNotNull();
