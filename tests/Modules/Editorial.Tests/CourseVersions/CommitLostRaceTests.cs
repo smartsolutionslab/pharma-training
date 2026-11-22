@@ -14,8 +14,9 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersion
 /// save as a deadlock (40P01) or a serialization failure (40001), even at the COMMIT that SaveChangesAsync issues for
 /// its own transaction (where a deferred key check closes the cycle), EFCore.PG reports it as a
 /// <see cref="DbUpdateConcurrencyException"/> around the <see cref="PostgresException"/>; observed against PostgreSQL
-/// for EFCore.PG 11.0.0-rc.3. That is a lost race, so the save answers <see langword="false"/>. Any other database error
-/// still throws.
+/// for EFCore.PG 11.0.0-rc.3. That is a lost race, so the save answers <see langword="false"/>, as it does for a 40P01 or
+/// 40001 raised by one of the save's statements, which EF Core wraps in a plain <see cref="DbUpdateException"/>. A
+/// database error with any other SqlState still throws.
 /// <para>
 /// These tests build the <see cref="DbUpdateConcurrencyException"/> by hand, so the 40P01 or 40001 inside it plays no
 /// part in them: only the integration test
