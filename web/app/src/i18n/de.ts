@@ -146,6 +146,9 @@ export const de = {
     loading: 'Wird geladen…',
     actions: 'Aktionen',
     showing: 'Einträge {first}–{last} von {total}',
+    pagination: 'Seiten',
+    previous: 'Vorherige Seite',
+    next: 'Nächste Seite',
   },
   ui: {
     close: 'Schließen',

@@ -145,6 +145,9 @@ export const en: MessageSchema = {
     loading: 'Loading…',
     actions: 'Actions',
     showing: 'Showing {first}–{last} of {total}',
+    pagination: 'Pages',
+    previous: 'Previous page',
+    next: 'Next page',
   },
   ui: {
     close: 'Close',
