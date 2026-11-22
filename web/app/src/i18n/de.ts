@@ -1,4 +1,5 @@
 import type {
+  EditorialChapterKind,
   EditorialCourseVersionStatus,
   OrganisationJobFunction,
   OrganisationMembershipRole,
@@ -34,6 +35,11 @@ export const de = {
       Superseded: 'Abgelöst',
       Retired: 'Zurückgezogen',
     } satisfies Record<EditorialCourseVersionStatus, string>,
+    chapterKind: {
+      Text: 'Text',
+      Pdf: 'PDF',
+      Video: 'Video',
+    } satisfies Record<EditorialChapterKind, string>,
   },
   auth: {
     signedIn: 'Angemeldet',
@@ -124,6 +130,32 @@ export const de = {
       createFailed: 'Die Schulung {title} konnte nicht angelegt werden.',
     },
     cancel: 'Abbrechen',
+    version: {
+      number: 'Version {number}',
+      loadFailed: 'Die Version konnte nicht geladen werden.',
+      notFound: 'Diese Version gibt es nicht.',
+      backToInbox: 'Zurück zum Eingang',
+      readOnly: {
+        InReview: 'Diese Version ist in Prüfung und kann nicht bearbeitet werden.',
+        Published:
+          'Diese Version ist veröffentlicht und kann nicht mehr geändert werden. Änderungen machen Sie in einer neuen Version.',
+        Superseded: 'Diese Version wurde durch eine neuere abgelöst und kann nicht geändert werden.',
+        Retired: 'Diese Version wurde zurückgezogen und kann nicht geändert werden.',
+      },
+    },
+    chapters: {
+      title: 'Kapitel',
+      empty: 'Diese Version hat noch keine Kapitel.',
+      add: 'Kapitel hinzufügen',
+      position: 'Kapitel {position}',
+      duration: 'Dauer {duration}',
+      file: 'Datei hochgeladen',
+      edit: '„{title}“ bearbeiten',
+      remove: '„{title}“ löschen',
+      moveUp: '„{title}“ nach oben verschieben',
+      moveDown: '„{title}“ nach unten verschieben',
+      dragHint: 'Zum Verschieben ziehen',
+    },
   },
   samples: {
     manage: 'Verwalten',

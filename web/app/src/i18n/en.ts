@@ -29,6 +29,11 @@ export const en: MessageSchema = {
       Superseded: 'Superseded',
       Retired: 'Retired',
     },
+    chapterKind: {
+      Text: 'Text',
+      Pdf: 'PDF',
+      Video: 'Video',
+    },
   },
   auth: {
     signedIn: 'Signed in',
@@ -119,6 +124,31 @@ export const en: MessageSchema = {
       createFailed: 'The course {title} could not be created.',
     },
     cancel: 'Cancel',
+    version: {
+      number: 'Version {number}',
+      loadFailed: 'The version could not be loaded.',
+      notFound: 'This version does not exist.',
+      backToInbox: 'Back to the inbox',
+      readOnly: {
+        InReview: 'This version is in review and cannot be edited.',
+        Published: 'This version is published and can no longer be changed. Make changes in a new version.',
+        Superseded: 'A newer version has superseded this one; it cannot be changed.',
+        Retired: 'This version was retired; it cannot be changed.',
+      },
+    },
+    chapters: {
+      title: 'Chapters',
+      empty: 'This version has no chapters yet.',
+      add: 'Add a chapter',
+      position: 'Chapter {position}',
+      duration: 'Duration {duration}',
+      file: 'File uploaded',
+      edit: 'Edit “{title}”',
+      remove: 'Delete “{title}”',
+      moveUp: 'Move “{title}” up',
+      moveDown: 'Move “{title}” down',
+      dragHint: 'Drag to move',
+    },
   },
   samples: {
     manage: 'Manage',
