@@ -3,6 +3,7 @@ import { BookOpen } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { RouterLink, useRoute } from 'vue-router';
+import { z } from 'zod';
 import {
   type EditorialChapterDto,
   type EditorialChapterRequest,
@@ -26,7 +27,14 @@ import { useReorderChapters } from './useReorderChapters';
 // chapters. Only a draft can be changed; any other status says why not and shows its chapters read-only.
 const route = useRoute();
 const id = computed(() => String(route.params.id ?? ''));
-const { data: version, isPending, isError, error } = useGetEditorialCourseVersionsId(id);
+/** The id goes into the requests' paths: one that is no UUID names no version, and is never sent. */
+const validId = computed(() => z.uuid().safeParse(id.value).success);
+const {
+  data: version,
+  isPending,
+  isError,
+  error,
+} = useGetEditorialCourseVersionsId(id, { query: { enabled: validId } });
 const { add, replace, remove, isSaving } = useChapterMutations(id);
 const { reorder } = useReorderChapters(id);
 const { t } = useI18n();
@@ -36,6 +44,8 @@ const form = ref<{ chapter?: EditorialChapterDto }>();
 /** The chapter whose deletion is being asked about. */
 const removing = ref<EditorialChapterDto>();
 const isRemoving = ref(false);
+/** Whether the chapter form's file is on its way to storage: the dialog stays open until it is there or cancelled. */
+const chapterUploading = ref(false);
 
 const notFound = computed(() => error.value instanceof ApiError && error.value.status === 404);
 const editable = computed(() => version.value?.status === 'Draft');
@@ -74,7 +84,8 @@ async function confirmRemove(chapter: EditorialChapterDto) {
 
 <template>
   <main class="flex flex-col gap-6">
-    <template v-if="isPending">
+    <p v-if="!validId" class="text-body">{{ t('editorial.version.notFound') }}</p>
+    <template v-else-if="isPending">
       <div class="flex flex-col gap-2">
         <Skeleton class="h-8 w-2/3 max-w-md" />
         <Skeleton class="h-4 w-40" />
@@ -127,8 +138,8 @@ async function confirmRemove(chapter: EditorialChapterDto) {
         </EmptyState>
       </section>
       <template v-if="editable">
-        <Dialog :open="form !== undefined" @update:open="(open) => !open && (form = undefined)">
-          <DialogContent class="sm:max-w-2xl" :aria-describedby="undefined">
+        <Dialog :open="form !== undefined" @update:open="(open) => !open && !chapterUploading && (form = undefined)">
+          <DialogContent class="sm:max-w-2xl" :aria-describedby="undefined" :close-disabled="chapterUploading">
             <DialogHeader>
               <DialogTitle>
                 {{ t(form?.chapter ? 'editorial.chapterForm.editTitle' : 'editorial.chapterForm.addTitle') }}
@@ -141,10 +152,11 @@ async function confirmRemove(chapter: EditorialChapterDto) {
               :questions="version.questions"
               :on-save="save"
               :saving="isSaving"
+              @busy="(busy) => (chapterUploading = busy)"
             >
-              <template #actions>
+              <template #actions="{ busy }">
                 <DialogClose as-child>
-                  <Button type="button" variant="outline">{{ t('editorial.cancel') }}</Button>
+                  <Button type="button" variant="outline" :disabled="busy">{{ t('editorial.cancel') }}</Button>
                 </DialogClose>
               </template>
             </ChapterForm>

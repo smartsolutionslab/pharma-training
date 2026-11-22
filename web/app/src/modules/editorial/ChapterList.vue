@@ -31,8 +31,11 @@ type Direction = 'up' | 'down';
 const list = useTemplateRef<HTMLOListElement>('list');
 /** Where the last chapter moved to, as the status region says it. */
 const moved = ref<{ title: string; position: number; count: number }>();
-/** The move button pressed last, which keeps the focus once the list shows the new order. */
-const pressed = ref<{ id: string; direction: Direction }>();
+/**
+ * The move button pressed last and the order its move asked for: it keeps the focus once the list shows that order,
+ * and only then. Any later change of the chapters leaves the focus where the editor has put it since.
+ */
+const pressed = ref<{ id: string; direction: Direction; order: string[] }>();
 /** The chapter being dragged by its handle. */
 const dragged = ref<string>();
 
@@ -47,14 +50,13 @@ function moveTo(from: number, to: number) {
   order.splice(to, 0, id);
   moved.value = { title: chapter.title, position: to + 1, count: order.length };
   emit('reorder', order);
+  return order;
 }
 
 function move(index: number, direction: Direction) {
   const chapter = chapters[index];
-  if (chapter !== undefined) {
-    pressed.value = { id: chapter.id, direction };
-  }
-  moveTo(index, direction === 'up' ? index - 1 : index + 1);
+  const order = moveTo(index, direction === 'up' ? index - 1 : index + 1);
+  pressed.value = chapter !== undefined && order !== undefined ? { id: chapter.id, direction, order } : undefined;
 }
 
 /** The chapter's move button in the direction, or the other one once it cannot move that way any more. */
@@ -68,9 +70,10 @@ function moveButton(id: string, direction: Direction) {
 // A keyed list keeps each chapter's elements, but moving one in the DOM can take the focus from it: give it back.
 watch(
   () => chapters.map((each) => each.id),
-  () => {
+  (ids) => {
     const last = pressed.value;
-    if (last === undefined) {
+    pressed.value = undefined;
+    if (last === undefined || ids.join() !== last.order.join()) {
       return;
     }
     const button = moveButton(last.id, last.direction);

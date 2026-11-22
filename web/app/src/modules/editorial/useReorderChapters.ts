@@ -17,12 +17,49 @@ function inOrder(version: EditorialCourseVersionDto, order: string[]): Editorial
 
 /**
  * Puts the version's chapters in a new order (PUT .../chapters/order, every chapter's id). It is optimistic: the new
- * order is in the version's cache before the host answers, so the list moves at once. A refusal puts the previous
- * order back and says so, in the host's words where a module sent some; either way the version is read again.
+ * order is in the version's cache before the host answers, so the list moves at once. Orders go out one at a time: a
+ * move made while one is on its way waits for it, and only the latest of such moves is sent, so the host cannot save
+ * an older order over a newer one. A refusal puts back the last order the host accepted, drops a move still waiting
+ * and says so, in the host's words where a module sent some. Once nothing more is to be sent, the version is read
+ * again.
  */
 export function useReorderChapters(versionId: MaybeRefOrGetter<string>) {
   const queryClient = useQueryClient();
   const { mutateAsync } = usePutEditorialCourseVersionsIdChaptersOrder();
+
+  /** The orders being sent, until the last has settled. */
+  let sending: Promise<void> | undefined;
+  /** The latest order made while another was on its way, sent once it has settled. */
+  let waiting: string[] | undefined;
+
+  /** Sends the order, then any waiting one; on a refusal restores `accepted`, the version as the host last took it. */
+  async function send(id: string, order: string[], accepted: EditorialCourseVersionDto | undefined): Promise<void> {
+    const queryKey = getGetEditorialCourseVersionsIdQueryKey(id);
+    let next: string[] | undefined = order;
+    let saved = accepted;
+    try {
+      while (next !== undefined) {
+        const current: string[] = next;
+        try {
+          await mutateAsync({ id, data: { chapters: current } });
+        } catch (error) {
+          waiting = undefined;
+          if (saved !== undefined) {
+            queryClient.setQueryData(queryKey, saved);
+          }
+          const serverMessage = error instanceof ApiError ? error.serverMessage : undefined;
+          notify.failure(serverMessage ?? t('editorial.chapters.reorderFailed'));
+          return;
+        }
+        saved = saved === undefined ? undefined : inOrder(saved, current);
+        next = waiting;
+        waiting = undefined;
+      }
+    } finally {
+      sending = undefined;
+      await queryClient.invalidateQueries({ queryKey });
+    }
+  }
 
   const reorder = async (order: string[]): Promise<void> => {
     const id = toValue(versionId);
@@ -33,17 +70,12 @@ export function useReorderChapters(versionId: MaybeRefOrGetter<string>) {
     if (previous !== undefined) {
       queryClient.setQueryData(queryKey, inOrder(previous, order));
     }
-    try {
-      await mutateAsync({ id, data: { chapters: order } });
-    } catch (error) {
-      if (previous !== undefined) {
-        queryClient.setQueryData(queryKey, previous);
-      }
-      const serverMessage = error instanceof ApiError ? error.serverMessage : undefined;
-      notify.failure(serverMessage ?? t('editorial.chapters.reorderFailed'));
-    } finally {
-      await queryClient.invalidateQueries({ queryKey });
+    if (sending !== undefined) {
+      waiting = order;
+      return sending;
     }
+    sending = send(id, order, previous);
+    return sending;
   };
 
   return { reorder };

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Inbox } from '@lucide/vue';
-import { computed, h, ref } from 'vue';
+import { computed, h, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import type { EditorialCourseVersionSummaryDto } from '@/api/generated';
@@ -55,6 +55,18 @@ const router = useRouter();
 const query = computed(() => parseInboxQuery(route.query));
 const { versions: rows, page, isPending, isError } = useCourseVersions(query);
 const creating = ref(false);
+
+// A page past the last one (an old link, a list that got shorter) shows the last page, which takes its place in the
+// address: Back then leaves the inbox instead of returning to a page that does not exist.
+watch(page, (shown) => {
+  if (shown === undefined || isPending.value) {
+    return;
+  }
+  const last = Math.ceil(Number(shown.totalCount) / Number(shown.pageSize));
+  if (shown.items.length === 0 && last > 0 && Number(shown.page) > last) {
+    void router.replace({ query: { status: query.value.status, page: String(last) } });
+  }
+});
 const { create, isSaving } = useCreateCourse();
 const { t } = useI18n();
 

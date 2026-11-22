@@ -12,6 +12,11 @@ export const fileLimits = {
 /** Why a file is refused. */
 export type FileProblem = 'wrongType' | 'empty' | 'tooLarge';
 
+const fileProblems: readonly string[] = ['wrongType', 'empty', 'tooLarge'] satisfies FileProblem[];
+
+/** Whether the reason is the file's own problem, rather than its way to storage. */
+export const isFileProblem = (reason: string): reason is FileProblem => fileProblems.includes(reason);
+
 /** Why the file cannot be a chapter's of this kind under these limits, or undefined when it can. */
 export function fileProblem(
   file: File,

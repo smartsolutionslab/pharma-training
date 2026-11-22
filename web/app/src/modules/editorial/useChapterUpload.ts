@@ -35,6 +35,8 @@ function failureOf(error: unknown): UploadFailure {
  */
 export function useChapterUpload() {
   const state = ref<ChapterUploadState>({ status: 'idle' });
+  /** The limits the host issued with the last upload URL, which a refusal of the file names. */
+  const issuedLimits = ref<{ contentType: string; maxBytes: number }>();
   let current: AbortController | undefined;
 
   const cancel = () => {
@@ -45,6 +47,7 @@ export function useChapterUpload() {
   const start = async (versionId: string, kind: FileKind, file: File): Promise<string | undefined> => {
     cancel();
     current = undefined;
+    issuedLimits.value = undefined;
     const refused = fileProblem(file, fileLimits[kind]);
     if (refused !== undefined) {
       state.value = { status: 'failed', reason: refused };
@@ -65,10 +68,11 @@ export function useChapterUpload() {
       if (signal.aborted) {
         throw new UploadCancelled();
       }
-      const issuedRefusal = fileProblem(file, {
-        contentType: issued.contentType,
-        maxBytes: Number(issued.maxBytes),
-      });
+      const limits = { contentType: issued.contentType, maxBytes: Number(issued.maxBytes) };
+      if (current === controller) {
+        issuedLimits.value = limits;
+      }
+      const issuedRefusal = fileProblem(file, limits);
       if (issuedRefusal !== undefined) {
         become({ status: 'failed', reason: issuedRefusal });
         return undefined;
@@ -104,5 +108,5 @@ export function useChapterUpload() {
     state.value = { status: 'done' };
   };
 
-  return { state: readonly(state), start, attached, cancel };
+  return { state: readonly(state), issuedLimits: readonly(issuedLimits), start, attached, cancel };
 }

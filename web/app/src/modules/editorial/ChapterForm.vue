@@ -6,7 +6,8 @@ import type { EditorialChapterDto, EditorialChapterRequest, EditorialQuestionDto
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toTypedSchema } from '@/forms/toTypedSchema';
-import { type FileKind, fileLimits, maxMegabytes } from './chapterFile';
+import type { MessageKey } from '@/i18n';
+import { type FileKind, fileLimits, fileProblemKey, isFileProblem, maxMegabytes } from './chapterFile';
 import { chapterSchema, maxTextLength } from './chapterSchema';
 import { formatDuration } from './formatDuration';
 import MarkdownEditor from './MarkdownEditor.vue';
@@ -31,8 +32,13 @@ interface ChapterFormProps {
 // storage first (useChapterUpload), with progress and a cancel; the chapter is handed on only once it is stored. What
 // saving answers, and what happens then, are the page's.
 const { versionId, chapter, questions, onSave, saving } = defineProps<ChapterFormProps>();
-// Further actions beside the submit button, such as the dialog's Cancel.
-defineSlots<{ actions?: () => unknown }>();
+// Further actions beside the submit button, such as the dialog's Cancel; busy while a file goes to storage, when only
+// its cancel works.
+defineSlots<{ actions?: (props: { busy: boolean }) => unknown }>();
+const emit = defineEmits<{
+  /** Whether a file is on its way to storage, during which nothing around the form should work either. */
+  busy: [busy: boolean];
+}>();
 
 const kinds = ['Text', 'Pdf', 'Video'] as const;
 const fields = {
@@ -83,6 +89,20 @@ const errors = computed(() => {
 /** A file chapter's kind, while the form is on one. */
 const fileKind = computed((): FileKind | undefined => (kind.value === 'Text' ? undefined : kind.value));
 
+/** The file refused by the limits the host issued with the upload URL, until another file or kind is chosen. */
+const issuedRefusal = ref<{ key: MessageKey; max: number }>();
+/** The refusal shown at the file input: the form's own check first, else the issued limits'. */
+const fileError = computed(() => {
+  const own = errors.value.file;
+  if (own !== undefined && fileKind.value !== undefined) {
+    return { key: own as MessageKey, max: maxMegabytes(fileKind.value) };
+  }
+  return issuedRefusal.value;
+});
+
+/** The file already stored for a chapter not saved yet, and its blob's name: saving again reuses it. */
+let stored: { file: File; blobName: string } | undefined;
+
 /** Whether a video's duration came from the file or could not; nothing until a video is chosen. */
 const durationRead = ref<'detected' | 'unknown'>();
 let reading = 0;
@@ -91,6 +111,7 @@ function choose(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
   fileChosen.value = file !== undefined;
+  issuedRefusal.value = undefined;
   void setFieldValue('file', file);
   durationRead.value = undefined;
   const read = ++reading;
@@ -114,6 +135,7 @@ function choose(event: Event) {
 watch(kind, () => {
   reading++;
   fileChosen.value = false;
+  issuedRefusal.value = undefined;
   durationRead.value = undefined;
   void setFieldValue('file', undefined, false);
 });
@@ -129,8 +151,28 @@ const uploading = computed(() => {
   return state.status === 'requesting' || state.status === 'uploading' ? state : undefined;
 });
 const transferring = computed(() => uploading.value !== undefined);
+watch(transferring, (busy) => emit('busy', busy));
+/** Whether the last upload failed on its way to storage (not for the file itself), as the form says until a retry. */
+const uploadFailed = computed(() => {
+  const state = upload.state.value;
+  return state.status === 'failed' && !isFileProblem(state.reason);
+});
 /** The file going to storage, which names the progress bar. */
 const sending = ref<File>();
+
+/** A file the issued limits refuse is refused at the file input, naming the issued limit, and takes the focus. */
+function refuseIssued(kindOfFile: FileKind) {
+  const state = upload.state.value;
+  if (state.status !== 'failed' || !isFileProblem(state.reason)) {
+    return;
+  }
+  const maxBytes = upload.issuedLimits.value?.maxBytes ?? fileLimits[kindOfFile].maxBytes;
+  issuedRefusal.value = {
+    key: fileProblemKey(kindOfFile, state.reason),
+    max: maxBytes / 1_048_576,
+  };
+  document.getElementById(fields.file)?.focus();
+}
 
 // A refused field takes the focus, the first one, so the editor corrects it where the refusal is read.
 const submit = handleSubmit(
@@ -139,13 +181,21 @@ const submit = handleSubmit(
       await onSave(request);
       return;
     }
-    sending.value = file;
-    const blobName = await upload.start(versionId, request.kind, file);
+    let blobName = stored?.file === file ? stored.blobName : undefined;
     if (blobName === undefined) {
-      return;
+      stored = undefined;
+      sending.value = file;
+      blobName = await upload.start(versionId, request.kind, file);
+      if (blobName === undefined) {
+        refuseIssued(request.kind);
+        return;
+      }
+      stored = { file, blobName };
     }
-    await onSave({ ...request, file: blobName });
-    upload.attached();
+    if (await onSave({ ...request, file: blobName })) {
+      stored = undefined;
+      upload.attached();
+    }
   },
   ({ errors: found }) => {
     refused.value = true;
@@ -215,14 +265,14 @@ const submit = handleSubmit(
           :accept="fileLimits[fileKind].contentType"
           :disabled="transferring"
           :aria-required="keepsFile ? undefined : true"
-          :aria-invalid="errors.file ? true : undefined"
-          :aria-describedby="errors.file ? `${fields.file}-error` : undefined"
+          :aria-invalid="fileError ? true : undefined"
+          :aria-describedby="fileError ? `${fields.file}-error` : undefined"
           class="text-body file:bg-secondary file:text-secondary-foreground file:mr-3 file:rounded-md file:border-0 file:px-3 file:py-1"
           @change="choose"
         />
         <p v-if="keepsFile" class="text-caption text-muted-foreground">{{ t('editorial.chapterForm.fileKept') }}</p>
-        <p v-if="errors.file" :id="`${fields.file}-error`" role="alert" class="text-caption text-destructive">
-          {{ t(errors.file, { max: n(maxMegabytes(fileKind), 'megabytes') }) }}
+        <p v-if="fileError" :id="`${fields.file}-error`" role="alert" class="text-caption text-destructive">
+          {{ t(fileError.key, { max: n(fileError.max, 'megabytes') }) }}
         </p>
       </div>
       <div v-if="fileKind === 'Video'" class="flex flex-col gap-2">
@@ -268,8 +318,9 @@ const submit = handleSubmit(
       @cancel="upload.cancel()"
     />
     <p v-if="upload.state.value.status === 'cancelled'" class="text-caption">{{ t('editorial.upload.cancelled') }}</p>
+    <p v-if="uploadFailed" role="alert" class="text-caption text-destructive">{{ t('editorial.upload.failed') }}</p>
     <div class="flex justify-end gap-2">
-      <slot name="actions" />
+      <slot name="actions" :busy="transferring" />
       <Button type="submit" :disabled="saving || transferring">{{ t('editorial.chapterForm.submit') }}</Button>
     </div>
   </form>
