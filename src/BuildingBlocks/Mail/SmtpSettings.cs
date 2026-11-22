@@ -1,3 +1,4 @@
+using System.Net;
 using MailKit.Security;
 using Microsoft.Extensions.Configuration;
 
@@ -45,17 +46,23 @@ internal sealed class SmtpSettings
         var secure = server.Scheme == "smtps";
         return new SmtpSettings
         {
-            Host = server.Host,
+            Host = server.DnsSafeHost,
             Port = server.IsDefaultPort || server.Port < 0 ? (secure ? SmtpsPort : SmtpPort) : server.Port,
             User = user,
             Password = password,
 
-            // A password never travels in clear; a server without credentials (Mailpit) may have no TLS at all.
+            // A password, and a mail with its link, never travel in clear off this machine; only a loopback server
+            // without credentials (Mailpit) may have no TLS at all.
             Security = secure ? SecureSocketOptions.SslOnConnect
-                : user is not null ? SecureSocketOptions.StartTls
-                : SecureSocketOptions.StartTlsWhenAvailable,
+                : user is null && IsLoopback(server) ? SecureSocketOptions.StartTlsWhenAvailable
+                : SecureSocketOptions.StartTls,
         };
     }
+
+    /// <summary>The name localhost or a loopback address; a name that merely starts with localhost is not.</summary>
+    internal static bool IsLoopback(Uri url) =>
+        string.Equals(url.DnsSafeHost, "localhost", StringComparison.OrdinalIgnoreCase)
+        || (IPAddress.TryParse(url.DnsSafeHost, out var address) && IPAddress.IsLoopback(address));
 
     private static (string? User, string? Password) Credentials(string userInfo)
     {

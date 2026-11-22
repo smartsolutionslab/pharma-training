@@ -6,63 +6,78 @@ namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Mail;
 
 /// <summary>
 /// Sends mail over SMTP with MailKit, one connection per mail, to the server in <c>ConnectionStrings:mail</c> from
-/// <c>Mail:From</c>. Both are read at the first send, so a host without them starts and fails only where it mails.
+/// <c>Mail:From</c>. Both are read at every send, so a host without them starts, fails only where it mails, and sends
+/// once they are supplied.
 /// </summary>
 public sealed class SmtpMailSender : IMailSender
 {
     private const string FromKey = "Mail:From";
 
-    /// <summary>The send runs inside a request; MailKit's own default would let it wait two minutes.</summary>
-    private const int TimeoutMilliseconds = 10_000;
+    /// <summary>The send runs inside a request; the whole of it, not each step, ends after this long.</summary>
+    private static readonly TimeSpan Bound = TimeSpan.FromSeconds(10);
 
-    private readonly Lazy<MailboxAddress> from;
+    private readonly IConfiguration configuration;
 
-    private readonly Lazy<SmtpSettings> server;
+    private readonly TimeProvider time;
 
     public SmtpMailSender(IConfiguration configuration)
+        : this(configuration, TimeProvider.System)
+    {
+    }
+
+    /// <param name="configuration">Where the server and the sender address are read at each send.</param>
+    /// <param name="time">The clock the whole send's bound is measured on.</param>
+    public SmtpMailSender(IConfiguration configuration, TimeProvider time)
     {
         Ensure.That(configuration).IsNotNull();
-        from = new Lazy<MailboxAddress>(() => From(configuration));
-        server = new Lazy<SmtpSettings>(() => SmtpSettings.From(configuration));
-    }
-
-    /// <summary>Stub for the red tests of issue #9 (R5): the clock the whole send's bound is measured on, not used yet.</summary>
-    public SmtpMailSender(IConfiguration configuration, TimeProvider time)
-        : this(configuration)
-    {
         Ensure.That(time).IsNotNull();
+        this.configuration = configuration;
+        this.time = time;
     }
 
+    /// <summary>
+    /// Sends the mail within <see cref="Bound"/>. The caller's token is honoured only before the send starts: a mail half
+    /// handed to the server is finished or fails on the bound, never abandoned because the request went away.
+    /// </summary>
     public async Task SendAsync(OutgoingMail mail, CancellationToken cancellationToken)
     {
         Ensure.That(mail).IsNotNull();
+        cancellationToken.ThrowIfCancellationRequested();
 
-        using var message = Compose(mail, from.Value);
-        var settings = server.Value;
-        using var client = new SmtpClient { Timeout = TimeoutMilliseconds };
-        await client.ConnectAsync(settings.Host, settings.Port, settings.Security, cancellationToken);
+        using var message = Compose(mail, From(configuration));
+        var settings = SmtpSettings.From(configuration);
+        using var bound = new CancellationTokenSource(Bound, time);
+        using var client = new SmtpClient { Timeout = (int)Bound.TotalMilliseconds };
+        await client.ConnectAsync(settings.Host, settings.Port, settings.Security, bound.Token);
         if (settings.User is { } user)
         {
-            await client.AuthenticateAsync(user, settings.Password ?? string.Empty, cancellationToken);
+            await client.AuthenticateAsync(user, settings.Password ?? string.Empty, bound.Token);
         }
 
-        await client.SendAsync(message, cancellationToken);
-        await client.DisconnectAsync(quit: true, cancellationToken);
+        await client.SendAsync(message, bound.Token);
+        await client.DisconnectAsync(quit: true, bound.Token);
     }
 
-    /// <summary>The message, its headers set only through MimeKit, so no subject or address can add a header.</summary>
+    /// <summary>
+    /// The message, its headers set only through MimeKit, so no subject or address can add a header. The recipient is
+    /// the mail's address exactly as it is: one that would parse to another mailbox (a display name, a comment) is refused.
+    /// </summary>
     internal static MimeMessage Compose(OutgoingMail mail, MailboxAddress from)
     {
         Ensure.That(mail).IsNotNull();
         Ensure.That(from).IsNotNull();
+        Ensure.That(mail.To, nameof(mail)).Satisfies(IsBareAddress, "Die Empfängeradresse ist keine einfache E-Mail-Adresse.");
 
         var message = new MimeMessage();
         message.From.Add(from);
-        message.To.Add(MailboxAddress.Parse(mail.To));
+        message.To.Add(new MailboxAddress(string.Empty, mail.To));
         message.Subject = mail.Subject;
         message.Body = new TextPart(MimeKit.Text.TextFormat.Plain) { Text = mail.Text };
         return message;
     }
+
+    private static bool IsBareAddress(string to) =>
+        MailboxAddress.TryParse(to, out var parsed) && string.IsNullOrEmpty(parsed.Name) && string.Equals(parsed.Address, to, StringComparison.Ordinal);
 
     private static MailboxAddress From(IConfiguration configuration)
     {

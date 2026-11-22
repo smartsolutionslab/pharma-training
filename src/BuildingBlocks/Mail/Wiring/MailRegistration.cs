@@ -16,7 +16,7 @@ public static class MailRegistration
         Ensure.That(services).IsNotNull();
         Ensure.That(configuration).IsNotNull();
 
-        services.TryAddSingleton<IMailSender>(_ => new SmtpMailSender(configuration));
+        services.TryAddSingleton<IMailSender>(provider => new SmtpMailSender(configuration, provider.GetService<TimeProvider>() ?? TimeProvider.System));
         services.TryAddSingleton<IFrontendLinks>(_ => new FrontendLinks(configuration));
         return services;
     }
