@@ -119,6 +119,8 @@ public class CommitLostRaceTests
     [InlineData(PostgresErrorCodes.SerializationFailure, AtAStatement)]
     [InlineData(PostgresErrorCodes.DeadlockDetected, AtTheCommitEfCoreOwns)]
     [InlineData(PostgresErrorCodes.SerializationFailure, AtTheCommitEfCoreOwns)]
+    [InlineData(PostgresErrorCodes.DeadlockDetected, BehindAnotherFailureInAnAggregate)]
+    [InlineData(PostgresErrorCodes.SerializationFailure, BehindAnotherFailureInAnAggregate)]
     public async Task A_lost_race_is_logged_as_a_warning_naming_its_sql_state_and_context_with_the_exception(string sqlState, string wrapping)
     {
         var ended = Ended(sqlState);
@@ -131,6 +133,25 @@ public class CommitLostRaceTests
         record.Message.ShouldContain(sqlState);
         record.Message.ShouldContain(nameof(EditorialDbContext));
         record.Exception.ShouldBeSameAs(ended);
+    }
+
+    [Theory]
+    [InlineData(PostgresErrorCodes.DeadlockDetected)]
+    [InlineData(PostgresErrorCodes.SerializationFailure)]
+    public async Task A_commit_postgresql_ended_as_a_lost_race_behind_another_failure_in_an_aggregate_exception_answers_false(string sqlState)
+    {
+        await using var services = OutboxFailingWith(Wrapped(Ended(sqlState), BehindAnotherFailureInAnAggregate));
+
+        (await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken)).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task An_aggregate_exception_holding_no_lost_race_still_throws()
+    {
+        await using var services = OutboxFailingWith(new AggregateException(new InvalidOperationException("The envelopes could not be flushed."), Ended(PostgresErrorCodes.UniqueViolation)));
+
+        var thrown = await Should.ThrowAsync<AggregateException>(() => new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken));
+        thrown.InnerExceptions.Count.ShouldBe(2);
     }
 
     [Fact]
@@ -159,12 +180,15 @@ public class CommitLostRaceTests
 
     private const string AtTheCommitEfCoreOwns = "at the commit EF Core owns";
 
+    private const string BehindAnotherFailureInAnAggregate = "behind another failure in an aggregate";
+
     private static Exception Wrapped(PostgresException ended, string wrapping) => wrapping switch
     {
         Bare => ended,
         InsideAnotherException => new InvalidOperationException("The transaction could not be committed.", ended),
         AtAStatement => new DbUpdateException("An error occurred while saving the entity changes. See the inner exception for details.", ended),
         AtTheCommitEfCoreOwns => new DbUpdateConcurrencyException("An error occurred while saving the entity changes. See the inner exception for details.", ended),
+        BehindAnotherFailureInAnAggregate => new AggregateException(new InvalidOperationException("The envelopes could not be flushed."), ended),
         _ => throw new InvalidOperationException($"No wrapping named '{wrapping}'."),
     };
 
