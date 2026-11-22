@@ -106,3 +106,13 @@ test("pageOf finds a module's detail page by its pattern, a parameter matching o
   expect(pageOf(`/editorial/versions/${version}/chapters`)).toMatchObject({ path: 'editorial' });
   expect(pageOf(`/editorial/courses/${version}`)).toMatchObject({ path: 'editorial' });
 });
+
+// An entry page (a module's routes.ts's entries) is at an address of its own, outside its module's: no module owns the
+// segment invitations. It governs its exact address by its own audience, before any module's.
+test('pageOf finds an entry page by its exact address, governed by its own audience', () => {
+  expect(pageOf('/invitations/accept')).toMatchObject({
+    path: '/invitations/accept',
+    titleKey: 'modules.organisation.entries.acceptInvitation.title',
+    audience: 'signed-in',
+  });
+});

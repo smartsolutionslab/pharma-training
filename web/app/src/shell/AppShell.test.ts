@@ -18,7 +18,7 @@ vi.mock('@/auth/UserMenu.vue', async () => {
   return { default: { render: () => h('p', 'The user menu') } };
 });
 
-// Each module's page, and each page below it, stands in as its title in the language shown, as a module's page heads
+// Each module's page, each page below it and each entry page, stands in as its title in the language shown, as a module's page heads
 // itself with t(route.titleKey), and beside the app's modules is one of the tests' own, with a page below it for every
 // signed-in user and one for editors: a real module's page needs the host, which these tests do not have. The audiences
 // are the modules' own.
@@ -64,6 +64,7 @@ vi.mock('@/modules', async (importOriginal) => {
         component: page(route.titleKey),
         pages: route.pages?.map((below) => ({ ...below, component: page(below.titleKey) })),
         details: route.details?.map((detail) => ({ ...detail, component: page(detail.titleKey) })),
+        entries: route.entries?.map((entry) => ({ ...entry, component: page(entry.titleKey) })),
       })),
       reports,
     ],
@@ -869,4 +870,71 @@ test("switched to English, the breadcrumbs name a course version's page in Engli
   const breadcrumbs = within(await screen.findByRole('navigation', { name: 'Breadcrumb' }));
   expect(await breadcrumbs.findByText('Course version')).toHaveAttribute('aria-current', 'page');
   expect(breadcrumbs.getByRole('link', { name: 'Editorial' })).toHaveAttribute('href', '/editorial');
+});
+
+// The invitation mail's link opens the organisation module's entry page at an address of its own (its routes.ts's
+// entries): for every signed-in user, with or without a pharmacy, named by its title in the breadcrumbs after Home, and
+// listed neither in the sidebar nor in the palette.
+const acceptInvitation = () => t('modules.organisation.entries.acceptInvitation.title');
+
+test('the page that accepts an invitation is there for a user of no pharmacy and no role', async () => {
+  answer([]);
+
+  await renderAt('/invitations/accept', { roles: [] });
+
+  expect(await screen.findByRole('heading', { name: acceptInvitation(), level: 1 })).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: t('shell.gate.notAvailable') })).not.toBeInTheDocument();
+});
+
+test('while the memberships load the page that accepts an invitation shows at once, without a skeleton', async () => {
+  await renderLoadingAt('/invitations/accept', []);
+
+  expect(screen.getByRole('heading', { name: acceptInvitation(), level: 1 })).toBeInTheDocument();
+  expect(document.querySelector('[data-slot="sidebar-inset"] [data-slot="skeleton"]')).toBeNull();
+  expect(screen.queryByRole('heading', { name: t('shell.gate.notAvailable') })).not.toBeInTheDocument();
+});
+
+test('at the invitation link the breadcrumbs lead home and name the page, Startseite › Einladung annehmen', async () => {
+  answer([]);
+  await renderAt('/invitations/accept', { roles: [] });
+
+  const breadcrumbs = within(await screen.findByRole('navigation', { name: t('ui.breadcrumb.label') }));
+  expect(breadcrumbs.getByRole('link', { name: 'Startseite' })).toHaveAttribute('href', '/');
+  expect(breadcrumbs.getByText('Einladung annehmen')).toHaveAttribute('aria-current', 'page');
+  expect(breadcrumbs.getAllByRole('listitem').map((item) => item.textContent.trim())).toEqual([
+    home(),
+    acceptInvitation(),
+  ]);
+  expect(breadcrumbs.queryByText('invitations')).not.toBeInTheDocument();
+  expect(breadcrumbs.queryByText('accept')).not.toBeInTheDocument();
+});
+
+test("switched to English, the breadcrumbs name the invitation link's page in English", async () => {
+  await renderAt('/invitations/accept');
+
+  setLanguage('en-GB', { remember: false });
+
+  const breadcrumbs = within(await screen.findByRole('navigation', { name: 'Breadcrumb' }));
+  expect(await breadcrumbs.findByText('Accept an invitation')).toHaveAttribute('aria-current', 'page');
+});
+
+test('the page that accepts an invitation is listed neither in the sidebar nor in the palette', async () => {
+  const user = userEvent.setup();
+  answer([markt]);
+  await renderAt('/invitations/accept', { roles: ['editor'] });
+  expect(await screen.findByRole('heading', { name: acceptInvitation(), level: 1 })).toBeInTheDocument();
+
+  const navigation = within(screen.getByRole('navigation', { name: t('shell.navigation.label') }));
+  for (const link of navigation.getAllByRole('link')) {
+    expect(link.getAttribute('href')).not.toMatch(/^\/invitations/);
+  }
+  expect(sidebarLinks()).not.toContain(acceptInvitation());
+
+  await user.keyboard('{Control>}k{/Control}');
+  const dialog = await screen.findByRole('dialog', { name: palette() });
+  expect(
+    within(dialog)
+      .getAllByRole('option')
+      .map((option) => option.textContent.trim()),
+  ).not.toContain(acceptInvitation());
 });
