@@ -117,7 +117,7 @@ public class AzureBlobUrlsUserDelegationTests
         var upload = await urls.CreateUploadUrlAsync(BlobName.From("handout.pdf"), FiveMinutes, TestContext.Current.CancellationToken);
 
         HttpUtility.ParseQueryString(upload.Url.Query)["skoid"].ShouldBeNull();
-        await keys.DidNotReceiveWithAnyArgs().GetKeyAsync(default!, default, default);
+        await keys.DidNotReceiveWithAnyArgs().GetKeyAsync(default!, default, TestContext.Current.CancellationToken);
     }
 
     [Fact]
@@ -127,7 +127,7 @@ public class AzureBlobUrlsUserDelegationTests
 
         _ = new AzureBlobUrls(Configuration(Keyless()), new FakeTimeProvider(Noon), keys);
 
-        await keys.DidNotReceiveWithAnyArgs().GetKeyAsync(default!, default, default);
+        await keys.DidNotReceiveWithAnyArgs().GetKeyAsync(default!, default, TestContext.Current.CancellationToken);
     }
 
     /// <summary>The connection string as the AppHost publishes it: the account's endpoint and the container, no key.</summary>
@@ -146,14 +146,16 @@ public class AzureBlobUrlsUserDelegationTests
 
     /// <summary>A user delegation key made up for this run, valid from an hour before noon until it expires.</summary>
     private static UserDelegationKey Key(DateTimeOffset expiresOn) =>
+        // Positional: named arguments are ambiguous between two seven-parameter overloads. Object id, tenant id, starts on,
+        // expires on, service, version, the key's value.
         BlobsModelFactory.UserDelegationKey(
-            signedObjectId: Guid.CreateVersion7().ToString(),
-            signedTenantId: Guid.CreateVersion7().ToString(),
-            signedStartsOn: Noon.AddHours(-1),
-            signedExpiresOn: expiresOn,
-            signedService: "b",
-            signedVersion: "2025-01-05",
-            value: Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
+            Guid.CreateVersion7().ToString(),
+            Guid.CreateVersion7().ToString(),
+            Noon.AddHours(-1),
+            expiresOn,
+            "b",
+            "2025-01-05",
+            Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
 
     private static IConfiguration Configuration(string connectionString) =>
         new ConfigurationBuilder()
