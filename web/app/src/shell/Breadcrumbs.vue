@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/breadcrumb';
 import { useHasRole } from '@/auth/useHasRole';
 import { moduleRoutes } from '@/modules';
-import { canReach, detailOf } from './audience';
+import { canReach, detailOf, entryOf } from './audience';
 import { useCurrentPharmacy } from './useCurrentPharmacy';
 import { useVisibleModules, useVisiblePages, type VisiblePage } from './useVisibleModules';
 
@@ -44,10 +44,21 @@ const detail = computed(() => {
     ? found.detail
     : undefined;
 });
+// An entry page (an e-mail's link) is named by its title after Home where the user may see it; its segments get no crumbs.
+const entry = computed(() => {
+  const found = entryOf(route.path);
+  return found !== undefined && canReach(found.audience, { current: current.value, isEditor: isEditor.value })
+    ? found
+    : undefined;
+});
 const crumbs = computed<Crumb[]>(() => {
   const [first, ...rest] = route.path.split('/').filter((segment) => segment !== '');
   const all: Crumb[] = [{ label: t('shell.home'), to: '/', link: true }];
   if (first === undefined) {
+    return all;
+  }
+  if (entry.value !== undefined) {
+    all.push({ label: t(entry.value.titleKey), to: route.path, link: true });
     return all;
   }
 

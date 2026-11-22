@@ -1,4 +1,5 @@
 import type { Component } from 'vue';
+import type { NavigationGuardWithThis } from 'vue-router';
 import type { MessageKey } from '@/i18n';
 
 /**
@@ -36,12 +37,30 @@ export interface ModuleDetail {
   component: Component;
 }
 
+/**
+ * A page a link from outside the app opens (an e-mail's link), at an address of its own outside its module's: it is
+ * listed neither in the sidebar nor in the palette, and the breadcrumbs name it by its title after Home.
+ */
+export interface ModuleEntry {
+  /** The absolute address, `/invitations/accept`; no module need own its first segment. */
+  path: string;
+  /** modules.<module>.entries.<entry>.title. */
+  titleKey: MessageKey;
+  /** Who the page is for, whatever its module's audience; the shell shows it to them only. */
+  audience: Audience;
+  component: Component;
+  /** Runs before the page is entered, as a route's beforeEnter: to read what the link carries, and take it out. */
+  beforeEnter?: NavigationGuardWithThis<undefined>;
+}
+
 /** What src/modules/<module>/routes.ts exports as `route`; the app finds every module's file by itself (no list to edit). */
 export interface ModuleRoute extends ModulePage {
   /** The module's pages below its own, at /<module>/<page>; each is governed by its own audience. */
   pages?: ModulePage[];
   /** The module's detail pages, at /<module>/<detail's path>; each is governed by its own audience. */
   details?: ModuleDetail[];
+  /** The module's entry pages, each at its own absolute address and governed by its own audience. */
+  entries?: ModuleEntry[];
 }
 
 export const moduleRoutes = Object.values(
