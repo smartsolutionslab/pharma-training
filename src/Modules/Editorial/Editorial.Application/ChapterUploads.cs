@@ -38,12 +38,17 @@ public static class ChapterUploads
     private const int BrandLength = 4;
 
     /// <summary>
-    /// The major brands of an MP4 file: the ISO base media brands an MP4 writer names (ISO/IEC 14496-12, <c>isom</c> and
-    /// <c>iso2</c> to <c>iso6</c>), MP4 itself (ISO/IEC 14496-14, <c>mp41</c>, <c>mp42</c>), AVC in MP4 (<c>avc1</c>),
-    /// DASH segments (<c>dash</c>) and Apple's MP4 video, <c>M4V </c>. A QuickTime movie, a HEIF or AVIF image or a 3GP
-    /// file also starts with an ftyp box, but names a brand of its own.
+    /// The major brands of an MP4 file, matched exactly (ordinal, the trailing space included): the ISO base media brands
+    /// an MP4 writer names (ISO/IEC 14496-12, <c>isom</c> and <c>iso2</c> to <c>iso9</c>), MP4 itself (ISO/IEC 14496-14,
+    /// <c>mp41</c>, <c>mp42</c>), AVC in MP4 (<c>avc1</c>), DASH segments (<c>dash</c>), CMAF (<c>cmfc</c>, <c>cmf2</c>),
+    /// Apple's MP4 video (<c>M4V </c>), Sony's XAVC and MP4 video (<c>XAVC</c>, <c>MSNV</c>) and the mobile MP4 brand
+    /// <c>mmp4</c>. A QuickTime movie, a HEIF or AVIF image, a 3GP file or a Flash video (<c>f4v </c>) also starts with an
+    /// ftyp box, but names a brand of its own and is refused.
     /// </summary>
-    private static readonly string[] Mp4MajorBrands = ["isom", "iso2", "iso3", "iso4", "iso5", "iso6", "mp41", "mp42", "avc1", "dash", "M4V "];
+    private static readonly string[] Mp4MajorBrands =
+    [
+        "isom", "iso2", "iso3", "iso4", "iso5", "iso6", "iso7", "iso8", "iso9", "mp41", "mp42", "avc1", "dash", "cmfc", "cmf2", "M4V ", "XAVC", "MSNV", "mmp4",
+    ];
 
     /// <summary>The header every PDF file starts with.</summary>
     private static ReadOnlySpan<byte> PdfHeader => "%PDF-"u8;
