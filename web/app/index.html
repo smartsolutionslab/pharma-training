@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="de-DE">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -15,6 +15,21 @@
         }
         const system = typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches;
         document.documentElement.classList.toggle('dark', theme === 'dark' || (theme !== 'light' && system));
+      })();
+      // The language before the first paint, as src/i18n/language.ts decides it: the stored choice, else the browser's
+      // preferred language if it is German or English, else German.
+      (() => {
+        let language = null;
+        try {
+          language = localStorage.getItem('language');
+        } catch {
+          // Storage is blocked: the browser decides.
+        }
+        if (language !== 'de-DE' && language !== 'en-GB') {
+          const preferred = (navigator.languages && navigator.languages[0]) || navigator.language || '';
+          language = preferred.split('-')[0].toLowerCase() === 'en' ? 'en-GB' : 'de-DE';
+        }
+        document.documentElement.lang = language;
       })();
     </script>
   </head>

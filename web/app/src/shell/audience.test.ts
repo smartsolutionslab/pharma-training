@@ -67,13 +67,17 @@ test('moduleOf finds no module for the start page or an address no module has', 
 test("pageOf finds the module's page by the address's second segment", () => {
   expect(pageOf('/organisation/register')).toMatchObject({
     path: 'register',
-    title: 'Register a pharmacy',
+    titleKey: 'modules.organisation.pages.register.title',
     audience: 'signed-in',
   });
 });
 
 test('pageOf finds the module for an address in it that is none of its pages', () => {
-  expect(pageOf('/organisation')).toMatchObject({ path: 'organisation', title: 'Organisation', audience: 'manager' });
+  expect(pageOf('/organisation')).toMatchObject({
+    path: 'organisation',
+    titleKey: 'modules.organisation.title',
+    audience: 'manager',
+  });
   expect(pageOf('/organisation/members')).toMatchObject({ path: 'organisation', audience: 'manager' });
   expect(pageOf('/learning/register')).toMatchObject({ path: 'learning', audience: 'employee' });
 });

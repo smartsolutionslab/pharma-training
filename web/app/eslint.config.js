@@ -1,7 +1,75 @@
 import js from '@eslint/js';
+import vueI18n from '@intlify/eslint-plugin-vue-i18n';
 import { defineConfigWithVueTs, vueTsConfigs } from '@vue/eslint-config-typescript';
 import pluginVue from 'eslint-plugin-vue';
 import globals from 'globals';
+
+/**
+ * Where @intlify/vue-i18n/no-raw-text looks besides a template's text: the attributes a reader hears or sees, on any
+ * element. Text of punctuation, digits and spaces alone is no language.
+ */
+const rawTextOptions = {
+  attributes: {
+    '/.+/': [
+      'title',
+      'aria-label',
+      'aria-description',
+      'aria-placeholder',
+      'aria-roledescription',
+      'aria-valuetext',
+      'placeholder',
+      'alt',
+      'label',
+      'description',
+      'heading',
+      // vue-sonner's Toaster names its region with it (App.vue).
+      'container-aria-label',
+    ],
+  },
+  ignorePattern: '^[-–—·…/:()#&|+%\\d\\s]+$',
+};
+
+/** Each chosen library bans its alternatives, in every file. */
+const libraryBans = [
+  {
+    group: ['unplugin-vue-router', 'unplugin-vue-router/*'],
+    message: 'Routes are declared in src/router.ts and src/modules/*/routes.ts (docs/adr).',
+  },
+  {
+    group: ['vuex', 'mobx', 'mobx-*', 'swrv', '@apollo/*', '@vue/apollo-*', '@pinia/colada'],
+    message: 'Server data: the generated TanStack Query hooks; client state: Pinia stores (docs/adr).',
+  },
+  {
+    group: [
+      'primevue',
+      'vuetify',
+      'quasar',
+      'element-plus',
+      'ant-design-vue',
+      'naive-ui',
+      '@headlessui/vue',
+      'radix-vue',
+    ],
+    message: 'Use the shadcn-vue components in src/components/ui (docs/adr).',
+  },
+  {
+    group: ['@formkit/*', '@tanstack/vue-form', '@vee-validate/zod'],
+    message: 'Use vee-validate with toTypedSchema from src/forms/toTypedSchema (docs/adr).',
+  },
+  { group: ['yup', 'joi', 'valibot'], message: 'Use zod (docs/adr).' },
+  { group: ['ag-grid-*'], message: 'Use DataTable from src/components/ui (docs/adr).' },
+  {
+    group: ['chart.js', 'vue-chartjs'],
+    message: 'Use DataChart from src/components/DataChart.vue (docs/adr).',
+  },
+];
+
+/** vue-sonner's toast gives a toast no role: every toast goes through notify (src/lib/notify.ts). */
+const toastBan = {
+  name: 'vue-sonner',
+  importNames: ['toast'],
+  message: 'Report with notify.success or notify.failure from @/lib/notify, which gives the toast its role.',
+};
 
 export default defineConfigWithVueTs(
   {
@@ -21,40 +89,7 @@ export default defineConfigWithVueTs(
       'no-restricted-imports': [
         'error',
         {
-          patterns: [
-            // Each chosen library bans its alternatives.
-            {
-              group: ['unplugin-vue-router', 'unplugin-vue-router/*'],
-              message: 'Routes are declared in src/router.ts and src/modules/*/routes.ts (docs/adr).',
-            },
-            {
-              group: ['vuex', 'mobx', 'mobx-*', 'swrv', '@apollo/*', '@vue/apollo-*', '@pinia/colada'],
-              message: 'Server data: the generated TanStack Query hooks; client state: Pinia stores (docs/adr).',
-            },
-            {
-              group: [
-                'primevue',
-                'vuetify',
-                'quasar',
-                'element-plus',
-                'ant-design-vue',
-                'naive-ui',
-                '@headlessui/vue',
-                'radix-vue',
-              ],
-              message: 'Use the shadcn-vue components in src/components/ui (docs/adr).',
-            },
-            {
-              group: ['@formkit/*', '@tanstack/vue-form', '@vee-validate/zod'],
-              message: 'Use vee-validate with toTypedSchema from src/forms/toTypedSchema (docs/adr).',
-            },
-            { group: ['yup', 'joi', 'valibot'], message: 'Use zod (docs/adr).' },
-            { group: ['ag-grid-*'], message: 'Use DataTable from src/components/ui (docs/adr).' },
-            {
-              group: ['chart.js', 'vue-chartjs'],
-              message: 'Use DataChart from src/components/DataChart.vue (docs/adr).',
-            },
-          ],
+          patterns: libraryBans,
         },
       ],
     },
@@ -123,5 +158,48 @@ export default defineConfigWithVueTs(
       },
     },
     rules: { 'motion/respect-reduced-motion': 'error' },
+  },
+  {
+    // Every text a user sees comes from a key in both catalogs (docs/adr/0007): a raw text in a template, or in an
+    // attribute a reader hears or sees, fails. Never turn it off: src/i18n/i18nGuard.test.ts fails the tests then.
+    // A comment in a component cannot turn it off either: no eslint-disable, with or without a rule list, and no config
+    // comment has an effect in one. noInlineConfig covers the script's comments; a template's <!-- eslint-disable -->
+    // is eslint-plugin-vue's own, read by vue/comment-directive, which is off here so that it has no effect either.
+    files: ['src/**/*.vue'],
+    ignores: ['**/*.test.*'],
+    linterOptions: { noInlineConfig: true },
+    plugins: { '@intlify/vue-i18n': vueI18n },
+    settings: { 'vue-i18n': { messageSyntaxVersion: '^11.0.0' } },
+    rules: {
+      '@intlify/vue-i18n/no-raw-text': ['error', rawTextOptions],
+      'vue/comment-directive': 'off',
+    },
+  },
+  {
+    // A toast's text and a formatted date or number come from the catalogs and their formats too (docs/adr/0007).
+    files: ['src/**/*.{ts,vue}'],
+    ignores: ['**/*.test.*'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "CallExpression[callee.object.name='notify'] > :matches(Literal, TemplateLiteral)",
+          message: 'notify takes t(...)',
+        },
+        {
+          selector:
+            "CallExpression[callee.property.name=/^toLocale(Date|Time)?String$/], NewExpression[callee.object.name='Intl'], " +
+            "CallExpression[callee.object.name='Intl']",
+          message: 'format with d()/n() (src/i18n/formats.ts)',
+        },
+      ],
+      // The library bans stay: a rule's options in a later block replace the earlier ones whole.
+      'no-restricted-imports': ['error', { patterns: libraryBans, paths: [toastBan] }],
+    },
+  },
+  {
+    // notify is the one place that calls vue-sonner's toast.
+    files: ['src/lib/notify.ts'],
+    rules: { 'no-restricted-imports': ['error', { patterns: libraryBans }] },
   },
 );

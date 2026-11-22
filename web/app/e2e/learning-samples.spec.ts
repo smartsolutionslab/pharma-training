@@ -8,9 +8,9 @@ async function openLearning(page: Page) {
   await page.getByLabel('Username or email').fill('developer');
   await page.getByLabel('Password', { exact: true }).fill('developer');
   await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.getByText('Signed in as developer')).toBeVisible();
+  await expect(page.getByText('Angemeldet als developer')).toBeVisible();
   await page.goto('/learning');
-  await expect(page.getByRole('heading', { name: 'Samples' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Beispiele' })).toBeVisible();
 }
 
 test('a user creates a learning sample and finds it in the list, after a reload too', async ({ page }) => {
@@ -18,9 +18,9 @@ test('a user creates a learning sample and finds it in the list, after a reload 
   await openLearning(page);
 
   await page.getByRole('textbox', { name: 'Name' }).fill(name);
-  await page.getByRole('button', { name: 'Create sample' }).click();
+  await page.getByRole('button', { name: 'Anlegen', exact: true }).click();
 
-  await expect(page.getByRole('status').filter({ hasText: `The sample ${name} was created.` })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: `Das Beispiel ${name} wurde angelegt.` })).toBeVisible();
   await expect(page.getByText(name, { exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByText(name, { exact: true })).toBeVisible();
@@ -29,9 +29,9 @@ test('a user creates a learning sample and finds it in the list, after a reload 
 test('a blank name is refused on the learning page and nothing is created', async ({ page }) => {
   await openLearning(page);
 
-  await page.getByRole('button', { name: 'Create sample' }).click();
+  await page.getByRole('button', { name: 'Anlegen', exact: true }).click();
 
-  await expect(page.getByRole('alert').filter({ hasText: 'Give the sample a name.' })).toBeVisible();
+  await expect(page.getByRole('alert').filter({ hasText: 'Geben Sie dem Beispiel einen Namen.' })).toBeVisible();
 });
 
 test('without samples the learning page says so and its action leads to the form', async ({ page }) => {
@@ -41,7 +41,7 @@ test('without samples the learning page says so and its action leads to the form
   );
   await openLearning(page);
 
-  await expect(page.getByText('No samples yet.')).toBeVisible();
-  await page.getByRole('button', { name: 'Create a sample' }).click();
+  await expect(page.getByText('Noch keine Beispiele.')).toBeVisible();
+  await page.getByRole('button', { name: 'Erstes Beispiel anlegen' }).click();
   await expect(page.getByRole('textbox', { name: 'Name' })).toBeFocused();
 });

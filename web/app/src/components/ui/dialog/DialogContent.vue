@@ -3,6 +3,7 @@ import type { DialogContentEmits, DialogContentProps } from 'reka-ui';
 import type { HTMLAttributes } from 'vue';
 import { X } from '@lucide/vue';
 import { reactiveOmit } from '@vueuse/core';
+import { useI18n } from 'vue-i18n';
 import { cn } from '@/lib/utils';
 import { DialogClose, DialogContent, DialogPortal, useForwardPropsEmits } from 'reka-ui';
 import DialogOverlay from './DialogOverlay.vue';
@@ -22,6 +23,7 @@ const emits = defineEmits<DialogContentEmits>();
 const delegatedProps = reactiveOmit(props, 'class');
 
 const forwarded = useForwardPropsEmits(delegatedProps, emits);
+const { t } = useI18n();
 </script>
 
 <template>
@@ -45,7 +47,7 @@ const forwarded = useForwardPropsEmits(delegatedProps, emits);
         class="ring-offset-background focus:ring-ring data-[state=open]:bg-accent data-[state=open]:text-muted-foreground absolute top-4 right-4 rounded-xs opacity-70 motion-safe:transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
       >
         <X />
-        <span class="sr-only">Close</span>
+        <span class="sr-only">{{ t('ui.close') }}</span>
       </DialogClose>
     </DialogContent>
   </DialogPortal>

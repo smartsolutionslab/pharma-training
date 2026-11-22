@@ -1,9 +1,10 @@
 import type { ModuleRoute } from '@/modules';
 import AssessmentPage from './AssessmentPage.vue';
+import { titleKey } from './titleKey';
 
 export const route: ModuleRoute = {
   path: 'assessment',
-  title: 'Assessment',
+  titleKey,
   audience: 'employee',
   component: AssessmentPage,
 };
