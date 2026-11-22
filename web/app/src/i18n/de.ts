@@ -269,6 +269,10 @@ export const de = {
         saveFailed: 'Die Frage konnte nicht gespeichert werden.',
         removed: 'Die Frage wurde gelöscht.',
         removeFailed: 'Die Frage konnte nicht gelöscht werden.',
+        approveLabel: 'Freigeben',
+        approve: 'Frage {position} freigeben',
+        approved: 'Frage {position} ist freigegeben.',
+        approveFailed: 'Frage {position} konnte nicht freigegeben werden.',
         removeConfirm: {
           title: 'Frage löschen?',
           text: '„{text}“ wird gelöscht.',

@@ -5,6 +5,7 @@ import {
   getGetEditorialCourseVersionsIdQueryKey,
   useDeleteEditorialCourseVersionsIdQuestionsQuestionId,
   usePostEditorialCourseVersionsIdQuestions,
+  usePostEditorialCourseVersionsIdQuestionsQuestionIdApprove,
   usePutEditorialCourseVersionsIdQuestionsQuestionId,
 } from '@/api/generated';
 import { ApiError } from '@/api/baseApi';
@@ -13,8 +14,8 @@ import { ApiError } from '@/api/baseApi';
 export type QuestionChange = { ok: true } | { ok: false; serverMessage?: string };
 
 /**
- * Adds, replaces and deletes a question of the version's test. Afterwards the version is stale, also after a refusal:
- * a 409 (NotADraft) means the page shows something that is no longer so.
+ * Adds, replaces, deletes and approves a question of the version's test. Afterwards the version is stale, also after a
+ * refusal: a 409 (NotADraft) means the page shows something that is no longer so.
  */
 export function useQuestionMutations(versionId: MaybeRefOrGetter<string>) {
   const queryClient = useQueryClient();
@@ -25,6 +26,7 @@ export function useQuestionMutations(versionId: MaybeRefOrGetter<string>) {
   const adding = usePostEditorialCourseVersionsIdQuestions({ mutation });
   const replacing = usePutEditorialCourseVersionsIdQuestionsQuestionId({ mutation });
   const removing = useDeleteEditorialCourseVersionsIdQuestionsQuestionId({ mutation });
+  const approving = usePostEditorialCourseVersionsIdQuestionsQuestionIdApprove({ mutation });
 
   const settle = async (change: Promise<unknown>): Promise<QuestionChange> => {
     try {
@@ -42,7 +44,10 @@ export function useQuestionMutations(versionId: MaybeRefOrGetter<string>) {
     replace: (questionId: string, request: EditorialQuestionRequest) =>
       settle(replacing.mutateAsync({ id: toValue(versionId), questionId, data: request })),
     remove: (questionId: string) => settle(removing.mutateAsync({ id: toValue(versionId), questionId })),
+    /** Approves the question: in a draft or in review; the host checks its options (422) and a second approval (409). */
+    approve: (questionId: string) => settle(approving.mutateAsync({ id: toValue(versionId), questionId })),
     isSaving: computed(() => adding.isPending.value || replacing.isPending.value),
     isRemoving: removing.isPending,
+    isApproving: approving.isPending,
   };
 }

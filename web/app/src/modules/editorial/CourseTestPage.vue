@@ -51,7 +51,9 @@ const counts = computed(() =>
     : testCounts({ questions: questions.value, blueprint: version.value.blueprint }),
 );
 
-const { add, replace, remove, isSaving, isRemoving } = useQuestionMutations(id);
+const { add, replace, remove, approve, isSaving, isRemoving, isApproving } = useQuestionMutations(id);
+/** Whether a question may be approved: in a draft or in review (four eyes, ADR 0007). */
+const approvable = computed(() => version.value?.status === 'Draft' || version.value?.status === 'InReview');
 /** The question form while it is open: a question to replace, or none to add one. */
 const form = ref<{ question?: EditorialQuestionDto }>();
 /** The question asked about before it is deleted. */
@@ -72,6 +74,16 @@ async function save(request: EditorialQuestionRequest) {
   notify.success(translate('editorial.test.questions.saved'));
   form.value = undefined;
   return true;
+}
+
+async function approveQuestion(question: EditorialQuestionDto) {
+  const position = Number(question.position);
+  const result = await approve(question.id);
+  if (result.ok) {
+    notify.success(translate('editorial.test.questions.approved', { position }));
+  } else {
+    notify.failure(result.serverMessage ?? translate('editorial.test.questions.approveFailed', { position }));
+  }
 }
 
 async function confirmRemove(question: EditorialQuestionDto) {
@@ -163,8 +175,11 @@ async function confirmRemove(question: EditorialQuestionDto) {
             :question="question"
             :chapter="chapters.get(question.chapterId)"
             :editable="editable"
+            :approvable="approvable"
+            :locked="isApproving"
             @edit="(each) => (form = { question: each })"
             @remove="(each) => (removing = each)"
+            @approve="approveQuestion"
           />
         </ol>
         <EmptyState v-else>

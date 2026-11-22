@@ -256,6 +256,10 @@ export const en: MessageSchema = {
         saveFailed: 'The question could not be saved.',
         removed: 'The question was deleted.',
         removeFailed: 'The question could not be deleted.',
+        approveLabel: 'Approve',
+        approve: 'Approve question {position}',
+        approved: 'Question {position} is approved.',
+        approveFailed: 'Question {position} could not be approved.',
         removeConfirm: {
           title: 'Delete the question?',
           text: '“{text}” will be deleted.',
