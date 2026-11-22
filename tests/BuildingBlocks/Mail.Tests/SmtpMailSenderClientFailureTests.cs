@@ -22,7 +22,24 @@ public class SmtpMailSenderClientFailureTests
     /// <summary>Text only the server writes, so a message that holds it carries what the server said.</summary>
     private const string ServerText = "only-the-server-wrote-this";
 
+    /// <summary>The server's address, as MailKit names it in the messages of the exceptions it throws.</summary>
+    private const string ServerAddress = "smtp.example.net:587";
+
     private static readonly OutgoingMail Invitation = new(Recipient, "Einladung", "Text");
+
+    /// <summary>
+    /// Exceptions MailKit's client may throw before the bound fires that are not among the transport failures named so
+    /// far, each with a message naming the server, what it said and the recipient.
+    /// </summary>
+    private static readonly Dictionary<string, Func<string, Exception>> UnlistedFailures = new()
+    {
+        ["a timeout"] = text => new TimeoutException(text),
+        ["a SASL failure"] = text => new SaslException("PLAIN", SaslErrorCode.InvalidChallenge, text),
+        ["MailKit's authentication failure"] = text => new MailKit.Security.AuthenticationException(text),
+        ["the platform's authentication failure"] = text => new System.Security.Authentication.AuthenticationException(text),
+        ["an unsupported operation"] = text => new NotSupportedException(text),
+        ["an invalid operation"] = text => new InvalidOperationException(text),
+    };
 
     [Fact]
     public async Task A_client_that_is_not_authenticated_fails_as_not_sent_without_the_servers_text()
@@ -81,6 +98,45 @@ public class SmtpMailSenderClientFailureTests
 
         var failed = await Should.ThrowAsync<MailNotSentException>(() => sender.SendAsync(Invitation, TestContext.Current.CancellationToken));
 
+        ShouldNameNeitherTheServersTextNorTheRecipient(failed);
+    }
+
+    [Theory]
+    [InlineData("a timeout")]
+    [InlineData("a SASL failure")]
+    [InlineData("MailKit's authentication failure")]
+    [InlineData("the platform's authentication failure")]
+    [InlineData("an unsupported operation")]
+    [InlineData("an invalid operation")]
+    public async Task Any_failure_of_the_client_before_the_bound_fired_is_not_sent_without_the_servers_address_or_text(string failure)
+    {
+        var client = Substitute.For<ISmtpClient>();
+        client.ConnectAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<SecureSocketOptions>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(UnlistedFailures[failure]($"{ServerAddress} answered {ServerText} for {Recipient}"));
+        var sender = Sender(client, new FakeTimeProvider());
+
+        var failed = await Should.ThrowAsync<MailNotSentException>(() => sender.SendAsync(Invitation, TestContext.Current.CancellationToken));
+
+        failed.Message.ShouldNotContain(ServerAddress, Case.Insensitive);
+        failed.Message.ShouldNotContain("smtp.example.net", Case.Insensitive);
+        ShouldNameNeitherTheServersTextNorTheRecipient(failed);
+    }
+
+    [Theory]
+    [InlineData("a timeout")]
+    [InlineData("a SASL failure")]
+    [InlineData("an unsupported operation")]
+    [InlineData("an invalid operation")]
+    public async Task Any_failure_of_the_client_while_sending_is_not_sent_without_the_servers_address_or_text(string failure)
+    {
+        var client = Substitute.For<ISmtpClient>();
+        client.SendAsync(Arg.Any<MimeKit.MimeMessage>(), Arg.Any<CancellationToken>(), Arg.Any<ITransferProgress>())
+            .ThrowsAsync(UnlistedFailures[failure]($"{ServerAddress} answered {ServerText} for {Recipient}"));
+        var sender = Sender(client, new FakeTimeProvider());
+
+        var failed = await Should.ThrowAsync<MailNotSentException>(() => sender.SendAsync(Invitation, TestContext.Current.CancellationToken));
+
+        failed.Message.ShouldNotContain(ServerAddress, Case.Insensitive);
         ShouldNameNeitherTheServersTextNorTheRecipient(failed);
     }
 
