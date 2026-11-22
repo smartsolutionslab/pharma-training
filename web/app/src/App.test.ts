@@ -50,7 +50,7 @@ test('the start page names the application', async () => {
 
   render(App, { global: { plugins: [router, createPinia(), signedInAsDeveloper] } });
 
-  expect(screen.getByRole('heading', { name: 'pharma-training' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: t('app.name') })).toBeInTheDocument();
 });
 
 /** The app's router, as src/providers/router.ts makes it, at an address the Home link leaves. */
@@ -74,7 +74,7 @@ test('the Home link goes to the start page in a view transition where the browse
 
   await waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/'));
   expect(startViewTransition).toHaveBeenCalledOnce();
-  expect(screen.getByRole('heading', { name: 'pharma-training' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: t('app.name') })).toBeInTheDocument();
 });
 
 test('without the View Transitions API the Home link goes to the start page as before', async () => {
@@ -84,7 +84,7 @@ test('without the View Transitions API the Home link goes to the start page as b
   await userEvent.click(screen.getByRole('link', { name: t('shell.home') }));
 
   await waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/'));
-  expect(screen.getByRole('heading', { name: 'pharma-training' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: t('app.name') })).toBeInTheDocument();
 });
 
 // The toasts' region, and a toast's close button where one has it, are named in the language shown.

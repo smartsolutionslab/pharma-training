@@ -119,7 +119,9 @@ test('at a tablet width of 768 px the sidebar shows the pharmacy switcher and th
 
   expect(document.querySelector('[data-slot="sidebar"]')).not.toHaveAttribute('data-mobile');
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Pharmacy: Apotheke am Markt' })).toBeInTheDocument();
+  expect(
+    screen.getByRole('button', { name: t('shell.pharmacy.current', { name: 'Apotheke am Markt' }) }),
+  ).toBeInTheDocument();
   const navigation = within(screen.getByRole('navigation', { name: t('shell.navigation.label') }));
   expect(navigation.getByRole('link', { name: t('modules.organisation.title') })).toBeInTheDocument();
 });
@@ -133,7 +135,9 @@ test('below 768 px the sidebar is a sheet the trigger opens, which closes once t
   await typing.click(within(screen.getByRole('banner')).getByRole('button', { name: t('ui.sidebar.toggle') }));
   const sheet = await screen.findByRole('dialog', { name: t('ui.sidebar.title') });
   expect(sheet).toHaveAccessibleDescription(t('ui.sidebar.description'));
-  expect(within(sheet).getByRole('button', { name: 'Pharmacy: Apotheke am Markt' })).toBeInTheDocument();
+  expect(
+    within(sheet).getByRole('button', { name: t('shell.pharmacy.current', { name: 'Apotheke am Markt' }) }),
+  ).toBeInTheDocument();
   await typing.click(
     within(within(sheet).getByRole('navigation', { name: t('shell.navigation.label') })).getByRole('link', {
       name: t('modules.learning.title'),
@@ -171,7 +175,9 @@ test("below 768 px the switcher's link to register a pharmacy closes the sheet o
   await typing.click(within(screen.getByRole('banner')).getByRole('button', { name: t('ui.sidebar.toggle') }));
   const sheet = await screen.findByRole('dialog', { name: t('ui.sidebar.title') });
   await typing.click(
-    within(within(sheet).getByRole('region', { name: 'Pharmacy' })).getByRole('link', { name: 'Register a pharmacy' }),
+    within(within(sheet).getByRole('region', { name: t('shell.pharmacy.region') })).getByRole('link', {
+      name: t('shell.pharmacy.register'),
+    }),
   );
 
   await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/organisation/register'));

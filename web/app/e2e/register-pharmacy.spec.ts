@@ -15,10 +15,10 @@ async function signIn(page: Page) {
 test('a signed-in user registers a pharmacy and works in it, after a reload too', async ({ page }) => {
   const name = `E2E Apotheke ${Date.now()}`;
   await signIn(page);
-  // Exactly: the start page's region "No pharmacy yet" holds the word too, and a link of the same name.
-  const pharmacy = page.getByRole('region', { name: 'Pharmacy', exact: true });
+  // Exactly: the start page's region "Noch keine Apotheke" holds the word too, and a link of the same name.
+  const pharmacy = page.getByRole('region', { name: 'Apotheke', exact: true });
 
-  await pharmacy.getByRole('link', { name: 'Register a pharmacy' }).click();
+  await pharmacy.getByRole('link', { name: 'Apotheke registrieren' }).click();
   await expect(page).toHaveURL(/\/organisation\/register$/);
   await expect(page.getByRole('heading', { name: 'Register a pharmacy', level: 1 })).toBeVisible();
   await page.getByRole('textbox', { name: 'Pharmacy name' }).fill(name);

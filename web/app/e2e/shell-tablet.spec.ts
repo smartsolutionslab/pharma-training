@@ -46,24 +46,24 @@ test('on a tablet the user chooses a pharmacy, switches to another, and it stays
   await signIn(page);
 
   await page
-    .getByRole('region', { name: 'Choose your pharmacy' })
+    .getByRole('region', { name: 'Wählen Sie Ihre Apotheke' })
     .getByRole('button', { name: /Apotheke am Markt/ })
     .click();
   const navigation = page.getByRole('navigation', { name: 'Bereiche' });
   await expect(navigation.getByRole('link', { name: 'Mitglieder' })).toBeVisible();
   expect(await scrollsSideways(page)).toBe(false);
 
-  await page.getByRole('button', { name: 'Pharmacy: Apotheke am Markt' }).click();
+  await page.getByRole('button', { name: 'Apotheke: Apotheke am Markt' }).click();
   await page
-    .getByRole('menu', { name: 'Pharmacies' })
+    .getByRole('menu', { name: 'Apotheken' })
     .getByRole('menuitemradio', { name: /Apotheke am Dom/ })
     .click();
-  await expect(page.getByRole('button', { name: 'Pharmacy: Apotheke am Dom' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Apotheke: Apotheke am Dom' })).toBeVisible();
   await expect(navigation.getByRole('link', { name: 'Mitglieder' })).toBeHidden();
   await expect(navigation.getByRole('link', { name: 'Meine Schulungen' })).toBeVisible();
 
   await page.reload();
-  await expect(page.getByRole('button', { name: 'Pharmacy: Apotheke am Dom' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Apotheke: Apotheke am Dom' })).toBeVisible();
   await expect(navigation.getByRole('link', { name: 'Meine Schulungen' })).toBeVisible();
   expect(await scrollsSideways(page)).toBe(false);
 
@@ -71,6 +71,6 @@ test('on a tablet the user chooses a pharmacy, switches to another, and it stays
   await expect(page).toHaveURL(/\/learning$/);
   // The page itself, not the gate: an employee of Apotheke am Dom may learn.
   await expect(page.getByRole('heading', { name: 'Samples' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Not available' })).toBeHidden();
+  await expect(page.getByRole('heading', { name: 'Nicht verfügbar' })).toBeHidden();
   expect(await scrollsSideways(page)).toBe(false);
 });

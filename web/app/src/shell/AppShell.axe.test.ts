@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/vue';
 import userEvent from '@testing-library/user-event';
 import { createPinia } from 'pinia';
-import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { computed } from 'vue';
 import { createMemoryHistory } from 'vue-router';
@@ -9,7 +9,7 @@ import type { MyPharmacyDto, PagedResultOfMyPharmacyDto } from '@/api/generated'
 import App from '@/App.vue';
 import { signedInAsDeveloper } from '@/auth/signedInAsDeveloper';
 import { createAppRouter } from '@/router';
-import { t } from '@/i18n';
+import { languages, setLanguage, t } from '@/i18n';
 
 // The user menu asks the host's /me for the name; here it answers at once.
 vi.mock('@/api/useCurrentUser', () => ({ useCurrentUser: () => computed(() => 'developer') }));
@@ -76,68 +76,80 @@ const themes = [
   },
 ];
 
-// Whichever test renders first in a file also pays for warming up jsdom, Vue and axe.
-test.each(themes)(
-  'the app shell has no accessibility violations axe can find in the $name theme',
-  { timeout: 20_000 },
-  async ({ switchOn }) => {
-    switchOn();
+// The pharmacy switcher's name for the developer's first pharmacy, in the language shown.
+const markets = () => t('shell.pharmacy.current', { name: 'Apotheke am Markt' });
+
+// Each language in turn: the texts differ, and so may what axe finds in them.
+describe.each(languages)('in %s', (language) => {
+  beforeEach(() => {
+    setLanguage(language, { remember: false });
+  });
+
+  // Whichever test renders first in a file also pays for warming up jsdom, Vue and axe.
+  test.each(themes)(
+    'the app shell has no accessibility violations axe can find in the $name theme',
+    { timeout: 20_000 },
+    async ({ switchOn }) => {
+      switchOn();
+      const container = await renderShell();
+      await screen.findByRole('button', { name: markets() });
+
+      expect(await axe(container)).toHaveNoViolations();
+    },
+  );
+
+  test.each(themes)(
+    'the open command palette has no accessibility violations axe can find in the $name theme',
+    async ({ switchOn }) => {
+      switchOn();
+      const user = userEvent.setup();
+      await renderShell();
+      await screen.findByRole('button', { name: markets() });
+
+      await user.keyboard('{Control>}k{/Control}');
+      await screen.findByRole('dialog', { name: t('shell.palette.title') });
+
+      expect(await axe(document.body)).toHaveNoViolations();
+    },
+  );
+
+  test.each(themes)(
+    'the open pharmacy switcher has no accessibility violations axe can find in the $name theme',
+    async ({ switchOn }) => {
+      switchOn();
+      const user = userEvent.setup();
+      await renderShell();
+
+      await user.click(await screen.findByRole('button', { name: markets() }));
+      await screen.findByRole('menu', { name: t('shell.pharmacy.list') });
+
+      expect(await axe(document.body)).toHaveNoViolations();
+    },
+  );
+
+  test('the prompt to choose a pharmacy has no accessibility violations axe can find', async () => {
+    localStorage.removeItem('pharmacy');
     const container = await renderShell();
-    await screen.findByRole('button', { name: 'Pharmacy: Apotheke am Markt' });
+    await screen.findByRole('heading', { name: t('home.choosePharmacy') });
 
     expect(await axe(container)).toHaveNoViolations();
-  },
-);
+  });
 
-test.each(themes)(
-  'the open command palette has no accessibility violations axe can find in the $name theme',
-  async ({ switchOn }) => {
-    switchOn();
+  test('the collapsed sidebar leaves no accessibility violations axe can find', async () => {
     const user = userEvent.setup();
-    await renderShell();
+    const container = await renderShell();
+    await screen.findByRole('button', { name: markets() });
 
-    await user.keyboard('{Control>}k{/Control}');
-    await screen.findByRole('dialog', { name: t('shell.palette.title') });
+    await user.click(within(screen.getByRole('banner')).getByRole('button', { name: t('ui.sidebar.toggle') }));
 
-    expect(await axe(document.body)).toHaveNoViolations();
-  },
-);
+    expect(await axe(container)).toHaveNoViolations();
+  });
 
-test.each(themes)(
-  'the open pharmacy switcher has no accessibility violations axe can find in the $name theme',
-  async ({ switchOn }) => {
-    switchOn();
-    const user = userEvent.setup();
-    await renderShell();
+  test('a page that is not available has no accessibility violations axe can find', async () => {
+    localStorage.setItem('pharmacy', dom.id);
+    const container = await renderShell('/organisation');
+    await screen.findByRole('heading', { name: t('shell.gate.notAvailable') });
 
-    await user.click(await screen.findByRole('button', { name: 'Pharmacy: Apotheke am Markt' }));
-    await screen.findByRole('menu', { name: 'Pharmacies' });
-
-    expect(await axe(document.body)).toHaveNoViolations();
-  },
-);
-
-test('the prompt to choose a pharmacy has no accessibility violations axe can find', async () => {
-  localStorage.removeItem('pharmacy');
-  const container = await renderShell();
-  await screen.findByRole('heading', { name: 'Choose your pharmacy' });
-
-  expect(await axe(container)).toHaveNoViolations();
-});
-
-test('the collapsed sidebar leaves no accessibility violations axe can find', async () => {
-  const user = userEvent.setup();
-  const container = await renderShell();
-
-  await user.click(within(screen.getByRole('banner')).getByRole('button', { name: t('ui.sidebar.toggle') }));
-
-  expect(await axe(container)).toHaveNoViolations();
-});
-
-test('a page that is not available has no accessibility violations axe can find', async () => {
-  localStorage.setItem('pharmacy', dom.id);
-  const container = await renderShell('/organisation');
-  await screen.findByRole('heading', { name: 'Not available' });
-
-  expect(await axe(container)).toHaveNoViolations();
+    expect(await axe(container)).toHaveNoViolations();
+  });
 });

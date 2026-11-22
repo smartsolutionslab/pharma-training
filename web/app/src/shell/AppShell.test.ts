@@ -271,7 +271,7 @@ test('the start page is there for a user with no pharmacy and no role', async ()
   await renderAt('/', { roles: [] });
 
   expect(sidebarLinks()).toEqual([home()]);
-  expect(screen.getByRole('heading', { name: 'pharma-training', level: 1 })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: t('app.name'), level: 1 })).toBeInTheDocument();
 });
 
 test("an employee who opens a manager's page is told it is not available, and led home", async () => {
@@ -280,9 +280,9 @@ test("an employee who opens a manager's page is told it is not available, and le
   await renderAt('/organisation', { roles: [] });
 
   const main = within(await screen.findByRole('main'));
-  expect(main.getByRole('heading', { name: 'Not available', level: 1 })).toBeInTheDocument();
-  expect(main.getByText('This page is not available to you in Apotheke am Dom.')).toBeInTheDocument();
-  expect(main.getByRole('link', { name: 'Go to Home' })).toHaveAttribute('href', '/');
+  expect(main.getByRole('heading', { name: t('shell.gate.notAvailable'), level: 1 })).toBeInTheDocument();
+  expect(main.getByText(t('shell.gate.notInPharmacy', { name: 'Apotheke am Dom' }))).toBeInTheDocument();
+  expect(main.getByRole('link', { name: t('shell.gate.goHome') })).toHaveAttribute('href', '/');
   expect(screen.queryByRole('heading', { name: organisation() })).not.toBeInTheDocument();
 });
 
@@ -292,8 +292,8 @@ test('with several pharmacies and none chosen a pharmacy page asks the user to c
   await renderAt('/learning', { roles: [] });
 
   const main = within(await screen.findByRole('main'));
-  expect(main.getByRole('heading', { name: 'Not available', level: 1 })).toBeInTheDocument();
-  expect(main.getByText('Choose a pharmacy to see this page.')).toBeInTheDocument();
+  expect(main.getByRole('heading', { name: t('shell.gate.notAvailable'), level: 1 })).toBeInTheDocument();
+  expect(main.getByText(t('shell.gate.choosePharmacy'))).toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: learning() })).not.toBeInTheDocument();
 });
 
@@ -303,8 +303,8 @@ test('a user of no pharmacy who opens a pharmacy page is told so', async () => {
   await renderAt('/learning', { roles: [] });
 
   const main = within(await screen.findByRole('main'));
-  expect(main.getByRole('heading', { name: 'Not available', level: 1 })).toBeInTheDocument();
-  expect(main.getByText('You are not a member of any pharmacy yet.')).toBeInTheDocument();
+  expect(main.getByRole('heading', { name: t('shell.gate.notAvailable'), level: 1 })).toBeInTheDocument();
+  expect(main.getByText(t('shell.gate.noPharmacy'))).toBeInTheDocument();
 });
 
 test('an editor of no pharmacy reaches the editorial page', async () => {
@@ -313,7 +313,7 @@ test('an editor of no pharmacy reaches the editorial page', async () => {
   await renderAt('/editorial', { roles: ['editor'] });
 
   expect(await screen.findByRole('heading', { name: editorial(), level: 1 })).toBeInTheDocument();
-  expect(screen.queryByRole('heading', { name: 'Not available' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: t('shell.gate.notAvailable') })).not.toBeInTheDocument();
   expect(sidebarLinks()).toEqual([home(), editorial()]);
 });
 
@@ -324,12 +324,12 @@ test("switching from a pharmacy the user manages to one they work in closes the 
   await renderAt('/organisation', { roles: [] });
   expect(await screen.findByRole('heading', { name: organisation(), level: 1 })).toBeInTheDocument();
 
-  await user.click(screen.getByRole('button', { name: 'Pharmacy: Apotheke am Markt' }));
-  const menu = await screen.findByRole('menu', { name: 'Pharmacies' });
+  await user.click(screen.getByRole('button', { name: t('shell.pharmacy.current', { name: 'Apotheke am Markt' }) }));
+  const menu = await screen.findByRole('menu', { name: t('shell.pharmacy.list') });
   await user.click(within(menu).getByRole('menuitemradio', { name: /Apotheke am Dom/ }));
 
-  expect(await screen.findByRole('heading', { name: 'Not available', level: 1 })).toBeInTheDocument();
-  expect(screen.getByText('This page is not available to you in Apotheke am Dom.')).toBeInTheDocument();
+  expect(await screen.findByRole('heading', { name: t('shell.gate.notAvailable'), level: 1 })).toBeInTheDocument();
+  expect(screen.getByText(t('shell.gate.notInPharmacy', { name: 'Apotheke am Dom' }))).toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: organisation(), level: 1 })).not.toBeInTheDocument();
   expect(sidebarLinks()).not.toContain(organisation());
 });
@@ -344,9 +344,9 @@ test("while the memberships load a pharmacy page shows a skeleton, then the page
   const busy = screen.getByRole('main');
   expect(busy).toHaveAttribute('aria-busy', 'true');
   expect(busy.querySelector('[data-slot="skeleton"]')).not.toBeNull();
-  expect(within(busy).getByText('Loading…')).toHaveClass('sr-only');
+  expect(within(busy).getByText(t('shell.gate.loading'))).toHaveClass('sr-only');
   expect(screen.queryByRole('heading', { name: organisation() })).not.toBeInTheDocument();
-  expect(screen.queryByRole('heading', { name: 'Not available' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: t('shell.gate.notAvailable') })).not.toBeInTheDocument();
 
   answer([markt]);
 
@@ -360,9 +360,9 @@ test('a signed-in user who is no editor is told the editorial page is not availa
   await renderAt('/editorial', { roles: [] });
 
   const main = within(await screen.findByRole('main'));
-  expect(main.getByRole('heading', { name: 'Not available', level: 1 })).toBeInTheDocument();
-  expect(main.getByText('This page is not available to you.')).toBeInTheDocument();
-  expect(main.getByRole('link', { name: 'Go to Home' })).toHaveAttribute('href', '/');
+  expect(main.getByRole('heading', { name: t('shell.gate.notAvailable'), level: 1 })).toBeInTheDocument();
+  expect(main.getByText(t('shell.gate.notForYou'))).toBeInTheDocument();
+  expect(main.getByRole('link', { name: t('shell.gate.goHome') })).toHaveAttribute('href', '/');
   expect(screen.queryByRole('heading', { name: editorial() })).not.toBeInTheDocument();
 });
 
@@ -376,11 +376,11 @@ test('when the memberships could not be loaded a pharmacy page says so and tries
   await renderLoadingAt('/learning', []);
 
   const main = within(await screen.findByRole('main'));
-  expect(main.getByRole('heading', { name: 'Not available', level: 1 })).toBeInTheDocument();
-  expect(main.getByText('Your pharmacies could not be loaded.')).toBeInTheDocument();
+  expect(main.getByRole('heading', { name: t('shell.gate.notAvailable'), level: 1 })).toBeInTheDocument();
+  expect(main.getByText(t('shell.gate.pharmaciesFailed'))).toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: learning() })).not.toBeInTheDocument();
 
-  await user.click(main.getByRole('button', { name: 'Try again' }));
+  await user.click(main.getByRole('button', { name: t('shell.retry') }));
 
   expect(pharmacies.refetch).toHaveBeenCalledOnce();
 });
@@ -401,7 +401,7 @@ test('a failed refetch that keeps the memberships leaves the page the user is on
   await user.keyboard('{Escape}');
   await vi.waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   expect(screen.getByRole('heading', { name: learning(), level: 1 })).toBeInTheDocument();
-  expect(screen.queryByRole('heading', { name: 'Not available' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: t('shell.gate.notAvailable') })).not.toBeInTheDocument();
 });
 
 // A module the user may not see is an unknown segment of the address to the breadcrumbs: they do not name it.
@@ -524,7 +524,7 @@ test('a page for every signed-in user is there for a user of no pharmacy and no 
   await renderAt('/reports/new', { roles: [] });
 
   expect(await screen.findByRole('heading', { name: newReport(), level: 1 })).toBeInTheDocument();
-  expect(screen.queryByRole('heading', { name: 'Not available' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: t('shell.gate.notAvailable') })).not.toBeInTheDocument();
   expect(sidebarLinks()).toEqual([home()]);
 });
 
@@ -534,7 +534,7 @@ test('the page to register a pharmacy is there for a user of no pharmacy and no 
   await renderAt('/organisation/register', { roles: [] });
 
   expect(await screen.findByRole('heading', { name: registerPage(), level: 1 })).toBeInTheDocument();
-  expect(screen.queryByRole('heading', { name: 'Not available' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: t('shell.gate.notAvailable') })).not.toBeInTheDocument();
 });
 
 // Neither a skeleton nor "Not available": the page is the user's whatever their memberships turn out to be.
@@ -544,7 +544,7 @@ test('while the memberships load a page for every signed-in user shows at once, 
   expect(screen.getByRole('heading', { name: registerPage(), level: 1 })).toBeInTheDocument();
   expect(document.querySelector('[data-slot="sidebar-inset"] [data-slot="skeleton"]')).toBeNull();
   expect(screen.getByRole('main')).not.toHaveAttribute('aria-busy');
-  expect(screen.queryByRole('heading', { name: 'Not available' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: t('shell.gate.notAvailable') })).not.toBeInTheDocument();
 });
 
 test('a page below a module for editors is refused to a user who is no editor, though the module is theirs', async () => {
@@ -553,8 +553,8 @@ test('a page below a module for editors is refused to a user who is no editor, t
   await renderAt('/reports/review', { roles: [] });
 
   const main = within(await screen.findByRole('main'));
-  expect(main.getByRole('heading', { name: 'Not available', level: 1 })).toBeInTheDocument();
-  expect(main.getByText('This page is not available to you.')).toBeInTheDocument();
+  expect(main.getByRole('heading', { name: t('shell.gate.notAvailable'), level: 1 })).toBeInTheDocument();
+  expect(main.getByText(t('shell.gate.notForYou'))).toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: reviewReports() })).not.toBeInTheDocument();
 });
 
@@ -564,7 +564,7 @@ test('a page below a module for editors is there for an editor of no pharmacy', 
   await renderAt('/reports/review', { roles: ['editor'] });
 
   expect(await screen.findByRole('heading', { name: reviewReports(), level: 1 })).toBeInTheDocument();
-  expect(screen.queryByRole('heading', { name: 'Not available' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: t('shell.gate.notAvailable') })).not.toBeInTheDocument();
 });
 
 test("the breadcrumbs name a page below a module by its title, after the module's", async () => {
@@ -614,7 +614,9 @@ test("a user of no pharmacy follows the switcher's link to the page that registe
   const { router } = await renderAt('/', { roles: [] });
 
   await user.click(
-    within(screen.getByRole('region', { name: 'Pharmacy' })).getByRole('link', { name: 'Register a pharmacy' }),
+    within(screen.getByRole('region', { name: t('shell.pharmacy.region') })).getByRole('link', {
+      name: t('shell.pharmacy.register'),
+    }),
   );
 
   await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/organisation/register'));
@@ -701,4 +703,60 @@ test('switching the language renames the pages in the sidebar, the breadcrumbs a
   const dialog = await screen.findByRole('dialog', { name: 'Open a page' });
   expect(within(dialog).getByRole('option', { name: 'Course catalogue' })).toBeInTheDocument();
   expect(within(dialog).getByRole('option', { name: 'Register a pharmacy' })).toBeInTheDocument();
+});
+
+test('a page that is not available says so in German by default, and leads home', async () => {
+  answer([dom]);
+
+  await renderAt('/organisation', { roles: [] });
+
+  const main = within(await screen.findByRole('main'));
+  expect(main.getByRole('heading', { name: 'Nicht verfügbar', level: 1 })).toBeInTheDocument();
+  expect(main.getByText('Diese Seite steht Ihnen in Apotheke am Dom nicht zur Verfügung.')).toBeInTheDocument();
+  expect(main.getByRole('link', { name: 'Zur Startseite' })).toHaveAttribute('href', '/');
+});
+
+test('when the memberships could not be loaded a pharmacy page says so in German', async () => {
+  pharmacies.data.value = undefined;
+  pharmacies.isPending.value = false;
+  pharmacies.isError.value = true;
+
+  await renderLoadingAt('/learning', []);
+
+  const main = within(await screen.findByRole('main'));
+  expect(main.getByText('Ihre Apotheken konnten nicht geladen werden.')).toBeInTheDocument();
+  expect(main.getByRole('button', { name: 'Erneut versuchen' })).toBeInTheDocument();
+});
+
+test('while the memberships load a pharmacy page says so to a screen reader in German', async () => {
+  await renderLoadingAt('/organisation', []);
+
+  expect(within(screen.getByRole('main')).getByText('Wird geladen…')).toHaveClass('sr-only');
+});
+
+test('switching the language renames the pharmacy switcher and the reason a page is not available', async () => {
+  localStorage.setItem('pharmacy', dom.id);
+  answer([markt, dom]);
+  await renderAt('/organisation', { roles: [] });
+  expect(await screen.findByRole('heading', { name: t('shell.gate.notAvailable'), level: 1 })).toBeInTheDocument();
+
+  setLanguage('en-GB', { remember: false });
+
+  expect(await screen.findByRole('heading', { name: 'Not available', level: 1 })).toBeInTheDocument();
+  expect(screen.getByText('This page is not available to you in Apotheke am Dom.')).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Go to Home' })).toHaveAttribute('href', '/');
+  const pharmacy = within(screen.getByRole('region', { name: 'Pharmacy' }));
+  expect(pharmacy.getByRole('button', { name: 'Pharmacy: Apotheke am Dom' })).toHaveTextContent('Employee');
+  expect(pharmacy.getByRole('link', { name: 'Register a pharmacy' })).toBeInTheDocument();
+});
+
+test('the pharmacy switcher in the sidebar speaks German by default', async () => {
+  localStorage.setItem('pharmacy', markt.id);
+  answer([markt, dom]);
+
+  await renderAt('/');
+
+  const pharmacy = within(screen.getByRole('region', { name: 'Apotheke' }));
+  expect(pharmacy.getByRole('button', { name: 'Apotheke: Apotheke am Markt' })).toHaveTextContent('Apothekenleiter');
+  expect(pharmacy.getByRole('link', { name: 'Apotheke registrieren' })).toBeInTheDocument();
 });
