@@ -111,57 +111,76 @@ public class CommitLostRaceTests
     }
 
     [Theory]
-    [InlineData(PostgresErrorCodes.DeadlockDetected)]
-    [InlineData(PostgresErrorCodes.SerializationFailure)]
-    public async Task A_save_postgresql_ended_as_a_lost_race_is_logged_as_a_warning_naming_its_sql_state(string sqlState)
+    [InlineData(PostgresErrorCodes.DeadlockDetected, Bare)]
+    [InlineData(PostgresErrorCodes.SerializationFailure, Bare)]
+    [InlineData(PostgresErrorCodes.DeadlockDetected, InsideAnotherException)]
+    [InlineData(PostgresErrorCodes.SerializationFailure, InsideAnotherException)]
+    [InlineData(PostgresErrorCodes.DeadlockDetected, AtAStatement)]
+    [InlineData(PostgresErrorCodes.SerializationFailure, AtAStatement)]
+    [InlineData(PostgresErrorCodes.DeadlockDetected, AtTheCommitEfCoreOwns)]
+    [InlineData(PostgresErrorCodes.SerializationFailure, AtTheCommitEfCoreOwns)]
+    public async Task A_lost_race_is_logged_as_a_warning_naming_its_sql_state_and_context_with_the_exception(string sqlState, string wrapping)
     {
-        await using var services = LoggedOutboxFailingWith(new DbUpdateException("An error occurred while saving the entity changes. See the inner exception for details.", Ended(sqlState)));
+        var ended = Ended(sqlState);
+        await using var services = OutboxFailingWith(Wrapped(ended, wrapping));
 
         await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken);
 
         var record = services.GetFakeLogCollector().GetSnapshot().ShouldHaveSingleItem();
         record.Level.ShouldBe(LogLevel.Warning);
         record.Message.ShouldContain(sqlState);
-    }
-
-    [Theory]
-    [InlineData(PostgresErrorCodes.DeadlockDetected)]
-    [InlineData(PostgresErrorCodes.SerializationFailure)]
-    public async Task A_lost_race_at_the_commit_ef_core_owns_is_logged_as_a_warning_naming_its_sql_state(string sqlState)
-    {
-        await using var services = LoggedOutboxFailingWith(new DbUpdateConcurrencyException("An error occurred while saving the entity changes. See the inner exception for details.", Ended(sqlState)));
-
-        await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken);
-
-        var record = services.GetFakeLogCollector().GetSnapshot().ShouldHaveSingleItem();
-        record.Level.ShouldBe(LogLevel.Warning);
-        record.Message.ShouldContain(sqlState);
+        record.Message.ShouldContain(nameof(EditorialDbContext));
+        record.Exception.ShouldBeSameAs(ended);
     }
 
     [Fact]
     public async Task A_save_that_moved_a_row_version_logs_nothing()
     {
-        await using var services = LoggedOutboxFailingWith(new DbUpdateConcurrencyException("The row version moved on."));
+        await using var services = OutboxFailingWith(new DbUpdateConcurrencyException("The row version moved on."));
 
         await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken);
 
         services.GetFakeLogCollector().GetSnapshot().ShouldBeEmpty();
     }
 
+    [Fact]
+    public async Task A_lost_race_without_a_logger_registered_still_answers_false()
+    {
+        await using var services = OutboxFailingWith(Ended(PostgresErrorCodes.DeadlockDetected), logging: false);
+
+        (await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken)).ShouldBeFalse();
+    }
+
+    private const string Bare = "bare";
+
+    private const string InsideAnotherException = "inside another exception";
+
+    private const string AtAStatement = "at a statement";
+
+    private const string AtTheCommitEfCoreOwns = "at the commit EF Core owns";
+
+    private static Exception Wrapped(PostgresException ended, string wrapping) => wrapping switch
+    {
+        Bare => ended,
+        InsideAnotherException => new InvalidOperationException("The transaction could not be committed.", ended),
+        AtAStatement => new DbUpdateException("An error occurred while saving the entity changes. See the inner exception for details.", ended),
+        AtTheCommitEfCoreOwns => new DbUpdateConcurrencyException("An error occurred while saving the entity changes. See the inner exception for details.", ended),
+        _ => throw new InvalidOperationException($"No wrapping named '{wrapping}'."),
+    };
+
     private static PostgresException Ended(string sqlState) =>
         new($"the transaction was ended ({sqlState})", "ERROR", "ERROR", sqlState);
 
-    private static ServiceProvider OutboxFailingWith(Exception failure)
+    private static ServiceProvider OutboxFailingWith(Exception failure, bool logging = true)
     {
         var outbox = Substitute.For<IDbContextOutbox<EditorialDbContext>>();
         outbox.SaveChangesAndFlushMessagesAsync(Arg.Any<CancellationToken>()).Returns(Task.FromException(failure));
-        return new ServiceCollection().AddSingleton(outbox).BuildServiceProvider();
-    }
+        var services = new ServiceCollection().AddSingleton(outbox);
+        if (logging)
+        {
+            services.AddFakeLogging();
+        }
 
-    private static ServiceProvider LoggedOutboxFailingWith(Exception failure)
-    {
-        var outbox = Substitute.For<IDbContextOutbox<EditorialDbContext>>();
-        outbox.SaveChangesAndFlushMessagesAsync(Arg.Any<CancellationToken>()).Returns(Task.FromException(failure));
-        return new ServiceCollection().AddSingleton(outbox).AddFakeLogging().BuildServiceProvider();
+        return services.BuildServiceProvider();
     }
 }
