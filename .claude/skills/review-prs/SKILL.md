@@ -1,6 +1,6 @@
 ---
 name: review-prs
-description: Interim review step until the cross-model review is back (Copilot's limit, until 2026-12-01). Review every open agent pull request whose head has no Claude review yet, post the findings, and label the verdict. Never pushes, approves or merges.
+description: Interim review step until the cross-model review is back (Copilot's limit, until 2026-12-01). Review every open agent or side pull request whose head has no Claude review yet, post the findings, and label the verdict. Never pushes, approves or merges.
 ---
 
 # Review the open agent pull requests
@@ -14,7 +14,8 @@ family would (ADR-0004), so it is a stop-gap, and every verdict says so.
 
 ## For each pull request
 
-1. **Find the work.** List the open pull requests whose head branch starts with `agent/`:
+1. **Find the work.** List the open pull requests whose head branch starts with `agent/` (a lane's issue) or `claude/`
+   (a lane's side PR: review follow-ups and fixes; the owner decided on 2026-11-22 that they get the same review):
    `gh api "repos/smartsolutionslab/pharma-training/pulls?state=open&per_page=100"`. Skip one when:
    - one of its reviews already names its head SHA (`gh api repos/smartsolutionslab/pharma-training/pulls/<n>/reviews`,
      a body starting `Claude review` that contains the SHA), so that head is reviewed;
