@@ -22,6 +22,7 @@ public class EditorialCourseVersionRoleTests(AspireFixture aspire)
     [InlineData("PUT", "course-versions/{id}/questions/{questionId}")]
     [InlineData("DELETE", "course-versions/{id}/questions/{questionId}")]
     [InlineData("POST", "course-versions/{id}/questions/{questionId}/approve")]
+    [InlineData("POST", "course-versions/{id}/uploads")]
     [InlineData("PUT", "course-versions/{id}/blueprint")]
     public async Task An_editor_reaches_the_route(string method, string route)
     {
@@ -49,6 +50,7 @@ public class EditorialCourseVersionRoleTests(AspireFixture aspire)
     [InlineData("PUT", "course-versions/{id}/questions/{questionId}")]
     [InlineData("DELETE", "course-versions/{id}/questions/{questionId}")]
     [InlineData("POST", "course-versions/{id}/questions/{questionId}/approve")]
+    [InlineData("POST", "course-versions/{id}/uploads")]
     [InlineData("PUT", "course-versions/{id}/blueprint")]
     public async Task A_pharmacy_owner_is_forbidden(string method, string route)
     {
@@ -73,6 +75,7 @@ public class EditorialCourseVersionRoleTests(AspireFixture aspire)
     [InlineData("PUT", "course-versions/{id}/questions/{questionId}")]
     [InlineData("DELETE", "course-versions/{id}/questions/{questionId}")]
     [InlineData("POST", "course-versions/{id}/questions/{questionId}/approve")]
+    [InlineData("POST", "course-versions/{id}/uploads")]
     [InlineData("PUT", "course-versions/{id}/blueprint")]
     public async Task An_anonymous_caller_is_unauthorized(string method, string route)
     {
@@ -99,6 +102,7 @@ public class EditorialCourseVersionRoleTests(AspireFixture aspire)
                 ("POST", "course-versions/{id}/chapters") or ("PUT", "course-versions/{id}/chapters/{chapterId}") =>
                     JsonContent.Create(new { title = "Händehygiene", text = "Vor und nach …" }),
                 ("PUT", "course-versions/{id}/chapters/order") => JsonContent.Create(new { chapters = new[] { chapter } }),
+                ("POST", "course-versions/{id}/uploads") => JsonContent.Create(new { kind = "Pdf" }),
                 ("POST", "course-versions/{id}/questions") or ("PUT", "course-versions/{id}/questions/{questionId}") => JsonContent.Create(QuestionBody(chapter)),
                 ("PUT", "course-versions/{id}/blueprint") => JsonContent.Create(new { questions = 10, passingScorePercent = 80, validityMonths = 12 }),
                 _ => null,

@@ -20,4 +20,19 @@ public class BlobStorageRegistrationTests
         using var provider = services.BuildServiceProvider();
         provider.GetRequiredService<IBlobUrls>().ShouldBeOfType<AzureBlobUrls>();
     }
+
+    [Fact]
+    public void Registering_twice_registers_IStoredBlobs_once_and_it_resolves_without_a_connection_string()
+    {
+        var configuration = new ConfigurationBuilder().Build();
+        var services = new ServiceCollection();
+        services.AddSingleton<TimeProvider>(new FakeTimeProvider());
+
+        services.AddModuleBlobStorage(configuration);
+        services.AddModuleBlobStorage(configuration);
+
+        services.Count(service => service.ServiceType == typeof(IStoredBlobs)).ShouldBe(1);
+        using var provider = services.BuildServiceProvider();
+        provider.GetRequiredService<IStoredBlobs>().ShouldBeOfType<AzureStoredBlobs>();
+    }
 }

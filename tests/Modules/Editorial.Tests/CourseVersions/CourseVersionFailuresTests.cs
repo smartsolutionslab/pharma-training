@@ -24,6 +24,30 @@ public class CourseVersionFailuresTests
     }
 
     [Fact]
+    public void What_a_caller_gets_wrong_about_a_chapters_file_is_a_bad_request_with_its_own_code()
+    {
+        CourseVersionFailures.InvalidUploadKind().Code.ShouldBe("editorial.invalid-upload-kind");
+        CourseVersionFailures.InvalidUploadKind().Status.ShouldBe(HttpStatusCode.BadRequest);
+        CourseVersionFailures.InvalidChapterKind().Code.ShouldBe("editorial.invalid-chapter-kind");
+        CourseVersionFailures.InvalidChapterKind().Status.ShouldBe(HttpStatusCode.BadRequest);
+        CourseVersionFailures.ChapterContentDoesNotMatchKind().Code.ShouldBe("editorial.chapter-content-does-not-match-kind");
+        CourseVersionFailures.ChapterContentDoesNotMatchKind().Status.ShouldBe(HttpStatusCode.BadRequest);
+        CourseVersionFailures.InvalidChapterFile().Code.ShouldBe("editorial.invalid-chapter-file");
+        CourseVersionFailures.InvalidChapterFile().Status.ShouldBe(HttpStatusCode.BadRequest);
+        CourseVersionFailures.InvalidVideoDuration().Code.ShouldBe("editorial.invalid-video-duration");
+        CourseVersionFailures.InvalidVideoDuration().Status.ShouldBe(HttpStatusCode.BadRequest);
+        CourseVersionFailures.UploadNotAccepted().Code.ShouldBe("editorial.upload-not-accepted");
+        CourseVersionFailures.UploadNotAccepted().Status.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public void A_file_not_uploaded_yet_is_a_conflict_the_caller_may_retry()
+    {
+        CourseVersionFailures.UploadNotFound().Code.ShouldBe("editorial.upload-not-found");
+        CourseVersionFailures.UploadNotFound().Status.ShouldBe(HttpStatusCode.Conflict);
+    }
+
+    [Fact]
     public void A_caller_without_a_subject_is_forbidden()
     {
         CourseVersionFailures.IdentityIncomplete().Code.ShouldBe("editorial.identity-incomplete");

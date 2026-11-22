@@ -66,7 +66,7 @@ public class MappingsTests
     }
 
     [Fact]
-    public void A_chapter_without_text_has_none_in_the_dto()
+    public void A_chapter_carries_its_text_or_its_file_and_a_videos_duration_in_the_dto()
     {
         var version = DraftWithChapter(out var first);
         var pdf = ChapterId.New();
@@ -78,9 +78,9 @@ public class MappingsTests
 
         dto.Chapters.ShouldBe(
         [
-            new EditorialChapterDto(first.Value, 1, "Händehygiene", EditorialChapterKind.Text, "Hände vor und nach …"),
-            new EditorialChapterDto(pdf.Value, 2, "Hygieneplan", EditorialChapterKind.Pdf, null),
-            new EditorialChapterDto(video.Value, 3, "Vorführung", EditorialChapterKind.Video, null),
+            new EditorialChapterDto(first.Value, 1, "Händehygiene", EditorialChapterKind.Text, "Hände vor und nach …", null, null),
+            new EditorialChapterDto(pdf.Value, 2, "Hygieneplan", EditorialChapterKind.Pdf, null, "courses/plan.pdf", null),
+            new EditorialChapterDto(video.Value, 3, "Vorführung", EditorialChapterKind.Video, null, "courses/demo.mp4", 90),
         ]);
     }
 }

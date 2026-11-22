@@ -1,8 +1,10 @@
 using System.Net;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.AddFileChapter;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.AddTextChapter;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.RemoveChapter;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.ReorderChapters;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.ReplaceFileChapter;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.ReplaceTextChapter;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 using static SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersions.CourseVersionBuilder;
@@ -39,6 +41,34 @@ public class LostRaceTests
         var replaced = await new ReplaceTextChapterHandler(store, lostRace)
             .HandleAsync(new ReplaceTextChapter(version.Id, chapter, ChapterTitle.From("Neu"), MarkdownText.From("Neu.")), TestContext.Current.CancellationToken);
 
+        ShouldBeChanged(replaced.Error);
+    }
+
+    [Fact]
+    public async Task An_added_file_chapter_that_lost_the_race_is_told_the_version_changed()
+    {
+        var blobs = new InMemoryStoredBlobs();
+        var file = AddFileChapterTests.IssuedName(version.Id, ".pdf");
+        blobs.Upload(file, "application/pdf", 1024);
+
+        var added = await new AddFileChapterHandler(store, lostRace, blobs)
+            .HandleAsync(new AddFileChapter(version.Id, ChapterTitle.From("Neu"), ChapterKind.Pdf, BlobReference.From(file), null), TestContext.Current.CancellationToken);
+
+        added.IsFailure.ShouldBeTrue();
+        ShouldBeChanged(added.Error);
+    }
+
+    [Fact]
+    public async Task A_replaced_file_chapter_that_lost_the_race_is_told_the_version_changed()
+    {
+        var blobs = new InMemoryStoredBlobs();
+        var file = AddFileChapterTests.IssuedName(version.Id, ".mp4");
+        blobs.Upload(file, "video/mp4", 1024);
+
+        var replaced = await new ReplaceFileChapterHandler(store, lostRace, blobs)
+            .HandleAsync(new ReplaceFileChapter(version.Id, chapter, ChapterTitle.From("Neu"), ChapterKind.Video, BlobReference.From(file), VideoDuration.From(90)), TestContext.Current.CancellationToken);
+
+        replaced.IsFailure.ShouldBeTrue();
         ShouldBeChanged(replaced.Error);
     }
 
