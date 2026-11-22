@@ -102,6 +102,32 @@ public class AppHostPublishParametersTests
         }
     }
 
+    [Fact]
+    public async Task The_mail_server_reaches_every_service_and_keycloak_as_key_vault_references()
+    {
+        await using var builder = await PublishedAppHost.ModelAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
+        var services = PublishedAppHost.Services(builder);
+
+        services.ShouldNotBeEmpty();
+        foreach (var service in services)
+        {
+            var environment = await EnvironmentAsync(builder, service);
+
+            var mail = environment["ConnectionStrings__mail"].ShouldBeAssignableTo<IAzureKeyVaultSecretReference>($"{service.Name} reads the mail server as a plain value.");
+            mail.ShouldNotBeNull();
+            mail.Resource.Name.ShouldBe(KeyVault);
+        }
+
+        var keycloak = builder.Resources.OfType<ContainerResource>().Single(resource => resource.Name == "keycloak");
+        var keycloakEnvironment = await EnvironmentAsync(builder, keycloak);
+        foreach (var name in new[] { "SMTP_USERNAME", "SMTP_PASSWORD" })
+        {
+            var secret = keycloakEnvironment[name].ShouldBeAssignableTo<IAzureKeyVaultSecretReference>($"Keycloak reads {name} as a plain value.");
+            secret.ShouldNotBeNull();
+            secret.Resource.Name.ShouldBe(KeyVault);
+        }
+    }
+
     private static ParameterResource Parameter(IDistributedApplicationTestingBuilder builder, string name)
     {
         var parameters = builder.Resources.OfType<ParameterResource>().ToList();
@@ -117,7 +143,7 @@ public class AppHostPublishParametersTests
                 && ReferenceEquals(expression.ValueProviders[0], parameter));
 
     /// <summary>The service's environment as the publish model sets it, values unresolved.</summary>
-    private static async Task<Dictionary<string, object>> EnvironmentAsync(IDistributedApplicationTestingBuilder builder, ProjectResource service)
+    private static async Task<Dictionary<string, object>> EnvironmentAsync(IDistributedApplicationTestingBuilder builder, IResource service)
     {
         var context = new EnvironmentCallbackContext(builder.ExecutionContext, service, cancellationToken: TestContext.Current.CancellationToken);
         foreach (var callback in service.Annotations.OfType<EnvironmentCallbackAnnotation>())

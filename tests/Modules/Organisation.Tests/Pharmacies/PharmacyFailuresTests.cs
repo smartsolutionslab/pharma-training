@@ -29,6 +29,31 @@ public class PharmacyFailuresTests
     }
 
     [Fact]
+    public void Inviting_an_address_that_is_invited_or_active_is_a_conflict_with_the_domains_code()
+    {
+        var mapped = PharmacyFailures.From(PharmacyErrors.AlreadyMemberOrInvited(Pharmacy, EmailAddress.From("anna@example.org")));
+
+        mapped.Code.ShouldBe("organisation.already-member-or-invited");
+        mapped.Status.ShouldBe(HttpStatusCode.Conflict);
+    }
+
+    [Fact]
+    public void A_membership_that_is_no_open_invitation_is_not_found_with_the_domains_code()
+    {
+        var mapped = PharmacyFailures.From(PharmacyErrors.NoOpenInvitation(Pharmacy, MembershipId.New()));
+
+        mapped.Code.ShouldBe("organisation.no-open-invitation");
+        mapped.Status.ShouldBe(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public void An_address_that_is_no_address_is_the_callers_mistake()
+    {
+        PharmacyFailures.InvalidEmail().Code.ShouldBe("organisation.invalid-email");
+        PharmacyFailures.InvalidEmail().Status.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
     public void A_domain_error_no_use_case_returns_yet_is_a_bug_and_never_given_a_guessed_status() =>
         Should.Throw<UnreachableException>(() => PharmacyFailures.From(PharmacyErrors.InvitationNotFound(Pharmacy)))
             .Message.ShouldContain("organisation.invitation-not-found");
@@ -38,6 +63,13 @@ public class PharmacyFailuresTests
     {
         PharmacyFailures.MembershipNotFound(Guid.Empty).Code.ShouldBe("organisation.no-active-membership");
         PharmacyFailures.MembershipNotFound(Guid.Empty).Status.ShouldBe(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public void A_membership_id_that_names_no_open_invitation_is_not_found_with_the_domains_code()
+    {
+        PharmacyFailures.OpenInvitationNotFound(Guid.Empty).Code.ShouldBe("organisation.no-open-invitation");
+        PharmacyFailures.OpenInvitationNotFound(Guid.Empty).Status.ShouldBe(HttpStatusCode.NotFound);
     }
 
     [Fact]

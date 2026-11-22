@@ -1,4 +1,6 @@
+using System.Reflection;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Modules;
+using SmartSolutionsLab.PharmaTraining.Contracts;
 using Wolverine;
 using Wolverine.EntityFrameworkCore;
 using Wolverine.ErrorHandling;
@@ -9,6 +11,8 @@ namespace Microsoft.Extensions.DependencyInjection;
 
 public static class Messaging
 {
+    private static readonly HashSet<string> HandlerMethodNames = new(["Handle", "HandleAsync", "Consume", "ConsumeAsync"], StringComparer.Ordinal);
+
     /// <summary>Wolverine with a durable outbox and inbox in the project's database, the broker as transport, and every module's consumers.</summary>
     public static IServiceCollection AddMessaging(this IServiceCollection services, IConfiguration configuration, IReadOnlyList<IModule> modules)
     {
@@ -49,7 +53,16 @@ public static class Messaging
                 TimeSpan.FromSeconds(32));
             // A message given up on is dead-lettered in the wolverine_dead_letters table, where it is replayed from,
             // and not in a dead-letter queue of the broker's (see docs/adr).
-            options.UseRabbitMq(new Uri(broker)).AutoProvision().DisableDeadLetterQueueing().UseConventionalRouting(convention => convention.QueueNameForListener(_ => queue));
+            // An event a module of this host both publishes and consumes stays off the broker altogether: no exchange, no
+            // sender and no binding to the service's queue, so it travels on the local queue alone and nobody with broker
+            // credentials can hand the host one (docs/adr/0004). Events of other services are still bound to the queue.
+            // Wolverine's request/reply queue (wolverine.response.<id>) is not declared either: its listener dispatches any
+            // message by type, the local ones included, and no service asks another for a reply over the broker.
+            var local = LocalMessageTypes(modules);
+            options.UseRabbitMq(new Uri(broker)).AutoProvision().DisableDeadLetterQueueing().DisableSystemRequestReplyQueueDeclaration()
+                .UseConventionalRouting(convention => convention
+                    .QueueNameForListener(_ => queue)
+                    .ExcludeTypes(local.Contains));
 
             options.Discovery.DisableConventionalDiscovery();
             options.Discovery.CustomizeHandlerDiscovery(query => query.Includes.WithNameSuffix("Consumer"));
@@ -62,5 +75,31 @@ public static class Messaging
         });
 
         return services;
+    }
+
+    /// <summary>
+    /// The message types a module of this host both publishes and consumes: those its modules' <c>*Consumer</c> classes
+    /// handle (the handlers Wolverine discovers below) whose contract lives in the Contracts namespace of one of the
+    /// host's modules (<c>src/Contracts/&lt;Module&gt;/</c>), which is where a module's integration events are declared.
+    /// </summary>
+    private static HashSet<Type> LocalMessageTypes(IReadOnlyList<IModule> modules)
+    {
+        var contracts = modules
+            .Select(module => $"{typeof(IntegrationEvent).Namespace}.{ModuleNameOf(module)}")
+            .ToHashSet(StringComparer.Ordinal);
+        return [.. modules
+            .SelectMany(module => ModuleAssemblies.Of(module, "Application").GetExportedTypes())
+            .Where(type => type is { IsClass: true, IsAbstract: false } && type.Name.EndsWith("Consumer", StringComparison.Ordinal))
+            .SelectMany(type => type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly))
+            .Where(method => HandlerMethodNames.Contains(method.Name) && method.GetParameters().Length > 0)
+            .Select(method => method.GetParameters()[0].ParameterType)
+            .Where(message => message.Namespace is { } name && contracts.Contains(name))];
+    }
+
+    /// <summary>The module's name as its assemblies carry it: <c>Organisation</c> of <c>….Modules.Organisation.Api</c>.</summary>
+    private static string ModuleNameOf(IModule module)
+    {
+        var segments = module.GetType().Assembly.GetName().Name!.Split('.');
+        return segments[^2];
     }
 }
