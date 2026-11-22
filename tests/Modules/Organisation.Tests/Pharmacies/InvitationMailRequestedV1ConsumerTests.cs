@@ -102,6 +102,19 @@ public partial class InvitationMailRequestedV1ConsumerTests
         await mails.DidNotReceive().SendAsync(Arg.Any<OutgoingMail>(), Arg.Any<CancellationToken>());
     }
 
+    [Fact]
+    public async Task An_invitation_revoked_after_the_links_commit_and_before_its_send_is_not_mailed()
+    {
+        var (pharmacy, membership) = Invited();
+        store.OnCommit(() => RevokedByAnotherWriter(pharmacy, membership));
+
+        await Consumer().HandleAsync(new InvitationMailRequestedV1(membership.Value, pharmacy.Id.Value), TestContext.Current.CancellationToken);
+
+        store.Commits.ShouldBe(1);
+        store.Stored.Single(stored => stored.Id == pharmacy.Id).Membership(membership).Status.ShouldBe(MembershipStatus.Revoked);
+        sent.ShouldBeEmpty("the invitation was revoked after the link's commit and before the send, yet its invitee was mailed a dead link");
+    }
+
     [Theory]
     [InlineData("revoked")]
     [InlineData("unknown membership")]
@@ -167,6 +180,30 @@ public partial class InvitationMailRequestedV1ConsumerTests
     {
         pharmacy.RevokeInvitation(membership).IsSuccess.ShouldBeTrue();
         return new InvitationMailRequestedV1(membership.Value, pharmacy.Id.Value);
+    }
+
+    /// <summary>
+    /// What a manager's revoke leaves in the store once it commits between the consumer's commit and its send: the
+    /// pharmacy as another writer loaded and saved it, a separate instance, so the consumer's own copy stays stale and
+    /// only a read from the store sees the revoke.
+    /// </summary>
+    private void RevokedByAnotherWriter(Pharmacy pharmacy, MembershipId membership)
+    {
+        var founder = pharmacy.Membership(TestPharmacies.FounderOf(pharmacy));
+        var revoked = Pharmacy.Register(
+            pharmacy.Id,
+            pharmacy.Name,
+            founder.Id,
+            Owner,
+            DisplayName.From("Olaf Owner"),
+            founder.Email,
+            JobFunction.Pharmacist,
+            TestPharmacies.RegisteredAt);
+        revoked.Invite(membership, Anna, JobFunction.Pta, MembershipRole.Employee, TestPharmacies.RegisteredAt).IsSuccess.ShouldBeTrue();
+        revoked.RevokeInvitation(membership).IsSuccess.ShouldBeTrue();
+        revoked.ClearDomainEvents();
+        store.Stored[store.Stored.IndexOf(pharmacy)] = revoked;
+        pharmacy.Membership(membership).Status.ShouldBe(MembershipStatus.Invited, "the consumer's own copy must stay as it loaded it");
     }
 
     private static FrontendLinks Links() => new(new ConfigurationBuilder()
