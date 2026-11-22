@@ -9,13 +9,6 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// </summary>
 internal static class EditorialDatabase
 {
-    private const string BlockedOnCourseVersions =
-        """
-        SELECT count(*) FROM pg_stat_activity
-        WHERE wait_event_type = 'Lock' AND datname = current_database() AND pid <> pg_backend_pid()
-          AND query ILIKE '%course_version%'
-        """;
-
     // Every backend that waits for the gate's backend, directly or behind another that waits for it: a second request
     // that waits for a row behind the first is blocked by the first, not by the gate.
     private const string BlockedBehindGate =
@@ -53,8 +46,9 @@ internal static class EditorialDatabase
 
     /// <summary>
     /// Opens a transaction that holds the version's row alone, FOR NO KEY UPDATE: a request writes the rows beneath it,
-    /// whose keys to the version may still check the row (FOR KEY SHARE), and then waits to update the version. Of
-    /// requests that wait, the one that waited first updates the version first.
+    /// whose keys to the version may still check the row (FOR KEY SHARE), and then waits to update the version. Which of
+    /// the requests that wait updates the version first once the gate ends is not promised: PostgreSQL does not serve
+    /// its lock queue strictly in order, so a test that takes this gate accepts either order.
     /// </summary>
     public static Task<VersionLock> LockVersionRowAsync(string connectionString, Guid id, CancellationToken cancellationToken) =>
         LockAsync(connectionString, id, "FOR NO KEY UPDATE", [], cancellationToken);
@@ -113,21 +107,15 @@ internal static class EditorialDatabase
     }
 
     /// <summary>
-    /// Polls the editorial database until the given number of statements on course versions wait for a lock, and
-    /// fails the test when they do not within 30 seconds. It counts every test's statements: prefer the overload that
-    /// counts only those behind a gate.
-    /// </summary>
-    public static Task WaitUntilBlockedAsync(string connectionString, int expected, CancellationToken cancellationToken) =>
-        WaitUntilAsync(connectionString, BlockedOnCourseVersions, gate: null, expected, cancellationToken);
-
-    /// <summary>
     /// Polls the editorial database until the given number of backends wait for the gate, directly or behind each
-    /// other, and fails the test when they do not within 30 seconds. Other tests' requests never wait for this gate.
+    /// other, and fails the test when they do not within 30 seconds. It counts every backend behind the gate, whichever
+    /// test sent it: a gate that locks a whole table holds every request that touches that table, so a test class whose
+    /// requests touch it must be in <see cref="EditorialDrafts"/>.
     /// </summary>
     public static Task WaitUntilBlockedAsync(string connectionString, VersionLock gate, int expected, CancellationToken cancellationToken)
     {
         Ensure.That(gate).IsNotNull();
-        return WaitUntilAsync(connectionString, BlockedBehindGate, gate, expected, cancellationToken);
+        return WaitUntilAsync(connectionString, gate, expected, cancellationToken);
     }
 
     /// <summary>The deadlocks PostgreSQL has detected in the editorial database since its statistics were reset.</summary>
@@ -137,6 +125,31 @@ internal static class EditorialDatabase
         await connection.OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand("SELECT deadlocks FROM pg_stat_database WHERE datname = current_database()", connection);
         return (long)(await command.ExecuteScalarAsync(cancellationToken) ?? 0L);
+    }
+
+    /// <summary>
+    /// The editorial database's deadlock count once it has settled: the same over two seconds. A backend reports a
+    /// deadlock when it next goes idle, so a count read straight after another round or test may still rise for a
+    /// deadlock that happened before this round; read it settled before a round whose deadlock is to be counted.
+    /// </summary>
+    public static async Task<long> SettledDeadlocksAsync(string connectionString, CancellationToken cancellationToken)
+    {
+        var started = TimeProvider.System.GetTimestamp();
+        var deadlocks = await DeadlocksAsync(connectionString, cancellationToken);
+        var stableSince = TimeProvider.System.GetTimestamp();
+        while (TimeProvider.System.GetElapsedTime(stableSince) < TimeSpan.FromSeconds(2))
+        {
+            TimeProvider.System.GetElapsedTime(started).ShouldBeLessThan(TimeSpan.FromSeconds(30), "the editorial database's deadlock count never settled");
+            await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken);
+            var now = await DeadlocksAsync(connectionString, cancellationToken);
+            if (now != deadlocks)
+            {
+                deadlocks = now;
+                stableSince = TimeProvider.System.GetTimestamp();
+            }
+        }
+
+        return deadlocks;
     }
 
     /// <summary>
@@ -200,17 +213,14 @@ internal static class EditorialDatabase
         }
     }
 
-    private static async Task WaitUntilAsync(string connectionString, string sql, VersionLock? gate, int expected, CancellationToken cancellationToken)
+    private static async Task WaitUntilAsync(string connectionString, VersionLock gate, int expected, CancellationToken cancellationToken)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(30));
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(sql, connection);
-        if (gate is not null)
-        {
-            command.Parameters.AddWithValue("gate", gate.ProcessId);
-        }
+        await using var command = new NpgsqlCommand(BlockedBehindGate, connection);
+        command.Parameters.AddWithValue("gate", gate.ProcessId);
 
         var blocked = 0L;
         while (blocked < expected)

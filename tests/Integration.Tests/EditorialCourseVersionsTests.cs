@@ -446,7 +446,7 @@ public class EditorialCourseVersionsTests(AspireFixture aspire)
                 first.StatusCode.ShouldBe(HttpStatusCode.OK);
             }
 
-            var deadlocksBefore = await DeadlocksAsync(connectionString, cancellationToken);
+            var deadlocksBefore = await SettledDeadlocksAsync(connectionString, cancellationToken);
             HttpResponseMessage[] responses;
             await using (var gate = await LockChaptersAsync(connectionString, [c2], cancellationToken))
             {

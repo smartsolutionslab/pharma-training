@@ -144,7 +144,7 @@ public class EditorialQuestionRacesTests(AspireFixture aspire)
             var id = await CreateAsync(client, cancellationToken);
             var chapter = await AddChapterAsync(client, id, cancellationToken);
 
-            var deadlocksBefore = await EditorialDatabase.DeadlocksAsync(connectionString, cancellationToken);
+            var deadlocksBefore = await EditorialDatabase.SettledDeadlocksAsync(connectionString, cancellationToken);
             Task<HttpResponseMessage> added;
             Task<HttpResponseMessage> removed;
             await using (var gate = await EditorialDatabase.LockAnswerOptionsAsync(connectionString, cancellationToken))
@@ -162,6 +162,52 @@ public class EditorialQuestionRacesTests(AspireFixture aspire)
             if (await OutcomeAsync(removal, addition, HttpStatusCode.OK, HttpStatusCode.Created, [], cancellationToken) is null)
             {
                 wrong.Add($"{described}; expected one success and the other 409 editorial.course-version-changed ({await CodesAsync(removal, addition, cancellationToken)}).");
+            }
+
+            await EditorialDatabase.ShouldHaveDeadlockedSinceAsync(connectionString, deadlocksBefore, cancellationToken);
+            TestContext.Current.TestOutputHelper?.WriteLine($"{described}; deadlocks {deadlocksBefore} -> {await EditorialDatabase.DeadlocksAsync(connectionString, cancellationToken)}.");
+        }
+
+        wrong.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task A_question_added_to_a_chapter_whose_removal_deadlocks_with_it_at_commit_is_told_the_version_changed_never_a_server_error()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var connectionString = await EditorialDatabase.ConnectionStringAsync(aspire, cancellationToken);
+        List<string> wrong = [];
+
+        // The same gate as above, held past deadlock_timeout (1 s) once the removal waits. PostgreSQL checks a lock wait
+        // for a deadlock once, deadlock_timeout after it starts: the removal's check runs while the addition still waits
+        // for the gate, finds no cycle and is not repeated. Once the gate rolls back, the addition closes the cycle at
+        // COMMIT (its deferred question->chapter key check waits for the deleted chapter) and is the one ended, every
+        // round. The removal then updates the version and commits; the addition lost the race on the version.
+        for (var round = 1; round <= DeadlockRounds; round++)
+        {
+            var id = await CreateAsync(client, cancellationToken);
+            var chapter = await AddChapterAsync(client, id, cancellationToken);
+
+            var deadlocksBefore = await EditorialDatabase.SettledDeadlocksAsync(connectionString, cancellationToken);
+            Task<HttpResponseMessage> added;
+            Task<HttpResponseMessage> removed;
+            await using (var gate = await EditorialDatabase.LockAnswerOptionsAsync(connectionString, cancellationToken))
+            {
+                added = client.PostAsJsonAsync(Questions(id), SingleChoice(chapter), cancellationToken);
+                await EditorialDatabase.WaitUntilBlockedAsync(connectionString, gate, 1, cancellationToken);
+                removed = client.DeleteAsync(Chapter(id, chapter), cancellationToken);
+                await EditorialDatabase.WaitUntilBlockedAsync(connectionString, gate, 2, cancellationToken);
+                await Task.Delay(TimeSpan.FromSeconds(1.5), cancellationToken);
+                await gate.RollbackAsync(cancellationToken);
+            }
+
+            using var removal = await removed;
+            using var addition = await added;
+            var described = $"round {round}: DELETE chapter answered {(int)removal.StatusCode}, POST question answered {(int)addition.StatusCode}";
+            if (removal.StatusCode != HttpStatusCode.OK || !await IsChangedAsync(addition, [], cancellationToken))
+            {
+                wrong.Add($"{described}; expected 200 for the removal and 409 editorial.course-version-changed for the addition ({await CodesAsync(removal, addition, cancellationToken)}).");
             }
 
             await EditorialDatabase.ShouldHaveDeadlockedSinceAsync(connectionString, deadlocksBefore, cancellationToken);
