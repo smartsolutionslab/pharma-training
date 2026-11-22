@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
+using Aspire.Hosting.Testing;
+using Npgsql;
 using static SmartSolutionsLab.PharmaTraining.Integration.Tests.EditorialDatabase;
 using static SmartSolutionsLab.PharmaTraining.Integration.Tests.EditorialWorkflow;
 
@@ -166,6 +168,63 @@ public class EditorialWorkflowTests(AspireFixture aspire)
         published.StatusCode.ShouldBe(HttpStatusCode.OK, await published.Content.ReadAsStringAsync(cancellationToken));
     }
 
+    [Fact]
+    public async Task An_editor_retires_a_published_version_and_the_catalogue_hears_of_it()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var draft = await PublishedAsync(client, cancellationToken);
+
+        using var retired = await StepAsync(client, draft.Id, "retire", cancellationToken);
+
+        retired.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await ReadAsync(client, draft.Id, cancellationToken)).Status.ShouldBe("Retired");
+        await WaitUntilCatalogHoldsRetirementAsync(draft.Id, draft.CourseId, cancellationToken);
+    }
+
+    [Fact]
+    public async Task A_draft_is_not_retired()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var draft = await ReadyToSubmitAsync(client, cancellationToken);
+
+        using var refused = await StepAsync(client, draft.Id, "retire", cancellationToken);
+
+        refused.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await CodeOfAsync(refused, cancellationToken)).ShouldBe("editorial.not-published");
+        (await ReadAsync(client, draft.Id, cancellationToken)).Status.ShouldBe("Draft");
+    }
+
+    [Fact]
+    public async Task A_superseded_version_stays_retirable()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var (first, next) = await SupersededAsync(client, cancellationToken);
+
+        using var retired = await StepAsync(client, first.Id, "retire", cancellationToken);
+
+        retired.StatusCode.ShouldBe(HttpStatusCode.OK, await retired.Content.ReadAsStringAsync(cancellationToken));
+        (await ReadAsync(client, first.Id, cancellationToken)).Status.ShouldBe("Retired");
+        (await ContentOfAsync(client, first.Id, cancellationToken)).ShouldBe(first.Content);
+        (await ReadAsync(client, next.Id, cancellationToken)).Status.ShouldBe("Published");
+    }
+
+    [Theory]
+    [InlineData("publish")]
+    [InlineData("retire")]
+    public async Task Publish_and_retire_of_the_empty_guid_are_not_found(string step)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+
+        using var response = await StepAsync(client, Guid.Empty, step, cancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        (await CodeOfAsync(response, cancellationToken)).ShouldBe("editorial.course-version-not-found");
+    }
+
     /// <summary>
     /// Publishes course A's first version, then makes course B's submitted version A's second (until #20 drafts one
     /// through the API) and publishes it. Answers the first version with its content as read before, and the second.
@@ -183,4 +242,30 @@ public class EditorialWorkflowTests(AspireFixture aspire)
     }
 
     private sealed record Published(Guid Id, string Content);
+
+    /// <summary>
+    /// Polls Catalog's database until it holds the version's retirement, which only <c>CourseVersionRetiredV1</c> from
+    /// Editorial puts there, and fails the test when it does not within 30 seconds.
+    /// </summary>
+    private async Task WaitUntilCatalogHoldsRetirementAsync(Guid versionId, Guid courseId, CancellationToken cancellationToken)
+    {
+        var connectionString = await aspire.App.GetConnectionStringAsync("catalog-database", cancellationToken)
+            ?? throw new InvalidOperationException("Catalog's database has no connection string.");
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        var started = TimeProvider.System.GetTimestamp();
+        while (true)
+        {
+            await using var command = new NpgsqlCommand("select course_id from catalog.course_version_retirements where course_version_id = @id", connection);
+            command.Parameters.AddWithValue("id", versionId);
+            if (await command.ExecuteScalarAsync(cancellationToken) is Guid retiredCourse)
+            {
+                retiredCourse.ShouldBe(courseId);
+                return;
+            }
+
+            TimeProvider.System.GetElapsedTime(started).ShouldBeLessThan(TimeSpan.FromSeconds(30), $"Catalog never heard that version {versionId} was retired.");
+            await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken);
+        }
+    }
 }
