@@ -37,6 +37,12 @@ let lists: Record<Status, EditorialCourseVersionSummaryDto[]>;
 let totals: Partial<Record<Status, number>>;
 let listing: (status: string | null) => Promise<Response>;
 
+/** The new course's first version, as POST /editorial/courses answers it: 201 with the version's id. */
+const started = '0198c1a0-0000-7000-8000-0000000000c9';
+const created = async () =>
+  Response.json(started, { status: 201, headers: { Location: `/editorial/course-versions/${started}` } });
+let creation: () => Promise<Response>;
+
 const listed = async (status: string | null) => {
   const items = lists[status as Status] ?? [];
   return Response.json({ items, totalCount: totals[status as Status] ?? items.length, page: 1, pageSize: 20 });
@@ -46,8 +52,12 @@ beforeEach(() => {
   lists = { Draft: [hygiene], InReview: [labelling], Published: [] };
   totals = {};
   listing = listed;
+  creation = created;
   host.mockImplementation(async (input, init) => {
     const url = new URL(String(input), 'http://localhost');
+    if (init?.method === 'POST' && url.pathname === '/api/editorial/courses') {
+      return creation();
+    }
     if ((init?.method ?? 'GET') === 'GET' && url.pathname === '/api/editorial/course-versions') {
       return listing(url.searchParams.get('status'));
     }
@@ -268,4 +278,100 @@ test('switched to English, the inbox, its tabs and its empty state speak English
       .map((each) => each.textContent.trim()),
   ).toEqual(['Draft', 'In review', 'Published']);
   expect(screen.getByText('No published versions.')).toBeVisible();
+});
+
+// Starting a course (T4): "Neue Schulung" opens a dialog with the form; the host's 201 is the new version's id, and the
+// editor lands on its page.
+
+/** What the page posted, as the host received it. */
+const posted = () =>
+  host.mock.calls
+    .filter(([, init]) => init?.method === 'POST')
+    .map(([input, init]) => ({ url: String(input), body: JSON.parse(String(init?.body)) as unknown }));
+
+/** Opens the dialog from the section's button and enters a title (pasted, so a long one is quick). */
+async function startCourse(user: ReturnType<typeof userEvent.setup>, title: string) {
+  await screen.findByRole('link', { name: hygiene.title });
+  await user.click(screen.getByRole('button', { name: t('editorial.course.new') }));
+  const dialog = within(await screen.findByRole('dialog', { name: t('editorial.course.form.label') }));
+  await user.click(dialog.getByRole('textbox', { name: t('editorial.course.form.title') }));
+  await user.paste(title);
+  await user.click(dialog.getByRole('button', { name: t('editorial.course.form.submit') }));
+  return dialog;
+}
+
+test('"Neue Schulung" opens a dialog that says what starting a course means, and Abbrechen closes it', async () => {
+  const user = userEvent.setup();
+  await renderAt();
+  await screen.findByRole('link', { name: hygiene.title });
+
+  await user.click(screen.getByRole('button', { name: 'Neue Schulung' }));
+
+  const dialog = await screen.findByRole('dialog', { name: 'Neue Schulung anlegen' });
+  expect(dialog).toHaveAccessibleDescription('Die Schulung beginnt mit Version 1 als Entwurf.');
+  expect(within(dialog).getByRole('textbox', { name: 'Titel' })).toBeInTheDocument();
+  expect(within(dialog).getByRole('button', { name: 'Anlegen' })).toBeInTheDocument();
+  await user.click(within(dialog).getByRole('button', { name: 'Abbrechen' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  expect(posted()).toEqual([]);
+});
+
+test('a course started from the inbox is posted, reported, and its first version opens', async () => {
+  const user = userEvent.setup();
+  const { router } = await renderAt();
+
+  await startCourse(user, '  Hygiene II  ');
+
+  await waitFor(() => expect(router.currentRoute.value.path).toBe(`/editorial/versions/${started}`));
+  expect(posted()).toEqual([{ url: '/api/editorial/courses', body: { title: 'Hygiene II' } }]);
+  expect(notify.success).toHaveBeenCalledWith(t('editorial.course.created', { title: 'Hygiene II' }));
+  expect(notify.success).toHaveBeenCalledWith('Die Schulung Hygiene II wurde angelegt.');
+  expect(notify.failure).not.toHaveBeenCalled();
+  // The inbox is asked again: the new draft is in it.
+  await waitFor(() => expect(listsAsked().length).toBeGreaterThan(1));
+});
+
+// A module's own words are shown as the host sent them (ApiError.serverMessage); the catalog speaks when it sent none.
+test.each([
+  [
+    400,
+    () =>
+      new Response(
+        JSON.stringify({
+          title: 'Bad Request',
+          status: 400,
+          detail: 'Der Titel ist ungültig.',
+          code: 'editorial.invalid-course-title',
+        }),
+        { status: 400, headers: { 'Content-Type': 'application/problem+json' } },
+      ),
+    () => 'Der Titel ist ungültig.',
+  ],
+  [500, () => new Response('', { status: 500 }), () => 'Die Schulung Hygiene II konnte nicht angelegt werden.'],
+])(
+  'a course the host answers with %i is reported, and the dialog stays open with the title entered',
+  async (_status, answer, message) => {
+    const user = userEvent.setup();
+    creation = async () => answer();
+    const { router } = await renderAt();
+
+    const dialog = await startCourse(user, 'Hygiene II');
+
+    await waitFor(() => expect(notify.failure).toHaveBeenCalledWith(message()));
+    expect(notify.failure).toHaveBeenCalledOnce();
+    expect(notify.success).not.toHaveBeenCalled();
+    expect(router.currentRoute.value.path).toBe('/editorial');
+    expect(screen.getByRole('dialog', { name: t('editorial.course.form.label') })).toBeInTheDocument();
+    expect(dialog.getByRole('textbox', { name: t('editorial.course.form.title') })).toHaveValue('Hygiene II');
+  },
+);
+
+test('a blank title is refused in the dialog before anything is sent', async () => {
+  const user = userEvent.setup();
+  await renderAt();
+
+  const dialog = await startCourse(user, '   ');
+
+  expect(await dialog.findByRole('alert')).toHaveTextContent('Geben Sie der Schulung einen Titel.');
+  expect(posted()).toEqual([]);
 });
