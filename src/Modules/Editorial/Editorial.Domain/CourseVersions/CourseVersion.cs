@@ -82,7 +82,7 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
 
         if (Status != CourseVersionStatus.Published)
         {
-            return Refused(CourseVersionErrors.NotPublished(Id, Status));
+            return Failure(CourseVersionErrors.NotPublished(Id, Status));
         }
 
         var next = new CourseVersion(id, Course, Number.Next(), Title, Blueprint, editor);
@@ -105,7 +105,7 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
     {
         if (!IsDraft)
         {
-            return Refused(CourseVersionErrors.NotADraft(Id, Status));
+            return Failure(CourseVersionErrors.NotADraft(Id, Status));
         }
 
         return Success(Unit.Value);
@@ -117,7 +117,7 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
 
         if (!IsDraft)
         {
-            return Refused(CourseVersionErrors.NotADraft(Id, Status));
+            return Failure(CourseVersionErrors.NotADraft(Id, Status));
         }
 
         chapters.Add(chapter);
@@ -131,7 +131,7 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
 
         if (!IsDraft)
         {
-            return Refused(CourseVersionErrors.NotADraft(Id, Status));
+            return Failure(CourseVersionErrors.NotADraft(Id, Status));
         }
 
         if (chapters.SingleOrDefault(chapter => chapter.Id == replacement.Id) is not { } stored)
@@ -153,7 +153,7 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
     {
         if (!IsDraft)
         {
-            return Refused(CourseVersionErrors.NotADraft(Id, Status));
+            return Failure(CourseVersionErrors.NotADraft(Id, Status));
         }
 
         if (chapters.RemoveAll(existing => existing.Id == chapter) == 0)
@@ -171,7 +171,7 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
 
         if (!IsDraft)
         {
-            return Refused(CourseVersionErrors.NotADraft(Id, Status));
+            return Failure(CourseVersionErrors.NotADraft(Id, Status));
         }
 
         if (order.Count != chapters.Count || !order.ToHashSet().SetEquals(chapters.Select(chapter => chapter.Id)))
@@ -191,7 +191,7 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
 
         if (!IsDraft)
         {
-            return Refused(CourseVersionErrors.NotADraft(Id, Status));
+            return Failure(CourseVersionErrors.NotADraft(Id, Status));
         }
 
         Title = title;
@@ -206,7 +206,7 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
 
         if (!IsDraft)
         {
-            return Refused(CourseVersionErrors.NotADraft(Id, Status));
+            return Failure(CourseVersionErrors.NotADraft(Id, Status));
         }
 
         Blueprint = blueprint;
@@ -224,7 +224,7 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
 
         if (!IsDraft)
         {
-            return Refused(CourseVersionErrors.NotADraft(Id, Status));
+            return Failure(CourseVersionErrors.NotADraft(Id, Status));
         }
 
         if (drafted.FirstOrDefault(draft => chapters.All(chapter => chapter.Id != draft.Chapter)) is { } stray)
@@ -234,7 +234,7 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
 
         if (questions.Count(question => question.Review != ReviewState.Unreviewed) + drafted.Count > QuestionCount.Maximum)
         {
-            return Refused(CourseVersionErrors.TooManyQuestions(Id));
+            return Failure(CourseVersionErrors.TooManyQuestions(Id));
         }
 
         List<Question> added = [.. drafted.Select(draft => Question.From(newQuestionId(), draft, Provenance.AiDrafted, newOptionId))];
@@ -252,7 +252,7 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
 
         if (!IsDraft)
         {
-            return Refused(CourseVersionErrors.NotADraft(Id, Status));
+            return Failure(CourseVersionErrors.NotADraft(Id, Status));
         }
 
         if (chapters.All(chapter => chapter.Id != draft.Chapter))
@@ -262,7 +262,7 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
 
         if (questions.Count >= QuestionCount.Maximum)
         {
-            return Refused(CourseVersionErrors.TooManyQuestions(Id));
+            return Failure(CourseVersionErrors.TooManyQuestions(Id));
         }
 
         questions.Add(Question.From(id, draft, Provenance.Human, newOptionId));
@@ -275,7 +275,7 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
 
         if (!IsDraft)
         {
-            return Refused(CourseVersionErrors.NotADraft(Id, Status));
+            return Failure(CourseVersionErrors.NotADraft(Id, Status));
         }
 
         if (questions.SingleOrDefault(question => question.Id == id) is not { } question)
@@ -297,7 +297,7 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
     {
         if (!IsDraft)
         {
-            return Refused(CourseVersionErrors.NotADraft(Id, Status));
+            return Failure(CourseVersionErrors.NotADraft(Id, Status));
         }
 
         if (questions.RemoveAll(question => question.Id == id) == 0)
@@ -313,7 +313,7 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
     {
         if (Status is not (CourseVersionStatus.Draft or CourseVersionStatus.InReview))
         {
-            return Refused(CourseVersionErrors.NotADraft(Id, Status));
+            return Failure(CourseVersionErrors.NotADraft(Id, Status));
         }
 
         if (questions.SingleOrDefault(question => question.Id == id) is not { } question)
@@ -326,9 +326,10 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
             return Failure(CourseVersionErrors.QuestionAlreadyApproved(Id, id));
         }
 
-        if (question.Defect(id) is { HasValue: true } defect)
+        // Every case of the workflow union is a DomainError, so the pattern always matches a defect.
+        if (question.Defect(id) is { HasValue: true } defect && defect.Value.Value is DomainError refusal)
         {
-            return Refused(defect.Value);
+            return Failure(refusal);
         }
 
         question.Approve(editor, now);
@@ -341,22 +342,22 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
     {
         if (!IsDraft)
         {
-            return Failure(CourseVersionErrors.NotADraft(Id, Status));
+            return Failure(CourseVersionErrors.Workflow.NotADraft(Id, Status));
         }
 
         if (chapters.Count == 0)
         {
-            return Failure(CourseVersionErrors.NoChapters(Id));
+            return Failure(CourseVersionErrors.Workflow.NoChapters(Id));
         }
 
         if (questions.Count > QuestionCount.Maximum)
         {
-            return Failure(CourseVersionErrors.TooManyQuestions(Id));
+            return Failure(CourseVersionErrors.Workflow.TooManyQuestions(Id));
         }
 
         if (questions.Count != Blueprint.Questions.Value)
         {
-            return Failure(CourseVersionErrors.TestIncomplete(Id, Blueprint.Questions, QuestionCount.From(questions.Count)));
+            return Failure(CourseVersionErrors.Workflow.TestIncomplete(Id, Blueprint.Questions, QuestionCount.From(questions.Count)));
         }
 
         SubmittedBy = editor;
@@ -370,7 +371,7 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
     {
         if (Status != CourseVersionStatus.InReview)
         {
-            return Failure(CourseVersionErrors.NotInReview(Id, Status));
+            return Failure(CourseVersionErrors.Workflow.NotInReview(Id, Status));
         }
 
         Status = CourseVersionStatus.Draft;
@@ -389,33 +390,33 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
     {
         if (Status != CourseVersionStatus.InReview)
         {
-            return Failure(CourseVersionErrors.NotInReview(Id, Status));
+            return Failure(CourseVersionErrors.Workflow.NotInReview(Id, Status));
         }
 
         // Checked here too, not left to SubmitForReview: a version loaded in review may hold rows its rules never took.
         if (questions.Count > QuestionCount.Maximum)
         {
-            return Failure(CourseVersionErrors.TooManyQuestions(Id));
+            return Failure(CourseVersionErrors.Workflow.TooManyQuestions(Id));
         }
 
         if (questions.Count != Blueprint.Questions.Value)
         {
-            return Failure(CourseVersionErrors.TestIncomplete(Id, Blueprint.Questions, QuestionCount.From(questions.Count)));
+            return Failure(CourseVersionErrors.Workflow.TestIncomplete(Id, Blueprint.Questions, QuestionCount.From(questions.Count)));
         }
 
         if (policy == ReviewPolicy.FourEyes && editor == SubmittedBy)
         {
-            return Failure(CourseVersionErrors.FourEyesRequired(Id));
+            return Failure(CourseVersionErrors.Workflow.FourEyesRequired(Id));
         }
 
         if (policy == ReviewPolicy.FourEyes && questions.Any(question => question.ReviewedBy == editor))
         {
-            return Failure(CourseVersionErrors.PublisherApprovedQuestions(Id));
+            return Failure(CourseVersionErrors.Workflow.PublisherApprovedQuestions(Id));
         }
 
         if (questions.FirstOrDefault(question => question.Review != ReviewState.Approved) is { } unreviewed)
         {
-            return Failure(CourseVersionErrors.QuestionNotApproved(Id, unreviewed.Id));
+            return Failure(CourseVersionErrors.Workflow.QuestionNotApproved(Id, unreviewed.Id));
         }
 
         foreach (var question in questions)
@@ -447,7 +448,7 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
     {
         if (Status is not (CourseVersionStatus.Published or CourseVersionStatus.Superseded))
         {
-            return Failure(CourseVersionErrors.NotPublished(Id, Status));
+            return Failure(CourseVersionErrors.Workflow.NotPublished(Id, Status));
         }
 
         Status = CourseVersionStatus.Retired;
@@ -458,8 +459,8 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
     }
 
     /// <summary>
-    /// Appends questions as EF Core loads them, past every rule: rows written before a rule existed, or by hand. Tests
-    /// stand in for such a load with it.
+    /// Appends questions past every rule. No route and no load calls it: it is an internal seam that lets tests reach a
+    /// version no route can produce, such as one holding more questions than the limit or a question that breaks its shape.
     /// </summary>
     internal void LoadQuestions(IEnumerable<Question> loaded)
     {
@@ -468,6 +469,4 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         questions.AddRange(loaded);
     }
 
-    /// <summary>A refusal as the <see cref="DomainError"/> a method outside the workflow returns, a workflow error included.</summary>
-    private static FailureOutcome<DomainError> Refused(DomainError error) => Failure(error);
 }

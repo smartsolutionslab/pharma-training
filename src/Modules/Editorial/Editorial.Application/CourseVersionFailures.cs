@@ -1,4 +1,5 @@
 using System.Net;
+using System.Runtime.CompilerServices;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.TestDrafting;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 
@@ -76,26 +77,42 @@ public static class CourseVersionFailures
     /// </summary>
     public static ApiError From(CourseVersionWorkflowError error) => error switch
     {
-        NotADraft or NotInReview or NotPublished or NoChapters or TooManyQuestions or TestIncomplete or QuestionNotApproved
-            => ApiError.From(error, HttpStatusCode.Conflict),
-        FourEyesRequired or PublisherApprovedQuestions => ApiError.From(error, HttpStatusCode.Forbidden),
-        TooFewOptions or SingleChoiceNeedsOneCorrect or MultipleChoiceNeedsACorrect => ApiError.From(error, HttpStatusCode.UnprocessableEntity),
+        NotADraft refusal => ApiError.From(refusal, HttpStatusCode.Conflict),
+        NotInReview refusal => ApiError.From(refusal, HttpStatusCode.Conflict),
+        NotPublished refusal => ApiError.From(refusal, HttpStatusCode.Conflict),
+        NoChapters refusal => ApiError.From(refusal, HttpStatusCode.Conflict),
+        TooManyQuestions refusal => ApiError.From(refusal, HttpStatusCode.Conflict),
+        TestIncomplete refusal => ApiError.From(refusal, HttpStatusCode.Conflict),
+        QuestionNotApproved refusal => ApiError.From(refusal, HttpStatusCode.Conflict),
+        FourEyesRequired refusal => ApiError.From(refusal, HttpStatusCode.Forbidden),
+        PublisherApprovedQuestions refusal => ApiError.From(refusal, HttpStatusCode.Forbidden),
+        TooFewOptions refusal => ApiError.From(refusal, HttpStatusCode.UnprocessableEntity),
+        SingleChoiceNeedsOneCorrect refusal => ApiError.From(refusal, HttpStatusCode.UnprocessableEntity),
+        MultipleChoiceNeedsACorrect refusal => ApiError.From(refusal, HttpStatusCode.UnprocessableEntity),
     };
 
     /// <summary>
-    /// A rule of the version, with its own code: a refusal of the workflow as <see cref="From(CourseVersionWorkflowError)"/>
-    /// maps it, a chapter or question it does not hold is not found, a blueprint with too few questions is a bad request,
-    /// anything else is a conflict with its state. <see cref="DomainError"/> is no closed union, so the last arm takes
-    /// the rules no arm names.
+    /// A rule of the version, with its own code: a chapter or question it does not hold is not found, a question whose
+    /// content breaks the rules of its shape cannot be processed until it is edited, a blueprint with too few questions
+    /// is a bad request, a publish under four eyes by the one who submitted the version or approved one of its questions
+    /// is forbidden to this caller, anything else is a conflict with its state. <see cref="DomainError"/> is no closed
+    /// union, so the last arm takes the rules no arm names.
     /// </summary>
+    /// <remarks>
+    /// A case of <see cref="CourseVersionWorkflowError"/> converts to that union as well as to its base, so a call with the
+    /// record itself would match both overloads; this one takes it, and answers it with the same status.
+    /// </remarks>
+    [OverloadResolutionPriority(1)]
     public static ApiError From(DomainError error) => error switch
     {
-        CourseVersionWorkflowError workflow => From(workflow),
         ChapterNotFound or QuestionNotFound => ApiError.From(error, HttpStatusCode.NotFound),
+        TooFewOptions or SingleChoiceNeedsOneCorrect or MultipleChoiceNeedsACorrect => ApiError.From(error, HttpStatusCode.UnprocessableEntity),
         TooFewQuestions => ApiError.From(error, HttpStatusCode.BadRequest),
+        FourEyesRequired or PublisherApprovedQuestions => ApiError.From(error, HttpStatusCode.Forbidden),
         // This arm documents the rule that these refusals are conflicts with the version's state; it does not enforce it,
         // since the discard arm below answers 409 for them all the same.
-        OrderDoesNotMatchChapters or QuestionAlreadyApproved => ApiError.From(error, HttpStatusCode.Conflict),
+        NotADraft or OrderDoesNotMatchChapters or TooManyQuestions or NotInReview or NotPublished or NoChapters or TestIncomplete
+            or QuestionNotApproved or QuestionAlreadyApproved => ApiError.From(error, HttpStatusCode.Conflict),
         _ => ApiError.From(error, HttpStatusCode.Conflict),
     };
 }

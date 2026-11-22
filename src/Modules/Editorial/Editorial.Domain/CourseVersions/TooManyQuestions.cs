@@ -2,4 +2,4 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersio
 
 /// <summary>A question, or an AI draft, that would take the version beyond <see cref="QuestionCount.Maximum"/> questions.</summary>
 public sealed record TooManyQuestions(CourseVersionId Version)
-    : CourseVersionWorkflowError("editorial.too-many-questions", $"A test has at most {QuestionCount.Maximum} questions.");
+    : DomainError("editorial.too-many-questions", $"A test has at most {QuestionCount.Maximum} questions.");

@@ -619,9 +619,10 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
             return Failure(new QuestionAlreadyApproved(Id, id));
         }
 
-        if (question.Defect(id) is { HasValue: true } defect)
+        // Every case of the workflow union is a DomainError, so the pattern always matches a defect.
+        if (question.Defect(id) is { HasValue: true } defect && defect.Value.Value is DomainError refusal)
         {
-            return Refused(defect.Value);
+            return Failure(refusal);
         }
 
         question.Approve(editor, now);
@@ -750,11 +751,8 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         return Success(Unit.Value);
     }
 
-    /// <summary>Appends questions as EF Core loads them, past every rule; tests stand in for such a load with it.</summary>
+    /// <summary>Appends questions past every rule: an internal seam for tests to reach a version no route can produce.</summary>
     internal void LoadQuestions(IEnumerable<Question> loaded) => questions.AddRange(loaded);
-
-    /// <summary>A refusal as the <see cref="DomainError"/> a method outside the workflow returns, a workflow error included.</summary>
-    private static FailureOutcome<DomainError> Refused(DomainError error) => Failure(error);
 }
 
 // ───────────────────────────── Domain events ─────────────────────────────
@@ -775,36 +773,21 @@ public sealed record SubmittedForReview(CourseVersionId Version, PersonId Submit
 public sealed record AiTestDraftApplied(CourseVersionId Version, QuestionCount Drafted) : IDomainEvent;
 
 // ───────────────────────────── Domain errors ─────────────────────────────
-// What a step of the workflow (SubmitForReview, ReturnToDraft, Publish, Retire) refuses is a closed union: each case
-// derives from CourseVersionWorkflowError, a DomainError marked [Union] whose IUnionMembers name the cases, so a switch
-// on it without a discard arm fails the build until a new case is mapped (CourseVersionFailures.From).
+// What a step of the workflow (SubmitForReview, ReturnToDraft, Publish, Retire) refuses is a closed union, declared
+// with the union keyword: only a listed record converts to it, it holds its case in Value, and a switch on it without
+// a discard arm fails the build until a new case is mapped (CourseVersionFailures.From). Each case is a DomainError
+// of its own, so the version's other methods return it too.
 
-[Union]
-public abstract record CourseVersionWorkflowError(string Code, string Message) : DomainError(Code, Message), CourseVersionWorkflowError.IUnionMembers
-{
-    public interface IUnionMembers
-    {
-        object? Value { get; }
-
-        static abstract CourseVersionWorkflowError Create(NotADraft refusal);
-        // … one Create per case: NotInReview, NotPublished, NoChapters, TooManyQuestions, TestIncomplete,
-        // QuestionNotApproved, FourEyesRequired, PublisherApprovedQuestions, TooFewOptions, SingleChoiceNeedsOneCorrect,
-        // MultipleChoiceNeedsACorrect.
-    }
-
-    object? IUnionMembers.Value => this;
-
-    static CourseVersionWorkflowError IUnionMembers.Create(NotADraft refusal) => refusal;
-}
+public union CourseVersionWorkflowError(NotADraft, NotInReview, NotPublished, NoChapters, TooManyQuestions, TestIncomplete, QuestionNotApproved, FourEyesRequired, PublisherApprovedQuestions, TooFewOptions, SingleChoiceNeedsOneCorrect, MultipleChoiceNeedsACorrect);
 
 public sealed record NotADraft(CourseVersionId Version, CourseVersionStatus Status)
-    : CourseVersionWorkflowError("editorial.not-a-draft", "Nur ein Entwurf kann bearbeitet werden.");
+    : DomainError("editorial.not-a-draft", "Nur ein Entwurf kann bearbeitet werden.");
 
 public sealed record NotInReview(CourseVersionId Version, CourseVersionStatus Status)
-    : CourseVersionWorkflowError("editorial.not-in-review", "Die Version ist nicht in Prüfung.");
+    : DomainError("editorial.not-in-review", "Die Version ist nicht in Prüfung.");
 
 public sealed record NotPublished(CourseVersionId Version, CourseVersionStatus Status)
-    : CourseVersionWorkflowError("editorial.not-published", "Die Version ist nicht veröffentlicht.");
+    : DomainError("editorial.not-published", "Die Version ist nicht veröffentlicht.");
 
 public sealed record ChapterNotFound(CourseVersionId Version, ChapterId Chapter)
     : DomainError("editorial.chapter-not-found", "Dieses Kapitel gibt es in der Version nicht.");
@@ -816,31 +799,31 @@ public sealed record QuestionNotFound(CourseVersionId Version, QuestionId Questi
     : DomainError("editorial.question-not-found", "Diese Frage gibt es in der Version nicht.");
 
 public sealed record NoChapters(CourseVersionId Version)
-    : CourseVersionWorkflowError("editorial.no-chapters", "Eine Schulung braucht mindestens ein Kapitel.");
+    : DomainError("editorial.no-chapters", "Eine Schulung braucht mindestens ein Kapitel.");
 
 public sealed record TestIncomplete(CourseVersionId Version, QuestionCount Expected, QuestionCount Actual)
-    : CourseVersionWorkflowError("editorial.test-incomplete", $"Der Test braucht {Expected.Value} Fragen.");
+    : DomainError("editorial.test-incomplete", $"Der Test braucht {Expected.Value} Fragen.");
 
 public sealed record QuestionNotApproved(CourseVersionId Version, QuestionId Question)
-    : CourseVersionWorkflowError("editorial.question-not-approved", "Jede Frage muss vor der Veröffentlichung freigegeben sein.");
+    : DomainError("editorial.question-not-approved", "Jede Frage muss vor der Veröffentlichung freigegeben sein.");
 
 public sealed record FourEyesRequired(CourseVersionId Version)
-    : CourseVersionWorkflowError("editorial.four-eyes", "Veröffentlichen muss eine andere Person als die, die eingereicht hat.");
+    : DomainError("editorial.four-eyes", "Veröffentlichen muss eine andere Person als die, die eingereicht hat.");
 
 public sealed record TooFewOptions(QuestionId Question)
-    : CourseVersionWorkflowError("editorial.too-few-options", "Eine Frage braucht mindestens zwei Antwortoptionen.");
+    : DomainError("editorial.too-few-options", "Eine Frage braucht mindestens zwei Antwortoptionen.");
 
 public sealed record SingleChoiceNeedsOneCorrect(QuestionId Question)
-    : CourseVersionWorkflowError("editorial.single-choice-one-correct", "Eine Single-Choice-Frage hat genau eine richtige Antwort.");
+    : DomainError("editorial.single-choice-one-correct", "Eine Single-Choice-Frage hat genau eine richtige Antwort.");
 
 public sealed record MultipleChoiceNeedsACorrect(QuestionId Question)
-    : CourseVersionWorkflowError("editorial.multiple-choice-a-correct", "Eine Multiple-Choice-Frage hat mindestens eine richtige Antwort.");
+    : DomainError("editorial.multiple-choice-a-correct", "Eine Multiple-Choice-Frage hat mindestens eine richtige Antwort.");
 
 public sealed record TooManyQuestions(CourseVersionId Version)
-    : CourseVersionWorkflowError("editorial.too-many-questions", $"A test has at most {QuestionCount.Maximum} questions.");
+    : DomainError("editorial.too-many-questions", $"A test has at most {QuestionCount.Maximum} questions.");
 
 public sealed record PublisherApprovedQuestions(CourseVersionId Version)
-    : CourseVersionWorkflowError("editorial.publisher-approved-questions", "Under four eyes, an editor who approved a question of this version cannot publish it.");
+    : DomainError("editorial.publisher-approved-questions", "Under four eyes, an editor who approved a question of this version cannot publish it.");
 
 public sealed record QuestionAlreadyApproved(CourseVersionId Version, QuestionId Question)
     : DomainError("editorial.question-already-approved", "This question is already approved; edit it to have it approved again.");
