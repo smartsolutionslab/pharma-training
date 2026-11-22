@@ -258,8 +258,45 @@ public class ReplaceFileChapterTests
         store.Commits.ShouldBe(0);
     }
 
+    [Fact]
+    public async Task A_file_a_chapter_copied_into_the_version_holds_is_in_use_without_asking_the_storage()
+    {
+        var (next, copied, file) = NextOfPublishedWithPdf();
+        var text = ChapterId.New();
+        next.AddChapter(TextChapter(text, "Flächendesinfektion", "Wischen.")).IsSuccess.ShouldBeTrue();
+        store.Stored.Add(next);
+
+        var replaced = await Handler().HandleAsync(Command(next.Id, text, ChapterKind.Pdf, file.Value), TestContext.Current.CancellationToken);
+
+        ShouldBeRefused(replaced.IsFailure ? replaced.Error : null, "editorial.file-in-use", HttpStatusCode.Conflict, "the copied chapter holds the file, which sits under the version it was copied from");
+        blobs.Lookups.ShouldBe(0, "a file the version already holds is in use whatever the storage would say");
+        blobs.StartReads.ShouldBe(0);
+        next.Chapters.Select(chapter => (chapter.Id, chapter.Kind)).ShouldBe([(copied, ChapterKind.Pdf), (text, ChapterKind.Text)]);
+        store.Commits.ShouldBe(0);
+    }
+
+    [Theory]
+    [InlineData(ChapterKind.Pdf, ".pdf")]
+    [InlineData(ChapterKind.Video, ".mp4")]
+    public async Task A_file_another_chapter_holds_is_in_use_even_when_the_storage_has_no_such_blob(ChapterKind kind, string extension)
+    {
+        var version = DraftWithChapter(out var text);
+        var holder = ChapterId.New();
+        var file = BlobReference.From(IssuedName(version.Id, extension));
+        version.AddChapter(FileChapter(holder, kind, file)).IsSuccess.ShouldBeTrue();
+        store.Stored.Add(version);
+
+        var replaced = await Handler().HandleAsync(Command(version.Id, text, kind, file.Value, Duration(kind)), TestContext.Current.CancellationToken);
+
+        ShouldBeRefused(replaced.IsFailure ? replaced.Error : null, "editorial.file-in-use", HttpStatusCode.Conflict, "another chapter of the version holds the file; the in-use check comes before the storage's");
+        blobs.Lookups.ShouldBe(0);
+        blobs.StartReads.ShouldBe(0);
+        version.Chapters.Select(chapter => (chapter.Id, chapter.Kind)).ShouldBe([(text, ChapterKind.Text), (holder, kind)]);
+        store.Commits.ShouldBe(0);
+    }
+
     /// <summary>The next draft of a published version whose one chapter is a PDF, named under the published version.</summary>
-    private static (CourseVersion Next, ChapterId Chapter, BlobReference File) NextOfPublishedWithPdf()
+    internal static (CourseVersion Next, ChapterId Chapter, BlobReference File) NextOfPublishedWithPdf()
     {
         var first = Draft();
         var chapter = ChapterId.New();

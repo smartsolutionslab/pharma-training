@@ -44,8 +44,7 @@ internal sealed class InMemoryStoredBlobs : IStoredBlobs
 
     /// <summary>
     /// The first <paramref name="count"/> bytes of the blob, or all of them when it is shorter: the ranged read the module
-    /// asks for to check what was uploaded rather than what the uploader declared. It is not on <see cref="IStoredBlobs"/>
-    /// yet; once the interface declares it, this implements it.
+    /// asks for to check what was uploaded rather than what the uploader declared.
     /// </summary>
     public Task<ReadOnlyMemory<byte>> ReadStartAsync(BlobName name, int count, CancellationToken cancellationToken)
     {

@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 
@@ -151,4 +152,41 @@ public class ChapterUploadsTests
         accepted.IsSuccess.ShouldBeTrue(accepted.IsFailure ? accepted.Error.Code : string.Empty);
         blobs.StartReads.ShouldBe(1, "what the uploader declared is not trusted: the module reads the blob's own leading bytes");
     }
+
+    [Theory]
+    [InlineData("qt  ", "a QuickTime movie is no mp4")]
+    [InlineData("heic", "a HEIC image is no mp4")]
+    [InlineData("avif", "an AVIF image is no mp4")]
+    [InlineData("3gp4", "a 3GP file is no mp4")]
+    public async Task A_video_whose_ftyp_box_names_a_major_brand_that_is_no_mp4_is_not_accepted(string brand, string because)
+    {
+        var blobs = new InMemoryStoredBlobs();
+        var file = AddFileChapterTests.IssuedName(Version, ".mp4");
+        blobs.Upload(file, "video/mp4", 1024, content: FileTypeBox(brand));
+
+        var accepted = await ChapterUploads.AcceptAsync(blobs, BlobReference.From(file), Version, ChapterKind.Video, TestContext.Current.CancellationToken);
+
+        AddFileChapterTests.ShouldBeRefused(accepted.IsFailure ? accepted.Error : null, "editorial.upload-not-accepted", HttpStatusCode.BadRequest, $"{because}: bytes 8 to 11 are the major brand, {brand}");
+    }
+
+    [Theory]
+    [InlineData("isom")]
+    [InlineData("iso2")]
+    [InlineData("mp41")]
+    [InlineData("mp42")]
+    [InlineData("avc1")]
+    [InlineData("dash")]
+    public async Task A_video_whose_ftyp_box_names_an_mp4_major_brand_is_accepted(string brand)
+    {
+        var blobs = new InMemoryStoredBlobs();
+        var file = AddFileChapterTests.IssuedName(Version, ".mp4");
+        blobs.Upload(file, "video/mp4", 1024, content: FileTypeBox(brand));
+
+        var accepted = await ChapterUploads.AcceptAsync(blobs, BlobReference.From(file), Version, ChapterKind.Video, TestContext.Current.CancellationToken);
+
+        accepted.IsSuccess.ShouldBeTrue(accepted.IsFailure ? $"{brand}: {accepted.Error.Code}" : string.Empty);
+    }
+
+    /// <summary>An ftyp box of 20 bytes: its size, its type, the major brand at bytes 8 to 11, a minor version, and the brand again as its one compatible brand.</summary>
+    private static byte[] FileTypeBox(string brand) => [0, 0, 0, 20, .. "ftyp"u8, .. Encoding.ASCII.GetBytes(brand), 0, 0, 2, 0, .. Encoding.ASCII.GetBytes(brand)];
 }
