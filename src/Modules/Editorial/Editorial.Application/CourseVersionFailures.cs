@@ -26,20 +26,19 @@ public static class CourseVersionFailures
 
     public static ApiError IdentityIncomplete() => new IdentityIncomplete();
 
-    // Red-test stubs for #15 (task A3): each answers NotYetImplemented until B4 and B5 give it its own record and code.
-    public static ApiError InvalidUploadKind() => new NotYetImplemented();
+    public static ApiError InvalidUploadKind() => new InvalidUploadKind();
 
-    public static ApiError InvalidChapterKind() => new NotYetImplemented();
+    public static ApiError InvalidChapterKind() => new InvalidChapterKind();
 
-    public static ApiError ChapterContentDoesNotMatchKind() => new NotYetImplemented();
+    public static ApiError ChapterContentDoesNotMatchKind() => new ChapterContentDoesNotMatchKind();
 
-    public static ApiError InvalidChapterFile() => new NotYetImplemented();
+    public static ApiError InvalidChapterFile() => new InvalidChapterFile();
 
-    public static ApiError InvalidVideoDuration() => new NotYetImplemented();
+    public static ApiError InvalidVideoDuration() => new InvalidVideoDuration();
 
-    public static ApiError UploadNotFound() => new NotYetImplemented();
+    public static ApiError UploadNotFound() => new UploadNotFound();
 
-    public static ApiError UploadNotAccepted() => new NotYetImplemented();
+    public static ApiError UploadNotAccepted() => new UploadNotAccepted();
 
     public static ApiError NotFound(Guid id) => new CourseVersionNotFound(id);
 
