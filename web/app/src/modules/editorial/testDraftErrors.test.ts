@@ -1,0 +1,129 @@
+import { describe, expect, test } from 'vitest';
+import { ApiError } from '@/api/baseApi';
+import { setLanguage, t } from '@/i18n';
+import { draftFailure } from './testDraftErrors';
+
+// What the page says when an AI draft is refused or fails (#25, S8): the text is chosen by the problem's code where the
+// host sends one, by the status otherwise, never the host's words, and in the language the page speaks. A 5xx carries
+// no code (ApiError, baseApi.test.ts), so the 503 (model-not-configured, raised before any handler) and the 502
+// (ai-draft-malformed) are told apart by their status alone.
+
+/** Problem details as the host sends them, with a code where it has one. */
+const problem = (status: number, code?: string) =>
+  JSON.stringify({ title: 'Refused', status, detail: 'Words of the host, not for the user.', code });
+
+const answers: [string, () => unknown, Parameters<typeof t>[0], string, string][] = [
+  [
+    '503 model-not-configured',
+    () => new ApiError(503, problem(503, 'model-not-configured')),
+    'editorial.test.draft.errors.modelNotConfigured',
+    'Für KI-Entwürfe ist kein Sprachmodell eingerichtet. Wenden Sie sich an den Betrieb der Plattform.',
+    "No language model is set up for AI drafts. Contact the platform's operators.",
+  ],
+  [
+    '429 without a code (#174 adds its own)',
+    () => new ApiError(429, problem(429)),
+    'editorial.test.draft.errors.tooManyRequests',
+    'Sie haben in kurzer Zeit zu viele KI-Entwürfe angefordert. Versuchen Sie es später erneut.',
+    'You have asked for too many AI drafts in a short time. Try again later.',
+  ],
+  [
+    '429 with a code of its own',
+    () => new ApiError(429, problem(429, 'editorial.too-many-drafts')),
+    'editorial.test.draft.errors.tooManyRequests',
+    'Sie haben in kurzer Zeit zu viele KI-Entwürfe angefordert. Versuchen Sie es später erneut.',
+    'You have asked for too many AI drafts in a short time. Try again later.',
+  ],
+  [
+    '502 ai-draft-malformed',
+    () => new ApiError(502, problem(502, 'editorial.ai-draft-malformed')),
+    'editorial.test.draft.errors.malformed',
+    'Die Antwort der KI war unbrauchbar; es wurde nichts geändert. Versuchen Sie es erneut.',
+    "The AI's answer could not be used; nothing was changed. Try again.",
+  ],
+  [
+    '409 no-text-chapters',
+    () => new ApiError(409, problem(409, 'editorial.no-text-chapters')),
+    'editorial.test.draft.noTextChapters',
+    'Die KI entwirft nur aus Textkapiteln. Legen Sie zuerst ein Textkapitel an.',
+    'The AI drafts from text chapters only. Add a text chapter first.',
+  ],
+  [
+    '409 nothing-to-draft',
+    () => new ApiError(409, problem(409, 'editorial.nothing-to-draft')),
+    'editorial.test.draft.nothingToDraft',
+    'Die geprüften Fragen erfüllen die Vorgaben bereits; es gibt nichts zu entwerfen.',
+    'The approved questions already meet the blueprint; there is nothing to draft.',
+  ],
+  [
+    '422 too-much-content-to-draft',
+    () => new ApiError(422, problem(422, 'editorial.too-much-content-to-draft')),
+    'editorial.test.draft.errors.tooMuchContent',
+    'Die Textkapitel sind zu lang für einen KI-Entwurf. Kürzen Sie sie oder schreiben Sie die Fragen von Hand.',
+    'The text chapters are too long for an AI draft. Shorten them or write the questions by hand.',
+  ],
+  [
+    '409 course-version-changed',
+    () => new ApiError(409, problem(409, 'editorial.course-version-changed')),
+    'editorial.test.draft.errors.changed',
+    'Die Version wurde inzwischen geändert; der Entwurf wurde verworfen. Versuchen Sie es erneut.',
+    'The version changed in the meantime; the draft was discarded. Try again.',
+  ],
+  [
+    '409 not-a-draft',
+    () => new ApiError(409, problem(409, 'editorial.not-a-draft')),
+    'editorial.test.draft.errors.notADraft',
+    'Diese Version ist kein Entwurf mehr; ihr Test kann nicht neu entworfen werden.',
+    'This version is no longer a draft; its test cannot be drafted again.',
+  ],
+  [
+    '504 from the edge',
+    () => new ApiError(504, ''),
+    'editorial.test.draft.errors.timedOut',
+    'Der KI-Entwurf hat zu lange gedauert. Die Fragen werden neu geladen; prüfen Sie, ob er übernommen wurde.',
+    'The AI draft took too long. The questions are reloaded; check whether it was applied.',
+  ],
+  [
+    '500 provider failure',
+    () => new ApiError(500, problem(500)),
+    'editorial.test.draft.errors.failed',
+    'Der KI-Entwurf ist fehlgeschlagen. Versuchen Sie es erneut.',
+    'The AI draft failed. Try again.',
+  ],
+  [
+    'a network failure',
+    () => new TypeError('Failed to fetch'),
+    'editorial.test.draft.errors.failed',
+    'Der KI-Entwurf ist fehlgeschlagen. Versuchen Sie es erneut.',
+    'The AI draft failed. Try again.',
+  ],
+  [
+    'a 409 with a code the page does not know',
+    () => new ApiError(409, problem(409, 'editorial.something-else')),
+    'editorial.test.draft.errors.failed',
+    'Der KI-Entwurf ist fehlgeschlagen. Versuchen Sie es erneut.',
+    'The AI draft failed. Try again.',
+  ],
+];
+
+describe('in German', () => {
+  test.each(answers)('%s says its own text', (_answer, error, key, german) => {
+    expect(draftFailure(error())).toBe(t(key));
+    expect(draftFailure(error())).toBe(german);
+  });
+});
+
+describe('in English', () => {
+  test.each(answers)('%s says its own text', (_answer, error, key, _german, english) => {
+    setLanguage('en-GB', { remember: false });
+
+    expect(draftFailure(error())).toBe(t(key));
+    expect(draftFailure(error())).toBe(english);
+  });
+});
+
+test("the host's words are never what the page says", () => {
+  for (const [, error] of answers) {
+    expect(draftFailure(error())).not.toContain('Words of the host');
+  }
+});
