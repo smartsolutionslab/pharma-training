@@ -73,8 +73,8 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
         }
 
         var expiresAt = now.PlusDays(InvitationValidityDays);
-        memberships.Add(Membership.Invited(id, email, token, jobFunction, role, expiresAt));
-        Raise(new MemberInvited(Id, id, email, token, expiresAt));
+        memberships.Add(Membership.Invited(id, email, InvitationTokenHash.Of(token), jobFunction, role, expiresAt));
+        Raise(new MemberInvited(Id, Name, id, email, token, expiresAt));
         return Success(id);
     }
 
@@ -91,8 +91,8 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
         }
 
         var expiresAt = now.PlusDays(InvitationValidityDays);
-        invited.RenewInvitation(token, expiresAt);
-        Raise(new MemberInvited(Id, membership, invited.Email, token, expiresAt));
+        invited.RenewInvitation(InvitationTokenHash.Of(token), expiresAt);
+        Raise(new MemberInvited(Id, Name, membership, invited.Email, token, expiresAt));
         return Success(Unit.Value);
     }
 
@@ -114,7 +114,8 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
         Ensure.That(email).IsNotNull();
         Ensure.That(now).IsNotNull();
 
-        if (memberships.SingleOrDefault(m => m.Status == MembershipStatus.Invited && m.Token == token) is not { } invited)
+        var hash = InvitationTokenHash.Of(token);
+        if (memberships.SingleOrDefault(m => m.Status == MembershipStatus.Invited && m.TokenHash == hash) is not { } invited)
         {
             return Failure(PharmacyErrors.InvitationNotFound(Id));
         }

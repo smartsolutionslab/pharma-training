@@ -21,7 +21,7 @@ public sealed class MembershipConfiguration : IEntityTypeConfiguration<Membershi
         builder.Property(membership => membership.Id).HasColumnName("id").ValueGeneratedNever();
         builder.Property<PharmacyId>(PharmacyId).HasColumnName("pharmacy_id").IsRequired();
         builder.Property(membership => membership.Email).HasColumnName("email").HasMaxLength(EmailAddress.MaxLength).IsRequired();
-        builder.Property(membership => membership.Token).HasColumnName("token");
+        builder.Property(membership => membership.TokenHash).HasColumnName("token_hash").HasMaxLength(InvitationTokenHash.Length);
         builder.Property(membership => membership.InvitationExpiresAt).HasColumnName("invitation_expires_at");
         builder.Property(membership => membership.Person).HasColumnName("person_id");
         builder.Property(membership => membership.Name).HasColumnName("name").HasMaxLength(DisplayName.MaxLength);
