@@ -14,6 +14,9 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 [Collection(EditorialDrafts.Name)]
 public class EditorialChapterUploadsTests(AspireFixture aspire)
 {
+    /// <summary>The most bytes the upload-request route reads of a body: 4 KiB.</summary>
+    private const int UploadRequestLimit = 4096;
+
     private static readonly Uri Courses = new("/editorial/courses", UriKind.Relative);
 
     private static readonly HttpClient Storage = new();
@@ -251,6 +254,71 @@ public class EditorialChapterUploadsTests(AspireFixture aspire)
         upload.UploadUrl.IsAbsoluteUri.ShouldBeTrue();
     }
 
+    /// <summary>
+    /// A UTF-8 body that starts with a byte-order mark and names no charset is read as UTF-8 with the mark skipped, and
+    /// answered as the same body without one.
+    /// </summary>
+    [Fact]
+    public async Task An_upload_request_in_utf_8_with_a_byte_order_mark_and_no_charset_gets_an_upload_url()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var id = await CreateAsync(client, cancellationToken);
+        using var body = new ByteArrayContent([.. Encoding.UTF8.Preamble, .. Encoding.UTF8.GetBytes("""{"kind":"Pdf"}""")]);
+        body.Headers.ContentType = MediaTypeHeaderValue.Parse("application/json");
+
+        using var requested = await client.PostAsync(Uploads(id), body, cancellationToken);
+
+        await ShouldGetAnUploadUrlAsync(requested, id, cancellationToken);
+    }
+
+    /// <summary>A body actually encoded in UTF-16 and named so is read in it (.NET reads <c>utf-16</c> as little-endian).</summary>
+    [Fact]
+    public async Task An_upload_request_encoded_in_utf_16_and_named_so_gets_an_upload_url()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var id = await CreateAsync(client, cancellationToken);
+        using var body = new ByteArrayContent(Encoding.Unicode.GetBytes("""{"kind":"Pdf"}"""));
+        body.Headers.ContentType = MediaTypeHeaderValue.Parse("application/json; charset=utf-16");
+
+        using var requested = await client.PostAsync(Uploads(id), body, cancellationToken);
+
+        await ShouldGetAnUploadUrlAsync(requested, id, cancellationToken);
+    }
+
+    /// <summary>
+    /// The upload request is a few bytes of JSON, so its route reads no body larger than <see cref="UploadRequestLimit"/>
+    /// bytes: a larger one is refused as too large, however valid, rather than read into memory.
+    /// </summary>
+    [Fact]
+    public async Task An_upload_request_larger_than_its_routes_limit_is_refused_as_too_large()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var id = await CreateAsync(client, cancellationToken);
+        var json = """{"kind":"Pdf"}""" + new string(' ', UploadRequestLimit);
+
+        using var requested = await client.PostAsync(Uploads(id), Json(json), cancellationToken);
+
+        await ShouldAnswerAsync(requested, HttpStatusCode.RequestEntityTooLarge, cancellationToken);
+    }
+
+    /// <summary>A body of exactly <see cref="UploadRequestLimit"/> bytes is still read.</summary>
+    [Fact]
+    public async Task An_upload_request_of_exactly_its_routes_limit_gets_an_upload_url()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var id = await CreateAsync(client, cancellationToken);
+        var kind = """{"kind":"Pdf"}""";
+        var json = kind + new string(' ', UploadRequestLimit - kind.Length);
+
+        using var requested = await client.PostAsync(Uploads(id), Json(json), cancellationToken);
+
+        await ShouldGetAnUploadUrlAsync(requested, id, cancellationToken);
+    }
+
     [Fact]
     public async Task A_chapter_of_an_undefined_kind_is_refused()
     {
@@ -369,6 +437,14 @@ public class EditorialChapterUploadsTests(AspireFixture aspire)
         request.Content.Headers.ContentType = MediaTypeHeaderValue.Parse(contentType ?? upload.ContentType);
         using var put = await Storage.SendAsync(request, cancellationToken);
         put.StatusCode.ShouldBe(HttpStatusCode.Created, await put.Content.ReadAsStringAsync(cancellationToken));
+    }
+
+    private static async Task ShouldGetAnUploadUrlAsync(HttpResponseMessage requested, Guid id, CancellationToken cancellationToken)
+    {
+        await ShouldAnswerAsync(requested, HttpStatusCode.OK, cancellationToken);
+        var upload = await requested.Content.ReadFromJsonAsync<Upload>(cancellationToken);
+        upload.ShouldNotBeNull().BlobName.ShouldStartWith($"course-versions/{id:D}/");
+        upload.ContentType.ShouldBe("application/pdf");
     }
 
     private static async Task<CourseVersion> ReadAsync(HttpClient client, Guid id, CancellationToken cancellationToken)
