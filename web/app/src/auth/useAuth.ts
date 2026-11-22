@@ -79,8 +79,9 @@ export function createAuth(client: AuthClient): Auth {
     try {
       if (hasAuthParams()) {
         user.value = (await client.signinCallback()) ?? null;
-        // Drop ?code=...&state=... from the address once the sign-in has completed.
-        window.history.replaceState({}, document.title, window.location.pathname);
+        // Drop ?code=...&state=... from the address once the sign-in has completed. The address is absolute and of this
+        // origin: a path starting with `//` would otherwise be read as another host's, which replaceState refuses.
+        window.history.replaceState({}, document.title, window.location.origin + window.location.pathname);
       } else {
         user.value = await client.getUser();
       }
