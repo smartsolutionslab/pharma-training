@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { toTypedSchema } from '@/forms/toTypedSchema';
-import { t as translate } from '@/i18n';
+import type { MessageKey } from '@/i18n';
 
 interface CreateComplianceSampleFormProps {
   /** Creates the sample; resolves to whether it was created, which empties the field. */
@@ -18,12 +18,13 @@ const { onCreate, saving } = defineProps<CreateComplianceSampleFormProps>();
 /** The id of the form's name field, which the page's empty state moves to through focus. */
 const sampleNameField = 'compliance-sample-name';
 
+// Each message is a key, rendered with t where it is shown: a message already shown follows a switch of the language.
 const sampleSchema = z.object({
   name: z
     .string()
     .trim()
-    .min(1, { error: () => translate('samples.form.nameRequired') })
-    .max(100, { error: () => translate('samples.form.nameTooLong') }),
+    .min(1, { error: 'samples.form.nameRequired' satisfies MessageKey })
+    .max(100, { error: 'samples.form.nameTooLong' satisfies MessageKey }),
 });
 
 const { defineField, errors, handleSubmit, resetForm } = useForm({
@@ -58,7 +59,7 @@ defineExpose({ focus: () => document.getElementById(sampleNameField)?.focus() })
       <Button type="submit" :disabled="saving">{{ t('samples.form.submit') }}</Button>
     </div>
     <p v-if="errors.name" :id="`${sampleNameField}-error`" role="alert" class="text-sm text-destructive">
-      {{ errors.name }}
+      {{ t(errors.name) }}
     </p>
   </form>
 </template>

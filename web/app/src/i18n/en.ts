@@ -72,7 +72,7 @@ export const en: MessageSchema = {
       jobFunctionRequired: 'Choose what you do in the pharmacy.',
       registered: 'The pharmacy {name} was registered.',
       registeredNotOpened:
-        'The pharmacy {name} was registered, but it could not be opened. Choose it in the pharmacy switcher.',
+        'The pharmacy {name} was registered, but it could not be opened. Choose it under “Pharmacy” in the sidebar.',
       failed: 'The pharmacy could not be registered. Try again.',
     },
   },
@@ -114,7 +114,7 @@ export const en: MessageSchema = {
       pharmaciesFailed: 'Your pharmacies could not be loaded.',
       noPharmacy: 'You are not a member of any pharmacy yet.',
       choosePharmacy: 'Choose a pharmacy to see this page.',
-      goHome: 'Go to Home',
+      goHome: 'Back to Home',
     },
     retry: 'Try again',
     pharmacy: {

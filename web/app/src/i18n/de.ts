@@ -21,7 +21,7 @@ export const de = {
       Pta: 'PTA (pharmazeutisch-technischer Assistent)',
       Pka: 'PKA (pharmazeutisch-kaufmännischer Angestellter)',
       Trainee: 'Azubi',
-      Other: 'Andere',
+      Other: 'Sonstige',
     } satisfies Record<NonNullable<OrganisationJobFunction>, string>,
   },
   auth: {
@@ -73,7 +73,7 @@ export const de = {
       jobFunctionRequired: 'Wählen Sie Ihre Tätigkeit in der Apotheke.',
       registered: 'Die Apotheke {name} wurde registriert.',
       registeredNotOpened:
-        'Die Apotheke {name} wurde registriert, konnte aber nicht geöffnet werden. Wählen Sie sie in der Apothekenauswahl.',
+        'Die Apotheke {name} wurde registriert, konnte aber nicht geöffnet werden. Wählen Sie sie unter „Apotheke“ in der Seitenleiste.',
       failed: 'Die Apotheke konnte nicht registriert werden. Versuchen Sie es erneut.',
     },
   },
