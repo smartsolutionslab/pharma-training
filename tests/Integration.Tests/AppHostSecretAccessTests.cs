@@ -11,7 +11,7 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// in the Container Apps environment is encrypted (decisions OQ8 on #114, docs/adr/0005). A secret reaches an app only
 /// through the vault: a secret parameter the vault does not hold is a mistake in the AppHost, never a plain value.
 /// </summary>
-public class AppHostSecretAccessTests
+public partial class AppHostSecretAccessTests
 {
     private const string KeyVaultSecretsUser = "4633458b-17de-408a-b874-0445c86b69e6";
 
@@ -40,9 +40,16 @@ public class AppHostSecretAccessTests
     public async Task Each_app_reads_the_secrets_it_references_and_no_others()
     {
         var bicep = await PublishedAppHost.PublishAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
+        // An app may resolve its secrets under more than one identity (a service's init container reads the administrator's
+        // connection string under <module>-migrations-identity); each identity is held to the secrets read under it.
         var apps = bicep.ContainerApps
-            .Select(app => (Name: app.Key, Identity: Identity(app.Value), Secrets: PublishedBicep.KeyVaultSecretsReferenced(app.Value)))
-            .Where(app => app.Secrets.Count > 0)
+            .SelectMany(app => PublishedBicep.SecretEntries(app.Value)
+                .Where(entry => entry.VaultSecret.Length > 0)
+                .GroupBy(entry => entry.Identity, StringComparer.Ordinal)
+                .Select(byIdentity => (
+                    Name: app.Key,
+                    Identity: byIdentity.Key.Length > 0 ? byIdentity.Key : null,
+                    Secrets: byIdentity.Select(entry => entry.VaultSecret).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList())))
             .ToList();
 
         apps.ShouldNotBeEmpty();
@@ -62,6 +69,28 @@ public class AppHostSecretAccessTests
                 .ToList()
                 .ShouldBe(secrets, ignoreOrder: false, customMessage: $"{name} ({identity}) should be a Key Vault Secrets User on each secret it references, and those alone. It holds: {described}");
         }
+    }
+
+    [Fact]
+    public async Task Only_migrations_and_keycloak_read_an_administrator_connection_string()
+    {
+        var bicep = await PublishedAppHost.PublishAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
+
+        // A module database's connection string as the Flexible Server writes it, connectionstrings--<module>-database, logs
+        // in as the server's administrator; a service logs in as its module's role instead (OQ8 c on #114, docs/adr/0005).
+        // Keycloak still logs in as the administrator until it has a role of its own (Q2).
+        var readers = bicep.Identities()
+            .SelectMany(identity => bicep.RoleAssignmentsOf(identity)
+                .Where(assignment => assignment.Role == KeyVaultSecretsUser && assignment.ScopeType == VaultSecret)
+                .Where(assignment => AdministratorConnectionString().IsMatch(assignment.ScopeName))
+                .Select(assignment => (Identity: identity, Secret: assignment.ScopeName)))
+            .Distinct()
+            .ToList();
+
+        readers.ShouldNotBeEmpty("No identity reads an administrator connection string; the migrations could not log in.");
+        readers.Where(reader => !reader.Identity.EndsWith("-migrations-identity", StringComparison.Ordinal) && reader.Identity != "keycloak-identity")
+            .Select(reader => $"{reader.Identity} reads {reader.Secret}")
+            .ShouldBeEmpty("Only an init stage's migrations identity, and Keycloak's, may read an administrator connection string.");
     }
 
     [Fact]
@@ -211,12 +240,6 @@ public class AppHostSecretAccessTests
         Should.NotThrow(() => probe.WithSecret("Probe__Secret", held, secrets));
     }
 
-    /// <summary>The identity an app reads its Key Vault secrets under, as its module names it (<c>&lt;app&gt;-identity</c>).</summary>
-    private static string? Identity(string app) =>
-        Regex.Match(app, @"identity:\s*(?<identity>\w+?)_outputs_id\s+keyVaultUrl:", RegexOptions.None, TimeSpan.FromSeconds(1)) is { Success: true } match
-            ? match.Groups["identity"].Value.Replace('_', '-')
-            : null;
-
     /// <summary>An empty application in publish mode, as <c>aspire publish</c> starts one; it is never built or run.</summary>
     private static IDistributedApplicationBuilder PublishBuilder() => PublishBuilder(OutputDirectory());
 
@@ -266,4 +289,7 @@ public class AppHostSecretAccessTests
 
     private static string Describe(IEnumerable<PublishedRoleAssignment> assignments) =>
         string.Join("; ", assignments.Select(assignment => $"{assignment.Role} on {assignment.ScopeType} '{assignment.ScopeName}' ({assignment.File})"));
+
+    [GeneratedRegex(@"^connectionstrings--.+-database$")]
+    private static partial Regex AdministratorConnectionString();
 }
