@@ -2108,11 +2108,7 @@
       },
       "EditorialChapterRequest": {
         "required": [
-          "title",
-          "kind",
-          "text",
-          "file",
-          "durationSeconds"
+          "title"
         ],
         "type": "object",
         "properties": {
@@ -2150,7 +2146,8 @@
           "Text",
           "Pdf",
           "Video"
-        ]
+        ],
+        "default": "Text"
       },
       "EditorialChapterUploadDto": {
         "required": [
@@ -2441,6 +2438,12 @@
           }
         }
       },
+      "EditorialUploadKind": {
+        "enum": [
+          "Pdf",
+          "Video"
+        ]
+      },
       "EditorialUploadRequest": {
         "required": [
           "kind"
@@ -2448,7 +2451,7 @@
         "type": "object",
         "properties": {
           "kind": {
-            "$ref": "#/components/schemas/EditorialChapterRequestKind"
+            "$ref": "#/components/schemas/EditorialUploadKind"
           }
         }
       },
