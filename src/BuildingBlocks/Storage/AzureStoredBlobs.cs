@@ -9,12 +9,11 @@ namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Storage;
 /// Reads a blob's properties in the module's own container, the connection string <c>blobs</c> (docs/adr/0002), so the
 /// module that accepts an upload can check what was uploaded and how: put directly, or created by a server-side copy.
 /// The container is read when the first blob is looked up, so a host without it starts and fails only where a blob is
-/// needed.
+/// needed. Only a missing blob is read as absent; any other failure, a missing container first, is the storage
+/// service's and is thrown.
 /// </summary>
 public sealed class AzureStoredBlobs : IStoredBlobs
 {
-    private const int NotFound = 404;
-
     private readonly Lazy<BlobContainerClient> container;
 
     public AzureStoredBlobs(IConfiguration configuration)
@@ -34,7 +33,7 @@ public sealed class AzureStoredBlobs : IStoredBlobs
             var isCopy = properties.CopySource is not null || !string.IsNullOrEmpty(properties.CopyId);
             return Option<StoredBlob>.Some(new StoredBlob(name, properties.ContentType ?? string.Empty, properties.ContentLength, properties.BlobType == BlobType.Block, isCopy));
         }
-        catch (RequestFailedException failed) when (failed.Status == NotFound)
+        catch (RequestFailedException failed) when (failed.ErrorCode == BlobErrorCode.BlobNotFound)
         {
             return Option<StoredBlob>.None;
         }
