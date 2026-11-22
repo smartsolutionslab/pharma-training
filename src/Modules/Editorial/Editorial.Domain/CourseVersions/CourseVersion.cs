@@ -332,6 +332,11 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
             return Failure(CourseVersionErrors.NoChapters(Id));
         }
 
+        if (questions.Count > QuestionCount.Maximum)
+        {
+            return Failure(CourseVersionErrors.TooManyQuestions(Id));
+        }
+
         if (questions.Count != Blueprint.Questions.Value)
         {
             return Failure(CourseVersionErrors.TestIncomplete(Id, Blueprint.Questions, QuestionCount.From(questions.Count)));
