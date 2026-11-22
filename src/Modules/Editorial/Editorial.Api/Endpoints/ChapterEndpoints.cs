@@ -120,8 +120,9 @@ public sealed class ChapterEndpoints : IEndpoint
             return Failure(CourseVersionFailures.InvalidChapterTitle());
         }
 
-        // The enum's converter also reads numbers, so an undefined one is the caller's mistake, not a bug.
-        var kind = request.Kind ?? EditorialChapterRequestKind.Text;
+        // A body without a kind binds to Text, the enum's default. The converter also reads numbers, so an undefined one
+        // is the caller's mistake, not a bug.
+        var kind = request.Kind;
         if (!Enum.IsDefined(kind))
         {
             return Failure(CourseVersionFailures.InvalidChapterKind());
