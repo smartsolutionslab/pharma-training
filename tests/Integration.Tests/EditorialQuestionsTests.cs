@@ -11,6 +11,7 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// order with where the question came from and who approved it when (story E7); a question whose answers break its
 /// type is kept as a draft but cannot be approved; a published version refuses every question change.
 /// </summary>
+[Collection(EditorialDrafts.Name)]
 public class EditorialQuestionsTests(AspireFixture aspire)
 {
     private static readonly Uri Courses = new("/editorial/courses", UriKind.Relative);
@@ -333,11 +334,11 @@ public class EditorialQuestionsTests(AspireFixture aspire)
         var connectionString = await EditorialDatabase.ConnectionStringAsync(aspire, cancellationToken);
 
         HttpResponseMessage[] responses;
-        await using (var gate = await EditorialDatabase.LockVersionAsync(connectionString, id, cancellationToken))
+        await using (var gate = await EditorialDatabase.LockVersionRowAsync(connectionString, id, cancellationToken))
         {
             var first = client.PostAsJsonAsync(Questions(id), MultipleChoice(chapter), cancellationToken);
             var second = client.PostAsJsonAsync(Questions(id), SingleChoice(chapter), cancellationToken);
-            await EditorialDatabase.WaitUntilBlockedAsync(connectionString, 2, cancellationToken);
+            await EditorialDatabase.WaitUntilBlockedAsync(connectionString, gate, 2, cancellationToken);
             await gate.CommitAsync(cancellationToken);
             responses = await Task.WhenAll(first, second);
         }
