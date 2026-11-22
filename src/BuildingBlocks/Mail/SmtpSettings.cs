@@ -6,7 +6,8 @@ namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Mail;
 
 /// <summary>
 /// The SMTP server in <c>ConnectionStrings:mail</c>: <c>smtp://[user[:password]@]host[:port]</c> or <c>smtps://…</c>.
-/// A class and not a record, so that nothing prints <see cref="Password"/>; no error names the value either.
+/// A class and not a record, so that nothing prints <see cref="Password"/>; no error names the value either. A path, query
+/// or fragment is refused: an unescaped "/", "?" or "#" in the password would otherwise make the user the host.
 /// </summary>
 internal sealed class SmtpSettings
 {
@@ -36,7 +37,10 @@ internal sealed class SmtpSettings
 
         if (!Uri.TryCreate(configuration[ConnectionStringKey], UriKind.Absolute, out var server)
             || (server.Scheme != "smtp" && server.Scheme != "smtps")
-            || string.IsNullOrEmpty(server.Host))
+            || string.IsNullOrEmpty(server.Host)
+            || server.AbsolutePath is not ("" or "/")
+            || server.Query.Length > 0
+            || server.Fragment.Length > 0)
         {
             throw new InvalidOperationException(
                 $"The SMTP server is missing or unusable: set {ConnectionStringKey} to smtp://[user[:password]@]host[:port] or smtps://….");
