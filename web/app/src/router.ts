@@ -4,7 +4,8 @@ import { moduleRoutes } from '@/modules';
 import Home from '@/pages/Home.vue';
 
 /**
- * The start page, then every module's route, the pages below it and its detail pages; tests pass createMemoryHistory(), the app
+ * The start page, then every module's route, the pages below it, its detail pages and its entry pages (at their own
+ * addresses, with their guards); tests pass createMemoryHistory(), the app
  * createWebHistory().
  */
 export function createAppRouter(history: RouterHistory) {
@@ -20,6 +21,11 @@ export function createAppRouter(history: RouterHistory) {
             path: `/${route.path}/${detail.path}`,
             component: detail.component,
           })),
+          ...(route.entries ?? []).map((entry) =>
+            entry.beforeEnter === undefined
+              ? { path: entry.path, component: entry.component }
+              : { path: entry.path, component: entry.component, beforeEnter: entry.beforeEnter },
+          ),
         ]),
       ],
     }),
