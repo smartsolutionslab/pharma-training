@@ -8,4 +8,6 @@ public static class LearningSessionFailures
     public static ApiError SessionNotFound(Guid id) => new LearningSessionNotFound(id);
 
     public static ApiError IdentityIncomplete() => new IdentityIncomplete();
+
+    public static ApiError MembershipMissing() => new MembershipMissing();
 }
