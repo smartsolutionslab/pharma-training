@@ -116,6 +116,16 @@
       "realmRoles": ["editor"]
     },
     {
+      "username": "editor-b",
+      "enabled": true,
+      "email": "editor-b@example.com",
+      "emailVerified": true,
+      "firstName": "Bea",
+      "lastName": "Editor",
+      "credentials": [{ "type": "password", "value": "editor-b", "temporary": false }],
+      "realmRoles": ["editor"]
+    },
+    {
       "username": "owner",
       "enabled": true,
       "email": "owner@example.com",

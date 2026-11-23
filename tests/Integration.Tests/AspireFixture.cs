@@ -47,6 +47,13 @@ public sealed partial class AspireFixture : IAsyncLifetime
         builder.Configuration["Parameters:azure-openai-endpoint"] = string.Empty;
         builder.Configuration["Parameters:azure-openai-api-key"] = string.Empty;
 
+        // The run lowers the editorial day limits on the model's endpoints (docs/adr/0020) so EditorialModelLimitsTests
+        // reaches them with editor-b. The editor calls each model endpoint at most 4 times in the whole run (2 + 1 content
+        // reviews, 3 + 1 test drafts): keep it under 5 when adding tests.
+        builder.CreateResourceBuilder(builder.Resources.OfType<ProjectResource>().Single(resource => resource.Name == "editorial"))
+            .WithEnvironment("Editorial__ModelLimits__ContentReview__PerDay", "5")
+            .WithEnvironment("Editorial__ModelLimits__TestDraft__PerDay", "5");
+
         app = await builder.BuildAsync(timeout.Token);
         await app.StartAsync(timeout.Token);
         await app.ResourceNotifications.WaitForResourceHealthyAsync("host", timeout.Token);
