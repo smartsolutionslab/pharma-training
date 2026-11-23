@@ -94,6 +94,12 @@ public static class ChapterUploads
         _ => throw new UnreachableException($"A {kind} chapter has no file."),
     };
 
+    /// <summary>
+    /// The headers a read URL on a file of the kind is signed with: the kind's content type, shown inline (#41). The
+    /// type comes from the kind, never from the stored blob, as an upload is accepted only with the kind's type.
+    /// </summary>
+    public static BlobReadHeaders ReadHeadersFor(ChapterKind kind) => BlobReadHeaders.Inline(ContentTypeOf(kind));
+
     /// <summary>The most bytes a file of the kind may have.</summary>
     public static long MaxBytesOf(ChapterKind kind) => TakingAFile(kind) switch
     {
