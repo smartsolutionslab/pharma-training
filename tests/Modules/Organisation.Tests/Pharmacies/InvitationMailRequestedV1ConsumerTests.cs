@@ -56,14 +56,13 @@ public partial class InvitationMailRequestedV1ConsumerTests
     public async Task A_mail_that_cannot_be_sent_fails_the_consumer()
     {
         var (pharmacy, membership) = Invited();
-        var before = pharmacy.Membership(membership).InvitationLinks.Count;
         mails.SendAsync(Arg.Any<OutgoingMail>(), Arg.Any<CancellationToken>()).ThrowsAsync(new IOException("The SMTP server is gone."));
 
         await Should.ThrowAsync<IOException>(
             () => Consumer().HandleAsync(new InvitationMailRequestedV1(membership.Value, pharmacy.Id.Value), TestContext.Current.CancellationToken));
 
-        store.Commits.ShouldBe(1);
-        pharmacy.Membership(membership).InvitationLinks.Count.ShouldBe(before + 1);
+        store.Commits.ShouldBe(2);
+        pharmacy.Membership(membership).InvitationLinks.ShouldBeEmpty();
     }
 
     [Fact]
