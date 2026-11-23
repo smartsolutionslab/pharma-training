@@ -9,8 +9,8 @@ import CompliancePage from './CompliancePage.vue';
 
 // The team matrix's tests (#36) share the host they talk to and the way to the page. The host answers what
 // GET /organisation/pharmacies/mine and GET /compliance/pharmacies/{id}/matrix would, from the state a test gives it.
-// The matrix's answer is written in the shape #34's tests demand (the spec's "Endpoint contract"), not by the generated
-// types, which do not have its tallies yet.
+// The matrix's answer is written in the shape of #34's final contract (ComplianceMatrixDto in the generated client),
+// with its counts as numbers.
 
 export type User = ReturnType<typeof userEvent.setup>;
 export type Fetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -77,11 +77,41 @@ export const hygiene: MatrixCourse = {
   complianceRate: 0.5,
 };
 
+export const privacy: MatrixCourse = {
+  courseId: '0198c1a0-0000-7000-8000-0000000000c2',
+  title: 'Datenschutz in der Apotheke',
+  assignments: 3,
+  compliantAssignments: 2,
+  overdueAssignments: 0,
+  complianceRate: 2 / 3,
+};
+
+export const emergency: MatrixCourse = {
+  courseId: '0198c1a0-0000-7000-8000-0000000000c3',
+  title: 'Notfallmanagement',
+  assignments: 2,
+  compliantAssignments: 2,
+  overdueAssignments: 0,
+  complianceRate: 1,
+};
+
+/** The team's columns, by title as the host sends them. */
+export const teamCourses: MatrixCourse[] = [privacy, hygiene, emergency];
+
+/** A pharmacist with an open and a started course, and none of the emergency course: an empty cell. */
 export const anna: MatrixRow = {
   personId: '0198c1a0-0000-7000-8000-0000000000e1',
   name: 'Anna Albers',
   jobFunction: 'Pharmacist',
   cells: [
+    {
+      courseId: privacy.courseId,
+      assignmentId: '0198c1a0-0000-7000-8000-0000000000f3',
+      state: 'InProgress',
+      dueDate: '2027-01-10',
+      lastCompletedOn: null,
+      validUntil: null,
+    },
     {
       courseId: hygiene.courseId,
       assignmentId: '0198c1a0-0000-7000-8000-0000000000f1',
@@ -93,11 +123,20 @@ export const anna: MatrixRow = {
   ],
 };
 
+/** A PKA with a valid completion, an overdue course and a locked one: three courses. */
 export const berta: MatrixRow = {
   personId: '0198c1a0-0000-7000-8000-0000000000e2',
   name: 'Berta Braun',
   jobFunction: 'Pka',
   cells: [
+    {
+      courseId: privacy.courseId,
+      assignmentId: '0198c1a0-0000-7000-8000-0000000000f4',
+      state: 'Completed',
+      dueDate: '2026-06-30',
+      lastCompletedOn: '2026-06-01',
+      validUntil: '2027-06-01',
+    },
     {
       courseId: hygiene.courseId,
       assignmentId: '0198c1a0-0000-7000-8000-0000000000f2',
@@ -106,8 +145,94 @@ export const berta: MatrixRow = {
       lastCompletedOn: null,
       validUntil: null,
     },
+    {
+      courseId: emergency.courseId,
+      assignmentId: '0198c1a0-0000-7000-8000-0000000000f5',
+      state: 'Locked',
+      dueDate: '2026-12-31',
+      lastCompletedOn: null,
+      validUntil: null,
+    },
   ],
 };
+
+/** A PTA whose completion of the privacy course ran out yesterday (Expired today) and who completed one late. */
+export const carl: MatrixRow = {
+  personId: '0198c1a0-0000-7000-8000-0000000000e3',
+  name: 'Carl Claasen',
+  jobFunction: 'Pta',
+  cells: [
+    {
+      courseId: privacy.courseId,
+      assignmentId: '0198c1a0-0000-7000-8000-0000000000f6',
+      state: 'Completed',
+      dueDate: '2025-11-30',
+      lastCompletedOn: '2025-11-20',
+      validUntil: '2026-11-22',
+    },
+    {
+      courseId: emergency.courseId,
+      assignmentId: '0198c1a0-0000-7000-8000-0000000000f7',
+      state: 'CompletedLate',
+      dueDate: '2026-02-01',
+      lastCompletedOn: '2026-02-10',
+      validUntil: '2027-02-10',
+    },
+  ],
+};
+
+/** A trainee with no course assigned here. */
+export const dora: MatrixRow = {
+  personId: '0198c1a0-0000-7000-8000-0000000000e4',
+  name: 'Dora Dietz',
+  jobFunction: 'Trainee',
+  cells: [],
+};
+
+/**
+ * The team: three courses by four members, every status once (Carl's privacy course is Expired on 2026-11-23), an
+ * empty cell, and a member without any course. Seven cells, five on track, one overdue.
+ */
+export function teamMatrix(): MatrixAnswer {
+  return {
+    courses: teamCourses,
+    members: { items: [anna, berta, carl, dora], totalCount: 4, page: 1, pageSize: 50 },
+    assignments: 7,
+    compliantAssignments: 5,
+    overdueAssignments: 1,
+    complianceRate: 5 / 7,
+  };
+}
+
+/** Members 01 to n, each with an open hygiene course, as the host pages them by the request's page and pageSize. */
+export function pagedTeam(total: number) {
+  const members: MatrixRow[] = Array.from({ length: total }, (_, index) => {
+    const number = String(index + 1).padStart(2, '0');
+    return {
+      personId: `0198c1a0-0000-7000-8001-0000000000${number}`,
+      name: `Mitglied ${number}`,
+      jobFunction: 'Pta',
+      cells: [
+        {
+          courseId: hygiene.courseId,
+          assignmentId: `0198c1a0-0000-7000-8002-0000000000${number}`,
+          state: 'Open',
+          dueDate: '2027-03-15',
+          lastCompletedOn: null,
+          validUntil: null,
+        },
+      ],
+    };
+  });
+  return async (_pharmacyId: string, url: URL) => {
+    const page = Number(url.searchParams.get('page') ?? '1');
+    const size = Number(url.searchParams.get('pageSize') ?? '50');
+    return Response.json({
+      ...matrixOf([], [hygiene]),
+      members: { items: members.slice((page - 1) * size, page * size), totalCount: total, page, pageSize: size },
+    } satisfies MatrixAnswer);
+  };
+}
 
 /** A matrix of one course and two members, the first page of 50. */
 export function matrixOf(rows: MatrixRow[] = [anna, berta], courses: MatrixCourse[] = [hygiene]): MatrixAnswer {
@@ -180,12 +305,15 @@ export const matrixPath = (pharmacy: MyPharmacyDto = markt) => `/api/compliance/
 export const minePath = '/api/organisation/pharmacies/mine';
 
 /**
- * The page at an address (/compliance unless a test says otherwise) with a Pinia and a query client of its own that
+ * The page at an address (/compliance unless a test says otherwise), reached from another if a test says so, with a Pinia and a query client of its own that
  * does not retry, so a failure shows at once. The page reads the current pharmacy from the memberships, as the shell
  * does.
  */
-export async function renderMatrixPage(options: { address?: string; pinia?: Pinia } = {}) {
+export async function renderMatrixPage(options: { address?: string; from?: string; pinia?: Pinia } = {}) {
   const router = createAppRouter(createMemoryHistory());
+  if (options.from !== undefined) {
+    await router.push(options.from);
+  }
   await router.push(options.address ?? '/compliance');
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   const pinia = options.pinia ?? createPinia();
