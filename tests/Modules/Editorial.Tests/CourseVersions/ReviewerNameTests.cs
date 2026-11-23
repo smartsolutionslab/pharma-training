@@ -10,9 +10,9 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersion
 /// </summary>
 public class ReviewerNameTests
 {
-    public static TheoryData<string> Refused => [string.Empty, "   ", new string('a', 101), "a\0b", "\u200B", "Emma\u202EEditor", "Emma\u2066Editor", "Emma\nEditor", "Emma\tEditor", "Emma\u0001Editor", "Emma\uD800Editor", "Emma\uE000Editor"];
+    public static TheoryData<string> Refused => [string.Empty, "   ", new string('a', 101), "a\0b", "\u200B", "Emma\u202EEditor", "Emma\u2066Editor", "Emma\nEditor", "Emma\tEditor", "Emma\u0001Editor", "Emma\uD800Editor", "Emma\uE000Editor", "\u200D", "\u200C\u200D", "\u200CEmma", "Emma\u200D", "Emma \u200C Reza"];
 
-    public static TheoryData<string?> NoName => [(string?)null, string.Empty, "  ", new string('a', 101), "a\0b", "\u200B", "Emma\u202EEditor", "Emma\u2066Editor", "Emma\nEditor", "Emma\tEditor", "Emma\u0001Editor", "Emma\uD800Editor", "Emma\uE000Editor"];
+    public static TheoryData<string?> NoName => [(string?)null, string.Empty, "  ", new string('a', 101), "a\0b", "\u200B", "Emma\u202EEditor", "Emma\u2066Editor", "Emma\nEditor", "Emma\tEditor", "Emma\u0001Editor", "Emma\uD800Editor", "Emma\uE000Editor", "\u200D", "\u200C\u200D", "\u200CEmma", "Emma\u200D", "Emma \u200C Reza"];
 
     [Fact]
     public void A_reviewer_name_is_kept_trimmed() =>
