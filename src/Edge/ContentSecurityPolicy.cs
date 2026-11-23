@@ -8,20 +8,27 @@ namespace SmartSolutionsLab.PharmaTraining.Edge;
 /// The Content-Security-Policy the edge answers <c>index.html</c> with (the security review of #114, docs/adr/0005): scripts
 /// from the edge's own origin and the page's inline scripts by their SHA-256 hash alone, never <c>'unsafe-inline'</c>;
 /// styles from the edge's origin and inline (the components set inline styles); images, fonts and everything else from the
-/// edge's origin; video from <c>blob:</c> too, where the editorial module reads an upload's duration from the file itself;
-/// calls to the edge and to the origins it is given (the identity provider's discovery and token endpoints, blob storage's
-/// signed upload URLs). No plugins, no other base URL, and no page may frame the app.
+/// edge's origin; video from <c>blob:</c> too, where the editorial module reads an upload's duration from the file itself,
+/// and from blob storage, where the chapter player (#262) plays a video by its signed URL; calls to the edge and to the
+/// origins it is given (the identity provider's discovery and token endpoints, blob storage's signed URLs). Scripts may
+/// compile WebAssembly (<c>'wasm-unsafe-eval'</c>, for pdf.js), never evaluate a string. No plugins, no other base URL, no
+/// form posted elsewhere, and no page may frame the app.
 /// </summary>
 public static partial class ContentSecurityPolicy
 {
-    /// <summary>The policy for <paramref name="page"/>, whose inline scripts it allows by hash, calling <paramref name="connectOrigins"/> besides the edge.</summary>
-    public static string For(string page, IEnumerable<string> connectOrigins)
+    /// <summary>
+    /// The policy for <paramref name="page"/>, whose inline scripts it allows by hash, calling <paramref name="connectOrigins"/>
+    /// besides the edge and playing media from <paramref name="mediaOrigins"/> besides the edge and <c>blob:</c>.
+    /// </summary>
+    public static string For(string page, IEnumerable<string> connectOrigins, IEnumerable<string> mediaOrigins)
     {
         Ensure.That(page).IsNotNull();
         Ensure.That(connectOrigins).IsNotNull();
+        Ensure.That(mediaOrigins).IsNotNull();
 
-        string[] scripts = ["'self'", .. InlineScripts(page).Select(Hash).Distinct(StringComparer.Ordinal)];
+        string[] scripts = ["'self'", "'wasm-unsafe-eval'", .. InlineScripts(page).Select(Hash).Distinct(StringComparer.Ordinal)];
         string[] connections = ["'self'", .. connectOrigins.Distinct(StringComparer.OrdinalIgnoreCase)];
+        string[] media = ["'self'", "blob:", .. mediaOrigins.Distinct(StringComparer.OrdinalIgnoreCase)];
         string[] directives =
         [
             "default-src 'self'",
@@ -29,7 +36,7 @@ public static partial class ContentSecurityPolicy
             "style-src 'self' 'unsafe-inline'",
             "img-src 'self' data:",
             "font-src 'self'",
-            "media-src 'self' blob:",
+            $"media-src {string.Join(' ', media)}",
             $"connect-src {string.Join(' ', connections)}",
             "object-src 'none'",
             "base-uri 'self'",

@@ -32,6 +32,9 @@ public static class SpaHosting
     /// <summary>The addresses whose origins the page may call besides the edge: the identity provider and, published, blob storage.</summary>
     private static readonly string[] ConnectAddresses = ["Authentication:Authority", "Edge:BlobEndpoint"];
 
+    /// <summary>The addresses whose origins the page may play media from besides the edge and <c>blob:</c>: published, blob storage (#262).</summary>
+    private static readonly string[] MediaAddresses = ["Edge:BlobEndpoint"];
+
     public static WebApplication UseSpaHosting(this WebApplication app)
     {
         Ensure.That(app).IsNotNull();
@@ -90,13 +93,15 @@ public static class SpaHosting
     {
         using var reader = new StreamReader(index.CreateReadStream(), System.Text.Encoding.UTF8);
         var page = reader.ReadToEnd();
-        var origins = ConnectAddresses
+        return ContentSecurityPolicy.For(page, OriginsOf(ConnectAddresses, configuration), OriginsOf(MediaAddresses, configuration));
+    }
+
+    private static IEnumerable<string> OriginsOf(IEnumerable<string> keys, IConfiguration configuration) =>
+        keys
             .Select(key => configuration[key])
             .OfType<string>()
             .Where(address => !string.IsNullOrWhiteSpace(address))
             .Select(ContentSecurityPolicy.OriginOf);
-        return ContentSecurityPolicy.For(page, origins);
-    }
 
     /// <summary>What a browser sends when it loads a page; a fetch for data asks for JSON, a form post is no GET.</summary>
     private static bool IsPageLoad(HttpRequest request)
