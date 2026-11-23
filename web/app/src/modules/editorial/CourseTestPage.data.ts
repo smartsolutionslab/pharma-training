@@ -47,6 +47,8 @@ export const examples: Record<string, unknown> = {
         review: 'Approved',
         reviewedBy: '0198c1a0-0000-7000-8000-0000000000d9',
         reviewedAt: '2026-11-20T09:30:00Z',
+        approvedByName: 'Emma Editor',
+        approvedAt: '2026-11-20T09:30:00Z',
       },
       {
         id: '0198c1a0-0000-7000-8000-0000000000a2',
@@ -63,6 +65,8 @@ export const examples: Record<string, unknown> = {
         review: 'Unreviewed',
         reviewedBy: null,
         reviewedAt: null,
+        approvedByName: null,
+        approvedAt: null,
       },
       {
         id: '0198c1a0-0000-7000-8000-0000000000a3',
@@ -78,6 +82,8 @@ export const examples: Record<string, unknown> = {
         review: 'Unreviewed',
         reviewedBy: null,
         reviewedAt: null,
+        approvedByName: null,
+        approvedAt: null,
       },
     ],
     blueprint: { questions: 10, passingScorePercent: 80, validityMonths: 12 },
