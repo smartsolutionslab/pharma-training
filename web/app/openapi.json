@@ -2220,7 +2220,10 @@
         "type": "object",
         "properties": {
           "courseId": {
-            "type": "string",
+            "type": [
+              "null",
+              "string"
+            ],
             "format": "uuid"
           },
           "personIds": {
