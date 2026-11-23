@@ -115,8 +115,8 @@ const known: Known[] = [
     'organisation.too-many-invitations-today',
     429,
     'organisation.team.errors.tooManyInvitationsToday',
-    'Ihre Apotheke hat heute die Höchstzahl an Einladungs-E-Mails erreicht. Versuchen Sie es morgen erneut.',
-    'Your pharmacy has reached the maximum number of invitation emails for today. Try again tomorrow.',
+    'Ihre Apotheke hat die Höchstzahl an Einladungs-E-Mails für heute erreicht. Versuchen Sie es später erneut.',
+    'Your pharmacy has reached the maximum number of invitation emails for today. Try again later.',
   ],
 ];
 
