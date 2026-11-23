@@ -4,13 +4,15 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersion
 
 /// <summary>
 /// The display name of the editor who approved a question, as the access token's <c>name</c> claim carried it at
-/// approval time (#205): trimmed, 1 to 100 characters, no nul character.
+/// approval time (#205): trimmed, 1 to 100 characters, and nothing a reader cannot see or that turns the text around:
+/// no control, format, private-use or unassigned character and no unpaired surrogate. The name is the user's own (Keycloak
+/// lets them edit it), so it is checked like any input.
 /// </summary>
 public class ReviewerNameTests
 {
-    public static TheoryData<string> Refused => [string.Empty, "   ", new string('a', 101), "a\0b"];
+    public static TheoryData<string> Refused => [string.Empty, "   ", new string('a', 101), "a\0b", "\u200B", "Emma\u202EEditor", "Emma\u2066Editor", "Emma\nEditor", "Emma\tEditor", "Emma\u0001Editor", "Emma\uD800Editor", "Emma\uE000Editor"];
 
-    public static TheoryData<string?> NoName => [(string?)null, string.Empty, "  ", new string('a', 101), "a\0b"];
+    public static TheoryData<string?> NoName => [(string?)null, string.Empty, "  ", new string('a', 101), "a\0b", "\u200B", "Emma\u202EEditor", "Emma\u2066Editor", "Emma\nEditor", "Emma\tEditor", "Emma\u0001Editor", "Emma\uD800Editor", "Emma\uE000Editor"];
 
     [Fact]
     public void A_reviewer_name_is_kept_trimmed() =>

@@ -9,7 +9,7 @@ public class EditorialCallerTests
     private static readonly Guid Subject = Guid.CreateVersion7();
 
     /// <summary>A name claim that is no reviewer's name: none at all, empty, blank, a character too long, holding a nul.</summary>
-    public static TheoryData<string?> UnfitNames => [(string?)null, string.Empty, "   ", new string('a', 101), "a\0b"];
+    public static TheoryData<string?> UnfitNames => [(string?)null, string.Empty, "   ", new string('a', 101), "a\0b", "\u200B", "Emma\u202EEditor", "Emma\nEditor"];
 
     [Fact]
     public void The_person_is_read_from_the_tokens_subject() =>
@@ -58,6 +58,11 @@ public class EditorialCallerTests
 
         EditorialCaller.NameOf(User([.. claims])).HasValue.ShouldBeFalse();
     }
+
+    /// <summary>A blank <c>name</c> claim does not hide a fitting name the handler mapped to <see cref="ClaimTypes.Name"/>.</summary>
+    [Fact]
+    public void A_blank_name_claim_falls_through_to_the_name_the_handler_mapped() =>
+        EditorialCaller.NameOf(User(("sub", Subject.ToString()), ("name", "  "), (ClaimTypes.Name, "Emma Editor"))).Value.ShouldBe(ReviewerName.From("Emma Editor"));
 
     /// <summary>The issue refuses a missing name rather than replacing it: the user name is no display name (#205).</summary>
     [Fact]
