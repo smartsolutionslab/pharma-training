@@ -61,7 +61,7 @@ public class CourseVersionCoverageTests
     {
         var published = Published();
 
-        published.ApproveQuestion(published.Questions.Single().Id, Author, Now).Error
+        published.ApproveQuestion(published.Questions.Single().Id, Author, AuthorsName, Now).Error
             .ShouldBe(new NotADraft(published.Id, CourseVersionStatus.Published));
     }
 
@@ -267,7 +267,7 @@ public class CourseVersionCoverageTests
 
         var edited = version.EditQuestion(stranger, SingleChoice(chapter), AnswerOptionId.New);
         var removed = version.RemoveQuestion(stranger);
-        var approved = version.ApproveQuestion(stranger, Author, Now);
+        var approved = version.ApproveQuestion(stranger, Author, AuthorsName, Now);
 
         edited.Error.ShouldBe(new QuestionNotFound(version.Id, stranger));
         edited.Error.Code.ShouldBe("editorial.question-not-found");
@@ -292,7 +292,7 @@ public class CourseVersionCoverageTests
         var version = DraftWithChapter(out var chapter);
         var id = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
 
-        version.ApproveQuestion(id, Reviewer, Now).IsSuccess.ShouldBeTrue();
+        version.ApproveQuestion(id, Reviewer, ReviewersName, Now).IsSuccess.ShouldBeTrue();
 
         var question = version.Questions.ShouldHaveSingleItem();
         question.Review.ShouldBe(ReviewState.Approved);
@@ -307,7 +307,7 @@ public class CourseVersionCoverageTests
         var lonely = new DraftedQuestion(QuestionText.From("Wie oft?"), QuestionType.SingleChoice, chapter, [(AnswerText.From("Täglich"), Correctness.Correct)]);
         var id = version.AddQuestion(QuestionId.New(), lonely, AnswerOptionId.New).Value;
 
-        var approved = version.ApproveQuestion(id, Author, Now);
+        var approved = version.ApproveQuestion(id, Author, AuthorsName, Now);
 
         approved.Error.ShouldBe(new TooFewOptions(id));
         approved.Error.Code.ShouldBe("editorial.too-few-options");
@@ -331,8 +331,8 @@ public class CourseVersionCoverageTests
         var refused = version.AddQuestion(QuestionId.New(), wrong, AnswerOptionId.New).Value;
         var accepted = version.AddQuestion(QuestionId.New(), right, AnswerOptionId.New).Value;
 
-        var refusal = version.ApproveQuestion(refused, Author, Now);
-        var approval = version.ApproveQuestion(accepted, Author, Now);
+        var refusal = version.ApproveQuestion(refused, Author, AuthorsName, Now);
+        var approval = version.ApproveQuestion(accepted, Author, AuthorsName, Now);
 
         refusal.Error.ShouldBe(new MultipleChoiceNeedsACorrect(refused));
         refusal.Error.Code.ShouldBe("editorial.multiple-choice-a-correct");
@@ -347,7 +347,7 @@ public class CourseVersionCoverageTests
         var id = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
         version.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
 
-        version.ApproveQuestion(id, Reviewer, Now).IsSuccess.ShouldBeTrue();
+        version.ApproveQuestion(id, Reviewer, ReviewersName, Now).IsSuccess.ShouldBeTrue();
 
         version.Questions.Single().Review.ShouldBe(ReviewState.Approved);
     }

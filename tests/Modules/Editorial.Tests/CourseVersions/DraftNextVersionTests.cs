@@ -181,8 +181,8 @@ public class DraftNextVersionTests
         version.SetBlueprint(new TestBlueprint(QuestionCount.From(2), ScorePercent.From(80), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
         var first = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
         var second = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
-        version.ApproveQuestion(first, approver, approvedAt).IsSuccess.ShouldBeTrue();
-        version.ApproveQuestion(second, approver, approvedAt).IsSuccess.ShouldBeTrue();
+        version.ApproveQuestion(first, approver, ApproversName, approvedAt).IsSuccess.ShouldBeTrue();
+        version.ApproveQuestion(second, approver, ApproversName, approvedAt).IsSuccess.ShouldBeTrue();
         version.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
         version.Publish(Reviewer, ReviewPolicy.FourEyes, Now).IsSuccess.ShouldBeTrue();
         return version;

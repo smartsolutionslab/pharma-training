@@ -13,6 +13,8 @@ public static class TestDraftExamples
 {
     private static readonly Timestamp ApprovedAt = Timestamp.From(new DateTimeOffset(2027, 3, 1, 9, 0, 0, TimeSpan.Zero));
 
+    private static readonly ReviewerName ApproversName = ReviewerName.From("Emma Editor");
+
     private static readonly IReadOnlyList<Course> Courses =
     [
         new(
@@ -112,7 +114,7 @@ public static class TestDraftExamples
                     texts[index % texts.Count],
                     [(AnswerText.From("Richtig"), Correctness.Correct), (AnswerText.From("Falsch"), Correctness.Incorrect)]);
                 var added = Succeed(version.AddQuestion(QuestionId.New(), question, AnswerOptionId.New));
-                Succeed(version.ApproveQuestion(added, version.CreatedBy, ApprovedAt));
+                Succeed(version.ApproveQuestion(added, version.CreatedBy, ApproversName, ApprovedAt));
             }
 
             return version;
