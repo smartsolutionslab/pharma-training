@@ -30,4 +30,22 @@ public static class ResultHttpExtensions
                 statusCode: (int)error.Status,
                 extensions: new Dictionary<string, object?> { ["code"] = error.Code }));
     }
+
+    /// <summary>
+    /// 201 with the value and its location when this call created it, 200 with the value when it found one already
+    /// there, or problem details carrying the error's status and code: for a create that is idempotent.
+    /// </summary>
+    public static Results<Created<TValue>, Ok<TValue>, ProblemHttpResult> ToCreatedOrOkHttpResult<TValue, TError>(this Result<TValue, TError> result, bool created, Func<TValue, string> location)
+        where TValue : notnull
+        where TError : ApiError
+    {
+        Ensure.That(location).IsNotNull();
+
+        return result.Match<Results<Created<TValue>, Ok<TValue>, ProblemHttpResult>>(
+            value => created ? TypedResults.Created(location(value), value) : TypedResults.Ok(value),
+            error => TypedResults.Problem(
+                title: error.Message,
+                statusCode: (int)error.Status,
+                extensions: new Dictionary<string, object?> { ["code"] = error.Code }));
+    }
 }

@@ -14,6 +14,9 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 [Collection(EditorialDrafts.Name)]
 public class EditorialChapterUploadsTests(AspireFixture aspire)
 {
+    /// <summary>The most bytes the upload-request route reads of a body: 4 KiB.</summary>
+    private const int UploadRequestLimit = 4096;
+
     private static readonly Uri Courses = new("/editorial/courses", UriKind.Relative);
 
     private static readonly HttpClient Storage = new();
@@ -144,6 +147,54 @@ public class EditorialChapterUploadsTests(AspireFixture aspire)
         (await ReadAsync(client, id, cancellationToken)).Chapters.ShouldBeEmpty();
     }
 
+    [Fact]
+    public async Task An_upload_of_html_declared_as_a_pdf_is_not_accepted()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var id = await CreateAsync(client, cancellationToken);
+        var upload = await RequestUploadAsync(client, id, "Pdf", cancellationToken);
+        await PutBlobAsync(upload, Encoding.UTF8.GetBytes("<html><body>Kein PDF</body></html>"), cancellationToken, contentType: "application/pdf");
+
+        using var added = await client.PostAsJsonAsync(Chapters(id), new { title = "Hygieneplan", kind = "Pdf", file = upload.BlobName }, cancellationToken);
+
+        await ShouldBeRefusedAsync(added, HttpStatusCode.BadRequest, "editorial.upload-not-accepted", cancellationToken);
+        (await ReadAsync(client, id, cancellationToken)).Chapters.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task An_upload_of_bytes_without_an_ftyp_box_declared_as_a_video_is_not_accepted()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var id = await CreateAsync(client, cancellationToken);
+        var upload = await RequestUploadAsync(client, id, "Video", cancellationToken);
+        await PutBlobAsync(upload, SmallPdf, cancellationToken, contentType: "video/mp4");
+
+        using var added = await client.PostAsJsonAsync(Chapters(id), new { title = "Vorführung", kind = "Video", file = upload.BlobName, durationSeconds = 90 }, cancellationToken);
+
+        await ShouldBeRefusedAsync(added, HttpStatusCode.BadRequest, "editorial.upload-not-accepted", cancellationToken);
+        (await ReadAsync(client, id, cancellationToken)).Chapters.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task A_file_another_chapter_of_the_version_holds_is_in_use()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var id = await CreateAsync(client, cancellationToken);
+        var upload = await RequestUploadAsync(client, id, "Pdf", cancellationToken);
+        await PutBlobAsync(upload, SmallPdf, cancellationToken);
+        using var first = await client.PostAsJsonAsync(Chapters(id), new { title = "Hygieneplan", kind = "Pdf", file = upload.BlobName }, cancellationToken);
+        await ShouldAnswerAsync(first, HttpStatusCode.Created, cancellationToken);
+        var chapter = await first.Content.ReadFromJsonAsync<Guid>(cancellationToken);
+
+        using var second = await client.PostAsJsonAsync(Chapters(id), new { title = "Hygieneplan, noch einmal", kind = "Pdf", file = upload.BlobName }, cancellationToken);
+
+        await ShouldBeRefusedAsync(second, HttpStatusCode.Conflict, "editorial.file-in-use", cancellationToken);
+        (await ReadAsync(client, id, cancellationToken)).Chapters.ShouldBe([new ChapterView(chapter, 1, "Hygieneplan", "Pdf", null, upload.BlobName, null)]);
+    }
+
     [Theory]
     [InlineData("""{"kind":"Text"}""")]
     [InlineData("{}")]
@@ -157,6 +208,115 @@ public class EditorialChapterUploadsTests(AspireFixture aspire)
         using var requested = await client.PostAsync(Uploads(id), Json(body), cancellationToken);
 
         await ShouldBeRefusedAsync(requested, HttpStatusCode.BadRequest, "editorial.invalid-upload-kind", cancellationToken);
+    }
+
+    /// <summary>
+    /// A UTF-8 body under a charset the host cannot read it in: one it does not know, UTF-16 (quoted, which RFC 9110 allows),
+    /// a quoted empty one, which names no charset, and UTF-7, which .NET refuses to decode.
+    /// </summary>
+    [Theory]
+    [InlineData("application/json; charset=bogus")]
+    [InlineData("application/json; charset=\"utf-16\"")]
+    [InlineData("application/json; charset=\"\"")]
+    [InlineData("application/json; charset=utf-7")]
+    public async Task An_upload_request_in_a_charset_the_host_does_not_know_is_refused_not_a_server_error(string contentType)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var id = await CreateAsync(client, cancellationToken);
+        using var body = Json("""{"kind":"Pdf"}""");
+        body.Headers.ContentType = MediaTypeHeaderValue.Parse(contentType);
+
+        using var requested = await client.PostAsync(Uploads(id), body, cancellationToken);
+
+        await ShouldBeRefusedAsync(requested, HttpStatusCode.BadRequest, "editorial.invalid-upload-kind", cancellationToken);
+    }
+
+    /// <summary>A UTF-8 body named as UTF-8, with the charset quoted or not (RFC 9110 allows both), is a valid request.</summary>
+    [Theory]
+    [InlineData("application/json; charset=utf-8")]
+    [InlineData("application/json; charset=\"utf-8\"")]
+    [InlineData("application/json; charset=\"UTF-8\"")]
+    public async Task An_upload_request_in_utf_8_gets_an_upload_url_whether_its_charset_is_quoted_or_not(string contentType)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var id = await CreateAsync(client, cancellationToken);
+        using var body = Json("""{"kind":"Pdf"}""");
+        body.Headers.ContentType = MediaTypeHeaderValue.Parse(contentType);
+
+        using var requested = await client.PostAsync(Uploads(id), body, cancellationToken);
+
+        await ShouldAnswerAsync(requested, HttpStatusCode.OK, cancellationToken);
+        var upload = await requested.Content.ReadFromJsonAsync<Upload>(cancellationToken);
+        upload.ShouldNotBeNull().BlobName.ShouldStartWith($"course-versions/{id:D}/");
+        upload.ContentType.ShouldBe("application/pdf");
+        upload.UploadUrl.IsAbsoluteUri.ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// A UTF-8 body that starts with a byte-order mark and names no charset is read as UTF-8 with the mark skipped, and
+    /// answered as the same body without one.
+    /// </summary>
+    [Fact]
+    public async Task An_upload_request_in_utf_8_with_a_byte_order_mark_and_no_charset_gets_an_upload_url()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var id = await CreateAsync(client, cancellationToken);
+        using var body = new ByteArrayContent([.. Encoding.UTF8.Preamble, .. Encoding.UTF8.GetBytes("""{"kind":"Pdf"}""")]);
+        body.Headers.ContentType = MediaTypeHeaderValue.Parse("application/json");
+
+        using var requested = await client.PostAsync(Uploads(id), body, cancellationToken);
+
+        await ShouldGetAnUploadUrlAsync(requested, id, cancellationToken);
+    }
+
+    /// <summary>A body actually encoded in UTF-16 and named so is read in it (.NET reads <c>utf-16</c> as little-endian).</summary>
+    [Fact]
+    public async Task An_upload_request_encoded_in_utf_16_and_named_so_gets_an_upload_url()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var id = await CreateAsync(client, cancellationToken);
+        using var body = new ByteArrayContent(Encoding.Unicode.GetBytes("""{"kind":"Pdf"}"""));
+        body.Headers.ContentType = MediaTypeHeaderValue.Parse("application/json; charset=utf-16");
+
+        using var requested = await client.PostAsync(Uploads(id), body, cancellationToken);
+
+        await ShouldGetAnUploadUrlAsync(requested, id, cancellationToken);
+    }
+
+    /// <summary>
+    /// The upload request is a few bytes of JSON, so its route reads no body larger than <see cref="UploadRequestLimit"/>
+    /// bytes: a larger one is refused as too large, however valid, rather than read into memory.
+    /// </summary>
+    [Fact]
+    public async Task An_upload_request_larger_than_its_routes_limit_is_refused_as_too_large()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var id = await CreateAsync(client, cancellationToken);
+        var json = """{"kind":"Pdf"}""" + new string(' ', UploadRequestLimit);
+
+        using var requested = await client.PostAsync(Uploads(id), Json(json), cancellationToken);
+
+        await ShouldAnswerAsync(requested, HttpStatusCode.RequestEntityTooLarge, cancellationToken);
+    }
+
+    /// <summary>A body of exactly <see cref="UploadRequestLimit"/> bytes is still read.</summary>
+    [Fact]
+    public async Task An_upload_request_of_exactly_its_routes_limit_gets_an_upload_url()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var id = await CreateAsync(client, cancellationToken);
+        var kind = """{"kind":"Pdf"}""";
+        var json = kind + new string(' ', UploadRequestLimit - kind.Length);
+
+        using var requested = await client.PostAsync(Uploads(id), Json(json), cancellationToken);
+
+        await ShouldGetAnUploadUrlAsync(requested, id, cancellationToken);
     }
 
     [Fact]
@@ -277,6 +437,14 @@ public class EditorialChapterUploadsTests(AspireFixture aspire)
         request.Content.Headers.ContentType = MediaTypeHeaderValue.Parse(contentType ?? upload.ContentType);
         using var put = await Storage.SendAsync(request, cancellationToken);
         put.StatusCode.ShouldBe(HttpStatusCode.Created, await put.Content.ReadAsStringAsync(cancellationToken));
+    }
+
+    private static async Task ShouldGetAnUploadUrlAsync(HttpResponseMessage requested, Guid id, CancellationToken cancellationToken)
+    {
+        await ShouldAnswerAsync(requested, HttpStatusCode.OK, cancellationToken);
+        var upload = await requested.Content.ReadFromJsonAsync<Upload>(cancellationToken);
+        upload.ShouldNotBeNull().BlobName.ShouldStartWith($"course-versions/{id:D}/");
+        upload.ContentType.ShouldBe("application/pdf");
     }
 
     private static async Task<CourseVersion> ReadAsync(HttpClient client, Guid id, CancellationToken cancellationToken)

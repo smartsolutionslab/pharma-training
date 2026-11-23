@@ -33,6 +33,9 @@ public sealed class Question : Entity<QuestionId>
 
     public Timestamp? ReviewedAt { get; private set; }
 
+    /// <summary>The approver's display name as the token carried it at approval time; null while unreviewed and for approvals recorded before #205.</summary>
+    public ReviewerName? ReviewedByName { get; private set; }
+
     internal static Question From(QuestionId id, DraftedQuestion draft, Provenance provenance, Func<AnswerOptionId> newOptionId)
     {
         var question = new Question(id, draft.Text, draft.Type, draft.Chapter, provenance);
@@ -49,10 +52,11 @@ public sealed class Question : Entity<QuestionId>
         MarkUnreviewed();
     }
 
-    internal void Approve(PersonId editor, Timestamp now)
+    internal void Approve(PersonId editor, ReviewerName name, Timestamp now)
     {
         Review = ReviewState.Approved;
         ReviewedBy = editor;
+        ReviewedByName = name;
         ReviewedAt = now;
     }
 
@@ -60,34 +64,35 @@ public sealed class Question : Entity<QuestionId>
     {
         Review = ReviewState.Unreviewed;
         ReviewedBy = null;
+        ReviewedByName = null;
         ReviewedAt = null;
     }
 
     /// <summary>Single choice: exactly one correct option. Multiple choice: at least one. Always at least two options.</summary>
-    internal Option<DomainError> Defect(QuestionId id)
+    internal Option<CourseVersionWorkflowError> Defect(QuestionId id)
     {
         var correct = options.Count(option => option.Correctness == Correctness.Correct);
         if (options.Count < 2)
         {
-            return Option<DomainError>.Some(CourseVersionErrors.TooFewOptions(id));
+            return Option<CourseVersionWorkflowError>.Some(CourseVersionErrors.Workflow.TooFewOptions(id));
         }
 
         if (Type == QuestionType.SingleChoice && correct != 1)
         {
-            return Option<DomainError>.Some(CourseVersionErrors.SingleChoiceNeedsOneCorrect(id));
+            return Option<CourseVersionWorkflowError>.Some(CourseVersionErrors.Workflow.SingleChoiceNeedsOneCorrect(id));
         }
 
         if (Type == QuestionType.MultipleChoice && correct == 0)
         {
-            return Option<DomainError>.Some(CourseVersionErrors.MultipleChoiceNeedsACorrect(id));
+            return Option<CourseVersionWorkflowError>.Some(CourseVersionErrors.Workflow.MultipleChoiceNeedsACorrect(id));
         }
 
-        return Option<DomainError>.None;
+        return Option<CourseVersionWorkflowError>.None;
     }
 
     internal Question CopyFor(QuestionId id, ChapterId chapter, Func<AnswerOptionId> newOptionId)
     {
-        var copy = new Question(id, Text, Type, chapter, Provenance) { Review = Review, ReviewedBy = ReviewedBy, ReviewedAt = ReviewedAt };
+        var copy = new Question(id, Text, Type, chapter, Provenance) { Review = Review, ReviewedBy = ReviewedBy, ReviewedByName = ReviewedByName, ReviewedAt = ReviewedAt };
         copy.ReplaceOptions([.. options.Select(option => (option.Text, option.Correctness))], newOptionId);
         return copy;
     }

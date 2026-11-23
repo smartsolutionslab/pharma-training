@@ -55,11 +55,11 @@ public class AiTestDraftApplyTests
         var refused = version.Publish(Reviewer, ReviewPolicy.SingleEditor, Now);
 
         refused.IsFailure.ShouldBeTrue();
-        refused.Error.ShouldBeOfType<QuestionNotApproved>().Question.ShouldBe(first);
+        refused.Error.Value.ShouldBeOfType<QuestionNotApproved>().Question.ShouldBe(first);
         version.Status.ShouldBe(CourseVersionStatus.InReview);
 
-        version.ApproveQuestion(first, Reviewer, Now).IsSuccess.ShouldBeTrue();
-        version.ApproveQuestion(second, Reviewer, Now).IsSuccess.ShouldBeTrue();
+        version.ApproveQuestion(first, Reviewer, ReviewersName, Now).IsSuccess.ShouldBeTrue();
+        version.ApproveQuestion(second, Reviewer, ReviewersName, Now).IsSuccess.ShouldBeTrue();
         var published = version.Publish(Reviewer, ReviewPolicy.SingleEditor, Now);
 
         published.IsSuccess.ShouldBeTrue();

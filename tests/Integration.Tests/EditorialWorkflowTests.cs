@@ -1,8 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text;
 using Aspire.Hosting.Testing;
 using Npgsql;
-using static SmartSolutionsLab.PharmaTraining.Integration.Tests.EditorialDatabase;
 using static SmartSolutionsLab.PharmaTraining.Integration.Tests.EditorialWorkflow;
 
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
@@ -70,6 +70,106 @@ public class EditorialWorkflowTests(AspireFixture aspire)
 
         using var added = await client.PostAsJsonAsync(chapters, new { title = "Flächendesinfektion", text = "Wischen." }, cancellationToken);
         added.StatusCode.ShouldBe(HttpStatusCode.Created);
+    }
+
+    [Fact]
+    public async Task A_return_without_a_valid_reason_is_refused_and_the_version_stays_in_review()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var draft = await ReadyToSubmitAsync(client, cancellationToken);
+        await SubmitAsync(client, draft.Id, cancellationToken);
+
+        using var refused = await client.PostAsJsonAsync(
+            new Uri($"/editorial/course-versions/{draft.Id}/return", UriKind.Relative), new { reason = "   " }, cancellationToken);
+
+        refused.StatusCode.ShouldBe(HttpStatusCode.BadRequest, await refused.Content.ReadAsStringAsync(cancellationToken));
+        (await CodeOfAsync(refused, cancellationToken)).ShouldBe("editorial.invalid-return-reason");
+        (await ReadAsync(client, draft.Id, cancellationToken)).Status.ShouldBe("InReview");
+    }
+
+    /// <summary>
+    /// A return's body that is no JSON is refused with the module's code like a blank reason, not by routing (#181, S1,
+    /// ADR 0013): a reason sent as text/plain answers 400, and the version stays in review.
+    /// </summary>
+    [Fact]
+    public async Task A_return_sent_as_plain_text_is_refused_as_an_invalid_reason()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var draft = await ReadyToSubmitAsync(client, cancellationToken);
+        await SubmitAsync(client, draft.Id, cancellationToken);
+        using var body = new StringContent("""{"reason":"x"}""", Encoding.UTF8, "text/plain");
+
+        using var refused = await client.PostAsync(new Uri($"/editorial/course-versions/{draft.Id}/return", UriKind.Relative), body, cancellationToken);
+
+        refused.StatusCode.ShouldBe(HttpStatusCode.BadRequest, await refused.Content.ReadAsStringAsync(cancellationToken));
+        (await CodeOfAsync(refused, cancellationToken)).ShouldBe("editorial.invalid-return-reason");
+        (await ReadAsync(client, draft.Id, cancellationToken)).Status.ShouldBe("InReview");
+    }
+
+    /// <summary>A return's JSON body without a content type is refused with the module's code too.</summary>
+    [Fact]
+    public async Task A_return_without_a_content_type_is_refused_as_an_invalid_reason()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var draft = await ReadyToSubmitAsync(client, cancellationToken);
+        await SubmitAsync(client, draft.Id, cancellationToken);
+        using var body = new ByteArrayContent(Encoding.UTF8.GetBytes("""{"reason":"Kapitel 2 braucht eine Quelle."}"""));
+        body.Headers.ContentType.ShouldBeNull();
+
+        using var refused = await client.PostAsync(new Uri($"/editorial/course-versions/{draft.Id}/return", UriKind.Relative), body, cancellationToken);
+
+        refused.StatusCode.ShouldBe(HttpStatusCode.BadRequest, await refused.Content.ReadAsStringAsync(cancellationToken));
+        (await CodeOfAsync(refused, cancellationToken)).ShouldBe("editorial.invalid-return-reason");
+        (await ReadAsync(client, draft.Id, cancellationToken)).Status.ShouldBe("InReview");
+    }
+
+    /// <summary>Authorization comes before the body: a caller without a token sending text/plain is unauthorized.</summary>
+    [Fact]
+    public async Task An_anonymous_return_sent_as_plain_text_is_unauthorized()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = aspire.CreateHostClient();
+        using var body = new StringContent("""{"reason":"x"}""", Encoding.UTF8, "text/plain");
+
+        using var response = await client.PostAsync(new Uri($"/editorial/course-versions/{Guid.CreateVersion7()}/return", UriKind.Relative), body, cancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized, await response.Content.ReadAsStringAsync(cancellationToken));
+    }
+
+    /// <summary>Authorization comes before the body: a pharmacy owner, no editor, sending text/plain is forbidden.</summary>
+    [Fact]
+    public async Task A_pharmacy_owners_return_sent_as_plain_text_is_forbidden()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("owner");
+        using var body = new StringContent("""{"reason":"x"}""", Encoding.UTF8, "text/plain");
+
+        using var response = await client.PostAsync(new Uri($"/editorial/course-versions/{Guid.CreateVersion7()}/return", UriKind.Relative), body, cancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Forbidden, await response.Content.ReadAsStringAsync(cancellationToken));
+    }
+
+    /// <summary>The return's body is capped at 16 384 bytes, well above any valid reason: one byte more is refused as too large.</summary>
+    [Fact]
+    public async Task A_return_body_larger_than_the_limit_is_refused_as_too_large()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var draft = await ReadyToSubmitAsync(client, cancellationToken);
+        await SubmitAsync(client, draft.Id, cancellationToken);
+        var prefix = "{\"reason\":\"";
+        var suffix = "\"}";
+        var json = prefix + new string('a', 16_385 - prefix.Length - suffix.Length) + suffix;
+        Encoding.UTF8.GetByteCount(json).ShouldBe(16_385);
+        using var body = new StringContent(json, Encoding.UTF8, "application/json");
+
+        using var refused = await client.PostAsync(new Uri($"/editorial/course-versions/{draft.Id}/return", UriKind.Relative), body, cancellationToken);
+
+        refused.StatusCode.ShouldBe(HttpStatusCode.RequestEntityTooLarge);
+        (await ReadAsync(client, draft.Id, cancellationToken)).Status.ShouldBe("InReview");
     }
 
     [Theory]
@@ -226,22 +326,40 @@ public class EditorialWorkflowTests(AspireFixture aspire)
     }
 
     /// <summary>
-    /// Publishes course A's first version, then makes course B's submitted version A's second (until #20 drafts one
-    /// through the API) and publishes it. Answers the first version with its content as read before, and the second.
+    /// Publishes a course's first version, drafts its next one through the API, replaces the copied chapter's text so
+    /// its question needs approval again, and publishes it. Answers the first version with its content as read before,
+    /// and the second.
     /// </summary>
-    private async Task<(Published First, Published Next)> SupersededAsync(HttpClient client, CancellationToken cancellationToken)
+    private static async Task<(Published First, Published Next)> SupersededAsync(HttpClient client, CancellationToken cancellationToken)
     {
         var first = await PublishedAsync(client, cancellationToken);
         var firstContent = await ContentOfAsync(client, first.Id, cancellationToken);
-        var next = await ReadyToSubmitAsync(client, cancellationToken);
-        await SubmitAsync(client, next.Id, cancellationToken);
-        await SeedAsNextVersionAsync(await ConnectionStringAsync(aspire, cancellationToken), next.Id, first.CourseId, 2, cancellationToken);
-        await ApproveAllAsync(client, next.Id, cancellationToken);
-        await PublishAsync(client, next.Id, cancellationToken);
-        return (new Published(first.Id, firstContent), new Published(next.Id, await ContentOfAsync(client, next.Id, cancellationToken)));
+        var nextId = await DraftNextAsync(client, first.Id, cancellationToken);
+        var chapter = new Uri($"/editorial/course-versions/{nextId}/chapters/{(await ReadChaptersAsync(client, nextId, cancellationToken)).Single()}", UriKind.Relative);
+        using (var replaced = await client.PutAsJsonAsync(chapter, new { title = "Händehygiene", text = "Neu: vor und nach …" }, cancellationToken))
+        {
+            replaced.StatusCode.ShouldBe(HttpStatusCode.OK, $"PUT {chapter} answered {(int)replaced.StatusCode}.");
+        }
+
+        await SubmitAsync(client, nextId, cancellationToken);
+        await ApproveAllAsync(client, nextId, cancellationToken);
+        await PublishAsync(client, nextId, cancellationToken);
+        return (new Published(first.Id, firstContent), new Published(nextId, await ContentOfAsync(client, nextId, cancellationToken)));
+    }
+
+    /// <summary>The ids of the version's chapters, in order.</summary>
+    private static async Task<IReadOnlyList<Guid>> ReadChaptersAsync(HttpClient client, Guid id, CancellationToken cancellationToken)
+    {
+        var version = await client.GetFromJsonAsync<VersionChapters>(new Uri($"/editorial/course-versions/{id}", UriKind.Relative), cancellationToken);
+        version.ShouldNotBeNull();
+        return [.. version.Chapters.Select(chapter => chapter.Id)];
     }
 
     private sealed record Published(Guid Id, string Content);
+
+    private sealed record VersionChapters(IReadOnlyList<VersionChapter> Chapters);
+
+    private sealed record VersionChapter(Guid Id);
 
     /// <summary>
     /// Polls Catalog's database until it holds the version's retirement, which only <c>CourseVersionRetiredV1</c> from

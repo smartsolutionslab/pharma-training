@@ -1,5 +1,6 @@
 using System.Net;
 using Microsoft.Extensions.Time.Testing;
+using SmartSolutionsLab.PharmaTraining.Contracts.Editorial;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.PublishCourseVersion;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
@@ -77,6 +78,7 @@ public class PublishCourseVersionTests
         next.PublishedBy.ShouldBeNull();
         first.Status.ShouldBe(CourseVersionStatus.Published);
         store.Commits.ShouldBe(0);
+        store.Published.ShouldBeEmpty();
     }
 
     /// <summary>The owner's decision of 2026-11-22: under four eyes no one who approved a question publishes; forbidden, like the submitter.</summary>
@@ -94,6 +96,7 @@ public class PublishCourseVersionTests
         version.Status.ShouldBe(CourseVersionStatus.InReview);
         version.PublishedBy.ShouldBeNull();
         store.Commits.ShouldBe(0);
+        store.Published.ShouldBeEmpty();
     }
 
     [Fact]
@@ -141,6 +144,7 @@ public class PublishCourseVersionTests
         next.Status.ShouldBe(CourseVersionStatus.InReview);
         first.Status.ShouldBe(CourseVersionStatus.Published);
         store.Commits.ShouldBe(0);
+        store.Published.ShouldBeEmpty();
     }
 
     [Fact]
@@ -155,6 +159,7 @@ public class PublishCourseVersionTests
         published.Error.Status.ShouldBe(HttpStatusCode.Conflict);
         version.Status.ShouldBe(CourseVersionStatus.Draft);
         store.Commits.ShouldBe(0);
+        store.Published.ShouldBeEmpty();
     }
 
     [Fact]
@@ -165,6 +170,7 @@ public class PublishCourseVersionTests
         published.Error.Code.ShouldBe("editorial.course-version-not-found");
         published.Error.Status.ShouldBe(HttpStatusCode.NotFound);
         store.Commits.ShouldBe(0);
+        store.Published.ShouldBeEmpty();
     }
 
     [Fact]
@@ -181,6 +187,57 @@ public class PublishCourseVersionTests
         published.Error.ShouldBe(new CourseVersionChanged(version.Id.Value));
         published.Error.Code.ShouldBe("editorial.course-version-changed");
         published.Error.Status.ShouldBe(HttpStatusCode.Conflict);
+    }
+
+    [Fact]
+    public async Task A_published_version_is_announced_once_as_a_course_version_and_once_as_a_test_definition()
+    {
+        var version = InReview();
+        store.Stored.Add(version);
+
+        var published = await Handler(ReviewSettings.Default).HandleAsync(new PublishCourseVersion(version.Id, Reviewer), TestContext.Current.CancellationToken);
+
+        published.IsSuccess.ShouldBeTrue();
+        store.Published.Count.ShouldBe(2);
+        store.Published.OfType<CourseVersionPublishedV1>().ShouldHaveSingleItem().CourseVersionId.ShouldBe(version.Id.Value);
+        store.Published.OfType<TestDefinitionPublishedV1>().ShouldHaveSingleItem().CourseVersionId.ShouldBe(version.Id.Value);
+        store.Commits.ShouldBe(1);
+    }
+
+    /// <summary>The superseded predecessor was announced when it was published; superseding it announces nothing of it.</summary>
+    [Fact]
+    public async Task Publishing_the_next_version_announces_only_the_next_version()
+    {
+        var first = Published();
+        var next = NextInReview(first);
+        store.Stored.AddRange([first, next]);
+
+        var published = await Handler(ReviewSettings.Default).HandleAsync(new PublishCourseVersion(next.Id, Reviewer), TestContext.Current.CancellationToken);
+
+        published.IsSuccess.ShouldBeTrue();
+        store.Published.OfType<CourseVersionPublishedV1>().ShouldHaveSingleItem().CourseVersionId.ShouldBe(next.Id.Value);
+        store.Published.OfType<TestDefinitionPublishedV1>().ShouldHaveSingleItem().CourseVersionId.ShouldBe(next.Id.Value);
+        store.Published.OfType<CourseVersionPublishedV1>().ShouldNotContain(announced => announced.CourseVersionId == first.Id.Value);
+        store.Published.OfType<TestDefinitionPublishedV1>().ShouldNotContain(announced => announced.CourseVersionId == first.Id.Value);
+    }
+
+    /// <summary>The events go to the unit of work, never around it, so a lost race saves and sends neither (ADR 0002).</summary>
+    [Fact]
+    public async Task A_publish_that_lost_a_race_announces_nothing()
+    {
+        var version = InReview();
+        store.Stored.Add(version);
+        var lostRace = Substitute.For<IEditorialUnitOfWork>();
+        lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(false);
+
+        var published = await new PublishCourseVersionHandler(store, lostRace, ReviewSettings.Default, time)
+            .HandleAsync(new PublishCourseVersion(version.Id, Reviewer), TestContext.Current.CancellationToken);
+
+        published.Error.ShouldBe(new CourseVersionChanged(version.Id.Value));
+        await lostRace.Received(1).PublishAsync(Arg.Any<CourseVersionPublishedV1>());
+        await lostRace.Received(1).PublishAsync(Arg.Any<TestDefinitionPublishedV1>());
+        await lostRace.DidNotReceive().CommitAsync(Arg.Any<CancellationToken>());
+        store.Published.ShouldBeEmpty();
     }
 
     private PublishCourseVersionHandler Handler(ReviewSettings review) => new(store, store, review, time);

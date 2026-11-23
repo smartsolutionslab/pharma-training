@@ -15,6 +15,9 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
 {
     private const string MailRequestType = "SmartSolutionsLab.PharmaTraining.Contracts.Organisation.InvitationMailRequestedV1";
 
+    /// <summary>The link hashes of the membership aliased <c>m</c>, in hash order, as one array: empty when it keeps none.</summary>
+    private const string LinkHashes = "array(SELECT l.token_hash FROM organisation.invitation_links l WHERE l.membership_id = m.id ORDER BY l.token_hash)";
+
     /// <summary>
     /// Seeds, fast and without the broker, the row accepting an invitation writes, for tests that are not about accepting;
     /// accepting itself is tested end to end in <see cref="OrganisationAcceptInvitationTests"/>. The row is the one the
@@ -27,8 +30,8 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand(
             """
-            INSERT INTO organisation.memberships (id, pharmacy_id, email, token_hash, invitation_expires_at, person_id, name, job_function, role, status, started_at, ended_at)
-            VALUES (@id, @pharmacy, @email, NULL, NULL, @person, @name, @jobFunction, @role, 'Active', now(), NULL)
+            INSERT INTO organisation.memberships (id, pharmacy_id, email, invitation_expires_at, person_id, name, job_function, role, status, started_at, ended_at)
+            VALUES (@id, @pharmacy, @email, NULL, @person, @name, @jobFunction, @role, 'Active', now(), NULL)
             """,
             connection);
         command.Parameters.AddWithValue("id", membership);
@@ -46,7 +49,8 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
     /// <summary>
     /// Writes an invitation row by hand, past the aggregate, as a second writer would: what the database itself refuses
     /// is what these rows show. It expires 14 days from now unless <paramref name="expiresAt"/> says otherwise. No mail
-    /// is requested for it, so nothing replaces the hash: a test that keeps the token can accept it.
+    /// is requested for it, so nothing replaces the hash: a test that keeps the token can accept it. The row and its one
+    /// link are written in one statement, so a link the database refuses leaves no row behind.
     /// </summary>
     public async Task<Guid> InsertInvitationAsync(
         Guid pharmacy,
@@ -62,8 +66,12 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand(
             """
-            INSERT INTO organisation.memberships (id, pharmacy_id, email, token_hash, invitation_expires_at, person_id, name, job_function, role, status, started_at, ended_at)
-            VALUES (@id, @pharmacy, @email, @tokenHash, coalesce(@expiresAt, now() + interval '14 days'), NULL, NULL, @jobFunction, @role, @status, NULL, NULL)
+            WITH membership AS (
+                INSERT INTO organisation.memberships (id, pharmacy_id, email, invitation_expires_at, person_id, name, job_function, role, status, started_at, ended_at)
+                VALUES (@id, @pharmacy, @email, coalesce(@expiresAt, now() + interval '14 days'), NULL, NULL, @jobFunction, @role, @status, NULL, NULL)
+                RETURNING id)
+            INSERT INTO organisation.invitation_links (membership_id, token_hash)
+            SELECT id, @tokenHash FROM membership
             """,
             connection);
         command.Parameters.AddWithValue("id", membership);
@@ -88,8 +96,8 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand(
             """
-            INSERT INTO organisation.memberships (id, pharmacy_id, email, token_hash, invitation_expires_at, person_id, name, job_function, role, status, started_at, ended_at)
-            VALUES (@id, @pharmacy, @email, NULL, NULL, @person, 'Anna Employee', 'Pta', 'Employee', @status, now(), CASE WHEN @status = 'Ended' THEN now() END)
+            INSERT INTO organisation.memberships (id, pharmacy_id, email, invitation_expires_at, person_id, name, job_function, role, status, started_at, ended_at)
+            VALUES (@id, @pharmacy, @email, NULL, @person, 'Anna Employee', 'Pta', 'Employee', @status, now(), CASE WHEN @status = 'Ended' THEN now() END)
             """,
             connection);
         command.Parameters.AddWithValue("id", membership);
@@ -101,15 +109,27 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         return membership;
     }
 
-    /// <summary>The membership's stored token hash, or null when it keeps none.</summary>
-    public async Task<string?> TokenHashAsync(Guid membership, CancellationToken cancellationToken)
+    /// <summary>
+    /// Clears the membership's mailed mark, as if its version had never been mailed, so a mail request that reaches the
+    /// consumer afterwards issues a link and mails it instead of being skipped as already mailed.
+    /// </summary>
+    public async Task ClearInvitationMailedAsync(Guid membership, CancellationToken cancellationToken)
     {
         await using var connection = await OpenAsync(cancellationToken);
-        await using var command = new NpgsqlCommand("SELECT token_hash FROM organisation.memberships WHERE id = @id", connection);
+        await using var command = new NpgsqlCommand("UPDATE organisation.memberships SET invitation_mailed_for = NULL WHERE id = @id", connection);
+        command.Parameters.AddWithValue("id", membership);
+        (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1, $"There is no membership {membership}.");
+    }
+
+    /// <summary>The token hashes of the membership's stored links, in hash order; empty when it keeps none.</summary>
+    public async Task<List<string>> TokenHashesAsync(Guid membership, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand($"SELECT {LinkHashes} FROM organisation.memberships m WHERE m.id = @id", connection);
         command.Parameters.AddWithValue("id", membership);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         (await reader.ReadAsync(cancellationToken)).ShouldBeTrue($"There is no membership {membership}.");
-        return await reader.IsDBNullAsync(0, cancellationToken) ? null : reader.GetString(0);
+        return [.. reader.GetFieldValue<string[]>(0)];
     }
 
     /// <summary>The statuses of the pharmacy's memberships of the address, oldest first.</summary>
@@ -145,6 +165,13 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         return Guid.Parse(claims.RootElement.GetProperty("sub").GetString() ?? throw new InvalidOperationException($"{user} has no subject."));
     }
 
+    /// <summary>The realm user's display name, as accepting an invitation stores it.</summary>
+    public async Task<string> NameOfAsync(string user)
+    {
+        using var claims = await ClaimsOfAsync(user);
+        return claims.RootElement.GetProperty("name").GetString() ?? throw new InvalidOperationException($"{user} has no name.");
+    }
+
     /// <summary>The person's active memberships in every pharmacy, oldest first.</summary>
     public async Task<List<ActiveMembership>> ActiveMembershipsOfAsync(Guid person, CancellationToken cancellationToken)
     {
@@ -163,12 +190,12 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         return memberships;
     }
 
-    /// <summary>The membership's status, person, name and token hash as stored: what accepting an invitation writes.</summary>
+    /// <summary>The membership's status, person, name and link hashes as stored: what accepting an invitation writes.</summary>
     public async Task<StoredMember> MemberAsync(Guid membership, CancellationToken cancellationToken)
     {
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand(
-            "SELECT status, person_id, name, token_hash FROM organisation.memberships WHERE id = @id",
+            $"SELECT status, person_id, name, {LinkHashes} FROM organisation.memberships m WHERE m.id = @id",
             connection);
         command.Parameters.AddWithValue("id", membership);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -177,7 +204,7 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
             reader.GetString(0),
             await reader.IsDBNullAsync(1, cancellationToken) ? null : reader.GetGuid(1),
             await reader.IsDBNullAsync(2, cancellationToken) ? null : reader.GetString(2),
-            await reader.IsDBNullAsync(3, cancellationToken) ? null : reader.GetString(3));
+            [.. reader.GetFieldValue<string[]>(3)]);
     }
 
     /// <summary>The membership's status, role, job function and end as stored.</summary>
@@ -472,7 +499,7 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
     internal sealed record ActiveMembership(Guid Id, Guid PharmacyId);
 
     /// <summary>A membership row as the tests read it back after accepting.</summary>
-    internal sealed record StoredMember(string Status, Guid? Person, string? Name, string? TokenHash);
+    internal sealed record StoredMember(string Status, Guid? Person, string? Name, IReadOnlyList<string> TokenHashes);
 
     /// <summary>A membership row as the tests read it back.</summary>
     internal sealed record StoredMembership(string Status, string Role, string JobFunction, DateTimeOffset? EndedAt);

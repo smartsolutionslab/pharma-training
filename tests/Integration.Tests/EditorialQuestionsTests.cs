@@ -14,6 +14,9 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 [Collection(EditorialDrafts.Name)]
 public class EditorialQuestionsTests(AspireFixture aspire)
 {
+    /// <summary>The <c>name</c> claim of the realm's <c>editor</c>, the only user who holds the editor role.</summary>
+    private const string EditorsName = "Emma Editor";
+
     private static readonly Uri Courses = new("/editorial/courses", UriKind.Relative);
 
     [Fact]
@@ -70,6 +73,96 @@ public class EditorialQuestionsTests(AspireFixture aspire)
         read.ReviewedAt.ShouldNotBeNull();
         read.ReviewedAt.Value.ShouldBeInRange(before.AddSeconds(-5), after.AddSeconds(5));
         read.Provenance.ShouldBe("Human");
+    }
+
+    /// <summary>The reviewer's display name is the access token's <c>name</c> claim at approval time (#205).</summary>
+    [Fact]
+    public async Task An_approved_question_is_read_back_with_the_name_of_the_editor_who_approved_it_and_when()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var id = await CreateAsync(client, cancellationToken);
+        var chapter = await AddChapterAsync(client, id, "Händehygiene", cancellationToken);
+        var question = await AddQuestionAsync(client, id, SingleChoice(chapter), cancellationToken);
+        var before = TimeProvider.System.GetUtcNow();
+
+        await ApproveAsync(client, id, question, cancellationToken);
+
+        var after = TimeProvider.System.GetUtcNow();
+        var read = (await QuestionsOfAsync(client, id, cancellationToken)).ShouldHaveSingleItem();
+        read.Review.ShouldBe("Approved");
+        read.ApprovedByName.ShouldBe(EditorsName);
+        read.ApprovedAt.ShouldNotBeNull();
+        read.ApprovedAt.ShouldBe(read.ReviewedAt);
+        read.ApprovedAt.Value.ShouldBeInRange(before.AddSeconds(-5), after.AddSeconds(5));
+    }
+
+    [Fact]
+    public async Task Editing_an_approved_question_clears_the_reviewers_name_and_the_approval_time()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var id = await CreateAsync(client, cancellationToken);
+        var chapter = await AddChapterAsync(client, id, "Händehygiene", cancellationToken);
+        var question = await AddQuestionAsync(client, id, SingleChoice(chapter), cancellationToken);
+        await ApproveAsync(client, id, question, cancellationToken);
+        (await QuestionsOfAsync(client, id, cancellationToken)).ShouldHaveSingleItem().ApprovedByName.ShouldBe(EditorsName);
+
+        using var edited = await client.PutAsJsonAsync(Question(id, question), MultipleChoice(chapter), cancellationToken);
+
+        edited.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var read = (await QuestionsOfAsync(client, id, cancellationToken)).ShouldHaveSingleItem();
+        read.Review.ShouldBe("Unreviewed");
+        read.ApprovedByName.ShouldBeNull();
+        read.ApprovedAt.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task Changing_a_chapter_clears_the_reviewers_name_of_its_questions_and_keeps_the_others()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var id = await CreateAsync(client, cancellationToken);
+        var changed = await AddChapterAsync(client, id, "Händehygiene", cancellationToken);
+        var kept = await AddChapterAsync(client, id, "Flächendesinfektion", cancellationToken);
+        var aboutChanged = await AddQuestionAsync(client, id, SingleChoice(changed), cancellationToken);
+        var aboutKept = await AddQuestionAsync(client, id, MultipleChoice(kept), cancellationToken);
+        await ApproveAsync(client, id, aboutChanged, cancellationToken);
+        await ApproveAsync(client, id, aboutKept, cancellationToken);
+        (await QuestionsOfAsync(client, id, cancellationToken)).Select(question => question.ApprovedByName).ShouldBe([EditorsName, EditorsName]);
+
+        using var replaced = await client.PutAsJsonAsync(Chapter(id, changed), new { title = "Händehygiene, überarbeitet", text = "Neu." }, cancellationToken);
+
+        replaced.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var afterChange = await QuestionsOfAsync(client, id, cancellationToken);
+        var sentBack = afterChange.Single(question => question.Id == aboutChanged);
+        sentBack.ApprovedByName.ShouldBeNull();
+        sentBack.ApprovedAt.ShouldBeNull();
+        var untouched = afterChange.Single(question => question.Id == aboutKept);
+        untouched.Review.ShouldBe("Approved");
+        untouched.ApprovedByName.ShouldBe(EditorsName);
+        untouched.ApprovedAt.ShouldNotBeNull();
+    }
+
+    /// <summary>Approvals recorded before #205 have no name: the column stays empty, and they are read back without one.</summary>
+    [Fact]
+    public async Task An_approval_recorded_before_reviewer_names_were_kept_is_read_back_with_its_time_and_no_name()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var connectionString = await EditorialDatabase.ConnectionStringAsync(aspire, cancellationToken);
+        var id = await CreateAsync(client, cancellationToken);
+        var chapter = await AddChapterAsync(client, id, "Händehygiene", cancellationToken);
+        var question = await AddQuestionAsync(client, id, SingleChoice(chapter), cancellationToken);
+        await ApproveAsync(client, id, question, cancellationToken);
+
+        await EditorialDatabase.ForgetReviewerNameAsync(connectionString, question, cancellationToken);
+
+        var read = (await QuestionsOfAsync(client, id, cancellationToken)).ShouldHaveSingleItem();
+        read.Review.ShouldBe("Approved");
+        read.ApprovedByName.ShouldBeNull();
+        read.ApprovedAt.ShouldNotBeNull();
+        read.ApprovedAt.ShouldBe(read.ReviewedAt);
     }
 
     [Fact]
@@ -469,7 +562,7 @@ public class EditorialQuestionsTests(AspireFixture aspire)
     private sealed record VersionView(Guid Id, string Status, IReadOnlyList<QuestionView>? Questions);
 
     private sealed record QuestionView(
-        Guid Id, int Position, Guid ChapterId, string Text, string Type, IReadOnlyList<OptionView> Options, string Provenance, string Review, Guid? ReviewedBy, DateTimeOffset? ReviewedAt);
+        Guid Id, int Position, Guid ChapterId, string Text, string Type, IReadOnlyList<OptionView> Options, string Provenance, string Review, Guid? ReviewedBy, DateTimeOffset? ReviewedAt, string? ApprovedByName, DateTimeOffset? ApprovedAt);
 
     private sealed record OptionView(Guid Id, string Text, bool Correct);
 

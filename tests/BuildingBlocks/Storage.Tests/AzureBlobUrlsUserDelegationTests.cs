@@ -68,6 +68,18 @@ public class AzureBlobUrlsUserDelegationTests
     }
 
     [Fact]
+    public async Task Without_an_account_key_both_urls_of_an_https_endpoint_work_over_https_alone()
+    {
+        var urls = new AzureBlobUrls(Configuration(Keyless()), new FakeTimeProvider(Noon), KeySource(Key(Noon.AddHours(1))));
+
+        var upload = await urls.CreateUploadUrlAsync(BlobName.From("handout.pdf"), FiveMinutes, TestContext.Current.CancellationToken);
+        var read = await urls.CreateReadUrlAsync(BlobName.From("handout.pdf"), FiveMinutes, TestContext.Current.CancellationToken);
+
+        HttpUtility.ParseQueryString(upload.Url.Query)["spr"].ShouldBe("https", "a signature for an https endpoint must not work over plain http");
+        HttpUtility.ParseQueryString(read.Url.Query)["spr"].ShouldBe("https", "a signature for an https endpoint must not work over plain http");
+    }
+
+    [Fact]
     public async Task Without_an_account_key_the_expiry_is_rounded_down_to_the_second()
     {
         var time = new FakeTimeProvider(Noon);

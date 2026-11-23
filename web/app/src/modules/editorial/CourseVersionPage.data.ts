@@ -56,6 +56,8 @@ export const examples: Record<string, unknown> = {
         review: 'Approved',
         reviewedBy: 'editor',
         reviewedAt: '2026-11-20T09:30:00Z',
+        approvedByName: 'Emma Editor',
+        approvedAt: '2026-11-20T09:30:00Z',
       },
     ],
     blueprint: { questions: 10, passingScorePercent: 80, validityMonths: 12 },

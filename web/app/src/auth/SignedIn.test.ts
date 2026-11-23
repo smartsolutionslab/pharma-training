@@ -1,11 +1,13 @@
 import { render, screen } from '@testing-library/vue';
 import { User } from 'oidc-client-ts';
 import { afterEach, expect, test, vi } from 'vitest';
+import { createMemoryHistory, createRouter } from 'vue-router';
 import { setLanguage, t } from '@/i18n';
 import SignedIn from './SignedIn.vue';
 import { type AuthClient, authKey, createAuth } from './useAuth';
 
 afterEach(() => {
+  vi.restoreAllMocks();
   window.history.replaceState({}, '', '/');
 });
 
@@ -155,4 +157,78 @@ test('the sign-in texts are German by default and English once chosen', async ()
   setLanguage('en-GB', { remember: false });
 
   expect(await screen.findByText('Signing in…')).toBeInTheDocument();
+});
+
+// A deep link survives the sign-in: the identity provider sends the user back to the page they opened. Its query and
+// fragment stay behind: an invitation link's token is in the fragment and must never travel to the identity provider.
+test('an anonymous visitor on a page is sent to the identity provider to come back to that page', async () => {
+  window.history.replaceState({}, '', '/learning?tab=open#section');
+  const fake = client();
+
+  renderSignedIn(fake);
+
+  await vi.waitFor(() => expect(fake.signinRedirect).toHaveBeenCalledOnce());
+  expect(fake.signinRedirect).toHaveBeenCalledWith({ redirect_uri: 'http://localhost:3000/learning' });
+});
+
+// The router's first navigation runs the guards that take an invitation link's token out of the address; the browser
+// must not leave for the identity provider before they have.
+test("no sign-in starts before the router's first navigation has settled", async () => {
+  let settle = () => {};
+  const firstNavigation = new Promise<void>((resolve) => {
+    settle = resolve;
+  });
+  const guard = vi.fn(() => firstNavigation);
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/', component: { template: '<p>page</p>' }, beforeEnter: guard }],
+  });
+  // No stored user, answered once the router's guard is under way: from then on SignedIn would sign in.
+  let answer: (user: null) => void = () => {};
+  const noUser = new Promise<null>((resolve) => {
+    answer = resolve;
+  });
+  const fake = client({ getUser: vi.fn<AuthClient['getUser']>(() => noUser) });
+  const auth = createAuth(fake);
+
+  render(SignedIn, {
+    global: { plugins: [router], provide: { [authKey]: auth } },
+    slots: { default: '<h1>pharma-training</h1>' },
+  });
+  await vi.waitFor(() => expect(guard).toHaveBeenCalledOnce());
+  answer(null);
+  await vi.waitFor(() => expect(auth.isLoading.value).toBe(false));
+  expect(fake.signinRedirect).not.toHaveBeenCalled();
+
+  settle();
+
+  await vi.waitFor(() => expect(fake.signinRedirect).toHaveBeenCalledOnce());
+});
+
+// A path may start with two slashes (http://localhost:3000//evil.example/x): taken alone as a URL, it names another
+// host, and replacing the address with it throws a SecurityError. The address is cleaned with an absolute URL of the
+// app's own origin instead.
+test('coming back to a path that starts with two slashes completes the sign-in and cleans the address in place', async () => {
+  window.history.replaceState({}, '', 'http://localhost:3000//evil.example/x?code=the-code&state=the-state');
+  const replaceState = vi.spyOn(window.history, 'replaceState');
+  const fake = client();
+  const auth = createAuth(fake);
+
+  render(SignedIn, {
+    global: { provide: { [authKey]: auth } },
+    slots: { default: '<h1>pharma-training</h1>' },
+  });
+
+  expect(await screen.findByRole('heading', { name: 'pharma-training' })).toBeInTheDocument();
+  expect(fake.signinCallback).toHaveBeenCalledOnce();
+  expect(auth.error.value).toBeNull();
+  expect(auth.isAuthenticated.value).toBe(true);
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  expect(replaceState).toHaveBeenLastCalledWith(
+    expect.anything(),
+    expect.anything(),
+    'http://localhost:3000//evil.example/x',
+  );
+  expect(window.location.href).toBe('http://localhost:3000//evil.example/x');
+  expect(fake.signinRedirect).not.toHaveBeenCalled();
 });

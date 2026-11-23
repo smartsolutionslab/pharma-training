@@ -43,6 +43,8 @@ function question(id: string, chapterId: string, review: 'Approved' | 'Unreviewe
     review,
     reviewedBy: null,
     reviewedAt: null,
+    approvedByName: null,
+    approvedAt: null,
   };
 }
 

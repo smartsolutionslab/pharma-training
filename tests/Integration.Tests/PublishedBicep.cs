@@ -42,6 +42,13 @@ public sealed partial class PublishedBicep
     public static IReadOnlyList<string> SecureParameters(string bicep) =>
         [.. SecureParameter().Matches(bicep).Select(match => match.Groups["name"].Value)];
 
+    /// <summary>
+    /// The symbols a Bicep file declares, with the line each is on: every <c>param</c>, <c>var</c>, <c>resource</c>,
+    /// <c>module</c>, <c>output</c>, <c>type</c> and <c>func</c> name.
+    /// </summary>
+    public static IReadOnlyList<(string Name, int Line)> DeclaredIdentifiers(string bicep) =>
+        [.. Declaration().Matches(bicep).Select(match => (match.Groups["name"].Value, bicep.AsSpan(0, match.Index).Count('\n') + 1))];
+
     /// <summary>The block that follows <c>&lt;property&gt;: {</c>, up to its closing brace, or empty where there is none.</summary>
     public static string Block(string bicep, string property)
     {
@@ -261,6 +268,9 @@ public sealed partial class PublishedBicep
 
     [GeneratedRegex(@"'Microsoft\.App/containerApps@")]
     private static partial Regex ContainerAppDeclaration();
+
+    [GeneratedRegex(@"^[ \t]*(param|var|resource|module|output|type|func)[ \t]+(?<name>[A-Za-z_][A-Za-z0-9_]*)", RegexOptions.Multiline)]
+    private static partial Regex Declaration();
 
     [GeneratedRegex(@"@secure\(\)\s*param\s+(?<name>\w+)")]
     private static partial Regex SecureParameter();

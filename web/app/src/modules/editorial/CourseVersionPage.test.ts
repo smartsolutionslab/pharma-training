@@ -4,11 +4,12 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, onTestFinished, test, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { createMemoryHistory } from 'vue-router';
-import type {
-  EditorialChapterDto,
-  EditorialCourseVersionDto,
-  EditorialCourseVersionStatus,
-  EditorialQuestionDto,
+import {
+  type EditorialChapterDto,
+  type EditorialCourseVersionDto,
+  type EditorialCourseVersionStatus,
+  type EditorialQuestionDto,
+  getGetEditorialCourseVersionsQueryKey,
 } from '@/api/generated';
 import { setLanguage, t } from '@/i18n';
 import { createAppRouter } from '@/router';
@@ -70,6 +71,8 @@ function question(id: string, chapterId: string, review: 'Approved' | 'Unreviewe
     review,
     reviewedBy: null,
     reviewedAt: null,
+    approvedByName: null,
+    approvedAt: null,
   };
 }
 
@@ -428,6 +431,31 @@ test('a version the host cannot give is reported', async () => {
   expect(await screen.findByRole('alert')).toHaveTextContent(t('editorial.version.loadFailed'));
   expect(screen.getByRole('alert')).toHaveTextContent('Die Version konnte nicht geladen werden.');
   expect(screen.queryByText(t('editorial.version.notFound'))).not.toBeInTheDocument();
+});
+
+// The version's test is a page of its own (#25, S1): its header links to it, whatever the version's status, since a
+// version that cannot be changed still shows its test.
+test.each(['Draft' as const, 'InReview' as const, 'Published' as const, 'Superseded' as const, 'Retired' as const])(
+  'the version links to its test, %s',
+  async (status) => {
+    version = versionOf(status);
+    await renderPage();
+
+    expect(screen.getByRole('link', { name: t('editorial.version.openTest') })).toHaveAttribute(
+      'href',
+      `/editorial/versions/${versionId}/test`,
+    );
+  },
+);
+
+test('the link to the test speaks German by default and English when switched', async () => {
+  await renderPage();
+
+  expect(screen.getByRole('link', { name: 'Test: Vorgaben und Fragen' })).toBeInTheDocument();
+
+  setLanguage('en-GB', { remember: false });
+
+  expect(await screen.findByRole('link', { name: 'Test: blueprint and questions' })).toBeInTheDocument();
 });
 
 // The detail /editorial/versions/:id (T1) opens this page; the placeholder it opened until now is gone.
@@ -986,4 +1014,367 @@ test('while uploading, everything in the chapter dialog but "Upload abbrechen" i
     .filter((control) => control !== cancelUpload && !control.matches(':disabled'))
     .map((control) => control.getAttribute('aria-label') ?? control.textContent.trim());
   expect(enabled).toEqual([]);
+});
+
+// A new version (#155): a published version offers "Neue Version anlegen", which drafts its successor
+// (POST /editorial/course-versions/{id}/next, #20) and opens it here. The successor is numbered one higher and carries
+// the chapters and questions over. A module's refusal is shown in the host's words (ApiError.serverMessage, ADR 0007,
+// until #147 translates codes), else the catalog's; either way the published version is read again.
+
+const nextVersionId = '0198c1a0-0000-7000-8000-0000000000c2';
+/** The successor as the host answers it once drafted: a draft numbered 3, with the published version's chapters. */
+const successor = (): EditorialCourseVersionDto => ({ ...versionOf('Draft'), id: nextVersionId, number: 3 });
+
+const newVersion = () => screen.queryByRole('button', { name: 'Neue Version anlegen' });
+const newVersionButton = () => screen.getByRole('button', { name: 'Neue Version anlegen' });
+
+/** The POSTs the page sent to draft the next version. */
+const drafts = () => changes().filter(({ method, path }) => method === 'POST' && path.endsWith('/next'));
+
+const problem = (status: number, code: string | undefined, title: string, detail?: string) =>
+  new Response(JSON.stringify({ title, status, ...(detail === undefined ? {} : { detail }), code }), {
+    status,
+    headers: { 'Content-Type': 'application/problem+json' },
+  });
+
+describe('a new version', () => {
+  beforeEach(() => {
+    version = versionOf('Published');
+    changing = async (method, path) =>
+      method === 'POST' && path === `/api/editorial/course-versions/${versionId}/next`
+        ? Response.json(nextVersionId, {
+            status: 201,
+            headers: { Location: `/editorial/course-versions/${nextVersionId}` },
+          })
+        : new Response(null, { status: 204 });
+    // The successor's own address answers the successor.
+    const answering = host.getMockImplementation();
+    host.mockImplementation(async (input, init) => {
+      const url = new URL(String(input), 'http://localhost');
+      if ((init?.method ?? 'GET') === 'GET' && url.pathname === `/api/editorial/course-versions/${nextVersionId}`) {
+        return Response.json(successor());
+      }
+      if (answering === undefined) {
+        throw new Error('The host has no answers.');
+      }
+      return answering(input, init);
+    });
+  });
+
+  // Only a published version can have a successor (#20, NotPublished): every other status offers nothing.
+  test('is offered by a published version only, under its own name', async () => {
+    const offered: EditorialCourseVersionStatus[] = [];
+    for (const status of ['Draft', 'InReview', 'Published', 'Superseded', 'Retired'] as const) {
+      version = versionOf(status);
+      await renderPage();
+      if (newVersion() !== null) {
+        offered.push(status);
+        expect(newVersion()).toBeEnabled();
+        expect(screen.getByRole('button', { name: t('editorial.version.newVersion') })).toBe(newVersion());
+      }
+      cleanup();
+    }
+
+    expect(offered).toEqual(['Published']);
+  });
+
+  test('drafts the next version, opens it in the editor with the chapters carried over, and reports it', async () => {
+    const user = userEvent.setup();
+    const { router } = await renderPage();
+
+    await user.click(newVersionButton());
+
+    await waitFor(() => expect(router.currentRoute.value.path).toBe(`/editorial/versions/${nextVersionId}`));
+    expect(await screen.findByText('Version 3')).toBeInTheDocument();
+    expect(screen.getByText(t('glossary.courseVersionStatus.Draft'))).toBeInTheDocument();
+    expect(screen.queryByText(t('editorial.version.readOnly.Published'))).not.toBeInTheDocument();
+    expect(within(chapterList()).getAllByRole('listitem')).toHaveLength(3);
+    expect(screen.getByRole('button', { name: t('editorial.chapters.add') })).toBeEnabled();
+    expect(newVersion()).not.toBeInTheDocument();
+    expect(drafts()).toEqual([
+      { method: 'POST', path: `/editorial/course-versions/${versionId}/next`, body: undefined },
+    ]);
+    expect(notify.success).toHaveBeenCalledWith('Version 3 wurde als Entwurf angelegt.');
+    expect(notify.success).toHaveBeenCalledWith(t('editorial.version.newVersionCreated', { number: 3 }));
+    expect(notify.failure).not.toHaveBeenCalled();
+  });
+
+  // The button is gone once the draft shows: the focus goes to the draft's heading, not to the page's body.
+  test('once the new draft shows, its heading has the focus', async () => {
+    const user = userEvent.setup();
+    const { router } = await renderPage();
+
+    await user.click(newVersionButton());
+
+    await waitFor(() => expect(router.currentRoute.value.path).toBe(`/editorial/versions/${nextVersionId}`));
+    await screen.findByText('Version 3');
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: version.title })).toHaveFocus());
+  });
+
+  test('marks every inbox page stale: the new draft is listed among the drafts', async () => {
+    const user = userEvent.setup();
+    const { queryClient, router } = await renderPage();
+    const inboxKeys = [
+      getGetEditorialCourseVersionsQueryKey({ status: 'Draft', page: 1, pageSize: 20 }),
+      getGetEditorialCourseVersionsQueryKey({ status: 'Published', page: 1, pageSize: 20 }),
+    ];
+    for (const key of inboxKeys) {
+      queryClient.setQueryData(key, { items: [], totalCount: 0, page: 1, pageSize: 20 });
+    }
+
+    await user.click(newVersionButton());
+
+    await waitFor(() => expect(router.currentRoute.value.path).toBe(`/editorial/versions/${nextVersionId}`));
+    for (const key of inboxKeys) {
+      expect(queryClient.getQueryState(key)?.isInvalidated).toBe(true);
+    }
+  });
+
+  test('pressed twice before the host answers, drafts one version', async () => {
+    let answer: (response: Response) => void = () => undefined;
+    changing = () =>
+      new Promise<Response>((resolve) => {
+        answer = resolve;
+      });
+    const { router } = await renderPage();
+    const button = newVersionButton();
+
+    await fireEvent.click(button);
+    await fireEvent.click(button);
+    await fireEvent.dblClick(button);
+
+    await waitFor(() => expect(drafts()).toHaveLength(1));
+    answer(Response.json(nextVersionId, { status: 201 }));
+    await waitFor(() => expect(router.currentRoute.value.path).toBe(`/editorial/versions/${nextVersionId}`));
+    expect(drafts()).toHaveLength(1);
+    expect(notify.success).toHaveBeenCalledTimes(1);
+  });
+
+  test('is disabled while the host drafts it', async () => {
+    let answer: (response: Response) => void = () => undefined;
+    changing = () =>
+      new Promise<Response>((resolve) => {
+        answer = resolve;
+      });
+    const user = userEvent.setup();
+    const { router } = await renderPage();
+
+    await user.click(newVersionButton());
+
+    await waitFor(() => expect(newVersion()).toBeDisabled());
+    expect(router.currentRoute.value.path).toBe(`/editorial/versions/${versionId}`);
+    answer(Response.json(nextVersionId, { status: 201 }));
+    await waitFor(() => expect(router.currentRoute.value.path).toBe(`/editorial/versions/${nextVersionId}`));
+  });
+
+  // Every refusal of #20, as the host sends it: a module's code, and its message as the problem's title.
+  test.each([
+    [
+      'the version already has its successor',
+      problem(
+        409,
+        'editorial.next-version-exists',
+        `Version 3 of this course already exists (${nextVersionId}); continue that one instead of drafting another from ${versionId}.`,
+      ),
+    ],
+    [
+      'the version is no longer published',
+      problem(409, 'editorial.not-published', 'Die Version ist nicht veröffentlicht.'),
+    ],
+    [
+      'the version changed in the meantime',
+      problem(
+        409,
+        'editorial.course-version-changed',
+        `The course version ${versionId} changed in the meantime; load it again and repeat the change.`,
+      ),
+    ],
+    [
+      'the version does not exist',
+      problem(404, 'editorial.course-version-not-found', `There is no course version ${versionId}.`),
+    ],
+    [
+      'the token names no person',
+      problem(403, 'editorial.identity-incomplete', 'The access token names no subject that identifies a person.'),
+    ],
+  ])("refused because %s, reports the host's words, stays and reads the version again", async (_, refusal) => {
+    const words = (JSON.parse(await refusal.clone().text()) as { title: string }).title;
+    changing = async () => refusal;
+    const user = userEvent.setup();
+    const { router } = await renderPage();
+
+    await user.click(newVersionButton());
+
+    await waitFor(() => expect(notify.failure).toHaveBeenCalledWith(words));
+    expect(notify.success).not.toHaveBeenCalled();
+    expect(router.currentRoute.value.path).toBe(`/editorial/versions/${versionId}`);
+    await waitFor(() => expect(reads().length).toBeGreaterThan(1));
+    expect(reads().every(({ path }) => path === `/editorial/course-versions/${versionId}`)).toBe(true);
+  });
+
+  // Someone retired the version meanwhile: the host refuses, and the page, reading it again, offers nothing.
+  test('refused because the version is no longer published, shows it as it now is, without the action', async () => {
+    changing = async () => {
+      version = versionOf('Retired');
+      return problem(409, 'editorial.not-published', 'Die Version ist nicht veröffentlicht.');
+    };
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(newVersionButton());
+
+    expect(await screen.findByText(t('editorial.version.readOnly.Retired'))).toBeInTheDocument();
+    expect(newVersion()).not.toBeInTheDocument();
+  });
+
+  // Refusals without a module's words (the framework's English titles, a 500, no answer at all) show the catalog's.
+  test.each([
+    ['the host fails', () => Promise.resolve(new Response('', { status: 500 }))],
+    ['the policy forbids it', () => Promise.resolve(problem(403, undefined, 'Forbidden'))],
+    [
+      'another editor drafted it at the same moment',
+      () =>
+        Promise.resolve(problem(409, 'already-exists', 'Conflict', 'duplicate key value violates unique constraint')),
+    ],
+    ['the network fails', () => Promise.reject(new TypeError('Failed to fetch'))],
+  ])("when %s, reports it in the catalog's words and stays, ready to try again", async (_, answer) => {
+    changing = answer;
+    const user = userEvent.setup();
+    const { router } = await renderPage();
+
+    await user.click(newVersionButton());
+
+    await waitFor(() =>
+      expect(notify.failure).toHaveBeenCalledWith(
+        'Die neue Version konnte nicht angelegt werden. Versuchen Sie es erneut.',
+      ),
+    );
+    expect(notify.failure).toHaveBeenCalledWith(t('editorial.version.newVersionFailed'));
+    expect(notify.success).not.toHaveBeenCalled();
+    expect(router.currentRoute.value.path).toBe(`/editorial/versions/${versionId}`);
+    await waitFor(() => expect(newVersion()).toBeEnabled());
+    expect(newVersion()).toHaveFocus();
+  });
+
+  // The focus may have moved meanwhile (a screen reader's cursor, a click elsewhere): a failure puts it back on the button.
+  test('when the host fails, the focus returns to the button, wherever it went meanwhile', async () => {
+    let answer: (response: Response) => void = () => undefined;
+    changing = () =>
+      new Promise<Response>((resolve) => {
+        answer = resolve;
+      });
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(newVersionButton());
+    await waitFor(() => expect(newVersion()).toBeDisabled());
+    newVersionButton().blur();
+    answer(new Response('', { status: 500 }));
+
+    await waitFor(() => expect(notify.failure).toHaveBeenCalledWith(t('editorial.version.newVersionFailed')));
+    await waitFor(() => expect(newVersion()).toHaveFocus());
+  });
+
+  // A refusal in the module's words keeps the place too: on the button while the version still offers it.
+  test("refused in the module's words, the focus returns to the button while it is still offered", async () => {
+    let answer: (response: Response) => void = () => undefined;
+    changing = () =>
+      new Promise<Response>((resolve) => {
+        answer = resolve;
+      });
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(newVersionButton());
+    await waitFor(() => expect(newVersion()).toBeDisabled());
+    newVersionButton().blur();
+    answer(problem(409, 'editorial.course-version-changed', 'The course version changed in the meantime.'));
+
+    await waitFor(() => expect(notify.failure).toHaveBeenCalledWith('The course version changed in the meantime.'));
+    await waitFor(() => expect(newVersion()).toHaveFocus());
+  });
+
+  // Retired meanwhile, the version offers nothing any more: the focus goes to its heading, not to the page's body.
+  test('refused because the version was retired, the focus goes to the heading once the button is gone', async () => {
+    changing = async () => {
+      version = versionOf('Retired');
+      return problem(409, 'editorial.not-published', 'Die Version ist nicht veröffentlicht.');
+    };
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(newVersionButton());
+
+    await screen.findByText(t('editorial.version.readOnly.Retired'));
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: version.title })).toHaveFocus());
+  });
+
+  // The host has answered, the page has not changed yet (a view transition takes a frame): the button stays shut.
+  test('drafted, stays disabled until the page has moved to the draft, and drafts no second one', async () => {
+    const user = userEvent.setup();
+    const { router } = await renderPage();
+    let proceed: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      proceed = resolve;
+    });
+    let moving = false;
+    router.beforeEach(async (to) => {
+      if (to.path === `/editorial/versions/${nextVersionId}`) {
+        moving = true;
+        await held;
+      }
+    });
+
+    await user.click(newVersionButton());
+    await waitFor(() => expect(moving).toBe(true));
+    await waitFor(() => expect(newVersion()).toBeDisabled());
+    await fireEvent.click(newVersionButton());
+    proceed();
+
+    await waitFor(() => expect(router.currentRoute.value.path).toBe(`/editorial/versions/${nextVersionId}`));
+    expect(drafts()).toHaveLength(1);
+  });
+
+  // The editor left while the host drafted it: they stay where they went, and are told the draft exists.
+  test('when the editor has left before the host answers, stays where they went and still reports the draft', async () => {
+    let answer: (response: Response) => void = () => undefined;
+    changing = () =>
+      new Promise<Response>((resolve) => {
+        answer = resolve;
+      });
+    const user = userEvent.setup();
+    const { router } = await renderPage();
+
+    await user.click(newVersionButton());
+    await waitFor(() => expect(drafts()).toHaveLength(1));
+    await router.push('/editorial');
+    answer(Response.json(nextVersionId, { status: 201 }));
+
+    await waitFor(() => expect(notify.success).toHaveBeenCalledWith('Version 3 wurde als Entwurf angelegt.'));
+    expect(router.currentRoute.value.path).toBe('/editorial');
+  });
+
+  test('speaks English when switched', async () => {
+    const user = userEvent.setup();
+    await renderPage();
+
+    setLanguage('en-GB', { remember: false });
+
+    const button = await screen.findByRole('button', { name: 'Create a new version' });
+    await user.click(button);
+    await waitFor(() => expect(notify.success).toHaveBeenCalledWith('Version 3 has been created as a draft.'));
+  });
+
+  test('a failure speaks English when switched', async () => {
+    changing = () => Promise.reject(new TypeError('Failed to fetch'));
+    const user = userEvent.setup();
+    await renderPage();
+    setLanguage('en-GB', { remember: false });
+
+    await user.click(await screen.findByRole('button', { name: 'Create a new version' }));
+
+    await waitFor(() =>
+      expect(notify.failure).toHaveBeenCalledWith('The new version could not be created. Please try again.'),
+    );
+  });
 });

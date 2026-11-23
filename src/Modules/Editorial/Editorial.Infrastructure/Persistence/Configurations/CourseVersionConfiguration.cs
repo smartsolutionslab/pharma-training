@@ -24,6 +24,10 @@ public sealed class CourseVersionConfiguration : IEntityTypeConfiguration<Course
         builder.Property(version => version.SubmittedBy).HasColumnName("submitted_by");
         builder.Property(version => version.PublishedBy).HasColumnName("published_by");
         builder.Property(version => version.PublishedAt).HasColumnName("published_at");
+        builder.Property(version => version.ReturnedBy).HasColumnName("returned_by");
+        builder.Property(version => version.ReturnedAt).HasColumnName("returned_at");
+        builder.Property(version => version.RetiredBy).HasColumnName("retired_by");
+        builder.Property(version => version.RetiredAt).HasColumnName("retired_at");
         // The version is the consistency boundary: a save of it or of any of its chapters, questions or options checks and moves this on.
         builder.HasRowVersion();
         builder.ComplexProperty(version => version.Blueprint, blueprint =>
@@ -49,7 +53,12 @@ public sealed class CourseVersionConfiguration : IEntityTypeConfiguration<Course
             .HasField("questions")
             .UsePropertyAccessMode(PropertyAccessMode.Field);
 
-        builder.HasIndex(version => version.Course);
+        // One number per course, backed twice: DraftNextVersionHandler refuses an existing number with
+        // editorial.next-version-exists; a racing insert answers 409 already-exists. It also serves lookups by course
+        // (its leading column).
+        builder.HasIndex(version => new { version.Course, version.Number })
+            .IsUnique()
+            .HasDatabaseName("ix_course_versions_course_id_number");
         builder.HasIndex(version => version.Status);
     }
 }

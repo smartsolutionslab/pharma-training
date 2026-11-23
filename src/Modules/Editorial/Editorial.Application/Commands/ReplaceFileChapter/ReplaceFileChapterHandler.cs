@@ -36,6 +36,13 @@ public sealed class ReplaceFileChapterHandler(ICourseVersionStore versions, IEdi
         var keepsItsFile = current.Kind == command.Kind && current.File == command.File;
         if (!keepsItsFile)
         {
+            // A file another chapter of the version holds is in use before the storage is asked about it.
+            var free = found.Value.AcceptsFile(command.Chapter, command.File);
+            if (free.IsFailure)
+            {
+                return Failure(CourseVersionFailures.From(free.Error));
+            }
+
             var accepted = await ChapterUploads.AcceptAsync(blobs, command.File, command.Version, command.Kind, cancellationToken);
             if (accepted.IsFailure)
             {

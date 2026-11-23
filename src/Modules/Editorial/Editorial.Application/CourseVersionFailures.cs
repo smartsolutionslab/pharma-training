@@ -1,4 +1,5 @@
 using System.Net;
+using System.Runtime.CompilerServices;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.TestDrafting;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 
@@ -27,6 +28,12 @@ public static class CourseVersionFailures
 
     public static ApiError IdentityIncomplete() => new IdentityIncomplete();
 
+    /// <summary>An approval whose token names no display name that fits a <see cref="ReviewerName"/> (#205).</summary>
+    public static ApiError ReviewerNameMissing() => new ReviewerNameMissing();
+
+    /// <summary>A return's reason that is missing, blank, too long or holds a control or format character.</summary>
+    public static ApiError InvalidReturnReason() => new InvalidReturnReason();
+
     public static ApiError InvalidUploadKind() => new InvalidUploadKind();
 
     public static ApiError InvalidChapterKind() => new InvalidChapterKind();
@@ -45,6 +52,9 @@ public static class CourseVersionFailures
 
     /// <summary>A save that lost a race: another change to the same version was saved since this one loaded it.</summary>
     public static ApiError Changed(Guid id) => new CourseVersionChanged(id);
+
+    /// <summary>The version's successor, numbered <paramref name="number"/>, already exists as <paramref name="existing"/>.</summary>
+    public static ApiError NextVersionExists(Guid version, Guid existing, int number) => new NextVersionExists(version, existing, number);
 
     public static ApiError UnknownChapter(Guid version, Guid chapter) => new UnknownChapter(version, chapter);
 
@@ -69,12 +79,39 @@ public static class CourseVersionFailures
     public static ApiError AiTestDraftMalformed(TestDraftDefect defect) => new AiTestDraftMalformed(defect);
 
     /// <summary>
+    /// A refusal of the workflow, with its own code: a question whose content breaks the rules of its shape cannot be
+    /// processed until it is edited, a publish under four eyes by the one who submitted the version or approved one of
+    /// its questions is forbidden to this caller, and every other refusal is a conflict with the version's state. The
+    /// union is closed and the switch has no discard arm, so a new case fails the build until it is mapped here.
+    /// </summary>
+    public static ApiError From(CourseVersionWorkflowError error) => error switch
+    {
+        NotADraft refusal => ApiError.From(refusal, HttpStatusCode.Conflict),
+        NotInReview refusal => ApiError.From(refusal, HttpStatusCode.Conflict),
+        NotPublished refusal => ApiError.From(refusal, HttpStatusCode.Conflict),
+        NoChapters refusal => ApiError.From(refusal, HttpStatusCode.Conflict),
+        TooManyQuestions refusal => ApiError.From(refusal, HttpStatusCode.Conflict),
+        TestIncomplete refusal => ApiError.From(refusal, HttpStatusCode.Conflict),
+        QuestionNotApproved refusal => ApiError.From(refusal, HttpStatusCode.Conflict),
+        FourEyesRequired refusal => ApiError.From(refusal, HttpStatusCode.Forbidden),
+        PublisherApprovedQuestions refusal => ApiError.From(refusal, HttpStatusCode.Forbidden),
+        TooFewOptions refusal => ApiError.From(refusal, HttpStatusCode.UnprocessableEntity),
+        SingleChoiceNeedsOneCorrect refusal => ApiError.From(refusal, HttpStatusCode.UnprocessableEntity),
+        MultipleChoiceNeedsACorrect refusal => ApiError.From(refusal, HttpStatusCode.UnprocessableEntity),
+    };
+
+    /// <summary>
     /// A rule of the version, with its own code: a chapter or question it does not hold is not found, a question whose
     /// content breaks the rules of its shape cannot be processed until it is edited, a blueprint with too few questions
     /// is a bad request, a publish under four eyes by the one who submitted the version or approved one of its questions
     /// is forbidden to this caller, anything else is a conflict with its state. <see cref="DomainError"/> is no closed
     /// union, so the last arm takes the rules no arm names.
     /// </summary>
+    /// <remarks>
+    /// A case of <see cref="CourseVersionWorkflowError"/> converts to that union as well as to its base, so a call with the
+    /// record itself would match both overloads; this one takes it, and answers it with the same status.
+    /// </remarks>
+    [OverloadResolutionPriority(1)]
     public static ApiError From(DomainError error) => error switch
     {
         ChapterNotFound or QuestionNotFound => ApiError.From(error, HttpStatusCode.NotFound),
@@ -83,8 +120,8 @@ public static class CourseVersionFailures
         FourEyesRequired or PublisherApprovedQuestions => ApiError.From(error, HttpStatusCode.Forbidden),
         // This arm documents the rule that these refusals are conflicts with the version's state; it does not enforce it,
         // since the discard arm below answers 409 for them all the same.
-        NotADraft or OrderDoesNotMatchChapters or TooManyQuestions or NotInReview or NotPublished or NoChapters or TestIncomplete
-            or QuestionNotApproved => ApiError.From(error, HttpStatusCode.Conflict),
+        NotADraft or OrderDoesNotMatchChapters or FileInUse or TooManyQuestions or NotInReview or NotPublished or NoChapters or TestIncomplete
+            or QuestionNotApproved or QuestionAlreadyApproved => ApiError.From(error, HttpStatusCode.Conflict),
         _ => ApiError.From(error, HttpStatusCode.Conflict),
     };
 }

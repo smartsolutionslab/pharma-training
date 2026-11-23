@@ -42,7 +42,7 @@ public class RenewInvitationTests
         raised.ExpiresAt.ShouldBe(Timestamp.From(now.AddDays(14)));
         var membership = pharmacy.Membership(invitation);
         membership.Status.ShouldBe(MembershipStatus.Invited);
-        membership.TokenHash.ShouldBeNull();
+        membership.InvitationLinks.ShouldBeEmpty();
         membership.InvitationExpiresAt.ShouldBe(Timestamp.From(now.AddDays(14)));
         store.Commits.ShouldBe(1);
     }
@@ -75,7 +75,7 @@ public class RenewInvitationTests
         var renewed = await Handler(store).HandleAsync(new RenewInvitation(pharmacy.Id, invitation, Owner), TestContext.Current.CancellationToken);
 
         renewed.IsSuccess.ShouldBeTrue();
-        pharmacy.Membership(invitation).TokenHash.ShouldBeNull();
+        pharmacy.Membership(invitation).InvitationLinks.ShouldBeEmpty();
     }
 
     [Fact]

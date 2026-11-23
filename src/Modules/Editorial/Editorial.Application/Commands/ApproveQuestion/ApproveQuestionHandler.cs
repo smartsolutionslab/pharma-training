@@ -16,7 +16,7 @@ public sealed class ApproveQuestionHandler(ICourseVersionStore versions, IEditor
             return Failure(CourseVersionFailures.NotFound(command.Version.Value));
         }
 
-        var approved = found.Value.ApproveQuestion(command.Question, command.Approver, Timestamp.From(time.GetUtcNow()));
+        var approved = found.Value.ApproveQuestion(command.Question, command.Approver, command.ApproverName, Timestamp.From(time.GetUtcNow()));
         if (approved.IsFailure)
         {
             return Failure(CourseVersionFailures.From(approved.Error));

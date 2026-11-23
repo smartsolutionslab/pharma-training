@@ -7,30 +7,60 @@ using Microsoft.EntityFrameworkCore;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Infrastructure;
 
-/// <summary>The course versions with their chapters and questions. The module's unit of work saves what is added or changed.</summary>
+/// <summary>
+/// The course versions with their chapters and questions, and the records of their returns. The module's unit of work
+/// saves what is added or changed.
+/// </summary>
 public sealed class CourseVersionStore(EditorialDbContext context) : ICourseVersionStore
 {
     public void Add(CourseVersion version) => context.Add(version);
 
+    public void AddReturn(CourseVersionReturn record) => context.Add(record);
+
+    public async Task<Option<PagedResult<CourseVersionReturn>>> ListReturnsAsync(CourseVersionId version, Page page, PageSize pageSize, CancellationToken cancellationToken)
+    {
+        Ensure.That(page).IsNotNull();
+        Ensure.That(pageSize).IsNotNull();
+
+        if (!await context.Set<CourseVersion>().AnyAsync(stored => stored.Id == version, cancellationToken))
+        {
+            return Option<PagedResult<CourseVersionReturn>>.None;
+        }
+
+        var returns = context.Set<CourseVersionReturn>().AsNoTracking().Where(record => record.Version == version);
+        var total = await returns.CountAsync(cancellationToken);
+        var items = await returns
+            .OrderByDescending(record => record.ReturnedAt)
+            .ThenByDescending(record => record.Id)
+            .Skip(page.Skip(pageSize))
+            .Take(pageSize.Value)
+            .ToListAsync(cancellationToken);
+        return Option<PagedResult<CourseVersionReturn>>.Some(new PagedResult<CourseVersionReturn>(items, total, page.Value, pageSize.Value));
+    }
+
     /// <summary>
-    /// The version as it is read back: its split queries run in one REPEATABLE READ transaction, so they read one
-    /// snapshot, and a change committed between them (a chapter removed, a question's options replaced) shows in none
-    /// of them or in all. A write loads with <see cref="FindForUpdateAsync"/>, whose row version comes from its first
-    /// query.
+    /// The version as it is read back, untracked, loaded in one snapshot by <see cref="FindInOneSnapshotAsync"/>.
     /// </summary>
     public Task<Option<CourseVersion>> FindAsync(CourseVersionId id, CancellationToken cancellationToken) =>
-        context.Database.CreateExecutionStrategy().ExecuteAsync(
-            async cancellation =>
-            {
-                await using var snapshot = await context.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellation);
-                var found = await FindAsync(WithContent().AsNoTracking(), id, cancellation);
-                await snapshot.CommitAsync(cancellation);
-                return found;
-            },
-            cancellationToken);
+        FindInOneSnapshotAsync(WithContent().AsNoTracking(), id, cancellationToken);
 
+    /// <summary>
+    /// The version to change, tracked, loaded in one snapshot by <see cref="FindInOneSnapshotAsync"/>, so a chapter or
+    /// question another editor adds between its split queries cannot break the load. The snapshot is committed before
+    /// the save, which the unit of work runs in a transaction of its own; the row version read in the snapshot still
+    /// guards that save, so the loser of a race is told the version changed.
+    /// </summary>
     public Task<Option<CourseVersion>> FindForUpdateAsync(CourseVersionId id, CancellationToken cancellationToken) =>
-        FindAsync(WithContent(), id, cancellationToken);
+        FindInOneSnapshotAsync(WithContent(), id, cancellationToken);
+
+    public async Task<Option<CourseVersionId>> FindByNumberAsync(CourseId course, VersionNumber number, CancellationToken cancellationToken) =>
+        await context.Set<CourseVersion>()
+            .AsNoTracking()
+            .Where(version => version.Course == course && version.Number == number)
+            .Select(version => version.Id)
+            .SingleOrDefaultAsync(cancellationToken) is { } stored
+            ? Option<CourseVersionId>.Some(stored)
+            : Option<CourseVersionId>.None;
 
     public async Task<PagedResult<CourseVersion>> ListAsync(CourseVersionStatus? status, Page page, PageSize pageSize, CancellationToken cancellationToken)
     {
@@ -63,10 +93,23 @@ public sealed class CourseVersionStore(EditorialDbContext context) : ICourseVers
             .Where(version => version.Course == course && version.Status == CourseVersionStatus.Published)
             .ToListAsync(cancellationToken);
 
-    private static async Task<Option<CourseVersion>> FindAsync(IQueryable<CourseVersion> versions, CourseVersionId id, CancellationToken cancellationToken) =>
-        await versions.SingleOrDefaultAsync(version => version.Id == id, cancellationToken) is { } version
-            ? Option<CourseVersion>.Some(version)
-            : Option<CourseVersion>.None;
+    /// <summary>
+    /// Runs the version's split queries in one REPEATABLE READ transaction, committed right after the load, so they read
+    /// one snapshot: a change committed between them (a chapter added or removed, a question's options replaced) shows
+    /// in none of them or in all, never in some, which EF Core would refuse with a concurrency exception.
+    /// </summary>
+    private Task<Option<CourseVersion>> FindInOneSnapshotAsync(IQueryable<CourseVersion> versions, CourseVersionId id, CancellationToken cancellationToken) =>
+        context.Database.CreateExecutionStrategy().ExecuteAsync(
+            async cancellation =>
+            {
+                await using var snapshot = await context.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellation);
+                var found = await versions.SingleOrDefaultAsync(version => version.Id == id, cancellation) is { } version
+                    ? Option<CourseVersion>.Some(version)
+                    : Option<CourseVersion>.None;
+                await snapshot.CommitAsync(cancellation);
+                return found;
+            },
+            cancellationToken);
 
     /// <summary>
     /// The version with its chapters, its questions and their options, each in its order. Split into one query per

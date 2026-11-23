@@ -36,6 +36,16 @@ async function newChapter(page: Page, title: string, kind: 'PDF' | 'Video') {
 }
 
 /** A small, valid PDF of one empty page, made here; its xref offsets are counted from the text. */
+/** An MP4 file type box (major brand `isom`, compatible `isom` and `mp41`) followed by zeros up to `length` bytes. */
+function mp4WithoutMedia(length: number): Buffer {
+  const file = Buffer.alloc(length);
+  file.writeUInt32BE(24, 0);
+  file.write('ftypisom', 4, 'latin1');
+  file.writeUInt32BE(0x200, 12);
+  file.write('isommp41', 16, 'latin1');
+  return file;
+}
+
 function smallPdf(): Buffer {
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
@@ -91,11 +101,12 @@ test('an editor adds a video chapter with its duration typed; one PUT stores it,
     }
   });
 
-  // 2 MB of zeros: no codec in Playwright's Chromium reads a duration from it, so the editor types it in.
+  // An MP4 file type box (brand isom), which the host checks before it stores the chapter, then zeros up to 2 MB: no
+  // codec in Playwright's Chromium reads a duration from it, so the editor types it in.
   await dialog.getByLabel('Video (MP4)').setInputFiles({
     name: 'clip.mp4',
     mimeType: 'video/mp4',
-    buffer: Buffer.alloc(2 * 1024 * 1024),
+    buffer: mp4WithoutMedia(2 * 1024 * 1024),
   });
   await expect(
     dialog.getByText('Die Dauer ließ sich nicht aus dem Video lesen. Bitte geben Sie sie ein.'),

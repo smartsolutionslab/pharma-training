@@ -66,7 +66,7 @@ public partial class OrganisationAcceptInvitationTests(AspireFixture aspire)
         stored.Status.ShouldBe("Active");
         stored.Person.ShouldBe(await database.SubjectOfAsync("employee-a"));
         stored.Name.ShouldBe("Anna Employee");
-        stored.TokenHash.ShouldBeNull();
+        stored.TokenHashes.ShouldBeEmpty();
         var mine = await employee.GetFromJsonAsync<MyPharmacy>(new Uri($"/organisation/pharmacies/{pharmacy}", UriKind.Relative), cancellationToken);
         mine.ShouldNotBeNull().MembershipId.ShouldBe(membership);
     }
@@ -126,7 +126,7 @@ public partial class OrganisationAcceptInvitationTests(AspireFixture aspire)
         stored.Status.ShouldBe("Active");
         stored.Person.ShouldBe(await database.SubjectOfAsync("employee-b"));
         stored.Name.ShouldBe("Ben Employee");
-        stored.TokenHash.ShouldBeNull();
+        stored.TokenHashes.ShouldBeEmpty();
         var mine = await employee.GetFromJsonAsync<MyPharmacyPage>(Mine, cancellationToken);
         mine.ShouldNotBeNull().Items.Select(item => item.Id).ShouldContain(pharmacy);
     }
@@ -176,7 +176,7 @@ public partial class OrganisationAcceptInvitationTests(AspireFixture aspire)
         await ShouldBeRefusedAsync(refused, HttpStatusCode.Gone, "organisation.invitation-expired", cancellationToken);
         var stored = await database.MemberAsync(membership, cancellationToken);
         stored.Status.ShouldBe("Invited");
-        stored.TokenHash.ShouldBe(HashOf(token));
+        stored.TokenHashes.ShouldBe([HashOf(token)]);
     }
 
     [Fact]
@@ -193,7 +193,7 @@ public partial class OrganisationAcceptInvitationTests(AspireFixture aspire)
         var stored = await database.MemberAsync(membership, cancellationToken);
         stored.Status.ShouldBe("Invited");
         stored.Person.ShouldBeNull();
-        stored.TokenHash.ShouldBe(HashOf(token));
+        stored.TokenHashes.ShouldBe([HashOf(token)]);
         using var accepted = await AcceptAsync(invitee, token, cancellationToken);
         await ShouldAnswerAsync(accepted, HttpStatusCode.OK, cancellationToken);
         (await accepted.Content.ReadFromJsonAsync<Guid>(cancellationToken)).ShouldBe(pharmacy);
@@ -254,7 +254,7 @@ public partial class OrganisationAcceptInvitationTests(AspireFixture aspire)
         var stored = await database.MemberAsync(membership, cancellationToken);
         stored.Status.ShouldBe("Invited");
         stored.Person.ShouldBeNull();
-        stored.TokenHash.ShouldBe(HashOf(token));
+        stored.TokenHashes.ShouldBe([HashOf(token)]);
     }
 
     [Fact]
@@ -292,11 +292,11 @@ public partial class OrganisationAcceptInvitationTests(AspireFixture aspire)
         await ShouldBeRefusedAsync(refused, HttpStatusCode.Conflict, "organisation.person-already-member", cancellationToken);
         var stored = await database.MemberAsync(membership, cancellationToken);
         stored.Status.ShouldBe("Invited");
-        stored.TokenHash.ShouldBe(HashOf(token));
+        stored.TokenHashes.ShouldBe([HashOf(token)]);
     }
 
     [Fact]
-    public async Task Of_two_accepts_of_one_link_at_once_one_succeeds_and_the_other_is_told_the_pharmacy_changed()
+    public async Task Of_two_accepts_of_one_link_at_once_one_succeeds_and_the_other_is_told_the_invitation_changed_without_the_pharmacy()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var (pharmacy, membership, token) = await InvitedAsync("employee-a", cancellationToken);
@@ -317,7 +317,8 @@ public partial class OrganisationAcceptInvitationTests(AspireFixture aspire)
             var described = await DescribeAsync(responses, cancellationToken);
             responses.Select(response => response.StatusCode).ShouldBe([HttpStatusCode.OK, HttpStatusCode.Conflict], ignoreOrder: true, described);
             var lost = responses.Single(response => response.StatusCode == HttpStatusCode.Conflict);
-            await ShouldBeRefusedAsync(lost, HttpStatusCode.Conflict, "organisation.pharmacy-changed", cancellationToken);
+            await ShouldBeRefusedAsync(lost, HttpStatusCode.Conflict, "organisation.invitation-changed", cancellationToken);
+            (await lost.Content.ReadAsStringAsync(cancellationToken)).ShouldNotContain(pharmacy.ToString(), Case.Insensitive);
             var person = await database.SubjectOfAsync("employee-a");
             (await database.ActiveMembershipsOfAsync(person, cancellationToken))
                 .Where(active => active.PharmacyId == pharmacy)
@@ -333,6 +334,58 @@ public partial class OrganisationAcceptInvitationTests(AspireFixture aspire)
                 response.Dispose();
             }
         }
+    }
+
+    [Fact]
+    public async Task An_accept_that_loses_the_race_to_a_revoke_is_told_the_invitation_changed_without_the_pharmacy()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var (pharmacy, membership, token) = await InvitedAsync("employee-a", cancellationToken);
+        using var owner = await aspire.CreateHostClientAsync("owner");
+        using var employee = await aspire.CreateHostClientAsync("employee-a");
+
+        var (firstResponse, secondResponse) = await FirstThenSecondAsync(
+            pharmacy,
+            () => owner.DeleteAsync(InvitationUri(pharmacy, membership), cancellationToken),
+            () => AcceptAsync(employee, token, cancellationToken),
+            cancellationToken);
+        using var revoke = firstResponse;
+        using var accept = secondResponse;
+        revoke.IsSuccessStatusCode.ShouldBeTrue(await revoke.Content.ReadAsStringAsync(cancellationToken));
+        await ShouldBeRefusedAsync(accept, HttpStatusCode.Conflict, "organisation.invitation-changed", cancellationToken);
+        (await accept.Content.ReadAsStringAsync(cancellationToken)).ShouldNotContain(pharmacy.ToString(), Case.Insensitive);
+
+        var stored = await database.MemberAsync(membership, cancellationToken);
+        stored.Status.ShouldBe("Revoked");
+        stored.Person.ShouldBeNull();
+        using var retry = await AcceptAsync(employee, token, cancellationToken);
+        await ShouldBeRefusedAsync(retry, HttpStatusCode.NotFound, "organisation.invitation-not-found", cancellationToken);
+    }
+
+    [Fact]
+    public async Task An_accept_that_loses_the_race_to_a_renewal_is_told_the_invitation_changed_without_the_pharmacy()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var (pharmacy, membership, token) = await InvitedAsync("employee-a", cancellationToken);
+        using var owner = await aspire.CreateHostClientAsync("owner");
+        using var employee = await aspire.CreateHostClientAsync("employee-a");
+
+        var (firstResponse, secondResponse) = await FirstThenSecondAsync(
+            pharmacy,
+            () => owner.PostAsync(RenewUri(pharmacy, membership), content: null, cancellationToken),
+            () => AcceptAsync(employee, token, cancellationToken),
+            cancellationToken);
+        using var renew = firstResponse;
+        using var accept = secondResponse;
+        await ShouldAnswerAsync(renew, HttpStatusCode.OK, cancellationToken);
+        await ShouldBeRefusedAsync(accept, HttpStatusCode.Conflict, "organisation.invitation-changed", cancellationToken);
+        (await accept.Content.ReadAsStringAsync(cancellationToken)).ShouldNotContain(pharmacy.ToString(), Case.Insensitive);
+
+        var stored = await database.MemberAsync(membership, cancellationToken);
+        stored.Status.ShouldBe("Invited");
+        stored.Person.ShouldBeNull();
+        using var retry = await AcceptAsync(employee, token, cancellationToken);
+        await ShouldBeRefusedAsync(retry, HttpStatusCode.NotFound, "organisation.invitation-not-found", cancellationToken);
     }
 
     [Fact]
@@ -432,6 +485,26 @@ public partial class OrganisationAcceptInvitationTests(AspireFixture aspire)
         var email = address ?? await database.EmailOfAsync(user);
         var membership = await database.InsertInvitationAsync(pharmacy, email, HashOf(token), "Invited", cancellationToken, expiresAt, role, jobFunction);
         return (pharmacy, membership, token);
+    }
+
+    /// <summary>
+    /// Starts the first request and waits until it waits for the lock on the pharmacy, having loaded it; then the second,
+    /// which loads the same pharmacy and queues behind the first. PostgreSQL grants a row's lock in the order its waiters
+    /// asked, so once the gate commits the first saves first and the second loses the race on the row version.
+    /// </summary>
+    private async Task<(HttpResponseMessage First, HttpResponseMessage Second)> FirstThenSecondAsync(
+        Guid pharmacy,
+        Func<Task<HttpResponseMessage>> first,
+        Func<Task<HttpResponseMessage>> second,
+        CancellationToken cancellationToken)
+    {
+        await using var gate = await database.LockPharmacyAsync(pharmacy, cancellationToken);
+        var one = first();
+        await database.WaitUntilBlockedAsync(gate, 1, cancellationToken);
+        var other = second();
+        await database.WaitUntilBlockedAsync(gate, 2, cancellationToken);
+        await gate.CommitAsync(cancellationToken);
+        return (await one, await other);
     }
 
     /// <summary>The token from the mail's link, which leads to the web app's accept page with the token in the fragment.</summary>

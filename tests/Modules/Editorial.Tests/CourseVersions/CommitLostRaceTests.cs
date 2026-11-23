@@ -119,6 +119,8 @@ public class CommitLostRaceTests
     [InlineData(PostgresErrorCodes.SerializationFailure, AtAStatement)]
     [InlineData(PostgresErrorCodes.DeadlockDetected, AtTheCommitEfCoreOwns)]
     [InlineData(PostgresErrorCodes.SerializationFailure, AtTheCommitEfCoreOwns)]
+    [InlineData(PostgresErrorCodes.DeadlockDetected, BehindAnotherFailureInAnAggregate)]
+    [InlineData(PostgresErrorCodes.SerializationFailure, BehindAnotherFailureInAnAggregate)]
     public async Task A_lost_race_is_logged_as_a_warning_naming_its_sql_state_and_context_with_the_exception(string sqlState, string wrapping)
     {
         var ended = Ended(sqlState);
@@ -126,11 +128,86 @@ public class CommitLostRaceTests
 
         await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken);
 
-        var record = services.GetFakeLogCollector().GetSnapshot().ShouldHaveSingleItem();
+        // An aggregate's other failure is logged too, on a record of its own; the lost race is the one record about it.
+        var record = services.GetFakeLogCollector().GetSnapshot().Where(each => each.Exception is PostgresException).ShouldHaveSingleItem();
         record.Level.ShouldBe(LogLevel.Warning);
         record.Message.ShouldContain(sqlState);
         record.Message.ShouldContain(nameof(EditorialDbContext));
         record.Exception.ShouldBeSameAs(ended);
+    }
+
+    [Theory]
+    [InlineData(PostgresErrorCodes.DeadlockDetected)]
+    [InlineData(PostgresErrorCodes.SerializationFailure)]
+    public async Task A_commit_postgresql_ended_as_a_lost_race_behind_another_failure_in_an_aggregate_exception_answers_false(string sqlState)
+    {
+        await using var services = OutboxFailingWith(Wrapped(Ended(sqlState), BehindAnotherFailureInAnAggregate));
+
+        (await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken)).ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// An aggregate that holds a lost race beside an unrelated failure still answers as the lost race (409), but the other
+    /// failure is logged, at Warning or above, rather than lost with the aggregate.
+    /// </summary>
+    [Fact]
+    public async Task The_other_failures_in_an_aggregate_with_a_lost_race_are_logged_not_lost()
+    {
+        var other = new InvalidOperationException("The envelopes could not be flushed.");
+        await using var services = OutboxFailingWith(new AggregateException(Ended(PostgresErrorCodes.DeadlockDetected), other));
+
+        (await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken)).ShouldBeFalse();
+
+        var record = services.GetFakeLogCollector().GetSnapshot().Where(each => ReferenceEquals(each.Exception, other)).ShouldHaveSingleItem();
+        record.Level.ShouldBeOneOf(LogLevel.Warning, LogLevel.Error, LogLevel.Critical);
+    }
+
+    /// <summary>
+    /// The aggregate need not be the top-level exception: one that another exception wraps is searched too, and its
+    /// other failure is logged once.
+    /// </summary>
+    [Fact]
+    public async Task The_other_failures_in_an_aggregate_inside_another_exception_with_a_lost_race_are_logged_once()
+    {
+        var ended = Ended(PostgresErrorCodes.DeadlockDetected);
+        var other = new InvalidOperationException("The envelopes could not be flushed.");
+        await using var services = OutboxFailingWith(new InvalidOperationException("flush", new AggregateException(ended, other)));
+
+        (await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken)).ShouldBeFalse();
+
+        var records = services.GetFakeLogCollector().GetSnapshot();
+        var record = records.Where(each => ReferenceEquals(each.Exception, other)).ShouldHaveSingleItem("the other failure inside the wrapped aggregate was not logged once");
+        record.Level.ShouldBeOneOf(LogLevel.Warning, LogLevel.Error, LogLevel.Critical);
+        records.Select(each => each.Exception).ShouldBe([ended, other], ignoreOrder: true);
+    }
+
+    /// <summary>
+    /// An aggregate inside an aggregate: every leaf failure but the lost race is logged once, the inner aggregate's
+    /// sibling of the lost race as much as the outer one's, and no aggregate is logged as a failure of its own.
+    /// </summary>
+    [Fact]
+    public async Task Every_other_failure_in_nested_aggregates_with_a_lost_race_is_logged_once()
+    {
+        var ended = Ended(PostgresErrorCodes.DeadlockDetected);
+        var siblingA = new InvalidOperationException("The envelopes could not be flushed.");
+        var siblingB = new TimeoutException("The outbox did not answer.");
+        await using var services = OutboxFailingWith(new AggregateException(new AggregateException(ended, siblingA), siblingB));
+
+        (await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken)).ShouldBeFalse();
+
+        var records = services.GetFakeLogCollector().GetSnapshot();
+        records.Where(each => ReferenceEquals(each.Exception, siblingA)).ShouldHaveSingleItem("the lost race's sibling in the inner aggregate was not logged once");
+        records.Where(each => ReferenceEquals(each.Exception, siblingB)).ShouldHaveSingleItem("the outer aggregate's other failure was not logged once");
+        records.Select(each => each.Exception).ShouldBe([ended, siblingA, siblingB], ignoreOrder: true);
+    }
+
+    [Fact]
+    public async Task An_aggregate_exception_holding_no_lost_race_still_throws()
+    {
+        await using var services = OutboxFailingWith(new AggregateException(new InvalidOperationException("The envelopes could not be flushed."), Ended(PostgresErrorCodes.UniqueViolation)));
+
+        var thrown = await Should.ThrowAsync<AggregateException>(() => new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken));
+        thrown.InnerExceptions.Count.ShouldBe(2);
     }
 
     [Fact]
@@ -159,12 +236,15 @@ public class CommitLostRaceTests
 
     private const string AtTheCommitEfCoreOwns = "at the commit EF Core owns";
 
+    private const string BehindAnotherFailureInAnAggregate = "behind another failure in an aggregate";
+
     private static Exception Wrapped(PostgresException ended, string wrapping) => wrapping switch
     {
         Bare => ended,
         InsideAnotherException => new InvalidOperationException("The transaction could not be committed.", ended),
         AtAStatement => new DbUpdateException("An error occurred while saving the entity changes. See the inner exception for details.", ended),
         AtTheCommitEfCoreOwns => new DbUpdateConcurrencyException("An error occurred while saving the entity changes. See the inner exception for details.", ended),
+        BehindAnotherFailureInAnAggregate => new AggregateException(new InvalidOperationException("The envelopes could not be flushed."), ended),
         _ => throw new InvalidOperationException($"No wrapping named '{wrapping}'."),
     };
 
