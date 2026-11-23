@@ -95,11 +95,13 @@ public sealed class LearningSessionEndpoints : IEndpoint
             return Result<LearningSessionDto, ApiError>.Failure(LearningSessionFailures.SessionNotFound(id)).ToHttpResult();
         }
 
+        // A missing percent is a failed precondition like one out of range: 400 invalid-argument, never a silent 0.
+        Ensure.That(request.Percent.GetValueOrDefault(), "percent").Satisfies(_ => request.Percent.HasValue, "percent is required.");
         var report = new ReportProgress(
             LearningSessionId.From(id),
             learner.Value,
             ChapterId.From(request.ChapterId),
-            ProgressPercent.From(request.Percent));
+            ProgressPercent.From(request.Percent.GetValueOrDefault()));
         var reported = await dispatcher.SendAsync(report, cancellationToken);
         if (reported.IsFailure)
         {
