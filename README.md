@@ -97,9 +97,85 @@ dotnet tool restore && dotnet aieval report --path TestResults/evals --output Te
 
 ## Deploy (Azure Container Apps)
 
-`aspire publish -e staging` (or `production`) writes the whole application as Bicep from the AppHost; nothing deploys it yet (#114, [ADR 0005](docs/adr/0005-deploy-to-azure-container-apps.md)). A deployment sets every parameter without a default as `Parameters__<name>` from its secret store, never in a commit. The secrets are `postgres-password`, `database-roles-key`, `keycloak-admin-password`, `messaging-password`, each service's `messaging-<module>-password`, `azure-openai-api-key`, `smtp-username` and `smtp-password`; beside them `postgres-username`, `messaging-username`, `smtp-host`, `smtp-from` and `frontend-url` have no default. ADR 0005 lists them all and the characters each may hold.
+`aspire publish -e staging` (or `production`) writes the whole application as Bicep from the AppHost ([ADR 0005](docs/adr/0005-deploy-to-azure-container-apps.md)); `.github/workflows/publish.yml` does it on every pull request. `.github/workflows/deploy.yml` is the only path to Azure. It runs only when someone starts it (Actions, deploy, Run workflow, or `gh workflow run deploy.yml --ref main`), one run at a time:
+
+- `staging` signs in to Azure with the GitHub environment `staging`'s federated credential (OIDC, no client secret), refuses a resource group outside `germanywestcentral`, reads every parameter from that environment's secrets and variables, and runs `aspire deploy -e staging`. It builds the images (each service, the edge with the web app inside, Keycloak, the MigrationRunner), pushes them to the environment's registry and deploys the Bicep.
+- `production` starts only after `staging` succeeded and the `production` environment's reviewers approved, and does the same with `production`'s.
+
+A step that finds a secret or variable missing, or a broker password that is not URI-safe, fails naming it, never its value.
 
 `database-roles-key` is the key every module's database role password is derived from (`guid(database-roles-key, '<module>')`): each service logs in to its own database as `<module>_app`, never as the server's administrator. Give each environment a long random key of its own; changing it rotates every role's password at the next deploy.
+
+### One-time setup (#129)
+
+Do this once per environment, `staging` and `production`, with `az` signed in as someone who may create resource groups, app registrations and role assignments. Values go into the GitHub environment's secrets and variables, never into a commit, an issue or a chat.
+
+1. **Resource providers**, once per subscription: `az provider register --namespace <namespace>` for `Microsoft.App`, `Microsoft.OperationalInsights`, `Microsoft.ContainerRegistry`, `Microsoft.KeyVault`, `Microsoft.DBforPostgreSQL`, `Microsoft.Storage` and `Microsoft.ManagedIdentity`.
+2. **A resource group** in Germany West Central, created beforehand so the deploying identity's roles can be scoped to it: `az group create --name <resource group> --location germanywestcentral`. `aspire deploy` creates everything else in it: the Container Apps environment `aca` with its Log Analytics workspace, the container registry, the Key Vault `secrets`, the PostgreSQL Flexible Server `postgres`, the storage account, every app's managed identity and the Container Apps (`host`, `auth`, `keycloak`, `messaging`, each service, the `migrations` job). Azure's names carry a suffix Aspire adds; list them with `az resource list -g <resource group> -o table`.
+3. **An Entra app registration for the deploy**, one per environment so staging's identity cannot touch production:
+   - `az ad app create --display-name <name>`, then `az ad sp create --id <app id>`.
+   - A federated credential (`az ad app federated-credential create --id <app id> --parameters <file>`): issuer `https://token.actions.githubusercontent.com`, subject `repo:<owner>/<repository>:environment:<staging or production>`, audience `api://AzureADTokenExchange`. No client secret is created.
+   - On the resource group only: `Contributor`, and `Role Based Access Control Administrator`, since the deploy assigns roles to the apps' identities (Key Vault Secrets User per secret, the storage roles, AcrPull).
+4. **The GitHub environments** `staging` and `production` (Settings, Environments). On `production`: required reviewers. On both: deployment branches and tags limited to `main` and the tags you deploy from (`deploy/*`, see "Roll back").
+5. **The environment's variables** (`gh variable set <NAME> --env <environment> --body <value>`):
+   - `AZURE_CLIENT_ID` (the app registration's), `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `AZURE_RESOURCE_GROUP`;
+   - `POSTGRES_USERNAME`: the server's administrator login (not `admin`, `postgres`, `azure_superuser` or another name Flexible Server reserves);
+   - `MESSAGING_USERNAME`: the broker's administrator, URI-safe;
+   - `SMTP_HOST`, `SMTP_FROM`: the mail server Keycloak and the services send through, on port 587 with STARTTLS ([ADR 0004](docs/adr/0004-invitation-mail-over-smtp-and-hashed-tokens.md));
+   - `FRONTEND_URL`: `https://host.invalid` for the first deploy, then the edge's address (below);
+   - `AZURE_OPENAI_ENDPOINT`: `https://eu.api.openai.com/v1`, the OpenAI project with EU data residency ([ADR 0006](docs/adr/0006-openai-eu-endpoint-for-deployments.md)).
+6. **The environment's secrets** (`gh secret set <NAME> --env <environment>`, which asks for the value, so it stays out of the shell's history):
+   - `POSTGRES_PASSWORD`: without `;`, `'` or `"`;
+   - `DATABASE_ROLES_KEY`: at least 32 random characters, its own per environment (`openssl rand -base64 48`); the AppHost refuses a shorter one;
+   - `MESSAGING_PASSWORD`: the broker administrator's, URI-safe;
+   - `MESSAGING_<MODULE>_PASSWORD`: one per service, URI-safe. The names are the service hosts' `<ModuleName>` upper-cased with `-` as `_`: `for p in src/Services/*/Host/Host.csproj; do sed -n 's:.*<ModuleName>\(.*\)</ModuleName>.*:MESSAGING_\1_PASSWORD:p' "$p" | tr '[:lower:]-' '[:upper:]_'; done`. A new module needs its secret in each environment before its first deploy;
+   - `KEYCLOAK_ADMIN_PASSWORD`: Keycloak's administrator, `admin`;
+   - `SMTP_USERNAME`, `SMTP_PASSWORD`: URI-safe;
+   - `AZURE_OPENAI_API_KEY`: the OpenAI project's key.
+
+   URI-safe means letters, digits, `-`, `.`, `_` and `~` alone (`openssl rand -hex 24`): Aspire puts these values unescaped into connection strings. Each environment gets values of its own.
+
+The services and Keycloak are built from images whose bases come from `mcr.microsoft.com`, `quay.io` and Docker Hub (`node` for the web app). If a run fails on Docker Hub's pull rate limit, the job needs a Docker Hub login before the deploy step; there is none yet.
+
+### The first deploy
+
+1. Run `deploy.yml` on `main`. Watch `staging`; leave `production` waiting until staging is checked (or reject it, and run the workflow again later).
+2. Read staging's domain, `az containerapp env list -g <resource group> --query "[0].properties.defaultDomain" -o tsv`, set `FRONTEND_URL` to `https://host.<domain>` and run `deploy.yml` again. Until then invitation links and the second CORS origin point at `https://host.invalid`; Keycloak and sign-in already use the real addresses, which come from the domain itself. Do the same for production after its first deploy.
+3. Create the first editor and manager in Keycloak. Registration is off in the published realm until #158, so every account is created this way for now. Open a shell in Keycloak's container, `az containerapp exec -g <resource group> -n keycloak --command /bin/bash`, and there:
+
+   ```bash
+   cd /opt/keycloak/bin
+   read -rs KEYCLOAK_ADMIN_PASSWORD   # paste the environment's KEYCLOAK_ADMIN_PASSWORD
+   ./kcadm.sh config credentials --server http://localhost:8080 --realm master --user admin --password "$KEYCLOAK_ADMIN_PASSWORD"
+   ./kcadm.sh create users -r pharma-training -s username=<email> -s email=<email> -s enabled=true
+   ./kcadm.sh add-roles -r pharma-training --uusername <email> --rolename manager   # or editor
+   ./kcadm.sh get users -r pharma-training -q username=<email> --fields id
+   ./kcadm.sh update users/<id>/execute-actions-email -r pharma-training -b '["VERIFY_EMAIL","UPDATE_PASSWORD"]'
+   ```
+
+   The user receives a mail with a link to verify the address and set a password. Remove `~/.keycloak/kcadm.config` before leaving the shell.
+
+### What to check after the first deploy
+
+ADR 0005 lists what is first observed in Azure, each with its fix in the AppHost, never in a service. After the first run of each environment:
+
+1. **Key Vault references.** Every revision is running (`az containerapp revision list -g <resource group> -n <app> -o table`). An "unable to fetch secret" that a retry clears is a role assignment still propagating; one that stays on an init container means the migrations identity's lifecycle `None` is not used for secrets, and it becomes `Init` (`src/AppHost/Wiring/Migrations.cs`).
+2. **Ordering and images.** No service failed its first revision with "image not found"; if one did, a second run succeeds and the order is recorded on #114.
+3. **The database.** Each init container (`az containerapp logs show -g <resource group> -n <app> --container <init container>`) applied its migrations and ensured its role without failing on database ownership (`azure_pg_admin`); note whether it warned that `CONNECT` on `postgres` could not be revoked. Keycloak's init container created `keycloak_app` and the schema `keycloak`.
+4. **Sign-in.** `https://auth.<domain>/realms/pharma-training/.well-known/openid-configuration` answers an `issuer` of exactly `https://auth.<domain>/realms/pharma-training`; `https://auth.<domain>/admin` and `/realms/master` answer 404. `https://host.<domain>` loads the web app, and the first manager signs in and sees the modules.
+5. **The broker.** The `messaging` app runs and its log shows every service's user connected; RabbitMQ's data volume on Azure Files keeps its data across a restart.
+6. **Mail.** Keycloak's verification mail and an invitation mail arrive through `SMTP_HOST`. Invitations need #193's idempotent mail, which is merged; registration stays off until #158.
+
+Nothing in this repository has run against Azure before #129; record what you observed on #129 and in ADR 0005.
+
+### Roll back
+
+A deploy replaces every Container App's revision; the previous ones stay listed and can be activated, but the database stays where the newer revision left it.
+
+- **Deploy an earlier commit:** tag it and run `deploy.yml` at that tag, `git tag deploy/<name> <commit> && git push origin deploy/<name> && gh workflow run deploy.yml --ref deploy/<name>`. The commit must already have `deploy.yml`. It goes through staging and production's approval like any deploy.
+- **One app, at once:** `az containerapp revision list -g <resource group> -n <app> -o table`, then `az containerapp revision copy -g <resource group> -n <app> --from-revision <revision>` makes a new revision from the earlier one. The next deploy replaces it again.
+- **Migrations run forward only.** Nothing reverts a migration: an earlier revision runs its own (older) migrations, finds the newer ones already applied and starts against the newer schema. That works only because every migration is expand and contract, compatible with the release before it (ADR 0005); a migration that is not cannot be rolled back this way.
+- **Data** comes back only by a point-in-time restore of the Flexible Server into a new server, `az postgres flexible-server restore -g <resource group> --name <new server> --source-server <server> --restore-time <UTC time>` (backups kept 7 days in staging, 35 in production), and then pointing the deployment at it, which is a change in its own right.
 
 ## Frontend
 
