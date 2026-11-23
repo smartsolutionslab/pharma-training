@@ -95,6 +95,12 @@ dotnet test --project tests/Evals/Evals.csproj
 dotnet tool restore && dotnet aieval report --path TestResults/evals --output TestResults/evals/report.html
 ```
 
+## Deploy (Azure Container Apps)
+
+`aspire publish -e staging` (or `production`) writes the whole application as Bicep from the AppHost; nothing deploys it yet (#114, [ADR 0005](docs/adr/0005-deploy-to-azure-container-apps.md)). A deployment sets every parameter without a default as `Parameters__<name>` from its secret store, never in a commit. The secrets are `postgres-password`, `database-roles-key`, `keycloak-admin-password`, `messaging-password`, each service's `messaging-<module>-password`, `azure-openai-api-key`, `smtp-username` and `smtp-password`; beside them `postgres-username`, `messaging-username`, `smtp-host`, `smtp-from` and `frontend-url` have no default. ADR 0005 lists them all and the characters each may hold.
+
+`database-roles-key` is the key every module's database role password is derived from (`guid(database-roles-key, '<module>')`): each service logs in to its own database as `<module>_app`, never as the server's administrator. Give each environment a long random key of its own; changing it rotates every role's password at the next deploy.
+
 ## Frontend
 
 ```bash
