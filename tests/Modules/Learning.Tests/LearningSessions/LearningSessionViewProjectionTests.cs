@@ -8,7 +8,7 @@ public class LearningSessionViewProjectionTests
 {
     private static readonly Timestamp Now = Timestamp.From(new DateTimeOffset(2027, 3, 1, 9, 0, 0, TimeSpan.Zero));
 
-    // The film's whole length after the start, and again after that: any gain on it is watched at a plausible pace by then (ADR 0021).
+    // The film's whole length after the start, and again after that: any gain on it is watched at a plausible pace by then (ADR 0024).
     private static readonly Timestamp Later = Timestamp.From(Now.Value.AddSeconds(420));
     private static readonly Timestamp Rewatched = Timestamp.From(Later.Value.AddSeconds(420));
     private static readonly Option<VideoDuration> FilmDuration = Option<VideoDuration>.Some(VideoDuration.From(420));

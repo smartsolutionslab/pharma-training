@@ -5,7 +5,7 @@ using SmartSolutionsLab.PharmaTraining.Modules.Learning.Domain.LearningSessions.
 namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Tests.LearningSessions;
 
 /// <summary>
-/// Video progress may not outpace playback (#43, ADR 0021): a gain of <c>r - p</c> points on a video of <c>d</c> seconds
+/// Video progress may not outpace playback (#43, ADR 0024): a gain of <c>r - p</c> points on a video of <c>d</c> seconds
 /// is plausible once <c>(r - p) × d × 8</c> milliseconds have passed since the session's last recorded progress, in any
 /// chapter, which is watching it at 1.25 times speed. Text and PDF are not paced; a refused report stores nothing and
 /// leaves the clock where it was.

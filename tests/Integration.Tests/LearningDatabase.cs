@@ -17,7 +17,7 @@ internal static class LearningDatabase
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(250);
 
     /// <summary>
-    /// The length of a video a test reports on at once: video progress may not outpace playback (#43, ADR 0021), and
+    /// The length of a video a test reports on at once: video progress may not outpace playback (#43, ADR 0024), and
     /// a 1 s video is plausibly watched to 100 % once 800 ms have passed since the session's last recorded progress.
     /// </summary>
     public const int ShortVideoSeconds = 1;

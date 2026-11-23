@@ -1,4 +1,4 @@
-# 0021: Video progress may not outpace playback
+# 0024: Video progress may not outpace playback
 
 **Status:** Accepted (#43)
 

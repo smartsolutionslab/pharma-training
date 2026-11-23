@@ -19,7 +19,7 @@ public static class LearningSessionFailures
 
     /// <summary>
     /// A refused progress report: a finished session conflicts with it; a chapter it does not hold, or video progress
-    /// faster than playback (ADR 0021), is a semantic error of the request.
+    /// faster than playback (ADR 0024), is a semantic error of the request.
     /// </summary>
     public static ApiError From(RecordProgressError error) => error switch
     {

@@ -94,7 +94,7 @@ public class LearningSessionEventsTests(AspireFixture aspire)
             ReportProgressAsync(client, session.Id, film, 100, cancellationToken));
         try
         {
-            // A racer that loads after the other's report landed sees the session clock at that report (ADR 0021), so its
+            // A racer that loads after the other's report landed sees the session clock at that report (ADR 0024), so its
             // video gain may be refused as too fast; one of the two still lands, and the content completes once.
             foreach (var response in racing)
             {

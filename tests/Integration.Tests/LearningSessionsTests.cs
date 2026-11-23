@@ -326,7 +326,7 @@ public class LearningSessionsTests(AspireFixture aspire)
     /// <summary>
     /// Reports racing on one session load the same version of its stream; only one append lands, and every other one is
     /// told the session changed. A report on the video that loads after another report landed measures its pace from
-    /// that report (ADR 0021) and may be refused as too fast. Each chapter completes, and the content, at most once
+    /// that report (ADR 0024) and may be refused as too fast. Each chapter completes, and the content, at most once
     /// whatever the interleaving, and nothing answers 500.
     /// </summary>
     [Fact]
@@ -411,7 +411,7 @@ public class LearningSessionsTests(AspireFixture aspire)
         chapter.Completed.ShouldBeFalse();
     }
 
-    /// <summary>A refusal heals itself (ADR 0021): it stores nothing, so the next report measures from the same instant and passes once the video could have been watched.</summary>
+    /// <summary>A refusal heals itself (ADR 0024): it stores nothing, so the next report measures from the same instant and passes once the video could have been watched.</summary>
     [Fact]
     public async Task A_refused_video_report_is_recorded_once_its_playback_time_has_passed()
     {

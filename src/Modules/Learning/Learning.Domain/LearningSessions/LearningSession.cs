@@ -13,7 +13,7 @@ public sealed class LearningSession : EventSourcedAggregate<LearningSessionId>
     private readonly Dictionary<ChapterId, ProgressPercent> progress = [];
     private readonly HashSet<ChapterId> completed = [];
 
-    // The session's clock for the video pace (ADR 0021): its last recorded activity, moved only by what is stored.
+    // The session's clock for the video pace (ADR 0024): its last recorded activity, moved only by what is stored.
     private Timestamp lastRecordedAt = null!;
 
     // Only loading creates an empty session, which its first event fills.
@@ -63,7 +63,7 @@ public sealed class LearningSession : EventSourcedAggregate<LearningSessionId>
     /// The client reports progress in batches (on pause, at the end of a chapter, at most every 30 s).
     /// Only real progress is stored, so a replayed or older report changes nothing. A video's gain is refused with
     /// <see cref="ProgressTooFast"/> when watching it at 1.25 times speed does not fit into the time since the session's
-    /// last recorded progress in any chapter (ADR 0021); the duration comes from the caller, none for text and PDF.
+    /// last recorded progress in any chapter (ADR 0024); the duration comes from the caller, none for text and PDF.
     /// </summary>
     public Result<Unit, RecordProgressError> RecordProgress(ChapterId chapter, ProgressPercent reported, Option<VideoDuration> duration, Timestamp now)
     {

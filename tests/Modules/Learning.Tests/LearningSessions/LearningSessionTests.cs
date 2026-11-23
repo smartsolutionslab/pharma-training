@@ -10,7 +10,7 @@ public class LearningSessionTests
 {
     private static readonly Timestamp Now = Timestamp.From(new DateTimeOffset(2027, 3, 1, 9, 0, 0, TimeSpan.Zero));
 
-    // The film's whole length after the start: any gain on it is watched at a plausible pace by then (ADR 0021).
+    // The film's whole length after the start: any gain on it is watched at a plausible pace by then (ADR 0024).
     private static readonly Timestamp Later = Timestamp.From(Now.Value.AddSeconds(420));
     private static readonly VideoDuration FilmDuration = VideoDuration.From(420);
     private static readonly ChapterId Intro = ChapterId.From(Guid.CreateVersion7());

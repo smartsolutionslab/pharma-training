@@ -14,7 +14,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Tests.Sessions;
 /// <summary>
 /// A learner reports how far they got in one chapter of their own session (story L2): only real progress is stored,
 /// a chapter counts once its kind's threshold is reached, and nothing is told about other people's sessions. Video
-/// progress may not outpace playback (#43, ADR 0021): the film lasts 420 s in Learning's copy, so a test that reports
+/// progress may not outpace playback (#43, ADR 0024): the film lasts 420 s in Learning's copy, so a test that reports
 /// a gain on it lets the film's length pass first.
 /// </summary>
 public class ReportProgressTests

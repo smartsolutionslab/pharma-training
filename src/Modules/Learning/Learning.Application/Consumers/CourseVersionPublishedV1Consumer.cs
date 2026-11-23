@@ -9,7 +9,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.Consumer
 /// start. A version is published once, so a version already stored means its event was handled, whatever the event's
 /// identifier or payload: a second delivery, or a republish, changes nothing, and the first one wins. The primary key
 /// backs the check: of two deliveries racing, the loser's insert fails and its retry finds the row. A video chapter
-/// must carry its duration, which progress reports are judged against (ADR 0021); a copy without one is refused, since
+/// must carry its duration, which progress reports are judged against (ADR 0024); a copy without one is refused, since
 /// the first delivery's copy stays for good.
 /// </summary>
 public sealed class CourseVersionPublishedV1Consumer(ICourseVersionCopies versions, ILearningUnitOfWork unitOfWork)

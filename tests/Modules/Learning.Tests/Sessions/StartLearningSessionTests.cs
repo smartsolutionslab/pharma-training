@@ -41,7 +41,7 @@ public class StartLearningSessionTests
         session.Learner.ShouldBe(learner);
         session.CourseVersion.ShouldBe(Version);
         session.Course.ShouldBe(CourseId.From(version.CourseId));
-        // The film is reported once its whole length has passed, so the pace allows it (ADR 0021).
+        // The film is reported once its whole length has passed, so the pace allows it (ADR 0024).
         var watched = Timestamp.From(time.GetUtcNow().AddSeconds(CourseVersionCopies.VideoSeconds));
         session.RecordProgress(ChapterId.From(Film), ProgressPercent.From(95), Option<VideoDuration>.Some(VideoDuration.From(CourseVersionCopies.VideoSeconds)), watched);
         session.RecordProgress(ChapterId.From(Intro), ProgressPercent.From(99), Option<VideoDuration>.None, watched);

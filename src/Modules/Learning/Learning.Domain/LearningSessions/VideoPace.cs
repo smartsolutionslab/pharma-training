@@ -1,7 +1,7 @@
 namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Domain.LearningSessions;
 
 /// <summary>
-/// How fast video progress may grow (ADR 0021): a gain is plausible exactly when watching it at 1.25 times speed fits
+/// How fast video progress may grow (ADR 0024): a gain is plausible exactly when watching it at 1.25 times speed fits
 /// into the time elapsed, <c>(r - p) × d × 8 ≤ e</c> with the points gained, the duration in seconds and the elapsed
 /// milliseconds. The tolerance is a factor on the elapsed time, never an additive slack, which every report would
 /// grant again.

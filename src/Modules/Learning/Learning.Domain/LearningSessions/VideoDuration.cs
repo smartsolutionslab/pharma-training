@@ -2,7 +2,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Domain.LearningSessi
 
 /// <summary>
 /// The length of a video chapter in whole seconds, from 1 to 4 hours, as Learning's copy of the published version
-/// holds it. Learning judges against it whether reported progress is plausible (ADR 0021).
+/// holds it. Learning judges against it whether reported progress is plausible (ADR 0024).
 /// </summary>
 public sealed record VideoDuration : IValueObject<int>
 {
