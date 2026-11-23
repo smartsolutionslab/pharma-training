@@ -145,6 +145,14 @@ export const de = {
     },
     retry: 'Erneut versuchen',
   },
+  learning: {
+    myCourses: {
+      pharmacyNotFound: 'Sie sind nicht mehr Mitglied dieser Apotheke.',
+      identityIncomplete: 'Ihr Konto nennt keinen Namen oder keine gültige E-Mail-Adresse. Ergänzen Sie Ihr Profil.',
+      loadFailed: 'Ihre Schulungen konnten nicht geladen werden.',
+      retry: 'Erneut versuchen',
+    },
+  },
   compliance: {
     matrix: {
       intro: 'Wer in {pharmacy} welche Schulung bis wann abschließen muss.',

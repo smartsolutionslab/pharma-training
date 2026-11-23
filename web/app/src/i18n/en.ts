@@ -134,6 +134,14 @@ export const en: MessageSchema = {
     },
     retry: 'Try again',
   },
+  learning: {
+    myCourses: {
+      pharmacyNotFound: 'You are no longer a member of this pharmacy.',
+      identityIncomplete: 'Your account gives no name or valid email address. Complete your profile.',
+      loadFailed: 'Your courses could not be loaded.',
+      retry: 'Try again',
+    },
+  },
   compliance: {
     matrix: {
       intro: 'Who in {pharmacy} has to complete which course by when.',
