@@ -11,7 +11,7 @@ namespace SmartSolutionsLab.PharmaTraining.Edge;
 /// edge's origin; video from <c>blob:</c> too, where the editorial module reads an upload's duration from the file itself,
 /// and from blob storage, where the chapter player (#262) plays a video by its signed URL; calls to the edge and to the
 /// origins it is given (the identity provider's discovery and token endpoints, blob storage's signed URLs). Scripts may
-/// compile WebAssembly (<c>'wasm-unsafe-eval'</c>, for pdf.js), never evaluate a string. No plugins, no other base URL, no
+/// compile WebAssembly (<c>'wasm-unsafe-eval'</c>, for pdf.js), never evaluate a string, and start workers from the edge's origin alone. No plugins, no other base URL, no
 /// form posted elsewhere, and no page may frame the app.
 /// </summary>
 public static partial class ContentSecurityPolicy
@@ -37,6 +37,7 @@ public static partial class ContentSecurityPolicy
             "img-src 'self' data:",
             "font-src 'self'",
             $"media-src {string.Join(' ', media)}",
+            "worker-src 'self'",
             $"connect-src {string.Join(' ', connections)}",
             "object-src 'none'",
             "base-uri 'self'",
