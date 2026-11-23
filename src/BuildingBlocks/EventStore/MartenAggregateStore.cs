@@ -1,5 +1,7 @@
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.EventSourcing;
+using JasperFx.Events;
 using Marten;
+using Npgsql;
 
 namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.EventStore;
 
@@ -24,7 +26,41 @@ public abstract class MartenAggregateStore(IDocumentStore store) : IAggregateSto
         return Option<TAggregate>.Some(aggregate);
     }
 
-    public async Task SaveAsync(IEventSourced aggregate, CancellationToken cancellationToken)
+    public Task SaveAsync(IEventSourced aggregate, CancellationToken cancellationToken) => AppendAsync(aggregate, cancellationToken);
+
+    /// <summary>
+    /// <see cref="SaveAsync"/> for a save that can lose a race: <see langword="false"/> when another append landed on
+    /// the stream since the aggregate was loaded. Nothing is stored then and the aggregate keeps its pending events.
+    /// Marten's expected-version check refuses the append with <see cref="EventStreamUnexpectedMaxEventIdException"/>;
+    /// a deadlock (40P01) or serialization failure (40001) PostgreSQL raises anywhere in the save, where the inline
+    /// projections write in the same transaction, is a lost race too. A stream created twice
+    /// (<c>ExistingStreamIdCollisionException</c>) is not: it stays the host's 409 already-exists (ADR 0010). A module
+    /// opts in by declaring this method on its own aggregate store's interface; <see cref="SaveAsync"/> still lets a
+    /// lost race through, as a 500 (ADR 0014).
+    /// </summary>
+    public async Task<bool> TrySaveAsync(IEventSourced aggregate, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await AppendAsync(aggregate, cancellationToken);
+            return true;
+        }
+        catch (Exception exception) when (EndedAsLostRace(exception))
+        {
+            return false;
+        }
+    }
+
+    private static bool EndedAsLostRace(Exception exception) => exception switch
+    {
+        EventStreamUnexpectedMaxEventIdException => true,
+        PostgresException { SqlState: PostgresErrorCodes.DeadlockDetected or PostgresErrorCodes.SerializationFailure } => true,
+        AggregateException aggregate => aggregate.InnerExceptions.Any(EndedAsLostRace),
+        { InnerException: { } inner } => EndedAsLostRace(inner),
+        _ => false,
+    };
+
+    private async Task AppendAsync(IEventSourced aggregate, CancellationToken cancellationToken)
     {
         Ensure.That(aggregate).IsNotNull();
 

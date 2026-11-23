@@ -9,7 +9,8 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.Commands
 /// <summary>
 /// Records the reported progress on the learner's own session; another person's session is not found, like an unknown
 /// one. A report that adds nothing stores nothing. The session is stored before its ContentCompleted, raised once per
-/// cycle, is published as ContentCompletedV1 and committed.
+/// cycle, is published as ContentCompletedV1 and committed. A report that lost the append race to another one answers
+/// learning.session-changed and publishes nothing; the server does not retry it.
 /// </summary>
 public sealed class ReportProgressHandler(ILearningAggregateStore store, ILearningUnitOfWork unitOfWork, TimeProvider time)
     : ICommandHandler<ReportProgress, Result<Unit, ApiError>>
@@ -39,7 +40,11 @@ public sealed class ReportProgressHandler(ILearningAggregateStore store, ILearni
         }
 
         var completed = pending.OfType<ContentCompleted>().ToList();
-        await store.SaveAsync(session, cancellationToken);
+        // Of two reports that loaded the same version of the stream, only one append lands; the other one stores and announces nothing.
+        if (!await store.TrySaveAsync(session, cancellationToken))
+        {
+            return Failure(LearningSessionFailures.Changed(command.Session.Value));
+        }
 
         if (completed.Count > 0)
         {
