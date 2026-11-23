@@ -133,6 +133,29 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
     }
 
     /// <summary>
+    /// Takes back a link whose mail never reached the mail server, so it neither opens the invitation nor counts towards
+    /// <see cref="MaxInvitationLinksPerVersion"/>. A link the invitation no longer holds (it was renewed, accepted or
+    /// revoked since) is already gone: nothing changes then.
+    /// </summary>
+    public Result<Unit, DomainError> WithdrawInvitationLink(MembershipId membership, InvitationToken token)
+    {
+        Ensure.That(membership).IsNotNull();
+        Ensure.That(token).IsNotNull();
+
+        if (Find(membership) is not { Status: MembershipStatus.Invited } invited)
+        {
+            return Failure(PharmacyErrors.NoOpenInvitation(Id, membership));
+        }
+
+        if (invited.WithdrawLink(InvitationTokenHash.Of(token)))
+        {
+            Raise(new InvitationLinkWithdrawn(Id, membership));
+        }
+
+        return Success(Unit.Value);
+    }
+
+    /// <summary>
     /// Records that the mail of the open invitation's version was sent, so a redelivery of its request does not mail it
     /// again. A version that is no longer the open one (renewed, accepted or revoked since) is refused.
     /// </summary>

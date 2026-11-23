@@ -72,7 +72,9 @@ public sealed partial class SmtpMailSender : IMailSender
 
     /// <summary>
     /// Sends the mail within <see cref="Bound"/>. The caller's token is honoured only before the send starts: a mail half
-    /// handed to the server is finished or fails on the bound, never abandoned because the request went away. Once the
+    /// handed to the server is finished or fails on the bound, never abandoned because the request went away. A failure
+    /// says whether the mail may have reached the server (<see cref="MailNotSentException.MayHaveBeenDelivered"/>,
+    /// <see cref="MailSendTimedOutException.MayHaveBeenDelivered"/>): only one before the client's send started cannot. Once the
     /// client's send has returned, the server has taken the mail: a failure while disconnecting afterwards, the bound
     /// firing included, is logged and the mail counts as sent, so nothing retries a mail the recipient already has.
     /// </summary>
@@ -86,6 +88,9 @@ public sealed partial class SmtpMailSender : IMailSender
         using var bound = new CancellationTokenSource(Bound, time);
         using var client = clients();
         client.Timeout = (int)Bound.TotalMilliseconds;
+
+        // Once the client's send starts, the server may take the mail whatever fails afterwards.
+        var handingOver = false;
         try
         {
             await client.ConnectAsync(settings.Host, settings.Port, settings.Security, bound.Token);
@@ -94,25 +99,26 @@ public sealed partial class SmtpMailSender : IMailSender
                 await client.AuthenticateAsync(user, settings.Password ?? string.Empty, bound.Token);
             }
 
+            handingOver = true;
             await client.SendAsync(message, bound.Token);
         }
         catch (Exception) when (bound.IsCancellationRequested)
         {
             // Once the bound has fired, MailKit may answer it with an IOException or anything else carrying the server's
             // text; whatever it threw, the send ran out of time, and only the bound's own cancellation goes on.
-            throw new OperationCanceledException(bound.Token);
+            throw new MailSendTimedOutException(handingOver, bound.Token);
         }
         catch (SmtpCommandException refused)
         {
             // The server's text (550 5.1.1 <anna@example.org>: ...) stays out of the exception, its logs and dead letters.
-            throw new MailNotSentException($"The SMTP server refused the mail at {refused.ErrorCode} with {(int)refused.StatusCode} {refused.StatusCode}.");
+            throw new MailNotSentException($"The SMTP server refused the mail at {refused.ErrorCode} with {(int)refused.StatusCode} {refused.StatusCode}.", handingOver);
         }
         catch (Exception failed)
         {
             // Whatever else the client throws before the bound fires (a reply it cannot read, a failed TLS handshake or
             // login, a dropped connection, a timeout, an operation it refuses) may carry the server's address, its text or
             // the recipient; only the kind of failure goes on, without the exception itself.
-            throw new MailNotSentException($"The mail was not sent: {failed.GetType().Name}.");
+            throw new MailNotSentException($"The mail was not sent: {failed.GetType().Name}.", handingOver);
         }
 
         await DisconnectAfterSendAsync(client, bound.Token);

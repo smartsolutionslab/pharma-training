@@ -102,17 +102,17 @@ public partial class OrganisationInvitationsTests(AspireFixture aspire)
         var pharmacy = await RegisterAsync(owner, cancellationToken);
         var address = Invitee();
         var (membership, _) = await InviteAsync(owner, pharmacy, address, cancellationToken);
-        var before = await database.TokenHashAsync(membership, cancellationToken);
+        var before = await database.TokenHashesAsync(membership, cancellationToken);
 
         using var renewed = await owner.PostAsync(RenewUri(pharmacy, membership), content: null, cancellationToken);
 
         await ShouldAnswerAsync(renewed, HttpStatusCode.OK, cancellationToken);
         var second = TokenIn((await mailpit.MessagesToAsync(address, 2, cancellationToken))[1]);
-        var after = await database.TokenHashAsync(membership, cancellationToken);
-        before.ShouldNotBeNull();
-        after.ShouldNotBeNull();
+        var after = await database.TokenHashesAsync(membership, cancellationToken);
+        before.ShouldNotBeEmpty();
+        after.ShouldNotBeEmpty();
         after.ShouldNotBe(before);
-        after.ShouldBe(HashOf(second));
+        after.ShouldBe([HashOf(second)]);
         (await database.MembershipAsync(membership, cancellationToken)).Status.ShouldBe("Invited");
     }
 
@@ -129,7 +129,7 @@ public partial class OrganisationInvitationsTests(AspireFixture aspire)
 
         await ShouldAnswerAsync(revoked, HttpStatusCode.OK, cancellationToken);
         (await database.MembershipAsync(membership, cancellationToken)).Status.ShouldBe("Revoked");
-        (await database.TokenHashAsync(membership, cancellationToken)).ShouldBeNull();
+        (await database.TokenHashesAsync(membership, cancellationToken)).ShouldBeEmpty();
         using var renewed = await owner.PostAsync(RenewUri(pharmacy, membership), content: null, cancellationToken);
         await ShouldBeRefusedAsync(renewed, HttpStatusCode.NotFound, "organisation.no-open-invitation", cancellationToken);
         using var revokedAgain = await owner.DeleteAsync(InvitationUri(pharmacy, membership), cancellationToken);
@@ -171,7 +171,7 @@ public partial class OrganisationInvitationsTests(AspireFixture aspire)
         var pharmacy = await RegisterAsync(owner, cancellationToken);
         await database.SeedMemberAsync(pharmacy, "employee-a", "Employee", "Pta", cancellationToken);
         var (membership, _) = await InviteAsync(owner, pharmacy, Invitee(), cancellationToken);
-        var hash = await database.TokenHashAsync(membership, cancellationToken);
+        var hashes = await database.TokenHashesAsync(membership, cancellationToken);
         var address = Invitee();
 
         using var invited = await employee.PostAsJsonAsync(InvitationsUri(pharmacy), new { email = address, jobFunction = "Pta", role = "Employee" }, cancellationToken);
@@ -183,7 +183,7 @@ public partial class OrganisationInvitationsTests(AspireFixture aspire)
         await ShouldBeRefusedAsync(revoked, HttpStatusCode.Forbidden, "organisation.capability-missing", cancellationToken);
         (await database.StatusesOfAsync(pharmacy, address, cancellationToken)).ShouldBeEmpty();
         (await database.MembershipAsync(membership, cancellationToken)).Status.ShouldBe("Invited");
-        (await database.TokenHashAsync(membership, cancellationToken)).ShouldBe(hash);
+        (await database.TokenHashesAsync(membership, cancellationToken)).ShouldBe(hashes);
     }
 
     [Fact]
@@ -397,7 +397,7 @@ public partial class OrganisationInvitationsTests(AspireFixture aspire)
         mail.To.ShouldBe([address]);
         mail.Subject.ShouldStartWith("Einladung zu Apotheke ", Case.Sensitive);
         var token = TokenIn(mail);
-        (await database.TokenHashAsync(membership, cancellationToken)).ShouldBe(HashOf(token));
+        (await database.TokenHashesAsync(membership, cancellationToken)).ShouldBe([HashOf(token)]);
     }
 
     [Fact]
@@ -417,7 +417,7 @@ public partial class OrganisationInvitationsTests(AspireFixture aspire)
         mails.Count.ShouldBe(2);
         var second = TokenIn(mails[1]);
         second.ShouldNotBe(first);
-        (await database.TokenHashAsync(membership, cancellationToken)).ShouldBe(HashOf(second));
+        (await database.TokenHashesAsync(membership, cancellationToken)).ShouldBe([HashOf(second)]);
     }
 
     [Fact]

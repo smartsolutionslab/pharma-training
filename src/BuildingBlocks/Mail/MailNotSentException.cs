@@ -20,4 +20,16 @@ public sealed class MailNotSentException : InvalidOperationException
         : base(message, innerException)
     {
     }
+
+    /// <param name="message">The step and the codes, or the kind of failure, only.</param>
+    /// <param name="mayHaveBeenDelivered">Whether the failure came once the mail was being handed to the server.</param>
+    public MailNotSentException(string message, bool mayHaveBeenDelivered)
+        : base(message) => MayHaveBeenDelivered = mayHaveBeenDelivered;
+
+    /// <summary>
+    /// Whether the server may hold the mail after all: <see langword="false"/> only when the failure came before the
+    /// mail was handed over (connect, TLS, login), so the recipient cannot have it. One that does not say is
+    /// <see langword="true"/>, the side that keeps what the mail carries.
+    /// </summary>
+    public bool MayHaveBeenDelivered { get; } = true;
 }

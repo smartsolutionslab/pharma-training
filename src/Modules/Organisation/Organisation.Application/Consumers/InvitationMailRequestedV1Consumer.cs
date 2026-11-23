@@ -12,8 +12,10 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Cons
 /// reads the membership again, sends, and records the version as mailed. So a mailed link is never dead on arrival, no
 /// token is ever at rest, and a retry after a send that failed adds a link without killing the one the server may
 /// already have taken: every link of the version opens the invitation, up to
-/// <see cref="Pharmacy.MaxInvitationLinksPerVersion"/>, and a renewal clears them. A failure before the send throws, so
-/// Wolverine retries it and then dead-letters it.
+/// <see cref="Pharmacy.MaxInvitationLinksPerVersion"/>, and a renewal clears them. A send that failed before the server
+/// could have taken the mail (<see cref="MailNotSentException.MayHaveBeenDelivered"/> false) takes its link back again,
+/// so only links whose mails may be out count towards that cap and an SMTP outage never reaches it. A failure up to and
+/// including the send throws, so Wolverine retries it and then dead-letters it.
 /// It does not deduplicate on <c>Metadata.EventIdentifier</c>: a send that failed must be sent again, and the
 /// invitation's version and its mailed mark are the key. An invitation that is no longer open or has run out is dropped,
 /// and so is one whose version holds the most links, without a throw, since a retry could never mail it.
@@ -89,13 +91,43 @@ public sealed partial class InvitationMailRequestedV1Consumer(
             return;
         }
 
-        await mails.SendAsync(mail, cancellationToken);
+        try
+        {
+            await mails.SendAsync(mail, cancellationToken);
+        }
+        catch (Exception failed) when (CannotHaveBeenDelivered(failed))
+        {
+            // The server never took this mail, so its link is taken back: it neither works nor counts towards the cap,
+            // which only links whose mails may be out reach. Whatever the withdrawal meets, the send's failure goes on,
+            // so Wolverine retries the mail and finally dead-letters it.
+            await WithdrawAsync(pharmacy, membership, token, cancellationToken);
+            throw;
+        }
 
         // The mail is out: a failure from here on must not throw, or Wolverine would mail the version again. A save that
         // lost a race leaves the version unmarked, and so does one refused because the invitation changed since.
         if (pharmacy.RecordInvitationMailed(membership, version).IsFailure || !await unitOfWork.TryCommitAsync(cancellationToken))
         {
             MailedButNotRecorded(logger, message.MembershipId, version.Value);
+        }
+    }
+
+    private static bool CannotHaveBeenDelivered(Exception failed) =>
+        failed is MailNotSentException { MayHaveBeenDelivered: false } or MailSendTimedOutException { MayHaveBeenDelivered: false };
+
+    /// <summary>Takes back this run's link and commits that; a withdrawal that fails is logged, never thrown in the send's place.</summary>
+    private async Task WithdrawAsync(Pharmacy pharmacy, MembershipId membership, InvitationToken token, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (pharmacy.WithdrawInvitationLink(membership, token).IsFailure || !await unitOfWork.TryCommitAsync(cancellationToken))
+            {
+                LinkNotWithdrawn(logger, membership.Value);
+            }
+        }
+        catch (Exception withdrawal)
+        {
+            LinkWithdrawalFailed(logger, withdrawal, membership.Value);
         }
     }
 
@@ -126,6 +158,12 @@ public sealed partial class InvitationMailRequestedV1Consumer(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "The invitation of membership {Membership} holds {Limit} links for its version already; its mail is dropped and not retried: {Code}.")]
     private static partial void LinkLimitReached(ILogger logger, string code, Guid membership, int limit);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The invitation mail of membership {Membership} never reached the mail server, and its link could not be taken back; it counts towards the version's links.")]
+    private static partial void LinkNotWithdrawn(ILogger logger, Guid membership);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The invitation mail of membership {Membership} never reached the mail server, and taking its link back failed; it counts towards the version's links.")]
+    private static partial void LinkWithdrawalFailed(ILogger logger, Exception exception, Guid membership);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "The invitation mail of membership {Membership} was sent for version {Version}, but recording it failed; a redelivery mails it again.")]
     private static partial void MailedButNotRecorded(ILogger logger, Guid membership, int version);
