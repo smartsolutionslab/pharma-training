@@ -83,9 +83,9 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
             return Failure(PharmacyErrors.AlreadyMemberOrInvited(Id, email));
         }
 
-        if (DailyCapReached(now, limits.DailyMailCap) is { } tomorrow)
+        if (DailyCapReached(now, limits.DailyMailCap) is Some<Timestamp> tomorrow)
         {
-            return Failure(PharmacyErrors.TooManyInvitationsToday(Id, tomorrow));
+            return Failure(PharmacyErrors.TooManyInvitationsToday(Id, tomorrow.Value));
         }
 
         var expiresAt = now.PlusDays(InvitationValidityDays);
@@ -111,14 +111,14 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
             return Failure(PharmacyErrors.NoOpenInvitation(Id, membership));
         }
 
-        if (invited.RenewableFrom(limits.RenewCooldown) is { } renewableFrom && now < renewableFrom)
+        if (invited.RenewableFrom(limits.RenewCooldown) is Some<Timestamp> renewableFrom && now < renewableFrom.Value)
         {
-            return Failure(PharmacyErrors.InvitationRenewedTooSoon(Id, membership, renewableFrom));
+            return Failure(PharmacyErrors.InvitationRenewedTooSoon(Id, membership, renewableFrom.Value));
         }
 
-        if (DailyCapReached(now, limits.DailyMailCap) is { } tomorrow)
+        if (DailyCapReached(now, limits.DailyMailCap) is Some<Timestamp> tomorrow)
         {
-            return Failure(PharmacyErrors.TooManyInvitationsToday(Id, tomorrow));
+            return Failure(PharmacyErrors.TooManyInvitationsToday(Id, tomorrow.Value));
         }
 
         var expiresAt = now.PlusDays(InvitationValidityDays);
@@ -319,15 +319,15 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
     private Membership? Find(MembershipId id) => memberships.SingleOrDefault(m => m.Id == id);
 
     /// <summary>The start of the day after the counted one when its mails have reached the cap; none while another may be sent.</summary>
-    private Timestamp? DailyCapReached(Timestamp now, DailyMailCap cap)
+    private Option<Timestamp> DailyCapReached(Timestamp now, DailyMailCap cap)
     {
         var day = CountingDay(now);
         if (InvitationMailDay == day && InvitationMailsThatDay.Value >= cap.Value)
         {
-            return day.Next().Start;
+            return Option<Timestamp>.Some(day.Next().Start);
         }
 
-        return null;
+        return Option<Timestamp>.None;
     }
 
     /// <summary>Counts one invitation mail toward the counted day's tally: the first of a new day starts it afresh.</summary>

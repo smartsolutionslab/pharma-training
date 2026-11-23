@@ -100,7 +100,15 @@ public sealed class Membership : Entity<MembershipId>
     internal void RecordMailed(InvitationVersion version) => InvitationMailedFor = version;
 
     /// <summary>The instant from which the invitation may be renewed again; none while no mail was ever requested.</summary>
-    internal Timestamp? RenewableFrom(RenewCooldown cooldown) => InvitationRequestedAt?.Plus(cooldown.Value);
+    internal Option<Timestamp> RenewableFrom(RenewCooldown cooldown)
+    {
+        if (InvitationRequestedAt is { } requestedAt)
+        {
+            return Option<Timestamp>.Some(requestedAt.Plus(cooldown.Value));
+        }
+
+        return Option<Timestamp>.None;
+    }
 
     internal void RenewInvitation(Timestamp now, Timestamp expiresAt)
     {
