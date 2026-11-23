@@ -1,0 +1,4 @@
+**/node_modules
+**/dist
+app/test-results
+app/playwright-report

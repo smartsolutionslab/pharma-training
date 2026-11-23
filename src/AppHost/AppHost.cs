@@ -60,7 +60,10 @@ var host = builder.AddProject<Projects.Edge>("host")
     .WithHttpHealthCheck("/health")
     .WithReference(keycloak.GetEndpoint("http"))
     .WaitFor(keycloak)
-    .WithEnvironment("Authentication__Authority", authority);
+    .WithEnvironment("Authentication__Authority", authority)
+    // Published, the edge's image carries the web app's build and serves it; the browser reads its identity provider from
+    // the edge's /config.json (Wiring/WebBuild.cs, docs/adr/0005).
+    .PublishWithTheWebBuild();
 // Published, the realm's web client accepts the edge's origin, which serves the web app.
 keycloak.WithWebOrigin(host);
 
@@ -70,15 +73,15 @@ ReferenceExpression frontendUrl;
 IResourceBuilder<ParameterResource>? frontendUrlParameter = null;
 if (builder.ExecutionContext.IsRunMode)
 {
-    // The web app's dev server, run mode only: it is not a Container App of its own once published (docs/adr/0005).
+    // The web app's dev server, run mode only: published, the edge serves its build (docs/adr/0005). It reads its identity
+    // provider from the edge's /config.json, through the dev server's proxy.
     var web = builder.AddViteApp("web", "../../web/app")
         .WithPnpm()
         // OIDC redirect URIs name this port; the dev server proxies /api to the host.
         .WithEndpoint("http", endpoint => endpoint.Port = 5173)
         .WithReference(host)
         .WaitFor(host)
-        .WaitFor(keycloak)
-        .WithEnvironment("VITE_OIDC_AUTHORITY", ReferenceExpression.Create($"{keycloak.GetEndpoint("http")}/realms/pharma-training"));
+        .WaitFor(keycloak);
     // The browser PUTs uploads and GETs files with the signed URLs, straight to blob storage, from the web app's origin alone.
     storage.AllowBrowserAccessFrom(web);
     frontendUrl = ReferenceExpression.Create($"{web.GetEndpoint("http")}");
