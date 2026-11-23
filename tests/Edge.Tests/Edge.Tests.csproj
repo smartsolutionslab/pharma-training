@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Tests of the edge (src/Edge): how it forwards a request's body to a service (docs/adr/0019). -->
+  <PropertyGroup>
+    <RootNamespace>SmartSolutionsLab.PharmaTraining.Edge.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Edge/Edge.csproj" />
+  </ItemGroup>
+
+</Project>
