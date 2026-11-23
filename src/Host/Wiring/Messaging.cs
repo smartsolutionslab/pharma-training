@@ -38,12 +38,17 @@ public static class Messaging
         // and every event from the broker must belong to the module whose user sent it; the AppHost names every module's
         // user as Messaging:Publishers:<module>.
         var userName = Uri.UnescapeDataString(new Uri(broker).UserInfo.Split(':', 2)[0]);
-        var publishers = configuration.GetSection("Messaging:Publishers").GetChildren()
-            .Where(publisher => !string.IsNullOrWhiteSpace(publisher.Value))
-            .ToList();
+        var publishers = configuration.GetSection("Messaging:Publishers").GetChildren().ToList();
         if (publishers.Count == 0)
         {
             throw new InvalidOperationException("Messaging:Publishers is missing; the AppHost names every module's broker user there.");
+        }
+
+        // A blank user would leave its module without a publisher, and every event of that module would be refused as
+        // forged at run time; it fails here instead, naming the module.
+        if (publishers.FirstOrDefault(publisher => string.IsNullOrWhiteSpace(publisher.Value)) is { } blank)
+        {
+            throw new InvalidOperationException($"Messaging:Publishers:{blank.Key} names no broker user; the AppHost names every module's.");
         }
 
         if (publishers.GroupBy(publisher => publisher.Value, StringComparer.Ordinal).FirstOrDefault(user => user.Count() > 1) is { } shared)
@@ -85,9 +90,9 @@ public static class Messaging
             // and not in a dead-letter queue of the broker's (see docs/adr).
             // An event a module of this host both publishes and consumes stays off the broker: no exchange, no sender and no
             // binding to the service's queue, so nothing the broker routes reaches the local consumer (docs/adr/0004). A
-            // message published straight to the service's own queue still dispatches by type; for InvitationMailRequestedV1
-            // the worst is a re-issued link to the same invited address, which the consumer's re-read still checks. Events
-            // of other services are still bound to the queue.
+            // message of that type that still arrives on the service's queue came from the broker, and PublisherCheck
+            // refuses it unless the module's own user sent it (docs/adr/0011, D5). Events of other services are still
+            // bound to the queue.
             // Wolverine's request/reply queue (wolverine.response.<id>) is not declared either: its listener dispatches any
             // message by type, the local ones included, and no service asks another for a reply over the broker.
             var local = LocalMessageTypes(modules);

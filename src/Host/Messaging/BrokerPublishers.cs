@@ -12,7 +12,7 @@ namespace SmartSolutionsLab.PharmaTraining.Host.Messaging;
 /// </summary>
 public sealed class BrokerPublishers
 {
-    private const string Broker = "rabbitmq";
+    private const string Local = "local";
 
     private static readonly string ContractsNamespace = typeof(IntegrationEvent).Namespace!;
 
@@ -27,15 +27,17 @@ public sealed class BrokerPublishers
     }
 
     /// <summary>
-    /// Why the envelope must not be handled, or nothing when it may: an envelope from the broker (<c>rabbitmq://</c>) only
-    /// when it is an event of the module whose user published it. What did not come through the broker (this host's local
-    /// queues, Wolverine's own control queue in the database) was sent by this host or its database and is not checked.
+    /// Why the envelope must not be handled, or nothing when it may: an envelope from this host's local queues
+    /// (<c>local://</c>) was published by this host and is not checked; any other only when it is an event of the module
+    /// whose broker user published it. Wolverine's own control messages come through the database and reach no consumer.
     /// </summary>
     public string? RefusalOf(Envelope envelope)
     {
         Ensure.That(envelope).IsNotNull();
 
-        if (envelope.Destination is not { Scheme: Broker })
+        // Only this host's local queues are exempt. Anything else, an envelope without a destination included, is checked,
+        // so a change in where Wolverine says an envelope came from fails closed.
+        if (envelope.Destination is { Scheme: Local })
         {
             return null;
         }

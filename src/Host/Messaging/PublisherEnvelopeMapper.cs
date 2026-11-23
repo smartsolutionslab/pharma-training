@@ -46,18 +46,33 @@ public sealed class PublisherEnvelopeMapper(IRabbitMqEnvelopeMapper inner, strin
         Ensure.That(envelope).IsNotNull();
         Ensure.That(incoming).IsNotNull();
 
-        inner.MapIncomingToEnvelope(envelope, incoming);
-
         // Only a module's integration event, as JSON, travels on the broker. Anything else (a scheduled-envelope wrapper,
         // which Wolverine forwards to the destination the envelope inside names, an agent command, any other type) would be
         // handled by Wolverine's own handlers, outside the consumers' chains and their PublisherCheck. So its type is
         // replaced by one no handler has, which Wolverine dead-letters as an unknown message (UnknownMessageBehavior in
-        // src/Host/Wiring/Messaging.cs), in the inbox as on first receipt. Throwing here instead would leave it to
-        // Wolverine's dead letters for unmappable messages, which fail in 6.64 and schedule the envelope to run again.
-        if (BrokerPublishers.ModuleOf(incoming.Type) is null || !string.Equals(incoming.ContentType, Json, StringComparison.Ordinal))
+        // src/Host/Wiring/Messaging.cs). A message Wolverine's own mapping cannot read (a header it cannot parse) is refused
+        // the same way. Neither may throw out of here: Wolverine 6.64 cannot dead-letter a message it failed to map, and
+        // reschedules it instead, without end.
+        try
         {
-            envelope.Headers[RefusedTypeHeader] = $"{incoming.Type ?? "(none)"} in {incoming.ContentType ?? "(no content type)"}";
-            envelope.MessageType = RefusedMessageType;
+            inner.MapIncomingToEnvelope(envelope, incoming);
+        }
+        catch (Exception unreadable) when (unreadable is FormatException or ArgumentException or InvalidOperationException or OverflowException)
+        {
+            // The mapping stopped before it read the message's id; the envelope's own is a fresh one, under which the
+            // dead letter could not be found by the id the publisher gave.
+            if (Guid.TryParse(incoming.MessageId, out var id))
+            {
+                envelope.Id = id;
+            }
+
+            Refuse(envelope, incoming, $"unreadable: {unreadable.GetType().Name}: {unreadable.Message}");
+        }
+
+        if (envelope.MessageType != RefusedMessageType
+            && (BrokerPublishers.ModuleOf(incoming.Type) is null || !string.Equals(incoming.ContentType, Json, StringComparison.Ordinal)))
+        {
+            Refuse(envelope, incoming, "no integration event of a module in " + Json);
         }
 
         if (string.IsNullOrEmpty(incoming.UserId))
@@ -68,5 +83,12 @@ public sealed class PublisherEnvelopeMapper(IRabbitMqEnvelopeMapper inner, strin
         {
             envelope.Headers[PublisherHeader] = incoming.UserId;
         }
+    }
+
+    /// <summary>Gives the envelope a type no handler has, keeping what it came with and why it was refused.</summary>
+    private static void Refuse(Envelope envelope, IReadOnlyBasicProperties incoming, string reason)
+    {
+        envelope.Headers[RefusedTypeHeader] = $"{incoming.Type ?? "(none)"} in {incoming.ContentType ?? "(no content type)"}: {reason}";
+        envelope.MessageType = RefusedMessageType;
     }
 }
