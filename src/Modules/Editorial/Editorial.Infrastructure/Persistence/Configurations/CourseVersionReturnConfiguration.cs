@@ -6,7 +6,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Infrastructure.Pers
 
 /// <summary>
 /// Every return of a course version, in a table of its own beside the version, which has no navigation to it and does
-/// not load it (ADR 0011). A record is only ever inserted, in the save that returns the version.
+/// not load it (ADR 0013). A record is only ever inserted, in the save that returns the version.
 /// </summary>
 public sealed class CourseVersionReturnConfiguration : IEntityTypeConfiguration<CourseVersionReturn>
 {

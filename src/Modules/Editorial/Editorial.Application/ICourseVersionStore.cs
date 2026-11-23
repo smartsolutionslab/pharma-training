@@ -28,6 +28,9 @@ public interface ICourseVersionStore
     /// </summary>
     Task<Option<CourseVersion>> FindForUpdateAsync(CourseVersionId id, CancellationToken cancellationToken);
 
+    /// <summary>The version stored with that number for the course, read afresh; none while there is none.</summary>
+    Task<Option<CourseVersionId>> FindByNumberAsync(CourseId course, VersionNumber number, CancellationToken cancellationToken);
+
     /// <summary>One page of the versions, of one status or of all, by title, then newest number first; without their chapters.</summary>
     Task<PagedResult<CourseVersion>> ListAsync(CourseVersionStatus? status, Page page, PageSize pageSize, CancellationToken cancellationToken);
 

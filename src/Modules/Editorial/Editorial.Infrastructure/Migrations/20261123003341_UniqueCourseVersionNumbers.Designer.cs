@@ -13,8 +13,8 @@ using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Infrastructure.Persiste
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Infrastructure.Migrations;
 
 [DbContext(typeof(EditorialDbContext))]
-[Migration("20261123014404_RecordEveryReturn")]
-partial class _20261123014404_RecordEveryReturn
+[Migration("20261123003341_UniqueCourseVersionNumbers")]
+partial class _20261123003341_UniqueCourseVersionNumbers
 {
     /// <inheritdoc />
     protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -192,42 +192,13 @@ partial class _20261123014404_RecordEveryReturn
 
                 b.HasKey("Id");
 
-                b.HasIndex("Course");
-
                 b.HasIndex("Status");
 
+                b.HasIndex("Course", "Number")
+                    .IsUnique()
+                    .HasDatabaseName("ix_course_versions_course_id_number");
+
                 b.ToTable("course_versions", "editorial");
-            });
-
-        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions.CourseVersionReturn", b =>
-            {
-                b.Property<Guid>("Id")
-                    .HasColumnType("uuid")
-                    .HasColumnName("id");
-
-                b.Property<string>("Reason")
-                    .IsRequired()
-                    .HasMaxLength(1000)
-                    .HasColumnType("character varying(1000)")
-                    .HasColumnName("reason");
-
-                b.Property<DateTimeOffset>("ReturnedAt")
-                    .HasColumnType("timestamp with time zone")
-                    .HasColumnName("returned_at");
-
-                b.Property<Guid>("ReturnedBy")
-                    .HasColumnType("uuid")
-                    .HasColumnName("returned_by");
-
-                b.Property<Guid>("Version")
-                    .HasColumnType("uuid")
-                    .HasColumnName("course_version_id");
-
-                b.HasKey("Id");
-
-                b.HasIndex("Version", "ReturnedAt");
-
-                b.ToTable("course_version_returns", "editorial");
             });
 
         modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions.Question", b =>
@@ -320,15 +291,6 @@ partial class _20261123014404_RecordEveryReturn
                 b.HasOne("SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions.CourseVersion", null)
                     .WithMany("Chapters")
                     .HasForeignKey("CourseVersionId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
-            });
-
-        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions.CourseVersionReturn", b =>
-            {
-                b.HasOne("SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions.CourseVersion", null)
-                    .WithMany()
-                    .HasForeignKey("Version")
                     .OnDelete(DeleteBehavior.Cascade)
                     .IsRequired();
             });

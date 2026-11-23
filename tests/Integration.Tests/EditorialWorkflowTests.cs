@@ -3,7 +3,6 @@ using System.Net.Http.Json;
 using System.Text;
 using Aspire.Hosting.Testing;
 using Npgsql;
-using static SmartSolutionsLab.PharmaTraining.Integration.Tests.EditorialDatabase;
 using static SmartSolutionsLab.PharmaTraining.Integration.Tests.EditorialWorkflow;
 
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
@@ -91,7 +90,7 @@ public class EditorialWorkflowTests(AspireFixture aspire)
 
     /// <summary>
     /// A return's body that is no JSON is refused with the module's code like a blank reason, not by routing (#181, S1,
-    /// ADR 0011): a reason sent as text/plain answers 400, and the version stays in review.
+    /// ADR 0013): a reason sent as text/plain answers 400, and the version stays in review.
     /// </summary>
     [Fact]
     public async Task A_return_sent_as_plain_text_is_refused_as_an_invalid_reason()
@@ -327,22 +326,40 @@ public class EditorialWorkflowTests(AspireFixture aspire)
     }
 
     /// <summary>
-    /// Publishes course A's first version, then makes course B's submitted version A's second (until #20 drafts one
-    /// through the API) and publishes it. Answers the first version with its content as read before, and the second.
+    /// Publishes a course's first version, drafts its next one through the API, replaces the copied chapter's text so
+    /// its question needs approval again, and publishes it. Answers the first version with its content as read before,
+    /// and the second.
     /// </summary>
-    private async Task<(Published First, Published Next)> SupersededAsync(HttpClient client, CancellationToken cancellationToken)
+    private static async Task<(Published First, Published Next)> SupersededAsync(HttpClient client, CancellationToken cancellationToken)
     {
         var first = await PublishedAsync(client, cancellationToken);
         var firstContent = await ContentOfAsync(client, first.Id, cancellationToken);
-        var next = await ReadyToSubmitAsync(client, cancellationToken);
-        await SubmitAsync(client, next.Id, cancellationToken);
-        await SeedAsNextVersionAsync(await ConnectionStringAsync(aspire, cancellationToken), next.Id, first.CourseId, 2, cancellationToken);
-        await ApproveAllAsync(client, next.Id, cancellationToken);
-        await PublishAsync(client, next.Id, cancellationToken);
-        return (new Published(first.Id, firstContent), new Published(next.Id, await ContentOfAsync(client, next.Id, cancellationToken)));
+        var nextId = await DraftNextAsync(client, first.Id, cancellationToken);
+        var chapter = new Uri($"/editorial/course-versions/{nextId}/chapters/{(await ReadChaptersAsync(client, nextId, cancellationToken)).Single()}", UriKind.Relative);
+        using (var replaced = await client.PutAsJsonAsync(chapter, new { title = "Händehygiene", text = "Neu: vor und nach …" }, cancellationToken))
+        {
+            replaced.StatusCode.ShouldBe(HttpStatusCode.OK, $"PUT {chapter} answered {(int)replaced.StatusCode}.");
+        }
+
+        await SubmitAsync(client, nextId, cancellationToken);
+        await ApproveAllAsync(client, nextId, cancellationToken);
+        await PublishAsync(client, nextId, cancellationToken);
+        return (new Published(first.Id, firstContent), new Published(nextId, await ContentOfAsync(client, nextId, cancellationToken)));
+    }
+
+    /// <summary>The ids of the version's chapters, in order.</summary>
+    private static async Task<IReadOnlyList<Guid>> ReadChaptersAsync(HttpClient client, Guid id, CancellationToken cancellationToken)
+    {
+        var version = await client.GetFromJsonAsync<VersionChapters>(new Uri($"/editorial/course-versions/{id}", UriKind.Relative), cancellationToken);
+        version.ShouldNotBeNull();
+        return [.. version.Chapters.Select(chapter => chapter.Id)];
     }
 
     private sealed record Published(Guid Id, string Content);
+
+    private sealed record VersionChapters(IReadOnlyList<VersionChapter> Chapters);
+
+    private sealed record VersionChapter(Guid Id);
 
     /// <summary>
     /// Polls Catalog's database until it holds the version's retirement, which only <c>CourseVersionRetiredV1</c> from

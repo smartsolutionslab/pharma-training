@@ -23,7 +23,7 @@ public sealed class ReturnToDraftHandler(ICourseVersionStore versions, IEditoria
         }
 
         // The record is saved in the version's own transaction, under its row version: a reaction would run after the
-        // commit and is never retried, so the audit trail could lose a return (ADR 0011).
+        // commit and is never retried, so the audit trail could lose a return (ADR 0013).
         versions.AddReturn(returned.Value);
 
         if (!await unitOfWork.TryCommitAsync(cancellationToken))

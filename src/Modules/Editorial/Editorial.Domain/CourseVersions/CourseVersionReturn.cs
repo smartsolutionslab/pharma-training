@@ -5,7 +5,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersio
 /// <summary>
 /// The record of one return of a course version to draft: who returned it, when and why. Only
 /// <see cref="CourseVersion.ReturnToDraft"/> makes one, and once stored it never changes; a later return is a record of
-/// its own. It is stored beside the version, not loaded with it (ADR 0011).
+/// its own. It is stored beside the version, not loaded with it (ADR 0013).
 /// </summary>
 public sealed class CourseVersionReturn : Entity<CourseVersionReturnId>
 {
