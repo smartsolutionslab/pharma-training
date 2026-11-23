@@ -102,3 +102,5 @@ cd web && pnpm install && pnpm build
 ```
 
 The AppHost starts the web app with everything else (`dotnet run --project src/AppHost`).
+
+`web/package.json` sets `pnpm.ignoredOptionalDependencies: ["@napi-rs/canvas"]` (JSON has no comments, so the reason is here). `pdfjs-dist` lists `@napi-rs/canvas` as an optional dependency for rendering in Node, which the browser never uses. Installed, it would also satisfy jsdom's optional `canvas` peer, so the unit tests would run on a real canvas and axe's `label-content-name-mismatch` rule would fail `AppShell.axe.test.ts`. Keep it out; drop the setting only when no package needs it excluded.
