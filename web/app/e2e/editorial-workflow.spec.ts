@@ -89,10 +89,10 @@ test('an editor submits, returns with a reason, submits again, publishes and ret
   await expect(checklist.getByRole('listitem').filter({ hasText: 'Die Version hat Kapitel.' })).toContainText(
     'Erfüllt:',
   );
-  await expect(checklist.getByRole('listitem').filter({ hasText: 'Der Test hat alle 1 Fragen.' })).toContainText(
+  await expect(checklist.getByRole('listitem').filter({ hasText: 'Der Test hat die verlangte Frage.' })).toContainText(
     'Erfüllt:',
   );
-  await expect(checklist.getByRole('listitem').filter({ hasText: 'Alle Fragen sind freigegeben.' })).toContainText(
+  await expect(checklist.getByRole('listitem').filter({ hasText: 'Alle Fragen sind geprüft.' })).toContainText(
     'Erfüllt:',
   );
   await expect(

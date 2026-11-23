@@ -1,16 +1,24 @@
+import { QueryClient } from '@tanstack/vue-query';
 import { cleanup, screen, waitFor, within } from '@testing-library/vue';
 import userEvent from '@testing-library/user-event';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import type { EditorialCourseVersionDto, EditorialCourseVersionStatus, EditorialQuestionDto } from '@/api/generated';
+import { afterEach, beforeEach, describe, expect, onTestFinished, test, vi } from 'vitest';
+import {
+  type EditorialCourseVersionDto,
+  type EditorialCourseVersionStatus,
+  type EditorialQuestionDto,
+  getGetEditorialCourseVersionsIdQueryKey,
+} from '@/api/generated';
 import { setLanguage, t } from '@/i18n';
-import { questionsUpTo, versionId, versionOf } from './courseTestFixtures';
+import { handWritten, questionsUpTo, versionId, versionOf } from './courseTestFixtures';
 import {
   answering,
+  dialogClosings,
   type Fetch,
   refused,
   renderVersionPage,
   requestsOf,
   stepTaken,
+  tryToClose,
   type WorkflowHost,
   workflowHost,
 } from './workflowPageHost';
@@ -160,8 +168,8 @@ describe('the checklist', () => {
     expect(items).toHaveLength(4);
     const expected: [string, string][] = [
       ['Erfüllt:', 'Die Version hat Kapitel.'],
-      ['Offen:', 'Der Test hat 3 von 10 Fragen.'],
-      ['Offen:', '1 von 3 Fragen sind freigegeben.'],
+      ['Offen:', 'Der Test hat 3 von 10 verlangten Fragen.'],
+      ['Offen:', 'Eine von 3 Fragen ist geprüft.'],
       ['Offen:', 'Die Version muss noch zur Prüfung eingereicht werden.'],
     ];
     expected.forEach(([state, text], index) => {
@@ -190,8 +198,8 @@ describe('the checklist', () => {
     for (const item of items) {
       expect(within(item).getByText(t('editorial.workflow.checklist.done'))).toBeInTheDocument();
     }
-    expect(checklistItem('Der Test hat alle 10 Fragen.')).not.toBeNull();
-    expect(checklistItem('Alle Fragen sind freigegeben.')).not.toBeNull();
+    expect(checklistItem('Der Test hat alle 10 verlangten Fragen.')).not.toBeNull();
+    expect(checklistItem('Alle Fragen sind geprüft.')).not.toBeNull();
     expect(checklistItem('Die Version ist zur Prüfung eingereicht.')).not.toBeNull();
   });
 
@@ -206,6 +214,48 @@ describe('the checklist', () => {
     await renderPage();
 
     expect(actionButton('submit')).toBeEnabled();
+  });
+
+  // A blueprint asking for one question: the item reads in the singular.
+  const one = { questions: 1, passingScorePercent: 80, validityMonths: 12 };
+
+  test.each([
+    [1, 'Erfüllt:', 'Der Test hat die verlangte Frage.'],
+    [0, 'Offen:', 'Der Test hat die verlangte Frage noch nicht.'],
+    [2, 'Offen:', 'Der Test hat 2 Fragen, verlangt ist eine.'],
+  ])('of a test asking for one question and holding %i says so in the singular', async (held, state, text) => {
+    showing(versionOf('Draft', { questions: questionsUpTo(held), blueprint: one }));
+    await renderPage();
+
+    const item = checklistItem(text);
+    expect(item).not.toBeNull();
+    expect(within(item ?? document.body).getByText(state)).toBeInTheDocument();
+  });
+
+  test.each([
+    [1, 'The test has the one question its blueprint asks for.'],
+    [0, 'The test does not have the one question its blueprint asks for yet.'],
+    [2, 'The test has 2 questions; its blueprint asks for one.'],
+  ])('of a test asking for one question and holding %i says so in the singular in English', async (held, text) => {
+    setLanguage('en-GB', { remember: false });
+    showing(versionOf('Draft', { questions: questionsUpTo(held), blueprint: one }));
+    await renderPage();
+
+    expect(checklistItem(text)).not.toBeNull();
+  });
+
+  test('of a test with one of its questions approved says one is', async () => {
+    showing(versionOf('Draft', { questions: [{ ...handWritten, review: 'Approved' }, ...questionsUpTo(2).slice(1)] }));
+    await renderPage();
+
+    expect(checklistItem('Eine von 2 Fragen ist geprüft.')).not.toBeNull();
+  });
+
+  test('of a test with every question approved says they are checked, as the test page does', async () => {
+    showing(versionOf('InReview', { questions: complete() }));
+    await renderPage();
+
+    expect(checklistItem('Alle Fragen sind geprüft.')).not.toBeNull();
   });
 });
 
@@ -415,6 +465,48 @@ describe('publishing a version in review', () => {
     expect(checklistItem(fourEyes)).toBeNull();
   });
 
+  test.each(dialogClosings)('stays open by %s while the host has not answered, and posts once', async (way) => {
+    host.step = () => new Promise<Response>(() => undefined);
+    const { user, dialog } = await openPublish();
+    await user.click(within(dialog).getByRole('button', { name: 'Veröffentlichen' }));
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Veröffentlichen' })).toBeDisabled());
+
+    await tryToClose(dialog, way);
+
+    expect(screen.getByRole('dialog', { name: 'Version veröffentlichen?' })).toBeVisible();
+    expect(posts()).toHaveLength(1);
+  });
+
+  test.each(dialogClosings)('closes by %s while nothing is on its way, and posts nothing', async (way) => {
+    const { dialog } = await openPublish();
+
+    await tryToClose(dialog, way);
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(posts()).toEqual([]);
+  });
+
+  test('refused by four eyes keeps the item gone once the version was returned and submitted again', async () => {
+    host.step = async () => refused(403, 'editorial.four-eyes');
+    const { user, dialog, queryClient } = await openPublish();
+    const fourEyes =
+      'Sie haben diese Version eingereicht. Mit Vier-Augen-Freigabe muss eine andere Person sie veröffentlichen.';
+    await user.click(within(dialog).getByRole('button', { name: 'Veröffentlichen' }));
+    await waitFor(() => expect(checklistItem(fourEyes)).not.toBeNull());
+
+    // Returned to draft, then submitted again: whoever submits it now, the old refusal says nothing about it.
+    showing(versionOf('Draft', { questions: complete() }));
+    await queryClient.refetchQueries();
+    await waitFor(() => expect(screen.getByText(statusText('Draft'))).toBeVisible());
+    expect(checklistItem(fourEyes)).toBeNull();
+    showing(versionOf('InReview', { questions: complete() }));
+    await queryClient.refetchQueries();
+
+    await waitFor(() => expect(screen.getByText(statusText('InReview'))).toBeVisible());
+    expect(checklistItem(fourEyes)).toBeNull();
+    expect(within(checklist() ?? document.body).getAllByRole('listitem')).toHaveLength(4);
+  });
+
   test('refused by four eyes drops the item on another version', async () => {
     host.step = async () => refused(403, 'editorial.four-eyes');
     const { user, dialog, router } = await openPublish();
@@ -503,6 +595,20 @@ describe('retiring a version', () => {
     },
   );
 
+  test('keeps "Neue Version anlegen" shut while the retirement is on its way', async () => {
+    showing(versionOf('Published'));
+    host.step = () => new Promise<Response>(() => undefined);
+    const user = userEvent.setup();
+    await renderPage();
+    await user.click(actionButton('retire') ?? document.body);
+    const dialog = await screen.findByRole('dialog', { name: 'Version zurückziehen?' });
+
+    await user.click(within(dialog).getByRole('button', { name: 'Zurückziehen' }));
+
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Zurückziehen' })).toBeDisabled());
+    expect(screen.getByRole('button', { name: t('editorial.version.newVersion'), hidden: true })).toBeDisabled();
+  });
+
   test('retired meanwhile, says only a published version can be, with the focus on the heading', async () => {
     showing(versionOf('Published'));
     host.step = async () => {
@@ -539,6 +645,100 @@ describe('retiring a version', () => {
 
     await waitFor(() => expect(notify.success).toHaveBeenCalledWith('Version 2 has been retired.'));
   });
+});
+
+describe('a step failing on the network', () => {
+  const versionKey = getGetEditorialCourseVersionsIdQueryKey(versionId);
+
+  /** From the step on, the host cannot be reached at all: the version is not read again either. */
+  function offlineFromTheStep() {
+    let offline = false;
+    const online = answering(host);
+    host.step = async () => {
+      offline = true;
+      throw new TypeError('Failed to fetch');
+    };
+    fetch.mockImplementation(async (input, init) => {
+      if (offline) {
+        throw new TypeError('Failed to fetch');
+      }
+      return online(input, init);
+    });
+  }
+
+  test('keeps the version shown when it cannot be read again, with the focus on Publish', async () => {
+    showing(versionOf('InReview', { questions: complete() }));
+    offlineFromTheStep();
+    const user = userEvent.setup();
+    const { queryClient, heading } = await renderPage();
+    await user.click(actionButton('publish') ?? document.body);
+    const dialog = await screen.findByRole('dialog', { name: 'Version veröffentlichen?' });
+
+    await user.click(within(dialog).getByRole('button', { name: 'Veröffentlichen' }));
+
+    await waitFor(() => expect(notify.failure).toHaveBeenCalledWith(t('editorial.workflow.errors.publishFailed')));
+    await waitFor(() => expect(queryClient.getQueryState(versionKey)?.status).toBe('error'));
+    expect(heading).toBeInTheDocument();
+    expect(screen.queryByText(t('editorial.version.loadFailed'))).toBeNull();
+    await waitFor(() => expect(actionButton('publish')).toHaveFocus());
+  });
+
+  test('reports it at once with a query client that retries, as the app does, and gives the focus back', async () => {
+    offlineFromTheStep();
+    // The app's client: a failed read is retried three times, about seven seconds in all.
+    const queryClient = new QueryClient();
+    onTestFinished(() => queryClient.cancelQueries());
+    const user = userEvent.setup();
+    await renderVersionPage(versionId, title, queryClient);
+
+    await user.click(actionButton('submit') ?? document.body);
+
+    await waitFor(() => expect(notify.failure).toHaveBeenCalledWith(t('editorial.workflow.errors.submitFailed')));
+    await waitFor(() => expect(actionButton('submit')).toHaveFocus());
+    expect(actionButton('submit')).toBeEnabled();
+  });
+});
+
+test('a step answered after the editor moved to another version leaves the focus free there', async () => {
+  showing(versionOf('InReview', { questions: complete() }));
+  let answer: (response: Response) => void = () => undefined;
+  host.step = () =>
+    new Promise<Response>((resolve) => {
+      answer = resolve;
+    });
+  const other = '0198c1a0-0000-7000-8000-0000000000c9';
+  let readOther: () => void = () => undefined;
+  const otherReadable = new Promise<void>((resolve) => {
+    readOther = resolve;
+  });
+  const online = answering(host);
+  fetch.mockImplementation(async (input, init) => {
+    if ((init?.method ?? 'GET') === 'GET' && String(input).endsWith(other)) {
+      await otherReadable;
+    }
+    return online(input, init);
+  });
+  const user = userEvent.setup();
+  const { router } = await renderPage();
+  await user.click(actionButton('publish') ?? document.body);
+  const dialog = await screen.findByRole('dialog', { name: 'Version veröffentlichen?' });
+  await user.click(within(dialog).getByRole('button', { name: 'Veröffentlichen' }));
+  await waitFor(() => expect(posts()).toHaveLength(1));
+
+  // The editor opens another version while the publish is on its way; the host refuses it before that one shows.
+  await router.push(`/editorial/versions/${other}`);
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  answer(refused(409, 'editorial.not-in-review'));
+  await waitFor(() => expect(notify.failure).toHaveBeenCalled());
+  showing(versionOf('Draft'));
+  host.step = async (step) => stepTaken(host, step);
+  readOther();
+  const heading = await screen.findByRole('heading', { level: 1, name: title });
+
+  await user.click(actionButton('submit') ?? document.body);
+
+  await waitFor(() => expect(notify.success).toHaveBeenCalledWith('Version 2 ist zur Prüfung eingereicht.'));
+  await waitFor(() => expect(heading).toHaveFocus());
 });
 
 test('publishing says so in English', async () => {

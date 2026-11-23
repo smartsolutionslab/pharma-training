@@ -1,7 +1,9 @@
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query';
-import { render, screen } from '@testing-library/vue';
+import { render, screen, within } from '@testing-library/vue';
+import userEvent from '@testing-library/user-event';
 import { createMemoryHistory } from 'vue-router';
 import type { EditorialCourseVersionDto, EditorialCourseVersionStatus } from '@/api/generated';
+import { t } from '@/i18n';
 import { createAppRouter } from '@/router';
 import CourseVersionPage from './CourseVersionPage.vue';
 import { versionOf } from './courseTestFixtures';
@@ -86,12 +88,35 @@ export function requestsOf(fetch: { mock: { calls: Parameters<Fetch>[] } }) {
   }));
 }
 
-/** The page at the version's address, with a query client of its own that does not retry. */
-export async function renderVersionPage(id: string, title: string) {
+/** The page at the version's address, with a query client of its own that, unless one is given, does not retry. */
+export async function renderVersionPage(
+  id: string,
+  title: string,
+  queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } }),
+) {
   const router = createAppRouter(createMemoryHistory());
   await router.push(`/editorial/versions/${id}`);
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   const { container } = render(CourseVersionPage, { global: { plugins: [router, [VueQueryPlugin, { queryClient }]] } });
   const heading = await screen.findByRole('heading', { level: 1, name: title });
   return { router, queryClient, container, heading };
+}
+
+/** The ways a user closes a dialog without its buttons. */
+export const dialogClosings = ['Escape', 'a click on the overlay', 'its close button'] as const;
+export type DialogClosing = (typeof dialogClosings)[number];
+
+/** Tries to close the dialog that way. The overlay sits under the open dialog's pointer-events lock, as for a user. */
+export async function tryToClose(dialog: HTMLElement, way: DialogClosing) {
+  const user = userEvent.setup({ pointerEventsCheck: 0 });
+  switch (way) {
+    case 'Escape':
+      await user.keyboard('{Escape}');
+      break;
+    case 'a click on the overlay':
+      await user.click(document.querySelector('[data-slot="dialog-overlay"]') ?? document.body);
+      break;
+    case 'its close button':
+      await user.click(within(dialog).getByRole('button', { name: t('ui.close') }));
+      break;
+  }
 }

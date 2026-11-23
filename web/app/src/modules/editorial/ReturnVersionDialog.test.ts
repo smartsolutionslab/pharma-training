@@ -5,10 +5,12 @@ import { setLanguage, t } from '@/i18n';
 import { versionId, versionOf } from './courseTestFixtures';
 import {
   answering,
+  dialogClosings,
   type Fetch,
   refused,
   renderVersionPage,
   requestsOf,
+  tryToClose,
   type WorkflowHost,
   workflowHost,
 } from './workflowPageHost';
@@ -230,6 +232,74 @@ describe('the return dialog', () => {
     );
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     await waitFor(() => expect(screen.getByRole('button', { name: t('editorial.workflow.return') })).toHaveFocus());
+  });
+
+  test('with more than 1000 characters says how many it may have, next to the field, and sends nothing', async () => {
+    const { user, dialog, reason, confirm } = await openReturn();
+
+    await user.click(reason);
+    await user.paste('a'.repeat(1001));
+    await user.click(confirm);
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      'Der Grund darf höchstens 1000 Zeichen lang sein.',
+    );
+    expect(reason).toHaveAccessibleDescription(expect.stringContaining('höchstens 1000 Zeichen'));
+    expect(posts()).toEqual([]);
+  });
+
+  // The host counts UTF-16 code units: an emoji outside the BMP is two.
+  test('posts 500 emoji, 1000 UTF-16 code units as the host counts them', async () => {
+    const { user, reason, confirm, heading } = await openReturn();
+
+    await user.click(reason);
+    await user.paste('\u{1F600}'.repeat(500));
+    await user.click(confirm);
+
+    await waitFor(() => expect(heading).toHaveFocus());
+    expect(posts()).toEqual([
+      {
+        method: 'POST',
+        path: `/editorial/course-versions/${versionId}/return`,
+        body: { reason: '\u{1F600}'.repeat(500) },
+      },
+    ]);
+  });
+
+  test('refuses 501 emoji, 1002 UTF-16 code units, as too long', async () => {
+    const { user, dialog, reason, confirm } = await openReturn();
+
+    await user.click(reason);
+    await user.paste('\u{1F600}'.repeat(501));
+    await user.click(confirm);
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      'Der Grund darf höchstens 1000 Zeichen lang sein.',
+    );
+    expect(posts()).toEqual([]);
+  });
+
+  test.each(dialogClosings)('closes by %s while nothing is on its way, and sends nothing', async (way) => {
+    const { dialog } = await openReturn();
+
+    await tryToClose(dialog, way);
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(posts()).toEqual([]);
+  });
+
+  test.each(dialogClosings)('stays open by %s while the host has not answered, and posts once', async (way) => {
+    host.step = () => new Promise<Response>(() => undefined);
+    const { user, dialog, reason, confirm } = await openReturn();
+    await user.type(reason, 'Kapitel 2 fehlt die Quelle.');
+    await user.click(confirm);
+    await waitFor(() => expect(confirm).toBeDisabled());
+
+    await tryToClose(dialog, way);
+
+    expect(screen.getByRole('dialog', { name: t('editorial.workflow.returnForm.title') })).toBeVisible();
+    expect(reason).toHaveValue('Kapitel 2 fehlt die Quelle.');
+    expect(posts()).toHaveLength(1);
   });
 });
 

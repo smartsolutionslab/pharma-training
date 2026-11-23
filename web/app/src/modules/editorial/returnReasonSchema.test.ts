@@ -13,6 +13,10 @@ function refusals(reason: unknown): string[] {
 }
 
 describe('accepts', () => {
+  test('500 emoji, 1000 UTF-16 code units as the host counts them', () => {
+    expect(refusals('\u{1F600}'.repeat(500))).toEqual([]);
+  });
+
   test('a reason, and hands it over trimmed', () => {
     const result = returnReasonSchema.safeParse({ reason: '  Kapitel 2 fehlt die Quelle.\n ' });
 
@@ -61,17 +65,22 @@ describe('refuses', () => {
     expect(refusals(` ${'a'.repeat(1001)} `)).toEqual(['editorial.workflow.returnForm.reasonTooLong']);
   });
 
+  // The host counts UTF-16 code units: an emoji outside the BMP is two.
+  test('501 emoji, 1002 UTF-16 code units, as too long', () => {
+    expect(refusals('\u{1F600}'.repeat(501))).toEqual(['editorial.workflow.returnForm.reasonTooLong']);
+  });
+
   test.each([
-    ['a zero-width space alone (Cf, which trimming keeps)', '​'],
+    ['a zero-width space alone (Cf, which trimming keeps)', '\u200B'],
     ['a bell (Cc)', 'Bitte \u0007 überarbeiten'],
     ['a NUL (Cc)', 'Bitte\u0000überarbeiten'],
     ['a lone high surrogate (Cs)', 'Bitte \uD800 überarbeiten'],
     ['a lone low surrogate (Cs)', 'Bitte \uDC00 überarbeiten'],
-    ['a right-to-left override (Cf)', 'Bitte ‮ überarbeiten'],
-    ['a line separator (Zl)', 'Bitte überarbeiten'],
-    ['a paragraph separator (Zp)', 'Bitte überarbeiten'],
-    ['a private-use character (Co)', 'Bitte  überarbeiten'],
-    ['an unassigned code point (Cn)', 'Bitte ͸ überarbeiten'],
+    ['a right-to-left override (Cf)', 'Bitte \u202E überarbeiten'],
+    ['a line separator (Zl)', 'Bitte\u2028überarbeiten'],
+    ['a paragraph separator (Zp)', 'Bitte\u2029überarbeiten'],
+    ['a private-use character (Co)', 'Bitte \uE000 überarbeiten'],
+    ['an unassigned code point (Cn)', 'Bitte \u0378 überarbeiten'],
     ['a DEL (Cc)', 'Bitte \u007F überarbeiten'],
   ])('%s as not allowed', (_name, reason) => {
     expect(refusals(reason)).toEqual(['editorial.workflow.returnForm.reasonInvalid']);

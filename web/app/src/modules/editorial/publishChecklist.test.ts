@@ -45,7 +45,7 @@ describe('a draft', () => {
       name: 'questions',
       met: false,
       key: 'editorial.workflow.checklist.questionsMissing',
-      values: { held: 3, required: 10 },
+      values: { held: 3, count: 10 },
     });
   });
 
@@ -56,7 +56,7 @@ describe('a draft', () => {
       name: 'questions',
       met: true,
       key: 'editorial.workflow.checklist.questions',
-      values: { required: 10 },
+      values: { count: 10 },
     });
   });
 
@@ -67,7 +67,7 @@ describe('a draft', () => {
       name: 'questions',
       met: false,
       key: 'editorial.workflow.checklist.questionsTooMany',
-      values: { held: 12, required: 10 },
+      values: { held: 12, count: 10 },
     });
   });
 
@@ -81,7 +81,7 @@ describe('a draft', () => {
       name: 'questions',
       met: true,
       key: 'editorial.workflow.checklist.questions',
-      values: { required: 2 },
+      values: { count: 2 },
     });
   });
 
@@ -92,7 +92,7 @@ describe('a draft', () => {
       name: 'questions',
       met: false,
       key: 'editorial.workflow.checklist.questionsMissing',
-      values: { held: 0, required: 10 },
+      values: { held: 0, count: 10 },
     });
     expect(item(items, 'approved')).toEqual({
       name: 'approved',
@@ -118,7 +118,7 @@ describe('a draft', () => {
       name: 'approved',
       met: false,
       key: 'editorial.workflow.checklist.approvedSome',
-      values: { approved: 1, held: 3 },
+      values: { count: 1, held: 3 },
     });
   });
 
@@ -190,83 +190,125 @@ describe('a version in review', () => {
   });
 });
 
-// The texts the keys stand for, with their values, in both languages.
-const texts: [string, Record<string, number>, string, string][] = [
-  ['editorial.workflow.checklist.title', {}, 'Checkliste zur Veröffentlichung', 'Publishing checklist'],
-  ['editorial.workflow.checklist.done', {}, 'Erfüllt:', 'Done:'],
-  ['editorial.workflow.checklist.open', {}, 'Offen:', 'Open:'],
-  ['editorial.workflow.checklist.chapters', {}, 'Die Version hat Kapitel.', 'The version has chapters.'],
+// The texts the keys stand for, with their values and, for a plural, the count it is chosen by, in both languages.
+const texts: [string, Record<string, number>, number | undefined, string, string][] = [
+  ['editorial.workflow.checklist.title', {}, undefined, 'Checkliste zur Veröffentlichung', 'Publishing checklist'],
+  ['editorial.workflow.checklist.done', {}, undefined, 'Erfüllt:', 'Done:'],
+  ['editorial.workflow.checklist.open', {}, undefined, 'Offen:', 'Open:'],
+  ['editorial.workflow.checklist.chapters', {}, undefined, 'Die Version hat Kapitel.', 'The version has chapters.'],
   [
     'editorial.workflow.checklist.chaptersMissing',
     {},
+    undefined,
     'Die Version braucht mindestens ein Kapitel.',
     'The version needs at least one chapter.',
   ],
   [
     'editorial.workflow.checklist.questions',
-    { required: 10 },
-    'Der Test hat alle 10 Fragen.',
-    'The test has all 10 questions.',
+    { count: 1 },
+    1,
+    'Der Test hat die verlangte Frage.',
+    'The test has the one question its blueprint asks for.',
+  ],
+  [
+    'editorial.workflow.checklist.questions',
+    { count: 10 },
+    10,
+    'Der Test hat alle 10 verlangten Fragen.',
+    'The test has all 10 questions its blueprint asks for.',
   ],
   [
     'editorial.workflow.checklist.questionsMissing',
-    { held: 3, required: 10 },
-    'Der Test hat 3 von 10 Fragen.',
-    'The test has 3 of 10 questions.',
+    { held: 0, count: 1 },
+    1,
+    'Der Test hat die verlangte Frage noch nicht.',
+    'The test does not have the one question its blueprint asks for yet.',
+  ],
+  [
+    'editorial.workflow.checklist.questionsMissing',
+    { held: 3, count: 10 },
+    10,
+    'Der Test hat 3 von 10 verlangten Fragen.',
+    'The test has 3 of the 10 questions its blueprint asks for.',
   ],
   [
     'editorial.workflow.checklist.questionsTooMany',
-    { held: 12, required: 10 },
-    'Der Test hat 12 Fragen, vorgegeben sind 10.',
+    { held: 2, count: 1 },
+    1,
+    'Der Test hat 2 Fragen, verlangt ist eine.',
+    'The test has 2 questions; its blueprint asks for one.',
+  ],
+  [
+    'editorial.workflow.checklist.questionsTooMany',
+    { held: 12, count: 10 },
+    10,
+    'Der Test hat 12 Fragen, verlangt sind 10.',
     'The test has 12 questions; its blueprint asks for 10.',
   ],
-  ['editorial.workflow.checklist.approved', {}, 'Alle Fragen sind freigegeben.', 'Every question is approved.'],
+  ['editorial.workflow.checklist.approved', {}, undefined, 'Alle Fragen sind geprüft.', 'Every question is approved.'],
   [
     'editorial.workflow.checklist.approvedNone',
     {},
-    'Noch keine Frage ist freigegeben.',
+    undefined,
+    'Noch keine Frage ist geprüft.',
     'No question is approved yet.',
   ],
   [
     'editorial.workflow.checklist.approvedSome',
-    { approved: 1, held: 3 },
-    '1 von 3 Fragen sind freigegeben.',
-    '1 of 3 questions are approved.',
+    { count: 1, held: 3 },
+    1,
+    'Eine von 3 Fragen ist geprüft.',
+    'One of 3 questions is approved.',
+  ],
+  [
+    'editorial.workflow.checklist.approvedSome',
+    { count: 2, held: 3 },
+    2,
+    '2 von 3 Fragen sind geprüft.',
+    '2 of 3 questions are approved.',
   ],
   [
     'editorial.workflow.checklist.submitted',
     {},
+    undefined,
     'Die Version ist zur Prüfung eingereicht.',
     'The version has been submitted for review.',
   ],
   [
     'editorial.workflow.checklist.notSubmitted',
     {},
+    undefined,
     'Die Version muss noch zur Prüfung eingereicht werden.',
     'The version still has to be submitted for review.',
   ],
   [
     'editorial.workflow.checklist.fourEyes',
     {},
+    undefined,
     'Sie haben diese Version eingereicht. Mit Vier-Augen-Freigabe muss eine andere Person sie veröffentlichen.',
-    'You submitted this version. With four eyes, someone else must publish it.',
+    'You submitted this version. Four-eyes approval requires someone else to publish it.',
   ],
   [
     'editorial.workflow.checklist.publisherApproved',
     {},
+    undefined,
     'Sie haben Fragen dieser Version freigegeben. Mit Vier-Augen-Freigabe muss eine andere Person sie veröffentlichen.',
-    'You approved questions of this version. With four eyes, someone else must publish it.',
+    'You approved questions of this version. Four-eyes approval requires someone else to publish it.',
   ],
 ];
 
+/** The text of a key, chosen by the count where it is a plural. */
+const say = (key: string, values: Record<string, number>, count: number | undefined) =>
+  count === undefined ? t(key, values) : t(key, values, count);
+
 describe('says', () => {
-  test.each(texts)('%s in German', (key, values, german) => {
-    expect(t(key, values)).toBe(german);
+  test.each(texts)('%s %j in German', (key, values, count, german) => {
+    expect(say(key, values, count)).toBe(german);
   });
 
-  test.each(texts)('%s in English', (key, values, _german, english) => {
+  test.each(texts)('%s %j in English', (key, values, count, _german, english) => {
     setLanguage('en-GB', { remember: false });
 
-    expect(t(key, values)).toBe(english);
+    expect(say(key, values, count)).toBe(english);
   });
 });

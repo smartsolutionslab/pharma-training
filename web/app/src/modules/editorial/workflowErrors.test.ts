@@ -94,7 +94,7 @@ const answers: [string, WorkflowAction, () => unknown, string, string, string][]
     refusal(403, 'editorial.four-eyes'),
     'editorial.workflow.errors.fourEyes',
     'Mit Vier-Augen-Freigabe darf nicht veröffentlichen, wer die Version eingereicht hat. Bitten Sie eine andere Person aus der Redaktion.',
-    'With four eyes, whoever submitted the version cannot publish it. Ask another editor.',
+    'Four-eyes approval does not let whoever submitted the version publish it. Ask another editor.',
   ],
   [
     '403 publisher-approved-questions',
@@ -102,7 +102,7 @@ const answers: [string, WorkflowAction, () => unknown, string, string, string][]
     refusal(403, 'editorial.publisher-approved-questions'),
     'editorial.workflow.errors.publisherApprovedQuestions',
     'Mit Vier-Augen-Freigabe darf nicht veröffentlichen, wer Fragen dieser Version freigegeben hat. Bitten Sie eine andere Person aus der Redaktion.',
-    'With four eyes, whoever approved questions of this version cannot publish it. Ask another editor.',
+    'Four-eyes approval does not let whoever approved questions of this version publish it. Ask another editor.',
   ],
   [
     '409 question-not-approved',
