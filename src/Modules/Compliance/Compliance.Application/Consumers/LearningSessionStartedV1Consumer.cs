@@ -8,11 +8,11 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application.Consum
 /// <summary>
 /// Puts the learner's open assignments of the course in progress when Learning started a session, in every pharmacy.
 /// It does not deduplicate on <c>Metadata.EventIdentifier</c>: the assignment applies the event by when it happened
-/// (<c>Metadata.OccurredAt</c>, docs/adr/0019), so a second delivery, a replay and a reordering change nothing by
+/// (<c>Metadata.OccurredAt</c>, docs/adr/0023), so a second delivery, a replay and a reordering change nothing by
 /// themselves, which is stronger, since it also absorbs an old event under a new identifier. A save that lost a race
 /// throws, and the retry reloads and applies it again.
 /// </summary>
-public sealed class LearningSessionStartedV1Consumer(IAssignmentStore assignments, IComplianceUnitOfWork unitOfWork)
+public sealed class LearningSessionStartedV1Consumer(IAssignmentStore assignments, IComplianceUnitOfWork unitOfWork, TimeProvider time)
 {
     public async Task HandleAsync(LearningSessionStartedV1 message, CancellationToken cancellationToken)
     {
@@ -28,7 +28,10 @@ public sealed class LearningSessionStartedV1Consumer(IAssignmentStore assignment
             return;
         }
 
-        var at = Timestamp.From(message.Metadata.OccurredAt);
+        // A publisher's clock ahead of Compliance's would otherwise hold off every later lock or unlock: an event
+        // stamped in the future counts as having happened when it was received (docs/adr/0023).
+        var received = time.GetUtcNow();
+        var at = Timestamp.From(message.Metadata.OccurredAt < received ? message.Metadata.OccurredAt : received);
         foreach (var assignment in active)
         {
             assignment.MarkStarted(at);
