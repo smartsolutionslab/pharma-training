@@ -7,9 +7,10 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Comm
 
 /// <summary>
 /// Invites the address and, in the same commit, requests its mail (InvitationMailRequestedV1) on the host's durable
-/// local queue; the consumer issues the link and mails it, so nothing after the commit depends on the request.
+/// local queue; the consumer issues the link and mails it, so nothing after the commit depends on the request. Beyond
+/// the pharmacy's daily cap of invitation mails it answers 429 with the instant it may invite again.
 /// </summary>
-public sealed class InviteMemberHandler(IPharmacyStore pharmacies, IOrganisationUnitOfWork unitOfWork, TimeProvider time)
+public sealed class InviteMemberHandler(IPharmacyStore pharmacies, IOrganisationUnitOfWork unitOfWork, TimeProvider time, InvitationMailLimits limits)
     : ICommandHandler<InviteMember, Result<Guid, ApiError>>
 {
     public async Task<Result<Guid, ApiError>> HandleAsync(InviteMember command, CancellationToken cancellationToken)
@@ -34,7 +35,8 @@ public sealed class InviteMemberHandler(IPharmacyStore pharmacies, IOrganisation
             command.Email,
             command.JobFunction,
             command.Role,
-            Timestamp.From(time.GetUtcNow()));
+            Timestamp.From(time.GetUtcNow()),
+            limits);
         if (invited.IsFailure)
         {
             return Failure(PharmacyFailures.From(invited.Error));

@@ -159,8 +159,8 @@ public class AcceptInvitationTests
     public async Task A_renewed_invitations_old_link_is_not_found_and_its_new_link_works()
     {
         var fresh = Token();
-        pharmacy.RenewInvitation(invitation, TestPharmacies.RegisteredAt).IsSuccess.ShouldBeTrue();
-        pharmacy.IssueInvitationLink(invitation, fresh, TestPharmacies.RegisteredAt).IsSuccess.ShouldBeTrue();
+        pharmacy.RenewInvitation(invitation, Timestamp.From(TestPharmacies.RegisteredAt.Value.AddMinutes(10)), InvitationMailLimits.Default).IsSuccess.ShouldBeTrue();
+        pharmacy.IssueInvitationLink(invitation, fresh, Timestamp.From(TestPharmacies.RegisteredAt.Value.AddMinutes(10))).IsSuccess.ShouldBeTrue();
         pharmacy.ClearDomainEvents();
 
         var old = await AcceptAsync(token, Anna, AnnaMail);
@@ -273,7 +273,7 @@ public class AcceptInvitationTests
 
     private static MembershipId Invite(Pharmacy pharmacy, EmailAddress email, InvitationToken token)
     {
-        var membership = pharmacy.Invite(MembershipId.New(), email, JobFunction.Pta, MembershipRole.Employee, TestPharmacies.RegisteredAt).Value;
+        var membership = pharmacy.Invite(MembershipId.New(), email, JobFunction.Pta, MembershipRole.Employee, TestPharmacies.RegisteredAt, InvitationMailLimits.Default).Value;
         pharmacy.IssueInvitationLink(membership, token, TestPharmacies.RegisteredAt).IsSuccess.ShouldBeTrue();
         return membership;
     }

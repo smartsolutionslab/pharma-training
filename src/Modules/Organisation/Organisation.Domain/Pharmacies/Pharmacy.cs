@@ -33,6 +33,12 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
 
     public IReadOnlyList<Membership> Memberships => memberships;
 
+    /// <summary>The UTC day of the pharmacy's latest counted invitation mail; none before its first.</summary>
+    public UtcDay? InvitationMailDay { get; private set; }
+
+    /// <summary>How many invitation mails the pharmacy requested on <see cref="InvitationMailDay"/>.</summary>
+    public InvitationMailCount InvitationMailsThatDay { get; private set; } = InvitationMailCount.Zero;
+
     /// <summary>The person who registers the pharmacy becomes its first manager at once.</summary>
     public static Pharmacy Register(
         PharmacyId id,
@@ -62,41 +68,62 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
 
     /// <summary>
     /// Invites the address, valid for 14 days from now. The invitation holds no link yet: its mail issues one
-    /// (<see cref="IssueInvitationLink"/>), so no token exists before the mail is sent.
+    /// (<see cref="IssueInvitationLink"/>), so no token exists before the mail is sent. Its mail counts toward the
+    /// pharmacy's daily cap, which refuses it once reached.
     /// </summary>
-    public Result<MembershipId, DomainError> Invite(MembershipId id, EmailAddress email, JobFunction jobFunction, MembershipRole role, Timestamp now)
+    public Result<MembershipId, DomainError> Invite(MembershipId id, EmailAddress email, JobFunction jobFunction, MembershipRole role, Timestamp now, InvitationMailLimits limits)
     {
         Ensure.That(id).IsNotNull();
         Ensure.That(email).IsNotNull();
         Ensure.That(now).IsNotNull();
+        Ensure.That(limits).IsNotNull();
 
         if (memberships.Any(m => m.Email == email && m.Status is MembershipStatus.Invited or MembershipStatus.Active))
         {
             return Failure(PharmacyErrors.AlreadyMemberOrInvited(Id, email));
         }
 
+        if (DailyCapReached(now, limits.DailyMailCap) is { } tomorrow)
+        {
+            return Failure(PharmacyErrors.TooManyInvitationsToday(Id, tomorrow));
+        }
+
         var expiresAt = now.PlusDays(InvitationValidityDays);
-        memberships.Add(Membership.Invited(id, email, jobFunction, role, expiresAt));
+        CountInvitationMail(now);
+        memberships.Add(Membership.Invited(id, email, jobFunction, role, now, expiresAt));
         Raise(new MemberInvited(Id, id, expiresAt));
         return Success(id);
     }
 
     /// <summary>
     /// Renews an invitation that is still open or has run out: its next version, valid for 14 days from now, and every
-    /// earlier link stops working at once. Its new mail issues the new link.
+    /// earlier link stops working at once. Its new mail issues the new link. It is refused within the cooldown since
+    /// the invitation's latest mail request, and once the pharmacy's daily cap is reached.
     /// </summary>
-    public Result<Unit, DomainError> RenewInvitation(MembershipId membership, Timestamp now)
+    public Result<Unit, DomainError> RenewInvitation(MembershipId membership, Timestamp now, InvitationMailLimits limits)
     {
         Ensure.That(membership).IsNotNull();
         Ensure.That(now).IsNotNull();
+        Ensure.That(limits).IsNotNull();
 
         if (Find(membership) is not { Status: MembershipStatus.Invited } invited)
         {
             return Failure(PharmacyErrors.NoOpenInvitation(Id, membership));
         }
 
+        if (invited.RenewableFrom(limits.RenewCooldown) is { } renewableFrom && now < renewableFrom)
+        {
+            return Failure(PharmacyErrors.InvitationRenewedTooSoon(Id, membership, renewableFrom));
+        }
+
+        if (DailyCapReached(now, limits.DailyMailCap) is { } tomorrow)
+        {
+            return Failure(PharmacyErrors.TooManyInvitationsToday(Id, tomorrow));
+        }
+
         var expiresAt = now.PlusDays(InvitationValidityDays);
-        invited.RenewInvitation(expiresAt);
+        CountInvitationMail(now);
+        invited.RenewInvitation(now, expiresAt);
         Raise(new MemberInvited(Id, membership, expiresAt));
         return Success(Unit.Value);
     }
@@ -290,4 +317,24 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
     }
 
     private Membership? Find(MembershipId id) => memberships.SingleOrDefault(m => m.Id == id);
+
+    /// <summary>The start of the next UTC day when today's mails have reached the cap; none while another may be sent.</summary>
+    private Timestamp? DailyCapReached(Timestamp now, DailyMailCap cap)
+    {
+        var today = UtcDay.Of(now);
+        if (InvitationMailDay == today && InvitationMailsThatDay.Value >= cap.Value)
+        {
+            return today.Next().Start;
+        }
+
+        return null;
+    }
+
+    /// <summary>Counts one invitation mail toward today's tally: the first of a new day starts it afresh.</summary>
+    private void CountInvitationMail(Timestamp now)
+    {
+        var today = UtcDay.Of(now);
+        InvitationMailsThatDay = InvitationMailDay == today ? InvitationMailsThatDay.Next() : InvitationMailCount.Zero.Next();
+        InvitationMailDay = today;
+    }
 }

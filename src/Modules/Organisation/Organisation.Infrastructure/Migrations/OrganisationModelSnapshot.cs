@@ -16,7 +16,7 @@ partial class OrganisationModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261123080904_AddMembershipVersion";
+    public override string LastMigrationId => "20261123185814_AddInvitationMailLimits";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -51,6 +51,10 @@ partial class OrganisationModelSnapshot : ModelSnapshot
                 b.Property<int?>("InvitationMailedFor")
                     .HasColumnType("integer")
                     .HasColumnName("invitation_mailed_for");
+
+                b.Property<DateTimeOffset?>("InvitationRequestedAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("invitation_requested_at");
 
                 b.Property<int>("InvitationVersion")
                     .ValueGeneratedOnAdd()
@@ -121,6 +125,16 @@ partial class OrganisationModelSnapshot : ModelSnapshot
                 b.Property<Guid>("Id")
                     .HasColumnType("uuid")
                     .HasColumnName("id");
+
+                b.Property<DateOnly?>("InvitationMailDay")
+                    .HasColumnType("date")
+                    .HasColumnName("invitation_mail_day");
+
+                b.Property<int>("InvitationMailsThatDay")
+                    .ValueGeneratedOnAdd()
+                    .HasColumnType("integer")
+                    .HasDefaultValue(0)
+                    .HasColumnName("invitation_mails_that_day");
 
                 b.Property<string>("Name")
                     .IsRequired()

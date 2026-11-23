@@ -25,14 +25,14 @@ public class RenewInvitationTests
         var store = new InMemoryPharmacyStore();
         var pharmacy = TestPharmacies.Register(Owner);
         var old = Token();
-        var invitation = pharmacy.Invite(MembershipId.New(), Invitee, JobFunction.Pta, MembershipRole.Employee, Timestamp.From(Start)).Value;
+        var invitation = pharmacy.Invite(MembershipId.New(), Invitee, JobFunction.Pta, MembershipRole.Employee, Timestamp.From(Start), InvitationMailLimits.Default).Value;
         pharmacy.IssueInvitationLink(invitation, old, Timestamp.From(Start)).IsSuccess.ShouldBeTrue();
         pharmacy.Stored(store);
         var time = new FakeTimeProvider(Start);
-        time.Advance(TimeSpan.FromDays(daysOld) + TimeSpan.FromMinutes(5));
-        var now = Start.AddDays(daysOld).AddMinutes(5);
+        time.Advance(TimeSpan.FromDays(daysOld) + TimeSpan.FromMinutes(10));
+        var now = Start.AddDays(daysOld).AddMinutes(10);
 
-        var renewed = await new RenewInvitationHandler(store, store, time)
+        var renewed = await new RenewInvitationHandler(store, store, time, InvitationMailLimits.Default)
             .HandleAsync(new RenewInvitation(pharmacy.Id, invitation, Owner), TestContext.Current.CancellationToken);
 
         renewed.IsSuccess.ShouldBeTrue();
@@ -169,7 +169,7 @@ public class RenewInvitationTests
         store.Published.ShouldBeEmpty();
     }
 
-    private static RenewInvitationHandler Handler(InMemoryPharmacyStore store) => new(store, store, new FakeTimeProvider(Start));
+    private static RenewInvitationHandler Handler(InMemoryPharmacyStore store) => new(store, store, new FakeTimeProvider(Start), InvitationMailLimits.Default);
 
     private static InvitationToken Token() => InvitationToken.From(RandomNumberGenerator.GetHexString(64));
 }

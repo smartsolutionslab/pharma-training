@@ -24,7 +24,7 @@ public class InviteMemberTests
         var time = new FakeTimeProvider(Start);
         time.Advance(TimeSpan.FromMinutes(5));
 
-        var invited = await new InviteMemberHandler(store, store, time)
+        var invited = await new InviteMemberHandler(store, store, time, InvitationMailLimits.Default)
             .HandleAsync(new InviteMember(pharmacy.Id, Owner, Invitee, JobFunction.Pka, MembershipRole.Manager), TestContext.Current.CancellationToken);
 
         invited.IsSuccess.ShouldBeTrue();
@@ -186,5 +186,5 @@ public class InviteMemberTests
         store.Published.ShouldBeEmpty();
     }
 
-    private static InviteMemberHandler Handler(InMemoryPharmacyStore store) => new(store, store, new FakeTimeProvider(Start));
+    private static InviteMemberHandler Handler(InMemoryPharmacyStore store) => new(store, store, new FakeTimeProvider(Start), InvitationMailLimits.Default);
 }
