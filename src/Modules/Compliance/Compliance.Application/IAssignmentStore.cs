@@ -20,4 +20,13 @@ public interface IAssignmentStore
     Task<IReadOnlyList<Assignment>> ActiveOfLearnerAsync(PersonId learner, CourseId course, CancellationToken cancellationToken);
 
     void Add(Assignment assignment);
+
+    /// <summary>The assignment if it belongs to the pharmacy, tracked so a commit saves its changes.</summary>
+    Task<Option<Assignment>> FindInPharmacyAsync(PharmacyId pharmacy, AssignmentId assignment, CancellationToken cancellationToken);
+
+    /// <summary>The assignment if it belongs to the pharmacy, read without tracking.</summary>
+    Task<Option<Assignment>> ReadInPharmacyAsync(PharmacyId pharmacy, AssignmentId assignment, CancellationToken cancellationToken);
+
+    /// <summary>The learner's open or in-progress assignments in the pharmacy, every course, tracked.</summary>
+    Task<IReadOnlyList<Assignment>> ActiveOfLearnerInPharmacyAsync(PersonId learner, PharmacyId pharmacy, CancellationToken cancellationToken);
 }
