@@ -512,6 +512,7 @@ public class ComplianceAssignmentsTests(AspireFixture aspire)
         var stranger = Guid.CreateVersion7();
         var learning = new Learning(stranger, setting.Course);
         var origin = WholeSecondAfterNow();
+        await WaitUntilPastAsync(origin.AddSeconds(LatestEventOffsetSeconds), cancellationToken);
 
         await DeliverAsync(SessionStartedType, learning.Event(origin), cancellationToken);
         await DeliverAsync(AttemptsExhaustedType, learning.Exhausted(origin.AddSeconds(2)), cancellationToken);
@@ -635,7 +636,23 @@ public class ComplianceAssignmentsTests(AspireFixture aspire)
         using var manager = await aspire.CreateHostClientAsync("developer");
         using var response = await AssignAsync(manager, setting.Pharmacy, Request(setting.Course, [setting.EmployeeA]), cancellationToken);
         var assignment = (await AnswerOfAsync(response, cancellationToken)).Assigned.ShouldHaveSingleItem().AssignmentId;
-        return (setting, assignment, WholeSecondAfterNow());
+        var origin = WholeSecondAfterNow();
+
+        // The events are stamped origin to origin + 3 s. Compliance counts one stamped after its own clock as received
+        // then (docs/adr/0023), so the test lets those instants pass before it delivers any of them.
+        await WaitUntilPastAsync(origin.AddSeconds(LatestEventOffsetSeconds), cancellationToken);
+        return (setting, assignment, origin);
+    }
+
+    private const int LatestEventOffsetSeconds = 3;
+
+    private static async Task WaitUntilPastAsync(DateTimeOffset instant, CancellationToken cancellationToken)
+    {
+        var remaining = instant - TimeProvider.System.GetUtcNow();
+        if (remaining > TimeSpan.Zero)
+        {
+            await Task.Delay(remaining + TimeSpan.FromMilliseconds(100), cancellationToken);
+        }
     }
 
     private async Task<Progress> ProgressAsync(Guid assignment, CancellationToken cancellationToken)
