@@ -263,6 +263,26 @@ public class ReportProgressTests
         sessions.Streams[session.Value].OfType<ContentCompleted>().ShouldBeEmpty();
     }
 
+    /// <summary>
+    /// The player reports the end of the last chapter and the tab closes. Once the session is stored, its completion is
+    /// in the stream and no later report stores anything, so the announcement must be committed even though the caller
+    /// has gone, or it is never published.
+    /// </summary>
+    [Fact]
+    public async Task Completing_the_content_is_announced_even_when_the_caller_goes_away_after_the_save()
+    {
+        var session = await StartedAsync();
+        await ReportAsync(session, Intro, 100);
+        await ReportAsync(session, Handbook, 100);
+        using var caller = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        sessions.CancelAfterNextSave(caller);
+
+        await Handler().HandleAsync(new ReportProgress(session, learner, Film, ProgressPercent.From(95)), caller.Token);
+
+        sessions.Published.ShouldHaveSingleItem().ShouldBeOfType<ContentCompletedV1>().SessionId.ShouldBe(session.Value);
+        sessions.Commits.ShouldBe(1);
+    }
+
     private ReportProgressHandler Handler() => new(sessions, sessions, time);
 
     /// <summary>A session whose every chapter the learner completed through the use case, so its first ContentCompletedV1 is published.</summary>

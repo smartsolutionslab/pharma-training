@@ -296,7 +296,7 @@ public class LearningSessionsTests(AspireFixture aspire)
     }
 
     [Fact]
-    public async Task A_percent_outside_0_to_100_answers_400_invalid_argument()
+    public async Task A_percent_outside_0_to_100_or_missing_answers_400_invalid_argument()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var published = await PublishedToLearningAsync(cancellationToken);
@@ -307,6 +307,7 @@ public class LearningSessionsTests(AspireFixture aspire)
         using var above = await ReportProgressAsync(client, session.Id, text, 101, cancellationToken);
         using var below = await ReportProgressAsync(client, session.Id, text, -1, cancellationToken);
         using var noChapter = await ReportProgressAsync(client, session.Id, Guid.Empty, 50, cancellationToken);
+        using var noPercent = await client.PostAsJsonAsync(new Uri($"/learning/sessions/{session.Id}/progress", UriKind.Relative), new { chapterId = text }, cancellationToken);
 
         above.StatusCode.ShouldBe(HttpStatusCode.BadRequest, await above.Content.ReadAsStringAsync(cancellationToken));
         (await CodeOfAsync(above, cancellationToken)).ShouldBe("invalid-argument");
@@ -314,6 +315,8 @@ public class LearningSessionsTests(AspireFixture aspire)
         (await CodeOfAsync(below, cancellationToken)).ShouldBe("invalid-argument");
         noChapter.StatusCode.ShouldBe(HttpStatusCode.BadRequest, await noChapter.Content.ReadAsStringAsync(cancellationToken));
         (await CodeOfAsync(noChapter, cancellationToken)).ShouldBe("invalid-argument");
+        noPercent.StatusCode.ShouldBe(HttpStatusCode.BadRequest, await noPercent.Content.ReadAsStringAsync(cancellationToken));
+        (await CodeOfAsync(noPercent, cancellationToken)).ShouldBe("invalid-argument");
     }
 
     /// <summary>

@@ -184,6 +184,32 @@ public class StartLearningSessionTests
         sessions.Commits.ShouldBe(1);
     }
 
+    /// <summary>A resume never announces the session again, so a start whose caller goes away once it is stored still commits its announcement.</summary>
+    [Fact]
+    public async Task A_new_session_is_announced_even_when_the_caller_goes_away_after_the_save()
+    {
+        using var caller = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        sessions.CancelAfterNextSave(caller);
+
+        var started = await Handler().HandleAsync(new StartLearningSession(learner, Version), caller.Token);
+
+        sessions.Published.ShouldHaveSingleItem().ShouldBeOfType<LearningSessionStartedV1>().SessionId.ShouldBe(started.Value.Id);
+        sessions.Commits.ShouldBe(1);
+    }
+
+    /// <summary>Of two first starts of one version, the loser's save is refused (Marten's stream collision); it announces nothing.</summary>
+    [Fact]
+    public async Task A_start_that_loses_the_race_announces_nothing()
+    {
+        sessions.LoseNextSave();
+
+        await Should.ThrowAsync<InvalidOperationException>(() => StartAsync(learner));
+
+        sessions.Published.ShouldBeEmpty();
+        sessions.Commits.ShouldBe(0);
+        sessions.Steps.ShouldBeEmpty();
+    }
+
     private StartLearningSessionHandler Handler() => new(copies, sessions, sessions, sessions, time);
 
     private Task<Result<LearningSessionStart, ApiError>> StartAsync(PersonId person) =>
