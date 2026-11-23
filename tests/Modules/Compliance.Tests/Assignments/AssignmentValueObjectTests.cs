@@ -110,4 +110,12 @@ public class AssignmentValueObjectTests
 
         ChangeReason.From(value).Value.ShouldBe(value);
     }
+
+    [Fact]
+    public void A_withdrawal_by_the_manager_has_its_own_reason()
+    {
+        ChangeReason.Withdrawn.Value.ShouldBe("Von der Leitung zurückgezogen");
+        ChangeReason.Withdrawn.ShouldBe(ChangeReason.From("Von der Leitung zurückgezogen"));
+        ChangeReason.Withdrawn.ShouldNotBe(ChangeReason.MembershipEnded);
+    }
 }
