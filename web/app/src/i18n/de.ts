@@ -1,6 +1,9 @@
 import type {
   EditorialChapterKind,
   EditorialCourseVersionStatus,
+  EditorialQuestionProvenance,
+  EditorialQuestionReview,
+  EditorialQuestionType,
   OrganisationJobFunction,
   OrganisationMembershipRole,
 } from '@/api/generated';
@@ -40,6 +43,18 @@ export const de = {
       Pdf: 'PDF',
       Video: 'Video',
     } satisfies Record<EditorialChapterKind, string>,
+    questionType: {
+      SingleChoice: 'Single Choice',
+      MultipleChoice: 'Multiple Choice',
+    } satisfies Record<EditorialQuestionType, string>,
+    questionProvenance: {
+      Human: 'Von Hand geschrieben',
+      AiDrafted: 'KI-entworfen',
+    } satisfies Record<EditorialQuestionProvenance, string>,
+    questionReview: {
+      Unreviewed: 'Ungeprüft',
+      Approved: 'Geprüft',
+    } satisfies Record<EditorialQuestionReview, string>,
   },
   auth: {
     signedIn: 'Angemeldet',
@@ -73,11 +88,15 @@ export const de = {
       pages: {
         register: { title: 'Apotheke registrieren' },
       },
+      entries: {
+        acceptInvitation: { title: 'Einladung annehmen' },
+      },
     },
     editorial: {
       title: 'Redaktion',
       details: {
         version: { title: 'Schulungsversion' },
+        test: { title: 'Test' },
       },
     },
   },
@@ -97,6 +116,60 @@ export const de = {
       registeredNotOpened:
         'Die Apotheke {name} wurde registriert, konnte aber nicht geöffnet werden. Wählen Sie sie unter „Apotheke“ in der Seitenleiste.',
       failed: 'Die Apotheke konnte nicht registriert werden. Versuchen Sie es erneut.',
+    },
+    accept: {
+      accepting: {
+        title: 'Die Einladung wird angenommen',
+      },
+      accepted: 'Sie sind jetzt Mitglied der Apotheke {name}.',
+      acceptedUnnamed: 'Sie haben die Einladung angenommen.',
+      acceptedNotOpened:
+        'Sie haben die Einladung angenommen, die Apotheke konnte aber nicht geöffnet werden. Wählen Sie sie unter „Apotheke“ in der Seitenleiste.',
+      ready: {
+        title: 'Einladung annehmen',
+        text: 'Sie wurden eingeladen, Mitglied einer Apotheke zu werden. Nehmen Sie die Einladung an, um beizutreten.',
+        accept: 'Einladung annehmen',
+      },
+      missing: {
+        title: 'Kein gültiger Einladungslink',
+        text: 'Öffnen Sie den Link aus Ihrer Einladungs-E-Mail noch einmal, vollständig und in diesem Browser. Da Sie jetzt angemeldet sind, können Sie die Einladung dann sofort annehmen.',
+      },
+      notFound: {
+        title: 'Einladung nicht gefunden',
+        text: 'Dieser Einladungslink gilt nicht mehr: Er wurde schon benutzt, zurückgezogen oder durch einen neueren ersetzt. Nutzen Sie den Link aus der neuesten Einladungs-E-Mail, oder bitten Sie Ihre Apothekenleitung um eine neue Einladung.',
+      },
+      expired: {
+        title: 'Einladung abgelaufen',
+        text: 'Diese Einladung ist abgelaufen. Bitten Sie Ihre Apothekenleitung, sie erneut zu senden.',
+      },
+      anotherAddress: {
+        title: 'Einladung für eine andere Adresse',
+        text: 'Diese Einladung gilt für eine andere E-Mail-Adresse als die Ihres Kontos. Wurde sie an Sie weitergeleitet, bitten Sie die Apothekenleitung, Ihre eigene Adresse einzuladen. Ist es Ihre Einladung, melden Sie sich mit der eingeladenen Adresse an und öffnen Sie den Link erneut.',
+      },
+      emailNotVerified: {
+        title: 'E-Mail-Adresse nicht bestätigt',
+        text: 'Ihre E-Mail-Adresse ist noch nicht bestätigt. Bestätigen Sie sie über den Link in der Bestätigungs-E-Mail, und öffnen Sie dann den Einladungslink erneut.',
+      },
+      identityIncomplete: {
+        title: 'Konto unvollständig',
+        text: 'Ihr Konto nennt keinen Namen oder keine gültige E-Mail-Adresse. Ergänzen Sie Ihr Profil, und öffnen Sie dann den Einladungslink erneut.',
+      },
+      alreadyMember: {
+        title: 'Bereits Mitglied',
+        text: 'Sie sind bereits Mitglied dieser Apotheke. Wählen Sie sie unter „Apotheke“ in der Seitenleiste.',
+      },
+      goToCourses: 'Zu „Meine Schulungen“',
+      tooMany: {
+        title: 'Zu viele Versuche',
+        text: 'Versuchen Sie es in einigen Minuten erneut.',
+      },
+      failed: {
+        title: 'Einladung nicht angenommen',
+        text: 'Die Einladung konnte nicht angenommen werden. Versuchen Sie es erneut.',
+      },
+      invitationChanged: 'Die Einladung wurde gerade gleichzeitig geändert. Versuchen Sie es erneut.',
+      retryNotFound:
+        'Die Einladung ist nicht mehr gültig. Wenn Sie sie eben schon angenommen haben, finden Sie die Apotheke unter „Meine Schulungen“.',
     },
   },
   editorial: {
@@ -135,6 +208,10 @@ export const de = {
       loadFailed: 'Die Version konnte nicht geladen werden.',
       notFound: 'Diese Version gibt es nicht.',
       backToInbox: 'Zurück zum Eingang',
+      newVersion: 'Neue Version anlegen',
+      newVersionCreated: 'Version {number} wurde als Entwurf angelegt.',
+      newVersionFailed: 'Die neue Version konnte nicht angelegt werden. Versuchen Sie es erneut.',
+      openTest: 'Test: Vorgaben und Fragen',
       readOnly: {
         InReview: 'Diese Version ist in Prüfung und kann nicht bearbeitet werden.',
         Published:
@@ -206,6 +283,202 @@ export const de = {
       cancel: 'Upload abbrechen',
       cancelled: 'Der Upload wurde abgebrochen; das Kapitel wurde nicht gespeichert.',
       failed: 'Der Upload ist fehlgeschlagen. Versuchen Sie es erneut.',
+    },
+    test: {
+      heading: 'Test zu „{title}“',
+      backToVersion: 'Zurück zur Version',
+      readOnly: {
+        InReviewApprove: 'Diese Version ist in Prüfung. Fragen können noch freigegeben, aber nicht geändert werden.',
+      },
+      blueprint: {
+        title: 'Testvorgaben',
+        questions: 'Anzahl Fragen',
+        passingScore: 'Bestehensgrenze (%)',
+        validity: 'Gültigkeit (Monate)',
+        months: 'ein Monat | {count} Monate',
+        edit: 'Vorgaben ändern',
+        submit: 'Vorgaben speichern',
+        saved: 'Die Testvorgaben wurden gespeichert.',
+        saveFailed: 'Die Testvorgaben konnten nicht gespeichert werden.',
+        required: 'Geben Sie eine ganze Zahl an.',
+        questionsInvalid: 'Ein Test hat {min} bis {max} Fragen.',
+        passingScoreInvalid: 'Die Bestehensgrenze liegt zwischen {min} und {max} Prozent.',
+        validityInvalid: 'Die Gültigkeit liegt zwischen {min} und {max} Monaten.',
+      },
+      summary: {
+        reviewed: '{reviewed} von einer Frage geprüft | {reviewed} von {count} Fragen geprüft',
+        held: 'Der Test hat {held} von einer verlangten Frage. | Der Test hat {held} von {count} verlangten Fragen.',
+        tooMany:
+          'Entfernen Sie eine Frage, damit der Test den Vorgaben entspricht. | Entfernen Sie {count} Fragen, damit der Test den Vorgaben entspricht.',
+        unreviewed: 'Eine Frage ist noch ungeprüft. | {count} Fragen sind noch ungeprüft.',
+        allReviewed: 'Alle Fragen sind geprüft.',
+      },
+      questions: {
+        title: 'Fragen',
+        empty: 'Dieser Test hat noch keine Fragen.',
+        noChapters: 'Jede Frage bezieht sich auf ein Kapitel. Legen Sie zuerst ein Kapitel an.',
+        add: 'Frage hinzufügen',
+        position: 'Frage {position}',
+        chapter: 'Kapitel: {title}',
+        unknownChapter: 'Kapitel: unbekannt',
+        correct: 'Richtig',
+        incorrect: 'Falsch',
+        provenance: {
+          unreviewed: '{origin}, noch nicht geprüft',
+          approved: '{origin}, geprüft von {name} am {date}',
+          approvedUnnamed: '{origin}, geprüft am {date}',
+        },
+        edit: 'Frage {position} bearbeiten',
+        remove: 'Frage {position} löschen',
+        saved: 'Die Frage wurde gespeichert.',
+        saveFailed: 'Die Frage konnte nicht gespeichert werden.',
+        removed: 'Die Frage wurde gelöscht.',
+        removeFailed: 'Die Frage konnte nicht gelöscht werden.',
+        approveLabel: 'Freigeben',
+        approve: 'Frage {position} freigeben',
+        approved: 'Frage {position} ist freigegeben.',
+        approveFailed: 'Frage {position} konnte nicht freigegeben werden.',
+        removeConfirm: {
+          title: 'Frage löschen?',
+          text: '„{text}“ wird gelöscht.',
+          confirm: 'Löschen',
+        },
+      },
+      draft: {
+        explain: 'Die KI entwirft die fehlenden Fragen aus den Textkapiteln. Sie prüfen jede Frage, bevor sie gilt.',
+        start: 'KI-Entwurf erstellen',
+        noTextChapters: 'Die KI entwirft nur aus Textkapiteln. Legen Sie zuerst ein Textkapitel an.',
+        nothingToDraft: 'Die geprüften Fragen erfüllen die Vorgaben bereits; es gibt nichts zu entwerfen.',
+        confirm: {
+          title: 'KI-Entwurf erstellen?',
+          requested:
+            'Die KI entwirft eine Frage. Geprüfte Fragen bleiben erhalten. | Die KI entwirft {count} Fragen. Geprüfte Fragen bleiben erhalten.',
+          replaces:
+            'Eine ungeprüfte Frage wird ersetzt, auch wenn sie von Hand geschrieben ist. | {count} ungeprüfte Fragen werden ersetzt, auch von Hand geschriebene.',
+          leftOut: 'PDF- und Videokapitel liest die KI nicht; Fragen dazu schreiben Sie von Hand.',
+          submit: 'Entwurf erstellen',
+        },
+        running: 'Die KI entwirft den Test. Das kann einige Minuten dauern; bitte lassen Sie die Seite geöffnet.',
+        done: 'Die KI hat eine Frage entworfen. Bitte prüfen Sie sie. | Die KI hat {count} Fragen entworfen. Bitte prüfen Sie sie.',
+        leftOut: 'Zu diesen Kapiteln hat die KI keine Fragen entworfen; schreiben Sie sie von Hand:',
+        dismiss: 'Hinweis schließen',
+        errors: {
+          modelNotConfigured:
+            'Für KI-Entwürfe ist kein Sprachmodell eingerichtet. Wenden Sie sich an den Betrieb der Plattform.',
+          tooManyRequests: 'Sie haben in kurzer Zeit zu viele KI-Entwürfe angefordert. Versuchen Sie es später erneut.',
+          malformed: 'Die Antwort der KI war unbrauchbar; es wurde nichts geändert. Versuchen Sie es erneut.',
+          tooMuchContent:
+            'Die Textkapitel sind zu lang für einen KI-Entwurf. Kürzen Sie sie oder schreiben Sie die Fragen von Hand.',
+          changed: 'Die Version wurde inzwischen geändert; der Entwurf wurde verworfen. Versuchen Sie es erneut.',
+          notADraft: 'Diese Version ist kein Entwurf mehr; ihr Test kann nicht neu entworfen werden.',
+          timedOut:
+            'Der KI-Entwurf hat zu lange gedauert. Die Fragen werden neu geladen; prüfen Sie, ob er übernommen wurde.',
+          failed: 'Der KI-Entwurf ist fehlgeschlagen. Versuchen Sie es erneut.',
+          unknown:
+            'Ob der KI-Entwurf übernommen wurde, ist nicht bekannt. Die Fragen werden neu geladen; prüfen Sie sie, bevor Sie erneut einen Entwurf erstellen.',
+        },
+      },
+      questionForm: {
+        addTitle: 'Neue Frage',
+        editTitle: 'Frage bearbeiten',
+        chapter: 'Kapitel',
+        chooseChapter: 'Bitte wählen…',
+        text: 'Frage',
+        type: 'Fragentyp',
+        options: 'Antwortoptionen',
+        option: 'Option {number}',
+        correctOption: 'Richtige Option',
+        optionCorrect: 'Option {number} ist richtig',
+        addOption: 'Option hinzufügen',
+        removeOption: 'Option {number} entfernen',
+        reReview: 'Nach dem Speichern muss die Frage erneut geprüft werden.',
+        submit: 'Speichern',
+        chapterRequired: 'Wählen Sie das Kapitel, auf das sich die Frage bezieht.',
+        textRequired: 'Schreiben Sie die Frage.',
+        textTooLong: 'Eine Frage hat höchstens {max} Zeichen.',
+        hasNul: 'Der Text darf kein Nullzeichen enthalten.',
+        optionRequired: 'Schreiben Sie die Option oder entfernen Sie sie.',
+        optionTooLong: 'Eine Option hat höchstens {max} Zeichen.',
+        tooFewOptions: 'Eine Frage hat mindestens {min} Optionen.',
+        tooManyOptions: 'Eine Frage hat höchstens {max} Optionen.',
+        singleChoiceOneCorrect: 'Bei Single Choice ist genau eine Option richtig.',
+        multipleChoiceACorrect: 'Bei Multiple Choice ist mindestens eine Option richtig.',
+      },
+    },
+    workflow: {
+      title: 'Prüfung und Veröffentlichung',
+      submit: 'Zur Prüfung einreichen',
+      publish: 'Veröffentlichen',
+      return: 'Zur Überarbeitung zurückgeben',
+      retire: 'Zurückziehen',
+      submitted: 'Version {number} ist zur Prüfung eingereicht.',
+      published: 'Version {number} ist veröffentlicht.',
+      returned: 'Version {number} ist wieder ein Entwurf.',
+      retired: 'Version {number} ist zurückgezogen.',
+      checklist: {
+        title: 'Checkliste zur Veröffentlichung',
+        done: 'Erfüllt:',
+        open: 'Offen:',
+        chapters: 'Die Version hat Kapitel.',
+        chaptersMissing: 'Die Version braucht mindestens ein Kapitel.',
+        questions: 'Der Test hat die verlangte Frage. | Der Test hat alle {count} verlangten Fragen.',
+        questionsMissing:
+          'Der Test hat die verlangte Frage noch nicht. | Der Test hat {held} von {count} verlangten Fragen.',
+        questionsTooMany:
+          'Der Test hat {held} Fragen, verlangt ist eine. | Der Test hat {held} Fragen, verlangt sind {count}.',
+        approved: 'Alle Fragen sind geprüft.',
+        approvedNone: 'Noch keine Frage ist geprüft.',
+        approvedSome: 'Eine von {held} Fragen ist geprüft. | {count} von {held} Fragen sind geprüft.',
+        submitted: 'Die Version ist zur Prüfung eingereicht.',
+        notSubmitted: 'Die Version muss noch zur Prüfung eingereicht werden.',
+        fourEyes:
+          'Sie haben diese Version eingereicht. Mit Vier-Augen-Freigabe muss eine andere Person sie veröffentlichen.',
+        publisherApproved:
+          'Sie haben Fragen dieser Version freigegeben. Mit Vier-Augen-Freigabe muss eine andere Person sie veröffentlichen.',
+      },
+      publishConfirm: {
+        title: 'Version veröffentlichen?',
+        text: 'Version {number} von „{title}“ wird veröffentlicht und kann danach nicht mehr geändert werden. Eine bisher veröffentlichte Version dieser Schulung wird abgelöst.',
+        confirm: 'Veröffentlichen',
+      },
+      retireConfirm: {
+        title: 'Version zurückziehen?',
+        text: 'Version {number} von „{title}“ wird zurückgezogen. Laufende Lerndurchläufe bleiben gültig.',
+        confirm: 'Zurückziehen',
+      },
+      returnForm: {
+        title: 'Version zurückgeben',
+        description: 'Die Version wird wieder ein Entwurf. Beschreiben Sie, was überarbeitet werden muss.',
+        reason: 'Grund',
+        hint: 'Bitte nennen Sie im Grund keine Personen, sondern beschreiben Sie, was an der Version zu ändern ist.',
+        confirm: 'Zurückgeben',
+        reasonRequired: 'Geben Sie einen Grund an.',
+        reasonTooLong: 'Der Grund darf höchstens {max} Zeichen lang sein.',
+        reasonInvalid: 'Der Grund enthält unzulässige Steuer- oder Formatzeichen.',
+      },
+      errors: {
+        notADraft: 'Nur ein Entwurf kann eingereicht werden.',
+        notInReview: 'Die Version ist nicht mehr in Prüfung.',
+        notPublished: 'Nur eine veröffentlichte Version kann zurückgezogen werden.',
+        noChapters: 'Die Version braucht mindestens ein Kapitel.',
+        testIncomplete: 'Der Test hat nicht die vorgegebene Anzahl Fragen.',
+        tooManyQuestions: 'Der Test hat mehr Fragen als erlaubt.',
+        questionNotApproved: 'Jede Frage muss vor der Veröffentlichung freigegeben sein.',
+        questionDefect:
+          'Eine Frage ist unvollständig. Prüfen Sie im Test ihre Antwortoptionen und richtigen Antworten.',
+        fourEyes:
+          'Mit Vier-Augen-Freigabe darf nicht veröffentlichen, wer die Version eingereicht hat. Bitten Sie eine andere Person aus der Redaktion.',
+        publisherApprovedQuestions:
+          'Mit Vier-Augen-Freigabe darf nicht veröffentlichen, wer Fragen dieser Version freigegeben hat. Bitten Sie eine andere Person aus der Redaktion.',
+        changed: 'Die Version wurde inzwischen geändert. Sie sehen jetzt den aktuellen Stand; versuchen Sie es erneut.',
+        notFound: 'Diese Version gibt es nicht mehr.',
+        identityIncomplete: 'Ihre Anmeldung nennt keine Person. Melden Sie sich erneut an.',
+        forbidden: 'Sie dürfen diesen Schritt nicht ausführen.',
+        submitFailed: 'Die Version konnte nicht eingereicht werden. Versuchen Sie es erneut.',
+        publishFailed: 'Die Version konnte nicht veröffentlicht werden. Versuchen Sie es erneut.',
+        returnFailed: 'Die Version konnte nicht zurückgegeben werden. Versuchen Sie es erneut.',
+        retireFailed: 'Die Version konnte nicht zurückgezogen werden. Versuchen Sie es erneut.',
+      },
     },
   },
   samples: {

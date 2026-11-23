@@ -63,6 +63,11 @@ vi.mock('@/api/generated', async (importOriginal) => {
 });
 
 const { examples } = data;
+// A version in review and a published one (#26): the workflow's other steps, each with no dialog open.
+const workflowExamples = [
+  ['in review', data.inReviewExamples],
+  ['published', data.publishedExamples],
+] as const;
 // A data file written before it had an empty example has none: the page is then not checked with nothing to show.
 const emptyExamples = (data as { emptyExamples?: Record<string, unknown> }).emptyExamples ?? {};
 
@@ -97,6 +102,13 @@ afterEach(() => {
 // the developer does.
 const versionId = '0198c1a0-0000-7000-8000-0000000000c1';
 
+/** The steps the workflow section offers a version of each status the examples show. */
+const stepsShown: Record<string, ('submit' | 'publish' | 'return' | 'retire')[]> = {
+  Draft: ['submit'],
+  InReview: ['publish', 'return'],
+  Published: ['retire'],
+};
+
 async function renderPage() {
   const router = createAppRouter(createMemoryHistory());
   await router.push(`/editorial/versions/${versionId}`);
@@ -106,10 +118,22 @@ async function renderPage() {
   });
   // The screen speaks the language of the moment: axe checks what that language's user hears. Shown with a version, it
   // is headed by the version's title and names its chapters; while it loads, it shows skeletons only.
-  const shownVersion = shown.examples?.useGetEditorialCourseVersionsId as { title: string } | undefined;
+  const shownVersion = shown.examples?.useGetEditorialCourseVersionsId as { title: string; status: string } | undefined;
   if (shownVersion !== undefined) {
     expect(screen.getByRole('heading', { level: 1, name: shownVersion.title })).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 2, name: t('editorial.chapters.title') })).toBeInTheDocument();
+    // The workflow section shows the version's steps (#26), and axe checks them: a draft's checklist and Submit, a
+    // version in review's checklist, Publish and Return, a published one's Retire. No dialog is open.
+    expect(screen.getByRole('heading', { level: 2, name: t('editorial.workflow.title') })).toBeInTheDocument();
+    const steps = stepsShown[shownVersion.status] ?? [];
+    expect(steps).not.toHaveLength(0);
+    for (const step of steps) {
+      expect(screen.getByRole('button', { name: t(`editorial.workflow.${step}`) })).toBeInTheDocument();
+    }
+    expect(screen.queryByRole('list', { name: t('editorial.workflow.checklist.title') }) !== null).toBe(
+      shownVersion.status !== 'Published',
+    );
+    expect(screen.queryByRole('dialog')).toBeNull();
   }
   return container;
 }
@@ -148,6 +172,31 @@ describe.each(languages)('in %s', (language) => {
     'the course version page passes axe with its example data in the $name theme',
     async ({ switchOn }) => {
       shown.examples = examples;
+      switchOn();
+      const container = await renderPage();
+
+      expect(await axe(container)).toHaveNoViolations();
+    },
+  );
+
+  test.each(workflowExamples)(
+    'the course version page passes axe with a version %s',
+    async (_status, shownExamples) => {
+      shown.examples = shownExamples;
+      const container = await renderPage();
+
+      expect(await axe(container)).toHaveNoViolations();
+    },
+  );
+
+  test.each(
+    workflowExamples.flatMap(([status, shownExamples]) =>
+      themes.map(({ name, switchOn }) => ({ status, shownExamples, name, switchOn })),
+    ),
+  )(
+    'the course version page passes axe with a version $status in the $name theme',
+    async ({ shownExamples, switchOn }) => {
+      shown.examples = shownExamples;
       switchOn();
       const container = await renderPage();
 

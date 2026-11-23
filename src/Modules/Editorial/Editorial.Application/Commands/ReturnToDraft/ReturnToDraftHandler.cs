@@ -16,11 +16,15 @@ public sealed class ReturnToDraftHandler(ICourseVersionStore versions, IEditoria
             return Failure(CourseVersionFailures.NotFound(command.Version.Value));
         }
 
-        var returned = found.Value.ReturnToDraft(command.Editor, Timestamp.From(time.GetUtcNow()));
+        var returned = found.Value.ReturnToDraft(command.Editor, command.Reason, Timestamp.From(time.GetUtcNow()));
         if (returned.IsFailure)
         {
             return Failure(CourseVersionFailures.From(returned.Error));
         }
+
+        // The record is saved in the version's own transaction, under its row version: a reaction would run after the
+        // commit and is never retried, so the audit trail could lose a return (ADR 0013).
+        versions.AddReturn(returned.Value);
 
         if (!await unitOfWork.TryCommitAsync(cancellationToken))
         {

@@ -246,4 +246,24 @@ public class ValueObjectTests
         later.CompareTo(now).ShouldBeGreaterThan(0);
         now.CompareTo(Timestamp.From(new DateTimeOffset(2027, 3, 1, 10, 0, 0, TimeSpan.FromHours(1)))).ShouldBe(0);
     }
+
+    [Fact]
+    public void A_membership_version_comes_back_from_its_value()
+    {
+        MembershipVersion.From(3).Value.ShouldBe(3);
+        MembershipVersion.From(1).ShouldBe(MembershipVersion.First);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void A_membership_version_below_one_is_refused(int value) =>
+        Should.Throw<GuardException>(() => MembershipVersion.From(value));
+
+    [Fact]
+    public void The_next_membership_version_is_one_higher()
+    {
+        MembershipVersion.First.Next().ShouldBe(MembershipVersion.From(2));
+        MembershipVersion.From(2).Next().Value.ShouldBe(3);
+    }
 }

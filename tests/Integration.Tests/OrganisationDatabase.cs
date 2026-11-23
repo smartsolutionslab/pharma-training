@@ -178,6 +178,13 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         return Guid.Parse(claims.RootElement.GetProperty("sub").GetString() ?? throw new InvalidOperationException($"{user} has no subject."));
     }
 
+    /// <summary>The realm user's display name, as accepting an invitation stores it.</summary>
+    public async Task<string> NameOfAsync(string user)
+    {
+        using var claims = await ClaimsOfAsync(user);
+        return claims.RootElement.GetProperty("name").GetString() ?? throw new InvalidOperationException($"{user} has no name.");
+    }
+
     /// <summary>The person's active memberships in every pharmacy, oldest first.</summary>
     public async Task<List<ActiveMembership>> ActiveMembershipsOfAsync(Guid person, CancellationToken cancellationToken)
     {

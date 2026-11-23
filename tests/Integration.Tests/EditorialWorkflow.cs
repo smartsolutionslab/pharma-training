@@ -93,11 +93,26 @@ internal static class EditorialWorkflow
         return await drafted.Content.ReadFromJsonAsync<Guid>(cancellationToken);
     }
 
-    /// <summary>Sends one of the workflow's steps (submit, return, publish, retire) to the version, with no body.</summary>
+    /// <summary>
+    /// Sends one of the workflow's steps (submit, return, publish, retire) to the version: a return with a reason in its
+    /// body, as #181 requires, every other step with no body.
+    /// </summary>
     public static Task<HttpResponseMessage> StepAsync(HttpClient client, Guid id, string step, CancellationToken cancellationToken)
     {
         Ensure.That(client).IsNotNull();
-        return client.PostAsync(VersionPath(id, step), null, cancellationToken);
+        var body = step == "return" ? JsonContent.Create(new { reason = "Kapitel 2 braucht eine Quelle." }) : null;
+        return client.PostAsync(VersionPath(id, step), body, cancellationToken);
+    }
+
+    /// <summary>Returns the version in review to draft with the given reason, and asserts that the edge accepted it.</summary>
+    public static async Task ReturnAsync(HttpClient client, Guid id, string reason, CancellationToken cancellationToken)
+    {
+        Ensure.That(client).IsNotNull();
+
+        using var response = await client.PostAsJsonAsync(VersionPath(id, "return"), new { reason }, cancellationToken);
+        response.StatusCode.ShouldBe(
+            HttpStatusCode.OK,
+            $"POST {VersionPath(id, "return")} answered {(int)response.StatusCode} {await response.Content.ReadAsStringAsync(cancellationToken)}");
     }
 
     public static async Task<WorkflowVersion> ReadAsync(HttpClient client, Guid id, CancellationToken cancellationToken)

@@ -40,6 +40,37 @@ public class CourseVersionWorkflowErrorTests
         mapped.Code.ShouldBe(code);
     }
 
+    /// <summary>
+    /// A case reaches a caller through <c>From(CourseVersionWorkflowError)</c> or, as its base, through
+    /// <c>From(DomainError)</c>; both answer it with the same code and status, review 6015357924.
+    /// </summary>
+    [Theory]
+    [InlineData(nameof(NotADraft), HttpStatusCode.Conflict, "editorial.not-a-draft")]
+    [InlineData(nameof(NotInReview), HttpStatusCode.Conflict, "editorial.not-in-review")]
+    [InlineData(nameof(NotPublished), HttpStatusCode.Conflict, "editorial.not-published")]
+    [InlineData(nameof(NoChapters), HttpStatusCode.Conflict, "editorial.no-chapters")]
+    [InlineData(nameof(TooManyQuestions), HttpStatusCode.Conflict, "editorial.too-many-questions")]
+    [InlineData(nameof(TestIncomplete), HttpStatusCode.Conflict, "editorial.test-incomplete")]
+    [InlineData(nameof(QuestionNotApproved), HttpStatusCode.Conflict, "editorial.question-not-approved")]
+    [InlineData(nameof(FourEyesRequired), HttpStatusCode.Forbidden, "editorial.four-eyes")]
+    [InlineData(nameof(PublisherApprovedQuestions), HttpStatusCode.Forbidden, "editorial.publisher-approved-questions")]
+    [InlineData(nameof(TooFewOptions), HttpStatusCode.UnprocessableEntity, "editorial.too-few-options")]
+    [InlineData(nameof(SingleChoiceNeedsOneCorrect), HttpStatusCode.UnprocessableEntity, "editorial.single-choice-one-correct")]
+    [InlineData(nameof(MultipleChoiceNeedsACorrect), HttpStatusCode.UnprocessableEntity, "editorial.multiple-choice-a-correct")]
+    public void Each_workflow_case_maps_to_the_same_code_and_status_through_both_overloads(string name, HttpStatusCode status, string code)
+    {
+        var union = Case(name);
+        var refusal = union.Value.ShouldBeAssignableTo<DomainError>().ShouldNotBeNull();
+
+        var viaUnion = CourseVersionFailures.From(union);
+        var viaDomainError = CourseVersionFailures.From(refusal);
+
+        viaDomainError.Code.ShouldBe(viaUnion.Code);
+        viaDomainError.Status.ShouldBe(viaUnion.Status);
+        viaUnion.Code.ShouldBe(code);
+        viaUnion.Status.ShouldBe(status);
+    }
+
     /// <summary>Each case converts to the union, which holds it in <c>Value</c> as the case itself: its type, its code, its equality.</summary>
     [Theory]
     [InlineData(nameof(NotADraft), "editorial.not-a-draft")]
@@ -69,7 +100,7 @@ public class CourseVersionWorkflowErrorTests
     public void The_workflow_steps_fail_with_the_workflow_union()
     {
         var submitted = Draft().SubmitForReview(Author);
-        var returned = Draft().ReturnToDraft(Reviewer, Now);
+        var returned = Draft().ReturnToDraft(Reviewer, ReturnReason.From("Kapitel 2 braucht eine Quelle."), Now);
         var published = Draft().Publish(Reviewer, ReviewPolicy.SingleEditor, Now);
         var retired = Draft().Retire(Reviewer, Now);
 
@@ -80,7 +111,8 @@ public class CourseVersionWorkflowErrorTests
     }
 
     /// <summary>Compiles only for a step that returns the workflow union: <see cref="Result{TValue, TError}"/> is invariant.</summary>
-    private static CourseVersionWorkflowError WorkflowError(Result<Unit, CourseVersionWorkflowError> result) => result.Error;
+    private static CourseVersionWorkflowError WorkflowError<TValue>(Result<TValue, CourseVersionWorkflowError> result)
+        where TValue : notnull => result.Error;
 
     /// <summary>
     /// Builds the case named <paramref name="name"/> and converts it to the union. With the keyword union each record

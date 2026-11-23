@@ -1,4 +1,4 @@
-using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Azure;
@@ -13,12 +13,13 @@ namespace Aspire.Hosting;
 /// module, who may configure, write and read its own queue, the exchanges of its own module's events and the exchanges of
 /// the events it consumes (<see cref="MessagingTopology"/>), and nothing else. The broker imports those users, the admin
 /// and their permissions at every boot from a definitions document the AppHost composes, handed to it as the environment
-/// variable <c>BROKER_DEFINITIONS</c>. The document carries no password: each is the placeholder <c>@@&lt;VARIABLE&gt;@@</c>
-/// of a variable of the broker's own (<c>RABBITMQ_DEFAULT_PASS</c> for the admin, <c>BROKER_PASSWORD_&lt;MODULE&gt;</c> for
-/// each service), which the entrypoint fills in. Published, every password and each service's connection string are Key
-/// Vault secrets; the document is a plain value.
+/// variable <c>BROKER_DEFINITIONS</c>. The document carries no user name and no password: each is the placeholder
+/// <c>@@&lt;VARIABLE&gt;@@</c> of a variable of the broker's own (<c>RABBITMQ_DEFAULT_USER</c> and <c>RABBITMQ_DEFAULT_PASS</c>
+/// for the admin, <c>BROKER_USER_&lt;MODULE&gt;</c> and <c>BROKER_PASSWORD_&lt;MODULE&gt;</c> for each service), which the
+/// entrypoint fills in and checks. Published, every password and each service's connection string are Key Vault secrets;
+/// the document is a plain value.
 /// </summary>
-public static class Messaging
+public static partial class Messaging
 {
     private const string Name = "messaging";
 
@@ -26,41 +27,67 @@ public static class Messaging
 
     private const string VirtualHost = "/";
 
+    private const string AdminUserVariable = "RABBITMQ_DEFAULT_USER";
+
     private const string AdminPasswordVariable = "RABBITMQ_DEFAULT_PASS";
+
+    private const string UserVariablePrefix = "BROKER_USER_";
 
     private const string PasswordVariablePrefix = "BROKER_PASSWORD_";
 
     /// <summary>
-    /// The broker's entrypoint: it fills each <c>@@&lt;VARIABLE&gt;@@</c> in the definitions with that variable's value (the
-    /// admin's password and every <c>BROKER_PASSWORD_*</c>), JSON-escaped (<c>\</c>, then <c>"</c>) in bash's own pattern
-    /// substitution, which takes <c>&amp;</c> and every other character literally, so a password can neither break the
-    /// document nor add an entry to it; a password with a control character fails the boot, naming its variable and never
-    /// printing the value. It writes the document to the container's own layer (never the data volume), readable by
-    /// RabbitMQ's user alone, has RabbitMQ load it at boot, drops the variables that hold it and starts the image's own
-    /// entrypoint in its place. The image starts as root and its entrypoint runs RabbitMQ as the user rabbitmq.
+    /// The broker's entrypoint. It fills in each placeholder <c>@@&lt;VARIABLE&gt;@@</c> it finds in the definitions, the
+    /// document's own, not the variables that happen to be set, and fails closed: the boot fails, naming the variable and
+    /// never printing its value, when a placeholder names a variable that is not one of the broker's user or password
+    /// variables, or one that is not set, empty or holds a character outside <c>[A-Za-z0-9._~-]</c> (URI-safe, as the
+    /// connection strings need, and needing no escape in JSON; spelled out, so no locale widens it), when two user
+    /// variables name the same user, or when anything that looks like a placeholder is left. No value holds <c>@</c>, so no
+    /// value can bring in another placeholder. It writes the document to the container's own layer (never the data
+    /// volume), readable by RabbitMQ's user alone, removing what is at either file's path first and changing a symlink's
+    /// owner rather than its target's, so a symlink left by an earlier boot is never followed, has RabbitMQ load it at boot, and starts the image's own entrypoint in its
+    /// place without the admin's password or any <c>BROKER_*</c> variable, as <c>env</c> lists them: bash does not see one
+    /// whose name is not a shell identifier, so it could not unset it, yet would hand it on. The image starts as root and
+    /// its entrypoint runs RabbitMQ as the user rabbitmq.
     /// </summary>
     private const string Entrypoint = """
         set -eu
         umask 077
-        shopt -u patsub_replacement 2>/dev/null || true
-        backslash='\'
-        quote='"'
+        placeholder='@@([A-Za-z0-9_]+)@@'
+        safe='^[ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._~-]+$'
+        refuse() { printf '%s\n' "$1" >&2; exit 1; }
+        declare -A users=()
         definitions="$BROKER_DEFINITIONS"
-        for variable in RABBITMQ_DEFAULT_PASS $(compgen -e BROKER_PASSWORD_ || true); do
+        while [[ "$definitions" =~ $placeholder ]]; do
+          variable="${BASH_REMATCH[1]}"
+          case "$variable" in
+            RABBITMQ_DEFAULT_USER|BROKER_USER_?*|RABBITMQ_DEFAULT_PASS|BROKER_PASSWORD_?*) ;;
+            *) refuse "The broker definitions hold the placeholder of $variable, which is not one of the broker's user or password variables.";;
+          esac
+          [ -n "${!variable+set}" ] || refuse "$variable is not set; the broker definitions need it."
           value="${!variable}"
-          case "$value" in *[[:cntrl:]]*) printf '%s holds a control character, which the broker definitions refuse.\n' "$variable" >&2; exit 1;; esac
-          value="${value//"$backslash"/"$backslash$backslash"}"
-          value="${value//"$quote"/"$backslash$quote"}"
+          [ -n "$value" ] || refuse "$variable is empty; the broker definitions need a value."
+          [[ "$value" =~ $safe ]] || refuse "$variable holds a character other than A-Z, a-z, 0-9, '.', '_', '~' and '-', which the broker definitions refuse."
+          case "$variable" in
+            RABBITMQ_DEFAULT_USER|BROKER_USER_*)
+              [ -z "${users[$value]+set}" ] || refuse "${users[$value]} and $variable name the same broker user."
+              users[$value]="$variable";;
+          esac
           definitions="${definitions//"@@$variable@@"/"$value"}"
         done
-        unset value
+        unset value users
+        case "$definitions" in *@@*) refuse "The broker definitions hold a placeholder that names no variable; a placeholder is @@<VARIABLE>@@ of letters, digits and _.";; esac
+        rm -f /tmp/rabbitmq-definitions.json
         printf '%s' "$definitions" > /tmp/rabbitmq-definitions.json
         unset definitions
+        rm -f /etc/rabbitmq/conf.d/90-definitions.conf
         printf 'load_definitions = /tmp/rabbitmq-definitions.json\n' > /etc/rabbitmq/conf.d/90-definitions.conf
-        if [ "$(id -u)" = 0 ]; then chown rabbitmq:rabbitmq /tmp/rabbitmq-definitions.json /etc/rabbitmq/conf.d/90-definitions.conf; fi
-        unset BROKER_DEFINITIONS
-        for variable in $(compgen -e BROKER_PASSWORD_ || true); do unset "$variable"; done
-        exec docker-entrypoint.sh rabbitmq-server
+        if [ "$(id -u)" = 0 ]; then chown -h rabbitmq:rabbitmq /tmp/rabbitmq-definitions.json /etc/rabbitmq/conf.d/90-definitions.conf; fi
+        unset RABBITMQ_DEFAULT_PASS
+        drop=()
+        while IFS= read -r -d '' entry; do
+          case "${entry%%=*}" in BROKER_*) drop+=(-u "${entry%%=*}");; esac
+        done < <(env -0)
+        exec env "${drop[@]}" docker-entrypoint.sh rabbitmq-server
         """;
 
     public static MessagingBroker AddMessaging(this IDistributedApplicationBuilder builder, DeploymentSecrets secrets)
@@ -77,17 +104,19 @@ public static class Messaging
             // users on the data volume keep theirs; letters and digits alone, so it needs no escaping in a URI or in JSON.
             var users = Users(builder, module => builder.AddParameter($"{Name}-{module}-password", new GenerateParameterDefault { MinLength = 22, Special = false }, secret: true, persist: true));
             var address = broker.Resource.PrimaryEndpoint.Property(EndpointProperty.HostAndPort);
-            WithDefinitionsAtBoot(broker).WithEnvironment(DefinitionsVariable, Definitions(broker.Resource, users));
+            WithDefinitionsAtBoot(broker).WithEnvironment(DefinitionsVariable, Definitions(users));
             foreach (var user in users)
             {
-                broker.WithEnvironment(PasswordVariable(user.Module), user.Password);
+                broker.WithEnvironment(UserVariable(user.Module), user.Module).WithEnvironment(PasswordVariable(user.Module), user.Password);
             }
 
+            // The module is URI-safe (Users checks it), so it goes in as it is.
             return new MessagingBroker(
                 broker,
+                UserNames(users),
                 users.ToDictionary(
                     user => user.Module,
-                    user => ReferenceExpression.Create($"amqp://{user.UserName.Resource:uri}:{user.Password.Resource:uri}@{address}"),
+                    user => ReferenceExpression.Create($"amqp://{user.Module}:{user.Password.Resource:uri}@{address}"),
                     StringComparer.Ordinal));
         }
 
@@ -102,10 +131,10 @@ public static class Messaging
         // The definitions hold no password, only placeholders, so they are a plain value; the broker reads each password
         // as a Key Vault reference of its own. Stored in the vault, the document would get a Bicep parameter named after
         // the whole expression, longer than Bicep allows (BCP024).
-        WithDefinitionsAtBoot(published).WithEnvironment(DefinitionsVariable, Definitions(published.Resource, publishedUsers));
+        WithDefinitionsAtBoot(published).WithEnvironment(DefinitionsVariable, Definitions(publishedUsers));
         foreach (var user in publishedUsers)
         {
-            published.WithSecret(PasswordVariable(user.Module), user.Password, secrets);
+            published.WithEnvironment(UserVariable(user.Module), user.Module).WithSecret(PasswordVariable(user.Module), user.Password, secrets);
         }
         // The Key Vault's Bicep cannot read a Container App's endpoint: given the broker's own connection string, it would
         // write amqp://user:password@ without host and port. A Container App with TCP ingress is reached inside the
@@ -117,10 +146,10 @@ public static class Messaging
         var publishedAddress = $"{published.Resource.Name}:{endpoint.TargetPort ?? throw new InvalidOperationException($"{Name}'s {endpoint.Name} endpoint has no target port.")}";
         foreach (var user in publishedUsers)
         {
-            secrets.Store($"{Name}-{user.Module}-connection-string", ReferenceExpression.Create($"amqp://{user.UserName.Resource}:{user.Password.Resource}@{publishedAddress}"));
+            secrets.Store($"{Name}-{user.Module}-connection-string", ReferenceExpression.Create($"amqp://{user.Module}:{user.Password.Resource}@{publishedAddress}"));
         }
 
-        return new MessagingBroker(published, []);
+        return new MessagingBroker(published, UserNames(publishedUsers), []);
     }
 
     /// <summary>
@@ -136,6 +165,14 @@ public static class Messaging
         ArgumentException.ThrowIfNullOrWhiteSpace(module);
 
         service.WithEnvironment("Messaging__Queue", module).WaitFor(broker.Resource);
+        // Every module's user name, so the service knows whose events a message's user_id vouches for (docs/adr/0011):
+        // RabbitMQ refuses a user_id other than the connection's, and the service refuses an event of a module other than
+        // the one whose user sent it. User names are no secret.
+        foreach (var (publisher, userName) in broker.UserNames)
+        {
+            service.WithEnvironment($"Messaging__Publishers__{publisher}", userName);
+        }
+
         if (!secrets.IsPublishing)
         {
             return service.WithEnvironment($"ConnectionStrings__{Name}", broker.ConnectionStringOf(module));
@@ -145,23 +182,42 @@ public static class Messaging
         return service.WithEnvironment($"ConnectionStrings__{Name}", connectionString);
     }
 
-    /// <summary>A user per service host, named after its module unless the deployment says otherwise, in ordinal order.</summary>
-    private static List<BrokerUser> Users(IDistributedApplicationBuilder builder, Func<string, IResourceBuilder<ParameterResource>> password) =>
-        [.. builder.ServiceHosts()
-            .Select(service => service.Module)
-            .Order(StringComparer.Ordinal)
-            .Select(module => new BrokerUser(
-                module,
-                builder.AddParameter($"{Name}-{module}-username", module, publishValueAsDefault: true),
-                password(module),
-                MessagingTopology.Of(module)))];
+    /// <summary>The broker user of each module, by module: the module itself, since every user is named after its module.</summary>
+    private static SortedDictionary<string, string> UserNames(List<BrokerUser> users) =>
+        new(users.ToDictionary(user => user.Module, user => user.Module, StringComparer.Ordinal), StringComparer.Ordinal);
+
+    /// <summary>
+    /// A user per service host, named after its module, in ordinal order. No parameter overrides the name (docs/adr/0011): an
+    /// overridden name could equal another user's and take over that user's definitions entry. A module whose name is not
+    /// URI-safe, or two modules whose variables would be one, stop the AppHost here rather than the broker at its boot.
+    /// </summary>
+    private static List<BrokerUser> Users(IDistributedApplicationBuilder builder, Func<string, IResourceBuilder<ParameterResource>> password)
+    {
+        var modules = builder.ServiceHosts().Select(service => service.Module).Order(StringComparer.Ordinal).ToList();
+        foreach (var module in modules.Where(module => !UriSafe().IsMatch(module)))
+        {
+            throw new InvalidOperationException($"The module '{module}' cannot name a broker user: a user name is letters, digits, '.', '_', '~' and '-' alone (docs/adr/0011).");
+        }
+
+        foreach (var shared in modules.GroupBy(PasswordVariable, StringComparer.Ordinal).Where(group => group.Count() > 1))
+        {
+            throw new InvalidOperationException($"The modules {string.Join(" and ", shared)} would share the broker variables {shared.Key} and {UserVariable(shared.First())}.");
+        }
+
+        return [.. modules.Select(module => new BrokerUser(module, password(module), MessagingTopology.Of(module)))];
+    }
 
     /// <summary>
     /// The broker's variable that holds a service user's password: the module in upper case, any character but an ASCII
     /// letter or digit as <c>_</c>, so it is a shell variable's name.
     /// </summary>
-    private static string PasswordVariable(string module) =>
-        PasswordVariablePrefix + string.Concat(module.ToUpperInvariant().Select(character => char.IsAsciiLetterOrDigit(character) ? character : '_'));
+    private static string PasswordVariable(string module) => PasswordVariablePrefix + VariableSuffix(module);
+
+    /// <summary>The broker's variable that holds a service user's name, spelled as its password's.</summary>
+    private static string UserVariable(string module) => UserVariablePrefix + VariableSuffix(module);
+
+    private static string VariableSuffix(string module) =>
+        string.Concat(module.ToUpperInvariant().Select(character => char.IsAsciiLetterOrDigit(character) ? character : '_'));
 
     /// <summary>The text that stands for a variable's value in the definitions until the broker's entrypoint fills it in.</summary>
     private static string Placeholder(string variable) => $"@@{variable}@@";
@@ -172,41 +228,43 @@ public static class Messaging
 
     /// <summary>
     /// The definitions RabbitMQ imports at boot: the vhost, the admin with every permission, and each service's user with
-    /// its own (docs/adr/0011). Importing definitions, RabbitMQ seeds no default user, so the admin is in them too. No
-    /// password goes in: each is the placeholder of the broker's variable that holds it, and the entrypoint puts in the
-    /// value, JSON-escaped.
+    /// its own (docs/adr/0011). Importing definitions, RabbitMQ seeds no default user, so the admin is in them too. No user
+    /// name or password goes in: each is the placeholder of the broker's variable that holds it, which the entrypoint fills
+    /// in and checks, so the document is the same text in both modes and for every deployment.
     /// </summary>
-    private static ReferenceExpression Definitions(RabbitMQServerResource broker, List<BrokerUser> users)
+    private static string Definitions(List<BrokerUser> users)
     {
-        var json = new ReferenceExpressionBuilder();
-        Literal(json, $"{{\"vhosts\":[{{\"name\":{Json(VirtualHost)}}}],\"users\":[{{\"name\":\"");
-        json.Append($"{broker.UserNameReference}");
-        Literal(json, $"\",\"password\":\"{Placeholder(AdminPasswordVariable)}\",\"tags\":[\"administrator\"]}}");
+        var admin = Placeholder(AdminUserVariable);
+        JsonArray accounts = [new JsonObject { ["name"] = admin, ["password"] = Placeholder(AdminPasswordVariable), ["tags"] = new JsonArray("administrator") }];
+        JsonArray permissions = [Permission(admin, ".*", ".*", ".*")];
         foreach (var user in users)
         {
-            Literal(json, ",{\"name\":\"");
-            json.Append($"{user.UserName.Resource}");
-            Literal(json, $"\",\"password\":\"{Placeholder(PasswordVariable(user.Module))}\",\"tags\":[]}}");
-        }
-
-        Literal(json, "],\"permissions\":[{\"user\":\"");
-        json.Append($"{broker.UserNameReference}");
-        Literal(json, $"\",\"vhost\":{Json(VirtualHost)},\"configure\":\".*\",\"write\":\".*\",\"read\":\".*\"}}");
-        foreach (var user in users)
-        {
+            var name = Placeholder(UserVariable(user.Module));
             var (consumed, published) = user.Topology;
-            Literal(json, ",{\"user\":\"");
-            json.Append($"{user.UserName.Resource}");
-            Literal(json,
-                $"\",\"vhost\":{Json(VirtualHost)}," +
-                $"\"configure\":{Json(Pattern([user.Module, .. published, .. consumed]))}," +
-                $"\"write\":{Json(Pattern([user.Module, .. published]))}," +
-                $"\"read\":{Json(Pattern([user.Module, .. consumed]))}}}");
+            accounts.Add(new JsonObject { ["name"] = name, ["password"] = Placeholder(PasswordVariable(user.Module)), ["tags"] = new JsonArray() });
+            permissions.Add(Permission(
+                name,
+                Pattern([user.Module, .. published, .. consumed]),
+                Pattern([user.Module, .. published]),
+                Pattern([user.Module, .. consumed])));
         }
 
-        Literal(json, "]}");
-        return json.Build();
+        return new JsonObject
+        {
+            ["vhosts"] = new JsonArray(new JsonObject { ["name"] = VirtualHost }),
+            ["users"] = accounts,
+            ["permissions"] = permissions,
+        }.ToJsonString();
     }
+
+    private static JsonObject Permission(string user, string configure, string write, string read) => new()
+    {
+        ["user"] = user,
+        ["vhost"] = VirtualHost,
+        ["configure"] = configure,
+        ["write"] = write,
+        ["read"] = read,
+    };
 
     /// <summary>
     /// Exactly the given queue and exchange names: RabbitMQ matches a permission's regular expression anywhere in a name,
@@ -215,9 +273,7 @@ public static class Messaging
     private static string Pattern(IEnumerable<string> names) =>
         $"^({string.Join('|', names.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).Select(Regex.Escape))})$";
 
-    private static string Json(string value) => JsonSerializer.Serialize(value);
-
-    /// <summary>JSON text in the expression, whose format string reads braces as placeholders unless doubled.</summary>
-    private static void Literal(ReferenceExpressionBuilder expression, string text) =>
-        expression.AppendLiteral(text.Replace("{", "{{", StringComparison.Ordinal).Replace("}", "}}", StringComparison.Ordinal));
+    /// <summary>What a broker user's name and password may hold: URI-safe, and nothing JSON escapes (docs/adr/0011).</summary>
+    [GeneratedRegex(@"\A[A-Za-z0-9._~-]+\z", RegexOptions.CultureInvariant)]
+    private static partial Regex UriSafe();
 }

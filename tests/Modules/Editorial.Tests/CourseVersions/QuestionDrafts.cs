@@ -37,7 +37,7 @@ internal static class QuestionDrafts
     public static CourseVersion DraftWithApprovedQuestion(out ChapterId chapter, out QuestionId question)
     {
         var version = DraftWithQuestion(out chapter, out question);
-        version.ApproveQuestion(question, Author, Now).IsSuccess.ShouldBeTrue();
+        version.ApproveQuestion(question, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
         return version;
     }
 }

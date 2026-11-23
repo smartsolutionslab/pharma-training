@@ -24,6 +24,7 @@ public class EditorialCourseVersionRoleTests(AspireFixture aspire)
     [InlineData("POST", "course-versions/{id}/questions/{questionId}/approve")]
     [InlineData("POST", "course-versions/{id}/uploads")]
     [InlineData("PUT", "course-versions/{id}/blueprint")]
+    [InlineData("GET", "course-versions/{id}/returns")]
     public async Task An_editor_reaches_the_route(string method, string route)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -78,6 +79,7 @@ public class EditorialCourseVersionRoleTests(AspireFixture aspire)
     [InlineData("POST", "course-versions/{id}/return")]
     [InlineData("POST", "course-versions/{id}/publish")]
     [InlineData("POST", "course-versions/{id}/retire")]
+    [InlineData("GET", "course-versions/{id}/returns")]
     [InlineData("POST", "course-versions/{id}/next")]
     public async Task A_pharmacy_owner_is_forbidden(string method, string route)
     {
@@ -108,6 +110,7 @@ public class EditorialCourseVersionRoleTests(AspireFixture aspire)
     [InlineData("POST", "course-versions/{id}/return")]
     [InlineData("POST", "course-versions/{id}/publish")]
     [InlineData("POST", "course-versions/{id}/retire")]
+    [InlineData("GET", "course-versions/{id}/returns")]
     [InlineData("POST", "course-versions/{id}/next")]
     public async Task An_anonymous_caller_is_unauthorized(string method, string route)
     {

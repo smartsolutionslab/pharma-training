@@ -101,8 +101,53 @@ test('every detail below a module declares its audience and its title by key', (
       titleKey: 'modules.editorial.details.version.title',
       audience: 'editor',
     },
+    {
+      address: '/editorial/versions/:id/test',
+      titleKey: 'modules.editorial.details.test.title',
+      audience: 'editor',
+    },
   ]);
   expect(t('modules.editorial.details.version.title')).toBe('Schulungsversion');
   setLanguage('en-GB', { remember: false });
   expect(t('modules.editorial.details.version.title')).toBe('Course version');
+});
+
+// An entry page (its routes.ts's entries) is a page a link from outside the app opens, at an address of its own outside
+// its module's: the invitation mail's link. It is for every signed-in user, with or without a pharmacy, and is named by
+// its title in the breadcrumbs, in both languages.
+test('every entry page declares its absolute address, the audience it is for, and its title by key', () => {
+  expect(
+    moduleRoutes.flatMap((route) =>
+      (route.entries ?? []).map((entry) => ({
+        module: route.path,
+        address: entry.path,
+        titleKey: entry.titleKey,
+        audience: entry.audience,
+      })),
+    ),
+  ).toEqual([
+    {
+      module: 'organisation',
+      address: '/invitations/accept',
+      titleKey: 'modules.organisation.entries.acceptInvitation.title',
+      audience: 'signed-in',
+    },
+  ]);
+});
+
+test("every entry page's title is in the catalogs, in German and in English", () => {
+  const keys = moduleRoutes.flatMap((route) => (route.entries ?? []).map((entry) => entry.titleKey));
+  expect(keys.map((key) => t(key))).toEqual(['Einladung annehmen']);
+  setLanguage('en-GB', { remember: false });
+  expect(keys.map((key) => t(key))).toEqual(['Accept an invitation']);
+});
+
+// An entry page is at an address of its own, outside every module's: under a module's address the audience gate and
+// the breadcrumbs would take it for one of that module's pages.
+test("no entry page's address starts with a module's own path", () => {
+  const modulePaths = new Set(moduleRoutes.map((route) => route.path));
+  const entries = moduleRoutes.flatMap((route) => (route.entries ?? []).map((entry) => entry.path));
+
+  expect(entries.length).toBeGreaterThan(0);
+  expect(entries.filter((path) => modulePaths.has(path.split('/')[1] ?? ''))).toEqual([]);
 });

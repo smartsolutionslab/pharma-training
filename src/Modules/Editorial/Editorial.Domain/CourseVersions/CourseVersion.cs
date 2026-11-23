@@ -52,7 +52,7 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
 
     public Timestamp? PublishedAt { get; private set; }
 
-    /// <summary>The editor who last returned the version from review to draft; a later return overwrites it.</summary>
+    /// <summary>The editor who last returned the version; every return, with its reason, is a <see cref="CourseVersionReturn"/>.</summary>
     public PersonId? ReturnedBy { get; private set; }
 
     public Timestamp? ReturnedAt { get; private set; }
@@ -341,8 +341,8 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         return Success(Unit.Value);
     }
 
-    /// <summary>An editor signs off a question: recorded with who and when, shown to auditors (story E7).</summary>
-    public Result<Unit, DomainError> ApproveQuestion(QuestionId id, PersonId editor, Timestamp now)
+    /// <summary>An editor signs off a question: recorded with who, under which display name, and when, shown to auditors (story E7, #205).</summary>
+    public Result<Unit, DomainError> ApproveQuestion(QuestionId id, PersonId editor, ReviewerName name, Timestamp now)
     {
         if (Status is not (CourseVersionStatus.Draft or CourseVersionStatus.InReview))
         {
@@ -365,7 +365,7 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
             return Failure(refusal);
         }
 
-        question.Approve(editor, now);
+        question.Approve(editor, name, now);
         return Success(Unit.Value);
     }
 
@@ -399,9 +399,14 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         return Success(Unit.Value);
     }
 
-    /// <summary>Sends the version back to its editors; records who did and when, and a later return overwrites both.</summary>
-    public Result<Unit, CourseVersionWorkflowError> ReturnToDraft(PersonId editor, Timestamp now)
+    /// <summary>
+    /// Sends the version back to its editors and hands back the record of who did, when and why, which the caller stores
+    /// in the same save; the version keeps the latest editor and time. Returning is not bound by four eyes.
+    /// </summary>
+    public Result<CourseVersionReturn, CourseVersionWorkflowError> ReturnToDraft(PersonId editor, ReturnReason reason, Timestamp now)
     {
+        Ensure.That(reason).IsNotNull();
+
         if (Status != CourseVersionStatus.InReview)
         {
             return Failure(CourseVersionErrors.Workflow.NotInReview(Id, Status));
@@ -410,8 +415,8 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         Status = CourseVersionStatus.Draft;
         ReturnedBy = editor;
         ReturnedAt = now;
-        Raise(new CourseVersionReturned(Id, editor));
-        return Success(Unit.Value);
+        Raise(new CourseVersionReturned(Id, editor, reason));
+        return Success(new CourseVersionReturn(CourseVersionReturnId.New(), Id, editor, now, reason));
     }
 
     /// <summary>

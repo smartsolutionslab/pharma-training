@@ -17,7 +17,7 @@ partial class EditorialModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261123003341_UniqueCourseVersionNumbers";
+    public override string LastMigrationId => "20261123110121_RecordQuestionReviewerName";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -203,6 +203,37 @@ partial class EditorialModelSnapshot : ModelSnapshot
                 b.ToTable("course_versions", "editorial");
             });
 
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions.CourseVersionReturn", b =>
+            {
+                b.Property<Guid>("Id")
+                    .HasColumnType("uuid")
+                    .HasColumnName("id");
+
+                b.Property<string>("Reason")
+                    .IsRequired()
+                    .HasMaxLength(1000)
+                    .HasColumnType("character varying(1000)")
+                    .HasColumnName("reason");
+
+                b.Property<DateTimeOffset>("ReturnedAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("returned_at");
+
+                b.Property<Guid>("ReturnedBy")
+                    .HasColumnType("uuid")
+                    .HasColumnName("returned_by");
+
+                b.Property<Guid>("Version")
+                    .HasColumnType("uuid")
+                    .HasColumnName("course_version_id");
+
+                b.HasKey("Id");
+
+                b.HasIndex("Version", "ReturnedAt");
+
+                b.ToTable("course_version_returns", "editorial");
+            });
+
         modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions.Question", b =>
             {
                 b.Property<Guid>("Id")
@@ -240,6 +271,11 @@ partial class EditorialModelSnapshot : ModelSnapshot
                 b.Property<Guid?>("ReviewedBy")
                     .HasColumnType("uuid")
                     .HasColumnName("reviewed_by");
+
+                b.Property<string>("ReviewedByName")
+                    .HasMaxLength(100)
+                    .HasColumnType("character varying(100)")
+                    .HasColumnName("reviewed_by_name");
 
                 b.Property<string>("Text")
                     .IsRequired()
@@ -293,6 +329,15 @@ partial class EditorialModelSnapshot : ModelSnapshot
                 b.HasOne("SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions.CourseVersion", null)
                     .WithMany("Chapters")
                     .HasForeignKey("CourseVersionId")
+                    .OnDelete(DeleteBehavior.Cascade)
+                    .IsRequired();
+            });
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions.CourseVersionReturn", b =>
+            {
+                b.HasOne("SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions.CourseVersion", null)
+                    .WithMany()
+                    .HasForeignKey("Version")
                     .OnDelete(DeleteBehavior.Cascade)
                     .IsRequired();
             });

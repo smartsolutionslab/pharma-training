@@ -149,7 +149,7 @@ Regeln:
 
 - Namen im Perfekt, Version im Typnamen (`CertificateIssuedV1`); eine Änderung, die Konsumenten bricht, wird eine neue Version.
 - Jedes Event trägt `EventId`, `OccurredAt` und die IDs, die Konsumenten zum Zuordnen brauchen (immer `CourseId` und `CourseVersionId`).
-- Keine Personendaten in Events aus event-sourced Services (Learning, Assessment): nur `PersonId`. Namen leben nur in Organisation und Certification, damit Löschung nach DSGVO möglich bleibt.
+- Keine Personendaten in Events aus event-sourced Services (Learning, Assessment): nur `PersonId`, damit Löschung nach DSGVO möglich bleibt. Namen liegen außerhalb von Events nur hier: in Organisation, in Certification, in Compliance (Namen der Mitglieder, `MemberName`) und in Editorial (Anzeigename der Person, die eine Frage freigegeben hat, `editorial.course_version_questions.reviewed_by_name`, aus dem Claim `name` zum Zeitpunkt der Freigabe und in jede Folgeversion übernommen; Entscheidung des Owners zu #205). Die Löschung (#115) muss jede dieser Stellen erreichen.
 - Prüfungsfragen mit Lösungen gehen nur an Assessment, nie an Catalog oder Frontend.
 
 | Event | Publisher | Konsumenten | Wichtige Felder |
@@ -160,6 +160,7 @@ Regeln:
 | `PharmacyRegistered` | Organisation | Compliance, Certification | PharmacyId, Name |
 | `MembershipStarted` | Organisation | Compliance, Certification | MembershipId, PersonId, PharmacyId, DisplayName, JobFunction, Role |
 | `MembershipEnded` | Organisation | Compliance | MembershipId, PersonId, PharmacyId, EndedAt |
+| `MembershipChanged` | Organisation | Compliance | MembershipId, PersonId, PharmacyId, DisplayName, JobFunction, Role, Version |
 | `CourseAssigned` | Compliance | (keiner in MVP 1, später Benachrichtigung) | AssignmentId, PersonId, PharmacyId, CourseId, DueDate |
 | `AssignmentCompleted` | Compliance | (keiner in MVP 1) | AssignmentId, CertificateId, CompletedAt, Late |
 | `LearningSessionStarted` | Learning | Compliance | SessionId, PersonId, CourseId, CourseVersionId |
@@ -287,10 +288,11 @@ Alle Pfade beginnen mit dem Modulnamen; der Edge leitet danach weiter. Kein Serv
 | editorial | `POST …/{id}/uploads` | Redaktion | Upload-URL für PDF/Video direkt in den Blob Storage |
 | editorial | `PUT …/{id}/blueprint`, `POST …/{id}/test-draft` | Redaktion | Testvorgaben, KI-Entwurf (E3, E5) |
 | editorial | `POST/PUT/DELETE …/{id}/questions`, `POST …/questions/{qid}/approve` | Redaktion | Fragen pflegen und freigeben (E2, E7) |
-| editorial | `POST …/{id}/submit`, `…/return`, `…/publish`, `…/retire` | Redaktion | Workflow (E4) |
+| editorial | `POST …/{id}/submit`, `…/return` (Body: `reason`), `…/publish`, `…/retire`; `GET …/{id}/returns` | Redaktion | Workflow (E4), Rückgaben mit Grund |
 | catalog | `GET /catalog/courses` | Leitung | Veröffentlichte Schulungen zum Zuweisen |
 | catalog | `GET /catalog/course-versions/{id}` | Mitglied | Inhalt für den Player (ohne Fragen) |
 | compliance | `POST /compliance/pharmacies/{id}/assignments` | Leitung | Zuweisen an mehrere Mitarbeiter (C1, C2) |
+| compliance | `GET /compliance/pharmacies/{id}/members?jobFunction=` | Leitung | Aktive Mitglieder für den Zuweisungsassistenten, nach Name, filterbar nach Tätigkeit |
 | compliance | `PATCH …/assignments/{aid}`, `DELETE …/assignments/{aid}` | Leitung | Frist ändern, zurückziehen |
 | compliance | `GET /compliance/pharmacies/{id}/matrix` | Leitung | Matrix Mitarbeiter × Schulung mit Status und Quote (C3) |
 | compliance | `GET /compliance/me/assignments` | Mitglied | Mein Dashboard, Überfällige zuerst (C4) |

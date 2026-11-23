@@ -184,7 +184,7 @@ public class PharmacyCoverageTests
         changed.JobFunction.ShouldBe(JobFunction.Pka);
         changed.Role.ShouldBe(MembershipRole.Manager);
         pharmacy.DomainEvents.OfType<MembershipChanged>().ShouldHaveSingleItem()
-            .ShouldBe(new MembershipChanged(pharmacy.Id, anna, Anna, JobFunction.Pka, MembershipRole.Manager));
+            .ShouldBe(new MembershipChanged(pharmacy.Id, anna, Anna, AnnaName, JobFunction.Pka, MembershipRole.Manager, MembershipVersion.From(2)));
     }
 
     [Fact]

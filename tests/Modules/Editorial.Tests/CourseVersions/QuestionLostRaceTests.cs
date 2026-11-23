@@ -58,7 +58,7 @@ public class QuestionLostRaceTests
     public async Task An_approval_that_lost_the_race_is_told_the_version_changed()
     {
         var approved = await new ApproveQuestionHandler(store, lostRace, new FakeTimeProvider(Now.Value))
-            .HandleAsync(new ApproveQuestion(version.Id, question, Reviewer), TestContext.Current.CancellationToken);
+            .HandleAsync(new ApproveQuestion(version.Id, question, Reviewer, ReviewersName), TestContext.Current.CancellationToken);
 
         ShouldBeChanged(approved.Error);
     }

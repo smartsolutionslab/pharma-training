@@ -38,7 +38,7 @@ public class MessagingTopologyTests
         consumed.ShouldBeEmpty();
         published.ShouldNotContain(InvitationMailRequested);
         published.ShouldBe(
-            [Contracts + "Organisation.MembershipEndedV1", Contracts + "Organisation.MembershipStartedV1", Contracts + "Organisation.PharmacyRegisteredV1"],
+            [Contracts + "Organisation.MembershipChangedV1", Contracts + "Organisation.MembershipEndedV1", Contracts + "Organisation.MembershipStartedV1", Contracts + "Organisation.PharmacyRegisteredV1"],
             ignoreOrder: false);
     }
 
@@ -57,7 +57,7 @@ public class MessagingTopologyTests
         var (consumed, _) = MessagingTopology.Of("compliance");
 
         consumed.ShouldBe(
-            [CourseVersionPublished, CourseVersionRetired, Contracts + "Organisation.MembershipEndedV1", Contracts + "Organisation.MembershipStartedV1"],
+            [CourseVersionPublished, CourseVersionRetired, Contracts + "Organisation.MembershipChangedV1", Contracts + "Organisation.MembershipEndedV1", Contracts + "Organisation.MembershipStartedV1"],
             ignoreOrder: false);
     }
 
@@ -74,6 +74,57 @@ public class MessagingTopologyTests
 
         failure.Message.ShouldContain("nowhere");
         failure.Message.ShouldContain("*.Application");
+    }
+
+    [Fact]
+    public void A_consumer_that_takes_a_service_of_another_assembly_beside_its_event_is_read_by_its_event_alone()
+    {
+        // AGENTS.md lets a consumer take dependencies as extra Handle parameters (IDispatcher, ILogger<T>,
+        // Wolverine.IMessageContext); their assemblies are not among those the AppHost reads.
+        using var probe = ConsumerProbe.Compile("Probe", """
+            using Probe.Dependency;
+            using SmartSolutionsLab.PharmaTraining.Contracts.Editorial;
+
+            namespace SmartSolutionsLab.PharmaTraining.Modules.Probe.Application;
+
+            public sealed class CourseVersionPublishedConsumer
+            {
+                public void Handle(CourseVersionPublishedV1 message, IMessageContext context)
+                {
+                }
+            }
+            """);
+
+        var (consumed, published) = MessagingTopology.Of("probe", [probe.Application, probe.Contracts]);
+
+        consumed.ShouldBe([CourseVersionPublished], ignoreOrder: false);
+        published.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void A_handler_method_whose_message_is_no_contract_grants_no_exchange()
+    {
+        // A helper named like a handler, or a typo in one, must not widen what the service's broker user may read.
+        using var probe = ConsumerProbe.Compile("Probe", """
+            using SmartSolutionsLab.PharmaTraining.Contracts.Editorial;
+
+            namespace SmartSolutionsLab.PharmaTraining.Modules.Probe.Application;
+
+            public sealed class CourseVersionPublishedConsumer
+            {
+                public void Handle(CourseVersionPublishedV1 message)
+                {
+                }
+
+                public static void Handle(string note)
+                {
+                }
+            }
+            """);
+
+        var (consumed, _) = MessagingTopology.Of("probe", [probe.Application, probe.Contracts]);
+
+        consumed.ShouldBe([CourseVersionPublished], ignoreOrder: false);
     }
 
     [Fact]
