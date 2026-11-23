@@ -44,3 +44,15 @@ export function renderMarkdown(text: string, { headingOffset = 0 }: MarkdownOpti
   const html = markdown.renderer.render(tokens, markdown.options, env);
   return DOMPurify.sanitize(html, { USE_PROFILES: { html: true } });
 }
+
+/**
+ * The level of the text's shallowest heading (1 for `#`), or undefined for a text without one: a page lifts the text's
+ * headings by it, so the text's top heading sits right below the page's own and no heading level is skipped.
+ */
+export function shallowestHeading(text: string): number | undefined {
+  const levels = markdown
+    .parse(text, {})
+    .filter((token) => token.type === 'heading_open')
+    .map((token) => Number(token.tag.slice(1)));
+  return levels.length === 0 ? undefined : Math.min(...levels);
+}
