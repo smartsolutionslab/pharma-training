@@ -38,7 +38,7 @@ public class InviteMemberTests
         var raised = pharmacy.DomainEvents.OfType<MemberInvited>().ShouldHaveSingleItem();
         raised.Membership.ShouldBe(membership.Id);
         raised.ExpiresAt.ShouldBe(Timestamp.From(Start.AddMinutes(5).AddDays(14)));
-        membership.TokenHash.ShouldBeNull();
+        membership.InvitationLinks.ShouldBeEmpty();
         store.Commits.ShouldBe(1);
     }
 
@@ -81,7 +81,7 @@ public class InviteMemberTests
         var invited = await Handler(store).HandleAsync(new InviteMember(pharmacy.Id, Owner, Invitee, JobFunction.Pta, MembershipRole.Employee), TestContext.Current.CancellationToken);
 
         invited.IsSuccess.ShouldBeTrue();
-        pharmacy.Membership(MembershipId.From(invited.Value)).TokenHash.ShouldBeNull();
+        pharmacy.Membership(MembershipId.From(invited.Value)).InvitationLinks.ShouldBeEmpty();
     }
 
     [Fact]

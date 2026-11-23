@@ -872,6 +872,37 @@
         }
       }
     },
+    "/editorial/course-versions/{id}/next": {
+      "post": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/editorial/course-versions": {
       "get": {
         "tags": [
@@ -943,6 +974,56 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/EditorialCourseVersionDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/editorial/course-versions/{id}/returns": {
+      "get": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "maximum": 21474837,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedResultOfEditorialCourseVersionReturnDto"
                 }
               }
             }
@@ -1331,6 +1412,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReturnEditorialCourseVersionRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "OK",
@@ -1417,6 +1508,75 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PermissionDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/learning/sessions": {
+      "post": {
+        "tags": [
+          "LearningSessionEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartLearningSessionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningSessionDto"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningSessionDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/learning/sessions/{id}": {
+      "get": {
+        "tags": [
+          "LearningSessionEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningSessionDto"
                 }
               }
             }
@@ -2627,6 +2787,32 @@
           }
         }
       },
+      "EditorialCourseVersionReturnDto": {
+        "required": [
+          "id",
+          "returnedBy",
+          "returnedAt",
+          "reason"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "returnedBy": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "returnedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
       "EditorialCourseVersionStatus": {
         "enum": [
           "Draft",
@@ -2892,6 +3078,13 @@
           }
         }
       },
+      "LearningChapterKind": {
+        "enum": [
+          "Text",
+          "Pdf",
+          "Video"
+        ]
+      },
       "LearningSampleDto": {
         "required": [
           "id",
@@ -2907,6 +3100,84 @@
             "type": "string"
           }
         }
+      },
+      "LearningSessionChapterDto": {
+        "required": [
+          "chapterId",
+          "position",
+          "kind",
+          "progressPercent",
+          "completed"
+        ],
+        "type": "object",
+        "properties": {
+          "chapterId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "position": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/LearningChapterKind"
+          },
+          "progressPercent": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "completed": {
+            "type": "boolean"
+          }
+        }
+      },
+      "LearningSessionDto": {
+        "required": [
+          "id",
+          "courseId",
+          "courseVersionId",
+          "status",
+          "chapters"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "courseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "courseVersionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "$ref": "#/components/schemas/LearningSessionStatus"
+          },
+          "chapters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LearningSessionChapterDto"
+            }
+          }
+        }
+      },
+      "LearningSessionStatus": {
+        "enum": [
+          "InProgress",
+          "ContentCompleted",
+          "Finished"
+        ]
       },
       "MyPharmacyDto": {
         "required": [
@@ -3153,6 +3424,47 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ComplianceSampleDto"
+            }
+          },
+          "totalCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "page": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "pageSize": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "PagedResultOfEditorialCourseVersionReturnDto": {
+        "required": [
+          "items",
+          "totalCount",
+          "page",
+          "pageSize"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorialCourseVersionReturnDto"
             }
           },
           "totalCount": {
@@ -3437,6 +3749,29 @@
           }
         }
       },
+      "ReturnEditorialCourseVersionRequest": {
+        "required": [
+          "reason"
+        ],
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
+      "StartLearningSessionRequest": {
+        "required": [
+          "courseVersionId"
+        ],
+        "type": "object",
+        "properties": {
+          "courseVersionId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
       "Unit": {
         "type": "object"
       }
@@ -3445,6 +3780,9 @@
   "tags": [
     {
       "name": "Host"
+    },
+    {
+      "name": "LearningSessionEndpoints"
     }
   ]
 }

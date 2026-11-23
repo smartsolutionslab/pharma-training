@@ -47,7 +47,7 @@ public partial class InvitationMailRequestedV1ConsumerTests
         var token = TokenIn(mail);
         mail.Text.ShouldContain($"https://app.example/invitations/accept#token={token}", Case.Sensitive);
         mail.Text.ShouldContain("gültig bis 15.03.2027, 09:00 Uhr (UTC)", Case.Sensitive);
-        pharmacy.Membership(membership).TokenHash.ShouldBe(InvitationTokenHash.Of(InvitationToken.From(token)));
+        pharmacy.Membership(membership).InvitationLinks.Select(link => link.Hash).ShouldBe([InvitationTokenHash.Of(InvitationToken.From(token))]);
         commitsAtSend.ShouldBe([1], "the hash was not committed before the mail was sent");
         store.Published.ShouldBeEmpty();
     }
@@ -56,37 +56,13 @@ public partial class InvitationMailRequestedV1ConsumerTests
     public async Task A_mail_that_cannot_be_sent_fails_the_consumer()
     {
         var (pharmacy, membership) = Invited();
-        var before = pharmacy.Membership(membership).TokenHash;
         mails.SendAsync(Arg.Any<OutgoingMail>(), Arg.Any<CancellationToken>()).ThrowsAsync(new IOException("The SMTP server is gone."));
 
         await Should.ThrowAsync<IOException>(
             () => Consumer().HandleAsync(new InvitationMailRequestedV1(membership.Value, pharmacy.Id.Value), TestContext.Current.CancellationToken));
 
-        store.Commits.ShouldBe(1);
-        pharmacy.Membership(membership).TokenHash.ShouldNotBe(before);
-    }
-
-    [Fact]
-    public async Task A_retry_after_a_failed_send_mails_a_new_link_and_only_that_one_works()
-    {
-        var (pharmacy, membership) = Invited();
-        List<OutgoingMail> attempted = [];
-        var attempts = 0;
-        mails.SendAsync(Arg.Any<OutgoingMail>(), Arg.Any<CancellationToken>()).Returns(call =>
-        {
-            attempted.Add(call.Arg<OutgoingMail>());
-            return ++attempts == 1 ? Task.FromException(new IOException("The SMTP server is gone.")) : Task.CompletedTask;
-        });
-        var message = new InvitationMailRequestedV1(membership.Value, pharmacy.Id.Value);
-
-        await Should.ThrowAsync<IOException>(() => Consumer().HandleAsync(message, TestContext.Current.CancellationToken));
-        await Consumer().HandleAsync(message, TestContext.Current.CancellationToken);
-
-        attempted.Count.ShouldBe(2, "the retry sent no second mail");
-        var first = TokenIn(attempted[0]);
-        var second = TokenIn(attempted[1]);
-        second.ShouldNotBe(first);
-        pharmacy.Membership(membership).TokenHash.ShouldBe(InvitationTokenHash.Of(InvitationToken.From(second)));
+        store.Commits.ShouldBe(2);
+        pharmacy.Membership(membership).InvitationLinks.ShouldBeEmpty();
     }
 
     [Fact]
@@ -126,7 +102,7 @@ public partial class InvitationMailRequestedV1ConsumerTests
         store.Commits.ShouldBe(1);
         var stored = store.Stored.Single(stored => stored.Id == pharmacy.Id).Membership(membership);
         stored.Status.ShouldBe(MembershipStatus.Invited);
-        stored.TokenHash.ShouldBeNull();
+        stored.InvitationLinks.ShouldBeEmpty();
         sent.ShouldBeEmpty("the invitation was renewed after the link's commit and before the send, which killed the link, yet this run mailed it");
     }
 
@@ -191,6 +167,109 @@ public partial class InvitationMailRequestedV1ConsumerTests
         thrown.Message.ShouldContain(field, Case.Sensitive);
     }
 
+    /// <summary>
+    /// A mail whose send returned is not sent again for the same invitation, however often its message is delivered:
+    /// Wolverine redelivers it when the process dies between the send and marking the envelope handled.
+    /// </summary>
+    [Fact]
+    public async Task A_mail_whose_send_returned_is_not_sent_again_when_its_message_is_redelivered()
+    {
+        var (pharmacy, membership) = Invited();
+        var message = new InvitationMailRequestedV1(membership.Value, pharmacy.Id.Value);
+
+        await Consumer().HandleAsync(message, TestContext.Current.CancellationToken);
+        await Consumer().HandleAsync(message, TestContext.Current.CancellationToken);
+
+        var mail = sent.ShouldHaveSingleItem("the redelivered message mailed the same invitation a second time");
+        LinkWorks(pharmacy, TokenIn(mail)).ShouldBeTrue("the mail already sent no longer opens the invitation after its message was redelivered");
+    }
+
+    /// <summary>
+    /// A send that reached the server and failed afterwards is retried; when the retry cannot send at all (the server is
+    /// gone now), the invitee holds only the first mail, and its link must still open the invitation.
+    /// </summary>
+    [Fact]
+    public async Task A_retry_that_cannot_send_leaves_the_link_of_the_mail_that_reached_the_server_working()
+    {
+        var (pharmacy, membership) = Invited();
+        List<OutgoingMail> received = [];
+        var attempts = 0;
+        mails.SendAsync(Arg.Any<OutgoingMail>(), Arg.Any<CancellationToken>()).Returns(call =>
+        {
+            if (++attempts == 1)
+            {
+                // The server took the mail; the connection failed afterwards.
+                received.Add(call.Arg<OutgoingMail>());
+                return Task.FromException(new MailNotSentException("The mail was not sent: IOException."));
+            }
+
+            return Task.FromException(new IOException("The SMTP server is gone."));
+        });
+        var message = new InvitationMailRequestedV1(membership.Value, pharmacy.Id.Value);
+
+        await Should.ThrowAsync<MailNotSentException>(() => Consumer().HandleAsync(message, TestContext.Current.CancellationToken));
+        await Should.ThrowAsync<IOException>(() => Consumer().HandleAsync(message, TestContext.Current.CancellationToken));
+
+        var only = received.ShouldHaveSingleItem();
+        LinkWorks(pharmacy, TokenIn(only)).ShouldBeTrue("the retry killed the only link the invitee holds, and mailed nothing in its place");
+    }
+
+    /// <summary>
+    /// A send that reached the server and failed afterwards, then a retry that sent: the invitee holds two mails of one
+    /// invitation, and either may arrive last, so the link of each must open it.
+    /// </summary>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    public async Task Every_link_mailed_for_one_invitation_works_whichever_mail_arrives_last(int arrivesLast)
+    {
+        var (pharmacy, membership) = Invited();
+        List<OutgoingMail> received = [];
+        var attempts = 0;
+        mails.SendAsync(Arg.Any<OutgoingMail>(), Arg.Any<CancellationToken>()).Returns(call =>
+        {
+            received.Add(call.Arg<OutgoingMail>());
+            return ++attempts == 1 ? Task.FromException(new MailNotSentException("The mail was not sent: IOException.")) : Task.CompletedTask;
+        });
+        var message = new InvitationMailRequestedV1(membership.Value, pharmacy.Id.Value);
+
+        await Should.ThrowAsync<MailNotSentException>(() => Consumer().HandleAsync(message, TestContext.Current.CancellationToken));
+        await Consumer().HandleAsync(message, TestContext.Current.CancellationToken);
+
+        received.Count.ShouldBe(2);
+        LinkWorks(pharmacy, TokenIn(received[arrivesLast])).ShouldBeTrue($"the link of mail {arrivesLast + 1} of 2, which the invitee may receive last, is dead");
+    }
+
+    /// <summary>A renewal is a new invitation version: its message mails a new link, and only that link works.</summary>
+    [Fact]
+    public async Task A_renewal_after_the_mail_was_sent_mails_a_new_link_that_replaces_the_first()
+    {
+        var (pharmacy, membership) = Invited();
+        await Consumer().HandleAsync(new InvitationMailRequestedV1(membership.Value, pharmacy.Id.Value), TestContext.Current.CancellationToken);
+        time.Advance(TimeSpan.FromDays(1));
+        pharmacy.RenewInvitation(membership, Timestamp.From(time.GetUtcNow())).IsSuccess.ShouldBeTrue();
+        pharmacy.ClearDomainEvents();
+
+        await Consumer().HandleAsync(new InvitationMailRequestedV1(membership.Value, pharmacy.Id.Value), TestContext.Current.CancellationToken);
+
+        sent.Count.ShouldBe(2, "the renewal mailed no new link");
+        var first = TokenIn(sent[0]);
+        var renewed = TokenIn(sent[1]);
+        renewed.ShouldNotBe(first);
+        sent[1].Text.ShouldContain("gültig bis 16.03.2027, 09:01 Uhr (UTC)", Case.Sensitive);
+        LinkWorks(pharmacy, first).ShouldBeFalse("the link mailed before the renewal still opens the invitation");
+        LinkWorks(pharmacy, renewed).ShouldBeTrue("the renewal's link does not open the invitation");
+    }
+
+    /// <summary>
+    /// Whether the link with this token opens the stored invitation: accepting it as anna@example.org succeeds. A
+    /// successful accept changes the stored pharmacy, so a test asks this once per invitation it means to keep open.
+    /// </summary>
+    private bool LinkWorks(Pharmacy pharmacy, string token) =>
+        store.Stored.Single(stored => stored.Id == pharmacy.Id)
+            .AcceptInvitation(InvitationToken.From(token), PersonId.From(Guid.CreateVersion7()), DisplayName.From("Anna Berger"), Anna, Timestamp.From(time.GetUtcNow()))
+            .IsSuccess;
+
     private static InvitationMailRequestedV1 Revoked(Pharmacy pharmacy, MembershipId membership)
     {
         pharmacy.RevokeInvitation(membership).IsSuccess.ShouldBeTrue();
@@ -242,7 +321,7 @@ public partial class InvitationMailRequestedV1ConsumerTests
         renewed.RenewInvitation(membership, Timestamp.From(time.GetUtcNow())).IsSuccess.ShouldBeTrue();
         renewed.ClearDomainEvents();
         store.Stored[store.Stored.IndexOf(pharmacy)] = renewed;
-        pharmacy.Membership(membership).TokenHash.ShouldNotBeNull("the consumer's own copy must keep the link it committed");
+        pharmacy.Membership(membership).InvitationLinks.ShouldNotBeEmpty("the consumer's own copy must keep the link it committed");
     }
 
     private static FrontendLinks Links() => new(new ConfigurationBuilder()

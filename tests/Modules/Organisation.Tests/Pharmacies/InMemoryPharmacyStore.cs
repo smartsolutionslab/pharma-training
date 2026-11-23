@@ -34,7 +34,7 @@ internal sealed class InMemoryPharmacyStore : IPharmacyStore, IOrganisationUnitO
 
     /// <summary>The one stored pharmacy whose memberships hold the hash, as the database's unique index on it finds it.</summary>
     public Task<Option<Pharmacy>> LoadByInvitationAsync(InvitationTokenHash hash, CancellationToken cancellationToken) =>
-        Task.FromResult(Stored.SingleOrDefault(pharmacy => pharmacy.Memberships.Any(membership => membership.TokenHash == hash)) is { } pharmacy
+        Task.FromResult(Stored.SingleOrDefault(pharmacy => pharmacy.Memberships.Any(membership => membership.InvitationLinks.Any(link => link.Hash == hash))) is { } pharmacy
             ? Option<Pharmacy>.Some(pharmacy)
             : Option<Pharmacy>.None);
 
