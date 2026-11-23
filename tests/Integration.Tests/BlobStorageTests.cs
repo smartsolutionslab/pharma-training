@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
+using System.Web;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Azure;
 using Aspire.Hosting.Testing;
@@ -32,6 +33,8 @@ public class BlobStorageTests(AspireFixture aspire)
 
     private static readonly BlobUrlLifetime FifteenMinutes = BlobUrlLifetime.From(TimeSpan.FromMinutes(15));
 
+    private static readonly BlobReadHeaders InlinePdf = BlobReadHeaders.Inline("application/pdf");
+
     private static readonly HttpClient Http = new();
 
     public static TheoryData<string> BrowserMethods { get; } = ["PUT", "GET"];
@@ -50,7 +53,7 @@ public class BlobStorageTests(AspireFixture aspire)
 
             var upload = await urls.CreateUploadUrlAsync(name, FiveMinutes, TestContext.Current.CancellationToken);
             using var put = await PutAsync(upload.Url, content);
-            var read = await urls.CreateReadUrlAsync(name, FiveMinutes, TestContext.Current.CancellationToken);
+            var read = await urls.CreateReadUrlAsync(name, FiveMinutes, InlinePdf, TestContext.Current.CancellationToken);
             using var get = await Http.GetAsync(read.Url, TestContext.Current.CancellationToken);
 
             put.StatusCode.ShouldBe(HttpStatusCode.Created, module);
@@ -109,7 +112,7 @@ public class BlobStorageTests(AspireFixture aspire)
         var upload = await urls.CreateUploadUrlAsync(name, FiveMinutes, TestContext.Current.CancellationToken);
         using var put = await PutAsync(upload.Url, RandomNumberGenerator.GetBytes(16));
         using var delete = await Http.DeleteAsync(upload.Url, TestContext.Current.CancellationToken);
-        var read = await urls.CreateReadUrlAsync(name, FiveMinutes, TestContext.Current.CancellationToken);
+        var read = await urls.CreateReadUrlAsync(name, FiveMinutes, InlinePdf, TestContext.Current.CancellationToken);
         using var get = await Http.GetAsync(read.Url, TestContext.Current.CancellationToken);
 
         put.StatusCode.ShouldBe(HttpStatusCode.Created);
@@ -127,7 +130,7 @@ public class BlobStorageTests(AspireFixture aspire)
         var upload = await urls.CreateUploadUrlAsync(name, FiveMinutes, TestContext.Current.CancellationToken);
         using var put = await PutAsync(upload.Url, first);
         using var again = await PutAsync(upload.Url, RandomNumberGenerator.GetBytes(16));
-        var read = await urls.CreateReadUrlAsync(name, FiveMinutes, TestContext.Current.CancellationToken);
+        var read = await urls.CreateReadUrlAsync(name, FiveMinutes, InlinePdf, TestContext.Current.CancellationToken);
         using var get = await Http.GetAsync(read.Url, TestContext.Current.CancellationToken);
 
         put.StatusCode.ShouldBe(HttpStatusCode.Created);
@@ -155,7 +158,7 @@ public class BlobStorageTests(AspireFixture aspire)
 
         using var putName = await PutAsync((await urls.CreateUploadUrlAsync(name, FiveMinutes, TestContext.Current.CancellationToken)).Url, RandomNumberGenerator.GetBytes(16));
         using var putOther = await PutAsync((await urls.CreateUploadUrlAsync(other, FiveMinutes, TestContext.Current.CancellationToken)).Url, RandomNumberGenerator.GetBytes(16));
-        var read = await urls.CreateReadUrlAsync(name, FiveMinutes, TestContext.Current.CancellationToken);
+        var read = await urls.CreateReadUrlAsync(name, FiveMinutes, InlinePdf, TestContext.Current.CancellationToken);
         using var get = await Http.GetAsync(Elsewhere(read.Url, name, other), TestContext.Current.CancellationToken);
 
         putName.StatusCode.ShouldBe(HttpStatusCode.Created);
@@ -168,7 +171,7 @@ public class BlobStorageTests(AspireFixture aspire)
     {
         var urls = await UrlsAsync("editorial", TimeProvider.System.GetUtcNow());
 
-        var read = await urls.CreateReadUrlAsync(NewName(), FiveMinutes, TestContext.Current.CancellationToken);
+        var read = await urls.CreateReadUrlAsync(NewName(), FiveMinutes, InlinePdf, TestContext.Current.CancellationToken);
         using var put = await PutAsync(read.Url, RandomNumberGenerator.GetBytes(16));
 
         put.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
@@ -183,7 +186,7 @@ public class BlobStorageTests(AspireFixture aspire)
         var name = NewName();
 
         using var put = await PutAsync((await urls.CreateUploadUrlAsync(name, FiveMinutes, TestContext.Current.CancellationToken)).Url, RandomNumberGenerator.GetBytes(16));
-        var read = await expired.CreateReadUrlAsync(name, FifteenMinutes, TestContext.Current.CancellationToken);
+        var read = await expired.CreateReadUrlAsync(name, FifteenMinutes, InlinePdf, TestContext.Current.CancellationToken);
         using var get = await Http.GetAsync(read.Url, TestContext.Current.CancellationToken);
 
         put.StatusCode.ShouldBe(HttpStatusCode.Created);
@@ -311,6 +314,144 @@ public class BlobStorageTests(AspireFixture aspire)
         copied.Value.ShouldBe(new StoredBlob(copy, "application/pdf", 300, IsBlockBlob: true, IsCopy: true, ETag: copied.Value.ETag));
     }
 
+    [Fact]
+    public async Task A_read_url_serves_its_blob_with_the_overridden_type_and_disposition()
+    {
+        var urls = await UrlsAsync("editorial", TimeProvider.System.GetUtcNow());
+        var name = NewName();
+        var content = RandomNumberGenerator.GetBytes(256);
+
+        using var put = await PutAsync((await urls.CreateUploadUrlAsync(name, FiveMinutes, TestContext.Current.CancellationToken)).Url, content, "application/octet-stream");
+        var read = await urls.CreateReadUrlAsync(name, FiveMinutes, BlobReadHeaders.Inline("application/pdf"), TestContext.Current.CancellationToken);
+        using var get = await Http.GetAsync(read.Url, TestContext.Current.CancellationToken);
+
+        put.StatusCode.ShouldBe(HttpStatusCode.Created);
+        get.StatusCode.ShouldBe(HttpStatusCode.OK);
+        get.Content.Headers.ContentType.ShouldNotBeNull().MediaType.ShouldBe("application/pdf", "the signed rsct, not the type the blob was stored with");
+        get.Content.Headers.ContentDisposition.ShouldNotBeNull().DispositionType.ShouldBe("inline");
+        (await get.Content.ReadAsByteArrayAsync(TestContext.Current.CancellationToken)).ShouldBe(content);
+    }
+
+    [Fact]
+    public async Task A_read_url_whose_override_was_changed_is_refused()
+    {
+        var urls = await UrlsAsync("editorial", TimeProvider.System.GetUtcNow());
+        var name = NewName();
+
+        using var put = await PutAsync((await urls.CreateUploadUrlAsync(name, FiveMinutes, TestContext.Current.CancellationToken)).Url, RandomNumberGenerator.GetBytes(16));
+        var read = await urls.CreateReadUrlAsync(name, FiveMinutes, BlobReadHeaders.Inline("application/pdf"), TestContext.Current.CancellationToken);
+        var query = HttpUtility.ParseQueryString(read.Url.Query);
+        query["rsct"] = "text/html";
+        var changed = new UriBuilder(read.Url) { Query = query.ToString() }.Uri;
+        using var original = await Http.GetAsync(read.Url, TestContext.Current.CancellationToken);
+        using var tampered = await Http.GetAsync(changed, TestContext.Current.CancellationToken);
+
+        put.StatusCode.ShouldBe(HttpStatusCode.Created);
+        original.StatusCode.ShouldBe(HttpStatusCode.OK, "the URL as signed reads the blob, so the refusal is the change's");
+        tampered.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    /// <summary>
+    /// The emulator sends no <c>X-Content-Type-Options</c>, and a read URL cannot ask for one: the ADR argues why
+    /// <c>nosniff</c> is not needed for these URLs. Whether Azure itself sends it is checked with the deployed account.
+    /// </summary>
+    [Fact]
+    public async Task A_read_url_sends_no_nosniff_header_on_the_emulator()
+    {
+        var urls = await UrlsAsync("editorial", TimeProvider.System.GetUtcNow());
+        var name = NewName();
+
+        using var put = await PutAsync((await urls.CreateUploadUrlAsync(name, FiveMinutes, TestContext.Current.CancellationToken)).Url, RandomNumberGenerator.GetBytes(16));
+        var read = await urls.CreateReadUrlAsync(name, FiveMinutes, BlobReadHeaders.Inline("application/pdf"), TestContext.Current.CancellationToken);
+        using var get = await Http.GetAsync(read.Url, TestContext.Current.CancellationToken);
+
+        put.StatusCode.ShouldBe(HttpStatusCode.Created);
+        get.StatusCode.ShouldBe(HttpStatusCode.OK);
+        get.Headers.Contains("X-Content-Type-Options").ShouldBeFalse();
+        get.Content.Headers.Contains("X-Content-Type-Options").ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task A_copy_from_another_modules_read_url_lands_in_the_own_container_with_its_bytes()
+    {
+        var editorial = await UrlsAsync("editorial", TimeProvider.System.GetUtcNow());
+        var copies = await CopiesAsync("learning");
+        var learning = await StoredBlobsAsync("learning");
+        var source = NewName();
+        var target = NewName();
+        var content = RandomNumberGenerator.GetBytes(300);
+
+        using var put = await PutAsync((await editorial.CreateUploadUrlAsync(source, FiveMinutes, TestContext.Current.CancellationToken)).Url, content, "application/pdf");
+        var read = await editorial.CreateReadUrlAsync(source, FifteenMinutes, InlinePdf, TestContext.Current.CancellationToken);
+        var outcome = await copies.CopyFromAsync(read, target, TestContext.Current.CancellationToken);
+        var copied = await learning.FindAsync(target, TestContext.Current.CancellationToken);
+
+        put.StatusCode.ShouldBe(HttpStatusCode.Created);
+        outcome.ShouldBe(BlobCopyOutcome.Copied);
+        copied.HasValue.ShouldBeTrue("the copy lies in Learning's own container");
+        copied.Value.Length.ShouldBe(content.Length);
+        (await learning.ReadStartAsync(copied.Value, content.Length, TestContext.Current.CancellationToken)).ToArray().ShouldBe(content);
+    }
+
+    [Fact]
+    public async Task A_second_copy_to_the_same_name_is_already_there_and_leaves_the_blob_unchanged()
+    {
+        var editorial = await UrlsAsync("editorial", TimeProvider.System.GetUtcNow());
+        var copies = await CopiesAsync("learning");
+        var learning = await StoredBlobsAsync("learning");
+        var source = NewName();
+        var target = NewName();
+
+        using var put = await PutAsync((await editorial.CreateUploadUrlAsync(source, FiveMinutes, TestContext.Current.CancellationToken)).Url, RandomNumberGenerator.GetBytes(64), "application/pdf");
+        var read = await editorial.CreateReadUrlAsync(source, FifteenMinutes, InlinePdf, TestContext.Current.CancellationToken);
+        var first = await copies.CopyFromAsync(read, target, TestContext.Current.CancellationToken);
+        var afterFirst = await learning.FindAsync(target, TestContext.Current.CancellationToken);
+        var second = await copies.CopyFromAsync(read, target, TestContext.Current.CancellationToken);
+        var afterSecond = await learning.FindAsync(target, TestContext.Current.CancellationToken);
+
+        put.StatusCode.ShouldBe(HttpStatusCode.Created);
+        first.ShouldBe(BlobCopyOutcome.Copied);
+        second.ShouldBe(BlobCopyOutcome.AlreadyThere);
+        afterFirst.HasValue.ShouldBeTrue("the first copy lies in Learning's container");
+        afterSecond.HasValue.ShouldBeTrue("the second copy removed nothing");
+        afterSecond.Value.ETag.ShouldBe(afterFirst.Value.ETag, "a blob already there is not written again");
+    }
+
+    [Fact]
+    public async Task A_copy_from_an_expired_read_url_fails()
+    {
+        var now = TimeProvider.System.GetUtcNow();
+        var editorial = await UrlsAsync("editorial", now);
+        var expired = await UrlsAsync("editorial", now.AddMinutes(-16));
+        var copies = await CopiesAsync("learning");
+        var source = NewName();
+
+        using var put = await PutAsync((await editorial.CreateUploadUrlAsync(source, FiveMinutes, TestContext.Current.CancellationToken)).Url, RandomNumberGenerator.GetBytes(64), "application/pdf");
+        var read = await expired.CreateReadUrlAsync(source, FifteenMinutes, InlinePdf, TestContext.Current.CancellationToken);
+
+        put.StatusCode.ShouldBe(HttpStatusCode.Created);
+        await Should.ThrowAsync<Azure.RequestFailedException>(() => copies.CopyFromAsync(read, NewName(), TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task A_copy_to_a_name_already_there_succeeds_even_with_an_expired_source()
+    {
+        var now = TimeProvider.System.GetUtcNow();
+        var editorial = await UrlsAsync("editorial", now);
+        var expired = await UrlsAsync("editorial", now.AddMinutes(-16));
+        var copies = await CopiesAsync("learning");
+        var source = NewName();
+        var target = NewName();
+
+        using var put = await PutAsync((await editorial.CreateUploadUrlAsync(source, FiveMinutes, TestContext.Current.CancellationToken)).Url, RandomNumberGenerator.GetBytes(64), "application/pdf");
+        var first = await copies.CopyFromAsync(await editorial.CreateReadUrlAsync(source, FifteenMinutes, InlinePdf, TestContext.Current.CancellationToken), target, TestContext.Current.CancellationToken);
+        var again = await copies.CopyFromAsync(await expired.CreateReadUrlAsync(source, FifteenMinutes, InlinePdf, TestContext.Current.CancellationToken), target, TestContext.Current.CancellationToken);
+
+        put.StatusCode.ShouldBe(HttpStatusCode.Created);
+        first.ShouldBe(BlobCopyOutcome.Copied);
+        again.ShouldBe(BlobCopyOutcome.AlreadyThere, "a retry after the source expired finds the copy it already made");
+    }
+
     /// <summary>
     /// The modules whose containers the running AppHost created, read from its application model rather than listed, so a
     /// module added or removed with <c>fabric add-module</c> is covered without touching this file.
@@ -358,6 +499,15 @@ public class BlobStorageTests(AspireFixture aspire)
             .AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:blobs"] = await ConnectionStringAsync(module) })
             .Build();
         return new AzureBlobUrls(configuration, new FakeTimeProvider(now));
+    }
+
+    /// <summary>Copies into a module's container, made as the service makes them.</summary>
+    private async Task<AzureBlobCopies> CopiesAsync(string module)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:blobs"] = await ConnectionStringAsync(module) })
+            .Build();
+        return new AzureBlobCopies(configuration);
     }
 
     /// <summary>The blobs of a module's container, read as the service reads them.</summary>
