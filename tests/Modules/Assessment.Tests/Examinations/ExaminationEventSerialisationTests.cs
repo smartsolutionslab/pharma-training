@@ -1,19 +1,20 @@
-using System.Text.Json;
+using System.Text;
+using JasperFx;
+using Marten;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.EventSourcing;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.EventStore;
+using SmartSolutionsLab.PharmaTraining.Modules.Assessment.Infrastructure.EventStore;
 using SmartSolutionsLab.PharmaTraining.Modules.Assessment.Domain.Examinations;
 using SmartSolutionsLab.PharmaTraining.Modules.Assessment.Domain.Examinations.Events;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Assessment.Tests.Examinations;
 
 /// <summary>
-/// Every examination event is stored forever and read back by Marten through the options ModuleEventStore.Configure
-/// gives it: each must come back equal, its lists element by element.
+/// Every examination event is stored forever and read back by Marten's own serializer, configured by
+/// ModuleEventStore.Configure exactly as the host configures it: each must come back equal, its lists element by element.
 /// </summary>
 public class ExaminationEventSerialisationTests
 {
-    private static readonly JsonSerializerOptions EventStore = CreateEventStoreOptions();
-
     private static readonly Timestamp At = Timestamp.From(new DateTimeOffset(2027, 3, 1, 9, 0, 0, TimeSpan.Zero));
     private static readonly ExaminationId Examination = ExaminationId.New();
     private static readonly LearningSessionId Session = LearningSessionId.From(Guid.CreateVersion7());
@@ -33,9 +34,10 @@ public class ExaminationEventSerialisationTests
     public void Every_examination_event_survives_the_event_stores_serialisation(string name)
     {
         var stored = Event(name);
+        var serializer = EventStoreSerializer();
 
-        var json = JsonSerializer.Serialize(stored, stored.GetType(), EventStore);
-        var read = (IDomainEvent)JsonSerializer.Deserialize(json, stored.GetType(), EventStore)!;
+        var json = serializer.ToJson(stored);
+        var read = (IDomainEvent)serializer.FromJson(stored.GetType(), new MemoryStream(Encoding.UTF8.GetBytes(json)));
 
         read.ShouldBeOfType(stored.GetType());
         WithStoredLists(read, stored).ShouldBe(stored, json);
@@ -74,15 +76,13 @@ public class ExaminationEventSerialisationTests
         return withStoredList;
     }
 
-    private static JsonSerializerOptions CreateEventStoreOptions()
+    /// <summary>Marten's serializer as the host's store has it; nothing connects to the database.</summary>
+    private static ISerializer EventStoreSerializer()
     {
-        var options = new JsonSerializerOptions
-        {
-            RespectNullableAnnotations = true,
-            RespectRequiredConstructorParameters = true,
-        };
-        options.Converters.Add(new ValueObjectJsonConverterFactory());
-        return options;
+        var store = ModuleEventStore.Of(typeof(AssessmentAggregateStore).Assembly).ShouldNotBeNull();
+        var options = new StoreOptions();
+        store.Configure(options, "Host=localhost;Database=unused", AutoCreate.None);
+        return options.Serializer();
     }
 
     private static QuestionVersionId NewQuestion() => QuestionVersionId.From(Guid.CreateVersion7());

@@ -13,8 +13,8 @@ namespace Aspire.Hosting;
 /// Lets the web app's own origin, alone, use the signed upload and read URLs from the browser: a CORS rule on the storage
 /// emulator's blob service (docs/adr/0002). Aspire's storage integration has no CORS setting, so in run mode the rule is
 /// set on the emulator as soon as it is ready, keeping its other properties, and the web app waits for that. Published,
-/// the web app is served by the edge, so the storage account's blob service has one rule, the same, for the edge's https
-/// origin alone, written into its Bicep.
+/// the web app is served by the edge and reached at its public address, the parameter <c>frontend-url</c>, so the storage
+/// account's blob service has one rule, the same, for those two origins alone, written into its Bicep. No wildcard.
 /// </summary>
 public static class BrowserUploads
 {
@@ -28,6 +28,9 @@ public static class BrowserUploads
     private const int MaxAgeInSeconds = 3600;
 
     private const string DefaultDomain = "environment_default_domain";
+
+    // The storage module's parameter main.bicep sets to frontend-url.
+    private const string FrontendUrl = "frontend_url";
 
     // The environment's output Aspire writes in its Bicep; the property that reads it is not public.
     private const string DefaultDomainOutput = "AZURE_CONTAINER_APPS_ENVIRONMENT_DEFAULT_DOMAIN";
@@ -57,13 +60,16 @@ public static class BrowserUploads
     }
 
     /// <summary>
-    /// Published, the edge's origin alone, <c>https://&lt;edge&gt;.&lt;the environment's default domain&gt;</c>, where a
-    /// Container App with external ingress is served; in run mode nothing (<see cref="AllowBrowserAccessFrom"/> does it).
+    /// Published, the edge's origin, <c>https://&lt;edge&gt;.&lt;the environment's default domain&gt;</c>, where a
+    /// Container App with external ingress is served, and the web app's public address, <paramref name="frontendUrl"/>,
+    /// which the deployment sets as an origin (scheme and host, no path or trailing slash), those two alone; in run mode
+    /// nothing (<see cref="AllowBrowserAccessFrom"/> does it).
     /// </summary>
-    public static IResourceBuilder<AzureStorageResource> AllowBrowserAccessFromEdge(this IResourceBuilder<AzureStorageResource> storage, IResourceBuilder<ProjectResource> edge)
+    public static IResourceBuilder<AzureStorageResource> AllowBrowserAccessFromEdge(this IResourceBuilder<AzureStorageResource> storage, IResourceBuilder<ProjectResource> edge, IResourceBuilder<ParameterResource> frontendUrl)
     {
         ArgumentNullException.ThrowIfNull(storage);
         ArgumentNullException.ThrowIfNull(edge);
+        ArgumentNullException.ThrowIfNull(frontendUrl);
 
         if (!storage.ApplicationBuilder.ExecutionContext.IsPublishMode)
         {
@@ -75,12 +81,16 @@ public static class BrowserUploads
         var edgeName = edge.Resource.Name;
         return storage
             .WithParameter(DefaultDomain, new BicepOutputReference(DefaultDomainOutput, environment))
+            .WithParameter(FrontendUrl, frontendUrl)
             .ConfigureInfrastructure(infrastructure =>
             {
                 var domain = new ProvisioningParameter(DefaultDomain, typeof(string));
                 infrastructure.Add(domain);
+                var frontend = new ProvisioningParameter(FrontendUrl, typeof(string));
+                infrastructure.Add(frontend);
                 var rule = new StorageCorsRule { MaxAgeInSeconds = MaxAgeInSeconds };
                 rule.AllowedOrigins.Add(new InterpolatedStringExpression([new StringLiteralExpression($"https://{edgeName}."), new IdentifierExpression(domain.BicepIdentifier)]));
+                rule.AllowedOrigins.Add(frontend);
                 foreach (var method in Methods.Split(','))
                 {
                     rule.AllowedMethods.Add(Enum.Parse<CorsRuleAllowedMethod>(method, ignoreCase: true));

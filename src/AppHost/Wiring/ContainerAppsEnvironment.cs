@@ -7,11 +7,14 @@ namespace Aspire.Hosting;
 /// Where the published AppHost runs: one Azure Container Apps environment, <c>aca</c>, in publish mode alone
 /// (docs/adr/0005). Its Aspire dashboard is not deployed: it would show logs and traces, personal data among them, on a
 /// public URL; they stay in Log Analytics. Traffic between its apps is encrypted (peer traffic encryption), since Keycloak's
-/// tokens, the broker's messages and the services' answers cross it. No region is named here; the deployment chooses it.
+/// tokens, the broker's messages and the services' answers cross it. It is declared with API version 2025-07-01, which has
+/// that setting, whatever version Aspire would write. No region is named here; the deployment chooses it.
 /// </summary>
 public static class ContainerAppsEnvironment
 {
     private const string Name = "aca";
+
+    private const string ApiVersion = "2025-07-01";
 
     public static IDistributedApplicationBuilder AddContainerAppsEnvironment(this IDistributedApplicationBuilder builder)
     {
@@ -22,7 +25,11 @@ public static class ContainerAppsEnvironment
             builder.AddAzureContainerAppEnvironment(Name)
                 .WithDashboard(false)
                 .ConfigureInfrastructure(infrastructure =>
-                    infrastructure.GetProvisionableResources().OfType<ContainerAppManagedEnvironment>().Single().PeerTrafficEncryptionIsEnabled = true);
+                {
+                    var environment = infrastructure.GetProvisionableResources().OfType<ContainerAppManagedEnvironment>().Single();
+                    environment.ResourceVersion = ApiVersion;
+                    environment.PeerTrafficEncryptionIsEnabled = true;
+                });
         }
 
         return builder;
