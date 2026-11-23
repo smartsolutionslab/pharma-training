@@ -3,8 +3,8 @@ using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
 namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application;
 
 /// <summary>
-/// The account's address as Keycloak reports it, with whether Keycloak verified it. Whoever dispatches an accept says
-/// whether the address is verified; the use case decides what an unverified one may do.
+/// The account's address as Keycloak reports it, with whether Keycloak verified it. Whoever dispatches a command that needs a
+/// verified address says whether it is; the use case decides.
 /// </summary>
 public sealed record AccountEmail : IValueObject<EmailAddress>
 {

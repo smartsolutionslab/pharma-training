@@ -126,16 +126,19 @@ public class AssignmentTests
     }
 
     [Fact]
-    public void Three_failed_attempts_show_as_locked_until_the_learner_starts_again()
+    public void Three_failed_attempts_show_as_locked_until_the_learner_relearns_the_content()
     {
         var assignment = Assign(DueInDays(30)).Value;
         assignment.MarkStarted(Monday);
 
-        assignment.MarkLocked();
+        assignment.MarkLocked(Later(1));
         assignment.StateOn(Day(1)).ShouldBe(AssignmentState.Locked);
 
         assignment.MarkStarted(Later(2));
-        assignment.StateOn(Day(2)).ShouldBe(AssignmentState.InProgress);
+        assignment.StateOn(Day(2)).ShouldBe(AssignmentState.Locked);
+
+        assignment.Unlock(Later(3));
+        assignment.StateOn(Day(3)).ShouldBe(AssignmentState.InProgress);
     }
 
     [Fact]

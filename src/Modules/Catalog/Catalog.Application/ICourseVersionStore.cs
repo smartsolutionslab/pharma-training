@@ -20,6 +20,12 @@ public interface ICourseVersionStore
     Task<Option<CourseVersion>> FindAsync(Guid courseVersionId, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Whether the course has a stored version with a higher version number than the one given, retired or not: that
+    /// version supersedes the one given.
+    /// </summary>
+    Task<bool> HasNewerVersionAsync(Guid courseId, int versionNumber, CancellationToken cancellationToken);
+
+    /// <summary>
     /// One page of the courses as their current version, without chapters: the highest version of each course, while
     /// it is not retired, by title.
     /// </summary>

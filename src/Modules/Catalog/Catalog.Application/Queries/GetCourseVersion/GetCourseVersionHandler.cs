@@ -22,6 +22,23 @@ public sealed class GetCourseVersionHandler(ICourseVersionStore versions)
         }
 
         var isRetired = await versions.IsRetiredAsync(query.Id, cancellationToken);
-        return Success(version.Value.ToCatalogCourseVersionDto(isRetired));
+        var isSuperseded = await versions.HasNewerVersionAsync(version.Value.CourseId, version.Value.VersionNumber, cancellationToken);
+        return Success(version.Value.ToCatalogCourseVersionDto(StatusOf(isRetired, isSuperseded)));
+    }
+
+    // Derived from what is stored on every read, as the list decides the current version: nothing stored changes.
+    private static CatalogCourseVersionStatus StatusOf(bool isRetired, bool isSuperseded)
+    {
+        if (isRetired)
+        {
+            return CatalogCourseVersionStatus.Retired;
+        }
+
+        if (isSuperseded)
+        {
+            return CatalogCourseVersionStatus.Superseded;
+        }
+
+        return CatalogCourseVersionStatus.Current;
     }
 }

@@ -1,7 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- The edge, src/Edge, started in this process with a web root of the test's own: what it serves (the SPA, the runtime
-       configuration, the /api prefix) and what it forwards to a module's service, here a stub on a free port. No Docker. -->
+  <!-- Tests of the edge, src/Edge, in this process. How it forwards a request's body to a service (docs/adr/0021). And,
+       with a web root of the test's own, what it serves (the SPA, the runtime configuration, the /api prefix, its security
+       headers) and what it forwards to a module's service, here a stub on a free port. No Docker. -->
   <PropertyGroup>
     <RootNamespace>SmartSolutionsLab.PharmaTraining.Edge.Tests</RootNamespace>
   </PropertyGroup>

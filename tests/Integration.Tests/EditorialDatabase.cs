@@ -211,6 +211,20 @@ internal static class EditorialDatabase
     }
 
     /// <summary>
+    /// Clears the returner's name of a return, as a return recorded before #220 kept none: the record keeps its version,
+    /// person, time and reason.
+    /// </summary>
+    public static async Task ForgetReturnerNameAsync(string connectionString, Guid returnId, CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("UPDATE editorial.course_version_returns SET returned_by_name = NULL WHERE id = @id", connection);
+        command.Parameters.AddWithValue("id", returnId);
+
+        (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1);
+    }
+
+    /// <summary>
     /// A writer that has taken the number but not committed: the handler's check does not see it, and an INSERT of the
     /// same number waits on it. It inserts a bare draft of the course with that number in a transaction it leaves
     /// open; committing the gate keeps the row, disposing it uncommitted drops it.

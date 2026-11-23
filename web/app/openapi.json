@@ -2598,6 +2598,7 @@
           "title",
           "validityMonths",
           "isRetired",
+          "status",
           "chapters"
         ],
         "type": "object",
@@ -2632,6 +2633,9 @@
           "isRetired": {
             "type": "boolean"
           },
+          "status": {
+            "$ref": "#/components/schemas/CatalogCourseVersionStatus"
+          },
           "chapters": {
             "type": "array",
             "items": {
@@ -2639,6 +2643,13 @@
             }
           }
         }
+      },
+      "CatalogCourseVersionStatus": {
+        "enum": [
+          "Current",
+          "Superseded",
+          "Retired"
+        ]
       },
       "CatalogSampleDto": {
         "required": [
@@ -3206,6 +3217,7 @@
         "required": [
           "id",
           "returnedBy",
+          "returnedByName",
           "returnedAt",
           "reason"
         ],
@@ -3218,6 +3230,12 @@
           "returnedBy": {
             "type": "string",
             "format": "uuid"
+          },
+          "returnedByName": {
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "returnedAt": {
             "type": "string",
