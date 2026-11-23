@@ -54,6 +54,17 @@ internal sealed class InMemoryAssignmentStore : IAssignmentStore, IComplianceUni
 
     public void Add(Assignment assignment) => added.Add(assignment);
 
+    public Task<IReadOnlyList<Assignment>> ActiveOfLearnerInPharmacyAsync(PersonId learner, PharmacyId pharmacy, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<Assignment> active =
+        [
+            .. Stored.Where(assignment => assignment.Learner == learner
+                && assignment.Pharmacy == pharmacy
+                && assignment.Status is AssignmentStatus.Open or AssignmentStatus.InProgress),
+        ];
+        return Task.FromResult(active);
+    }
+
     public Task PublishAsync(IntegrationEvent integrationEvent)
     {
         queued.Add(integrationEvent);
