@@ -1,3 +1,4 @@
+import './lib/zodWithoutEval';
 import { type App as VueApp, type Component, createApp, h } from 'vue';
 import { bootstrap } from './bootstrap';
 import { withAuth } from './providers/auth';
