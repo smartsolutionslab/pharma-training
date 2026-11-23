@@ -39,7 +39,7 @@ public class ExaminationTests
         var examination = Open();
         StartAttempt(examination);
 
-        examination.StartAttempt(AttemptId.New(), [Q1, Q2], Now).Error.ShouldBeOfType<ExaminationNotUnlocked>();
+        examination.StartAttempt(AttemptId.New(), [Q1, Q2], Now).Error.Value.ShouldBeOfType<ExaminationNotUnlocked>();
     }
 
     [Fact]
@@ -86,7 +86,7 @@ public class ExaminationTests
         var examination = Open();
         examination.StartAttempt(AttemptId.New(), [Q1], Now);
 
-        examination.Answer(Q2, [B], Now).Error.ShouldBeOfType<QuestionNotInAttempt>();
+        examination.Answer(Q2, [B], Now).Error.Value.ShouldBeOfType<QuestionNotInAttempt>();
     }
 
     [Fact]
@@ -111,7 +111,7 @@ public class ExaminationTests
         Fail(examination, wrong: Q1);
         Fail(examination, wrong: Q1);
 
-        examination.StartAttempt(AttemptId.New(), [Q1, Q2], Now).Error.ShouldBeOfType<ExaminationNotUnlocked>();
+        examination.StartAttempt(AttemptId.New(), [Q1, Q2], Now).Error.Value.ShouldBeOfType<ExaminationNotUnlocked>();
 
         examination.Unlock(Now);
         StartAttempt(examination);
@@ -127,7 +127,7 @@ public class ExaminationTests
         examination.Answer(Q2, [B, C], Now);
         examination.Submit(Definition, Now);
 
-        examination.StartAttempt(AttemptId.New(), [Q1, Q2], Now).Error.ShouldBeOfType<ExaminationNotUnlocked>();
+        examination.StartAttempt(AttemptId.New(), [Q1, Q2], Now).Error.Value.ShouldBeOfType<ExaminationNotUnlocked>();
     }
 
     [Fact]
@@ -137,7 +137,7 @@ public class ExaminationTests
         StartAttempt(examination);
         var other = Definition with { CourseVersion = CourseVersionId.From(Guid.CreateVersion7()) };
 
-        examination.Submit(other, Now).Error.ShouldBeOfType<DefinitionOfAnotherVersion>();
+        examination.Submit(other, Now).Error.Value.ShouldBeOfType<DefinitionOfAnotherVersion>();
     }
 
     [Fact]
