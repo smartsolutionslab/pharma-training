@@ -6,6 +6,7 @@ import { useI18n } from 'vue-i18n';
 import type {
   ChangeOrganisationMembershipRequest,
   InviteOrganisationMemberRequest,
+  MyPharmacyDto,
   PharmacyInvitationDto,
   PharmacyMemberDto,
 } from '@/api/generated';
@@ -162,14 +163,17 @@ function dialogClosed(event: Event) {
 }
 
 const inviteOpen = ref(false);
+/** The pharmacy the invite dialog was opened on: a submit validated after a switch still invites into that one. */
+const invitedIn = shallowRef<MyPharmacyDto>();
 
 function openInvite(event: Event) {
   openedFrom(event);
+  invitedIn.value = current.value;
   inviteOpen.value = true;
 }
 
 async function invite(request: InviteOrganisationMemberRequest) {
-  const failure = await actions.invite(request);
+  const failure = await actions.invite(request, invitedIn.value);
   if (failure === undefined) {
     focusAfterClose = inviteOpener.value?.$el as HTMLElement | undefined;
     inviteOpen.value = false;
@@ -178,12 +182,14 @@ async function invite(request: InviteOrganisationMemberRequest) {
 }
 
 const changeOpen = ref(false);
-/** The member last asked about: the dialog keeps its words while it closes. */
+/** The member last asked about, and their pharmacy: the dialog keeps its words while it closes. */
 const changedMember = ref<PharmacyMemberDto>();
+const changedIn = shallowRef<MyPharmacyDto>();
 
 function openChange(event: Event, member: PharmacyMemberDto) {
   openedFrom(event);
   changedMember.value = member;
+  changedIn.value = current.value;
   changeOpen.value = true;
 }
 
@@ -192,14 +198,16 @@ async function change(request: ChangeOrganisationMembershipRequest) {
   if (member === undefined) {
     return undefined;
   }
-  const failure = await actions.change(member, request);
+  const failure = await actions.change(member, request, changedIn.value);
   if (failure === undefined) {
     changeOpen.value = false;
   }
   return failure;
 }
 
-type Confirmation = { kind: 'revoke'; invitation: PharmacyInvitationDto } | { kind: 'end'; member: PharmacyMemberDto };
+type Confirmation =
+  | { kind: 'revoke'; invitation: PharmacyInvitationDto }
+  | { kind: 'end'; member: PharmacyMemberDto; pharmacy: string; own: boolean };
 
 const confirmOpen = ref(false);
 /** What the confirmation last asked about: it keeps its words while it closes. */
@@ -211,9 +219,30 @@ function ask(event: Event, asked: Confirmation) {
   confirmOpen.value = true;
 }
 
+/** Ending a membership names the pharmacy it is asked in, and says whether it is the caller's own. */
+function askEnd(event: Event, member: PharmacyMemberDto) {
+  const shown = current.value;
+  ask(event, {
+    kind: 'end',
+    member,
+    pharmacy: shown?.name ?? '',
+    own: member.membershipId === shown?.membershipId,
+  });
+}
+
+// A dialog opened on one pharmacy asks about that pharmacy: switched to another, each closes, so none names the other,
+// acts on it or shows what the first one's host answered.
+watch(
+  () => current.value?.id,
+  () => {
+    inviteOpen.value = false;
+    changeOpen.value = false;
+    confirmOpen.value = false;
+  },
+);
+
 const question = computed(() => {
   const asked = confirmation.value;
-  const pharmacy = current.value?.name ?? '';
   if (asked === undefined) {
     return { title: '', description: '', confirmLabel: '', pending: false };
   }
@@ -225,13 +254,13 @@ const question = computed(() => {
       pending: isRevoking.value,
     };
   }
-  const { name, membershipId } = asked.member;
+  const { name } = asked.member;
+  const { pharmacy } = asked;
   return {
     title: t('organisation.team.end.title', { name }),
-    description:
-      membershipId === current.value?.membershipId
-        ? t('organisation.team.end.descriptionSelf', { pharmacy })
-        : t('organisation.team.end.description', { name, pharmacy }),
+    description: asked.own
+      ? t('organisation.team.end.descriptionSelf', { pharmacy })
+      : t('organisation.team.end.description', { name, pharmacy }),
     confirmLabel: t('organisation.team.end.confirm'),
     pending: isEnding.value,
   };
@@ -306,7 +335,7 @@ async function confirm() {
               variant="ghost"
               size="sm"
               :aria-label="t('organisation.team.members.endOf', { name: row.name })"
-              @click="(event: Event) => ask(event, { kind: 'end', member: row })"
+              @click="(event: Event) => askEnd(event, row)"
             >
               {{ t('organisation.team.members.end') }}
             </Button>
@@ -370,7 +399,7 @@ async function confirm() {
       <ChangeMembershipDialog
         :open="changeOpen"
         :member="changedMember"
-        :pharmacy="current.name"
+        :pharmacy="changedIn?.name ?? ''"
         :change="change"
         @cancel="changeOpen = false"
         @closed="dialogClosed"

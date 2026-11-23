@@ -399,6 +399,7 @@ export const en: MessageSchema = {
         invalidJobFunction: 'The job function is missing or unknown.',
         invalidMembershipRole: 'The role is missing or unknown.',
         identityIncomplete: 'Your account gives no name or valid email address. Complete your profile.',
+        inPharmacy: 'In {pharmacy}: {reason}',
       },
     },
   },

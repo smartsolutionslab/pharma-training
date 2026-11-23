@@ -411,6 +411,7 @@ export const de = {
         invalidJobFunction: 'Die Tätigkeit fehlt oder ist unbekannt.',
         invalidMembershipRole: 'Die Rolle fehlt oder ist unbekannt.',
         identityIncomplete: 'Ihr Konto nennt keinen Namen oder keine gültige E-Mail-Adresse. Ergänzen Sie Ihr Profil.',
+        inPharmacy: 'In {pharmacy}: {reason}',
       },
     },
   },
