@@ -8,6 +8,9 @@ public class EditorialCallerTests
 {
     private static readonly Guid Subject = Guid.CreateVersion7();
 
+    /// <summary>A name claim that is no reviewer's name: none at all, empty, blank, a character too long, holding a nul.</summary>
+    public static TheoryData<string?> UnfitNames => [(string?)null, string.Empty, "   ", new string('a', 101), "a\0b"];
+
     [Fact]
     public void The_person_is_read_from_the_tokens_subject() =>
         EditorialCaller.PersonOf(User(("sub", Subject.ToString()))).Value.ShouldBe(PersonId.From(Subject));
@@ -30,6 +33,36 @@ public class EditorialCallerTests
 
         EditorialCaller.PersonOf(User([.. claims])).HasValue.ShouldBeFalse();
     }
+
+    [Fact]
+    public void The_reviewers_name_is_read_from_the_tokens_name_claim() =>
+        EditorialCaller.NameOf(User(("sub", Subject.ToString()), ("name", "Emma Editor"))).Value.ShouldBe(ReviewerName.From("Emma Editor"));
+
+    [Fact]
+    public void The_reviewers_name_is_read_from_the_name_the_handler_mapped() =>
+        EditorialCaller.NameOf(User(("sub", Subject.ToString()), (ClaimTypes.Name, "Emma Editor"))).Value.ShouldBe(ReviewerName.From("Emma Editor"));
+
+    [Fact]
+    public void The_reviewers_name_is_read_trimmed() =>
+        EditorialCaller.NameOf(User(("name", "  Emma Editor "))).Value.Value.ShouldBe("Emma Editor");
+
+    [Theory]
+    [MemberData(nameof(UnfitNames))]
+    public void Without_a_name_claim_that_fits_there_is_no_reviewers_name(string? name)
+    {
+        List<(string Type, string Value)> claims = [("sub", Subject.ToString())];
+        if (name is not null)
+        {
+            claims.Add(("name", name));
+        }
+
+        EditorialCaller.NameOf(User([.. claims])).HasValue.ShouldBeFalse();
+    }
+
+    /// <summary>The issue refuses a missing name rather than replacing it: the user name is no display name (#205).</summary>
+    [Fact]
+    public void A_user_name_alone_is_no_reviewers_name() =>
+        EditorialCaller.NameOf(User(("sub", Subject.ToString()), ("preferred_username", "editor"))).HasValue.ShouldBeFalse();
 
     private static ClaimsPrincipal User(params (string Type, string Value)[] claims) =>
         new(new ClaimsIdentity(claims.Select(claim => new Claim(claim.Type, claim.Value)), authenticationType: "Bearer"));
