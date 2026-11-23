@@ -3187,6 +3187,7 @@
         "required": [
           "id",
           "returnedBy",
+          "returnedByName",
           "returnedAt",
           "reason"
         ],
@@ -3199,6 +3200,12 @@
           "returnedBy": {
             "type": "string",
             "format": "uuid"
+          },
+          "returnedByName": {
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "returnedAt": {
             "type": "string",

@@ -100,7 +100,7 @@ public class CourseVersionWorkflowErrorTests
     public void The_workflow_steps_fail_with_the_workflow_union()
     {
         var submitted = Draft().SubmitForReview(Author);
-        var returned = Draft().ReturnToDraft(Reviewer, ReturnReason.From("Kapitel 2 braucht eine Quelle."), Now);
+        var returned = Draft().ReturnToDraft(Reviewer, ReviewersName, ReturnReason.From("Kapitel 2 braucht eine Quelle."), Now);
         var published = Draft().Publish(Reviewer, ReviewPolicy.SingleEditor, Now);
         var retired = Draft().Retire(Reviewer, Now);
 

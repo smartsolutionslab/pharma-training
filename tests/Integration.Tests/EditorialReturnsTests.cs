@@ -5,7 +5,7 @@ using static SmartSolutionsLab.PharmaTraining.Integration.Tests.EditorialWorkflo
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 
 /// <summary>
-/// Every return of a course version is kept with who returned it, when and why, and listed through the edge a page at
+/// Every return of a course version is kept with who returned it, under the name their token carried (#220), when and why, and listed through the edge a page at
 /// a time, newest first, the reason as the editor wrote it, markup included (#181).
 /// </summary>
 [Collection(EditorialDrafts.Name)]
@@ -13,6 +13,9 @@ public class EditorialReturnsTests(AspireFixture aspire)
 {
     private const string FirstReason = "Erste Rückgabe: Quelle fehlt.";
     private const string SecondReason = "Zweite Rückgabe: <b>Kapitel 2</b> unklar.";
+
+    /// <summary>The <c>name</c> claim of the local user <c>editor</c>.</summary>
+    private const string EditorsName = "Emma Editor";
 
     [Fact]
     public async Task Two_returns_of_one_version_are_both_listed_newest_first()
@@ -32,6 +35,37 @@ public class EditorialReturnsTests(AspireFixture aspire)
         listed.Items[0].ReturnedBy.ShouldNotBe(Guid.Empty);
         listed.Items[1].ReturnedBy.ShouldBe(listed.Items[0].ReturnedBy);
         listed.Items[0].Id.ShouldNotBe(listed.Items[1].Id);
+        listed.Items[0].ReturnedByName.ShouldBe(EditorsName);
+        listed.Items[1].ReturnedByName.ShouldBe(EditorsName);
+    }
+
+    [Fact]
+    public async Task A_return_is_listed_with_the_returners_name()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var id = await ReturnedOnceAsync(client, cancellationToken);
+
+        var listed = await ReturnsAsync(client, id, string.Empty, cancellationToken);
+
+        listed.Items.ShouldHaveSingleItem().ReturnedByName.ShouldBe(EditorsName);
+    }
+
+    /// <summary>Returns stored before #220 have no name: the column stays empty, and they are listed without one, as they were.</summary>
+    [Fact]
+    public async Task A_return_stored_before_names_were_kept_is_listed_without_one()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var connectionString = await EditorialDatabase.ConnectionStringAsync(aspire, cancellationToken);
+        var id = await ReturnedOnceAsync(client, cancellationToken);
+        var named = (await ReturnsAsync(client, id, string.Empty, cancellationToken)).Items.ShouldHaveSingleItem();
+
+        await EditorialDatabase.ForgetReturnerNameAsync(connectionString, named.Id, cancellationToken);
+
+        var listed = (await ReturnsAsync(client, id, string.Empty, cancellationToken)).Items.ShouldHaveSingleItem();
+        listed.ReturnedByName.ShouldBeNull();
+        listed.ShouldBe(named with { ReturnedByName = null });
     }
 
     [Fact]
@@ -123,6 +157,15 @@ public class EditorialReturnsTests(AspireFixture aspire)
         return draft.Id;
     }
 
+    /// <summary>A new course's first version, submitted and returned once, by the calling editor.</summary>
+    private static async Task<Guid> ReturnedOnceAsync(HttpClient client, CancellationToken cancellationToken)
+    {
+        var draft = await ReadyToSubmitAsync(client, cancellationToken);
+        await SubmitAsync(client, draft.Id, cancellationToken);
+        await ReturnAsync(client, draft.Id, FirstReason, cancellationToken);
+        return draft.Id;
+    }
+
     private static async Task<ReturnsPage> ReturnsAsync(HttpClient client, Guid id, string query, CancellationToken cancellationToken)
     {
         using var response = await client.GetAsync(ReturnsPath(id, query), cancellationToken);
@@ -136,5 +179,5 @@ public class EditorialReturnsTests(AspireFixture aspire)
 
     private sealed record ReturnsPage(List<ReturnItem> Items, int TotalCount, int Page, int PageSize);
 
-    private sealed record ReturnItem(Guid Id, Guid ReturnedBy, DateTimeOffset ReturnedAt, string Reason);
+    private sealed record ReturnItem(Guid Id, Guid ReturnedBy, string? ReturnedByName, DateTimeOffset ReturnedAt, string Reason);
 }
