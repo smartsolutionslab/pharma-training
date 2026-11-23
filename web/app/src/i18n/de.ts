@@ -116,6 +116,8 @@ export const de = {
       registeredNotOpened:
         'Die Apotheke {name} wurde registriert, konnte aber nicht geöffnet werden. Wählen Sie sie unter „Apotheke“ in der Seitenleiste.',
       failed: 'Die Apotheke konnte nicht registriert werden. Versuchen Sie es erneut.',
+      emailNotVerified:
+        'Ihre E-Mail-Adresse ist noch nicht bestätigt. Bestätigen Sie sie über den Link in der Bestätigungs-E-Mail, und registrieren Sie die Apotheke dann erneut.',
     },
     accept: {
       accepting: {

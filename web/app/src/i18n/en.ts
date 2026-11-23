@@ -107,6 +107,8 @@ export const en: MessageSchema = {
       registeredNotOpened:
         'The pharmacy {name} was registered, but it could not be opened. Choose it under “Pharmacy” in the sidebar.',
       failed: 'The pharmacy could not be registered. Try again.',
+      emailNotVerified:
+        'Your e-mail address has not been verified yet. Verify it with the link in the verification e-mail, then register the pharmacy again.',
     },
     accept: {
       accepting: {
