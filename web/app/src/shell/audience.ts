@@ -1,5 +1,12 @@
 import type { MyPharmacyDto } from '@/api/generated';
-import { type Audience, type ModuleDetail, type ModulePage, type ModuleRoute, moduleRoutes } from '@/modules';
+import {
+  type Audience,
+  type ModuleDetail,
+  type ModuleEntry,
+  type ModulePage,
+  type ModuleRoute,
+  moduleRoutes,
+} from '@/modules';
 
 /** What decides who sees a page: the membership in the chosen pharmacy, if any, and the realm role editor. */
 export interface Reach {
@@ -51,12 +58,21 @@ export function detailOf(path: string): { module: ModuleRoute; detail: ModuleDet
   return detail === undefined ? undefined : { module, detail };
 }
 
+/** The entry page at exactly this address, whichever module it is of; none for any other address. */
+export function entryOf(path: string): ModuleEntry | undefined {
+  return moduleRoutes.flatMap((route) => route.entries ?? []).find((entry) => entry.path === path);
+}
+
 /**
- * What governs an address: the module's detail page whose pattern it matches, else the module's page below it named by
+ * What governs an address: the entry page at exactly that address, else the module's detail page whose pattern it matches, else the module's page below it named by
  * the address's second segment, otherwise the module the address is in; none for the start page or an address no
  * module has.
  */
-export function pageOf(path: string): ModulePage | ModuleDetail | undefined {
+export function pageOf(path: string): ModulePage | ModuleDetail | ModuleEntry | undefined {
+  const entry = entryOf(path);
+  if (entry !== undefined) {
+    return entry;
+  }
   const module = moduleOf(path);
   if (module === undefined) {
     return undefined;
