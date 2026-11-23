@@ -5,14 +5,15 @@ using Microsoft.EntityFrameworkCore;
 // Applies one module's migrations to its service's own database, then exits. In run mode the AppHost runs this once per
 // service, naming the module in Migrations:Module, and starts the service only after its run completes; published, it is
 // each service's init container (docs/adr/0005). It logs in as the administrator (ConnectionStrings:database). Given the
-// connection string the service logs in with (ConnectionStrings:application), it then ensures that module's role.
+// connection string the service logs in with (ConnectionStrings:application), it then ensures that module's role. It
+// builds Wolverine's message storage too, as the administrator, so the service never has to; it needs no broker for it.
 var builder = Host.CreateApplicationBuilder(args);
 builder.AddServiceDefaults();
 
 var module = builder.Configuration["Migrations:Module"]
     ?? throw new InvalidOperationException("Migrations:Module is missing; the AppHost names the module whose database this run migrates.");
 // Every session the runner opens as the administrator, EF Core's and Marten's too (both read ConnectionStrings:database),
-// resolves unqualified names in pg_catalog alone: the module role holds CREATE on the database and could otherwise plant
+// resolves unqualified names in pg_catalog alone: defence in depth, should a role ever hold CREATE on the database and plant
 // code on the administrator's search_path that these sessions would run with the administrator's rights (CVE-2018-1058,
 // AdministratorSession). What they make names the module's schema explicitly.
 var administrator = AdministratorSession.Pinned(builder.Configuration.GetConnectionString("database")
@@ -31,7 +32,7 @@ foreach (var context in contexts)
 
 using var host = builder.Build();
 // Every replica's init container runs this; one at a time per database.
-await using (await MigrationGate.EnterAsync(administrator, CancellationToken.None))
+await using (await MigrationGate.EnterAsync(administrator, host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("MigrationGate"), CancellationToken.None))
 {
     // Published, where a module role exists: the schema named after the administrator is the administrator's before the
     // role could take it, so no other administrator session (an operator's psql) runs what a role planted there either.
@@ -47,6 +48,11 @@ await using (await MigrationGate.EnterAsync(administrator, CancellationToken.Non
     }
 
     await host.Services.ApplyEventStoreSchemasAsync(infrastructure);
+
+    // Wolverine's inbox, outbox and dead letters, with the service hosts' own configuration, owned by the administrator;
+    // the role's grants below cover it like every schema the administrator owns. A schema of that name some other role
+    // owns, or holds an object of, fails the run.
+    await ModuleMessageStorage.BuildAsync(administrator, CancellationToken.None);
 
     // After every migration of the run, so the role's grants cover what they made and it never keeps write access to a
     // migration history table they made.
