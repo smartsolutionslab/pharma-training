@@ -121,6 +121,53 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1, $"There is no membership {membership}.");
     }
 
+    /// <summary>
+    /// Time travel for the renew cooldown: moves the instant the membership's newest invitation mail was requested
+    /// back by the span given, as if that request had been made so much earlier.
+    /// </summary>
+    public async Task MoveInvitationRequestBackAsync(Guid membership, TimeSpan by, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            "UPDATE organisation.memberships SET invitation_requested_at = invitation_requested_at - @by WHERE id = @id AND invitation_requested_at IS NOT NULL",
+            connection);
+        command.Parameters.AddWithValue("id", membership);
+        command.Parameters.AddWithValue("by", by);
+        (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1, $"There is no membership {membership} whose invitation mail was requested.");
+    }
+
+    /// <summary>Sets the pharmacy's tally of invitation mails to the count given, all of them requested today (UTC).</summary>
+    public async Task SetInvitationMailsTodayAsync(Guid pharmacy, int count, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            "UPDATE organisation.pharmacies SET invitation_mail_day = (now() at time zone 'utc')::date, invitation_mails_that_day = @count WHERE id = @id",
+            connection);
+        command.Parameters.AddWithValue("id", pharmacy);
+        command.Parameters.AddWithValue("count", count);
+        (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1, $"There is no pharmacy {pharmacy}.");
+    }
+
+    /// <summary>Time travel for the daily cap: moves the day of the pharmacy's tally back by one, as if its mails had been requested yesterday (UTC).</summary>
+    public async Task MoveInvitationMailDayBackAsync(Guid pharmacy, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            "UPDATE organisation.pharmacies SET invitation_mail_day = invitation_mail_day - 1 WHERE id = @id AND invitation_mail_day IS NOT NULL",
+            connection);
+        command.Parameters.AddWithValue("id", pharmacy);
+        (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1, $"There is no pharmacy {pharmacy} that has counted an invitation mail.");
+    }
+
+    /// <summary>The number of the pharmacy's memberships, whatever their status.</summary>
+    public async Task<long> MembershipsOfAsync(Guid pharmacy, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("SELECT count(*) FROM organisation.memberships WHERE pharmacy_id = @id", connection);
+        command.Parameters.AddWithValue("id", pharmacy);
+        return (long)(await command.ExecuteScalarAsync(cancellationToken) ?? 0L);
+    }
+
     /// <summary>The token hashes of the membership's stored links, in hash order; empty when it keeps none.</summary>
     public async Task<List<string>> TokenHashesAsync(Guid membership, CancellationToken cancellationToken)
     {
