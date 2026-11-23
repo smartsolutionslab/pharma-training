@@ -449,6 +449,46 @@
         }
       }
     },
+    "/compliance/pharmacies/{id}/assignments": {
+      "post": {
+        "tags": [
+          "AssignmentEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignComplianceCourseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComplianceCourseAssignmentDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/compliance/permissions/manage": {
       "get": {
         "tags": [
@@ -2170,6 +2210,50 @@
           }
         }
       },
+      "AssignComplianceCourseRequest": {
+        "required": [
+          "courseId",
+          "personIds",
+          "dueDate",
+          "recurrenceMonths"
+        ],
+        "type": "object",
+        "properties": {
+          "courseId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "personIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "dueDate": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date"
+          },
+          "recurrenceMonths": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "CatalogChapterDto": {
         "required": [
           "chapterId",
@@ -2356,6 +2440,64 @@
           },
           "role": {
             "$ref": "#/components/schemas/OrganisationMembershipRole"
+          }
+        }
+      },
+      "ComplianceAssignedLearnerDto": {
+        "required": [
+          "personId",
+          "assignmentId"
+        ],
+        "type": "object",
+        "properties": {
+          "personId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "assignmentId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "ComplianceCourseAssignmentDto": {
+        "required": [
+          "assigned",
+          "refused"
+        ],
+        "type": "object",
+        "properties": {
+          "assigned": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComplianceAssignedLearnerDto"
+            }
+          },
+          "refused": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComplianceRefusedLearnerDto"
+            }
+          }
+        }
+      },
+      "ComplianceRefusedLearnerDto": {
+        "required": [
+          "personId",
+          "code",
+          "message"
+        ],
+        "type": "object",
+        "properties": {
+          "personId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
           }
         }
       },
@@ -3780,6 +3922,9 @@
   "tags": [
     {
       "name": "Host"
+    },
+    {
+      "name": "AssignmentEndpoints"
     },
     {
       "name": "LearningSessionEndpoints"

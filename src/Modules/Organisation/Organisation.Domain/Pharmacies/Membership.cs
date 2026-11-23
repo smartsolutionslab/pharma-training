@@ -23,6 +23,9 @@ public sealed class Membership : Entity<MembershipId>
     /// <summary>The invitation's version: 1 at the invite, the next at each renewal. A founder, never invited, keeps 1, never mailed.</summary>
     public InvitationVersion InvitationVersion { get; private set; } = InvitationVersion.First;
 
+    /// <summary>Which state of the membership this is: 1 from its start, the next at each change of job function or role.</summary>
+    public MembershipVersion Version { get; private set; } = MembershipVersion.First;
+
     /// <summary>The invitation version whose mail was sent, if any; a version that is mailed is not mailed again.</summary>
     public InvitationVersion? InvitationMailedFor { get; private set; }
 
@@ -76,6 +79,7 @@ public sealed class Membership : Entity<MembershipId>
     {
         JobFunction = jobFunction;
         Role = role;
+        Version = Version.Next();
     }
 
     /// <summary>Whether one of the current version's links has this hash.</summary>

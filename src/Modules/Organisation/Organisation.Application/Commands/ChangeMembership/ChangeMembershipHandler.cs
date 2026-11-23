@@ -1,9 +1,14 @@
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.IntegrationEvents;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies.Events;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Commands.ChangeMembership;
 
-/// <summary>Changes the membership's job function and role; no other module is told of it in MVP 1.</summary>
+/// <summary>
+/// Changes the membership's job function and role and announces it (MembershipChangedV1) in the same commit; a save
+/// that lost a race saves and announces nothing (docs/adr/0002, docs/adr/0015).
+/// </summary>
 public sealed class ChangeMembershipHandler(IPharmacyStore pharmacies, IOrganisationUnitOfWork unitOfWork)
     : ICommandHandler<ChangeMembership, Result<Unit, ApiError>>
 {
@@ -28,6 +33,11 @@ public sealed class ChangeMembershipHandler(IPharmacyStore pharmacies, IOrganisa
         if (changed.IsFailure)
         {
             return Failure(PharmacyFailures.From(changed.Error));
+        }
+
+        foreach (var change in pharmacy.DomainEvents.OfType<MembershipChanged>())
+        {
+            await unitOfWork.PublishAsync(change.ToIntegrationEvent());
         }
 
         if (!await unitOfWork.TryCommitAsync(cancellationToken))

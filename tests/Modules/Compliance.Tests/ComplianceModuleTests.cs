@@ -1,4 +1,7 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Api;
+using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application.Commands.AssignCourse;
+using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application.DTOs;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -22,5 +25,21 @@ public class ComplianceModuleTests
         var buildContainer = () => services.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true }).Dispose();
 
         Should.NotThrow(buildContainer);
+    }
+
+    /// <summary>The handler is discovered by convention, never registered by hand, as the one handler of its command.</summary>
+    [Fact]
+    public void Assigning_a_course_is_handled_by_its_discovered_handler()
+    {
+        var services = new ServiceCollection();
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:database"] = "Host=localhost" })
+            .Build();
+
+        new ComplianceModule().AddServices(services, configuration);
+
+        services.Where(service => service.ServiceType == typeof(ICommandHandler<AssignCourse, Result<ComplianceCourseAssignmentDto, ApiError>>))
+            .ShouldHaveSingleItem()
+            .ImplementationType.ShouldBe(typeof(AssignCourseHandler));
     }
 }
