@@ -23,14 +23,21 @@ const answers: [string, () => unknown, Parameters<typeof t>[0], string, string][
     "No language model is set up for AI drafts. Contact the platform's operators.",
   ],
   [
-    '429 without a code (#174 adds its own)',
+    '429 editorial.model-limit-reached',
+    () => new ApiError(429, problem(429, 'editorial.model-limit-reached')),
+    'editorial.test.draft.errors.limitReached',
+    'Sie haben Ihr Limit für KI-Entwürfe erreicht. Versuchen Sie es später erneut.',
+    'You have reached your limit for AI drafts. Try again later.',
+  ],
+  [
+    "429 without a code (an edge's)",
     () => new ApiError(429, problem(429)),
     'editorial.test.draft.errors.tooManyRequests',
     'Sie haben in kurzer Zeit zu viele KI-Entwürfe angefordert. Versuchen Sie es später erneut.',
     'You have asked for too many AI drafts in a short time. Try again later.',
   ],
   [
-    '429 with a code of its own',
+    '429 with a code the page does not know',
     () => new ApiError(429, problem(429, 'editorial.too-many-drafts')),
     'editorial.test.draft.errors.tooManyRequests',
     'Sie haben in kurzer Zeit zu viele KI-Entwürfe angefordert. Versuchen Sie es später erneut.',

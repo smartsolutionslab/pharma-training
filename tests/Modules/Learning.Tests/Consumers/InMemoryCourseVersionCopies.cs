@@ -31,6 +31,14 @@ internal sealed class InMemoryCourseVersionCopies : ICourseVersionCopies, ILearn
             ? Option<CourseVersionCopy>.Some(found)
             : Option<CourseVersionCopy>.None);
 
+    public Task<Option<VideoDuration>> FindVideoDurationAsync(CourseVersionId version, ChapterId chapter, CancellationToken cancellationToken) =>
+        Task.FromResult(Versions
+            .Where(stored => stored.Id == version.Value)
+            .SelectMany(stored => stored.Chapters)
+            .FirstOrDefault(stored => stored.ChapterId == chapter.Value && stored.Kind == ChapterKind.Video) is { VideoDurationSeconds: { } seconds }
+            ? Option<VideoDuration>.Some(VideoDuration.From(seconds))
+            : Option<VideoDuration>.None);
+
     public Task<bool> IsRetiredAsync(CourseVersionId version, CancellationToken cancellationToken) =>
         Task.FromResult(Retirements.Any(stored => stored.CourseVersionId == version.Value));
 

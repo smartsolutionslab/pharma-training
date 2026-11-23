@@ -35,6 +35,24 @@ public sealed class CourseVersionCopies(LearningDbContext context) : ICourseVers
             : Option<CourseVersionCopy>.None;
     }
 
+    public async Task<Option<VideoDuration>> FindVideoDurationAsync(CourseVersionId version, ChapterId chapter, CancellationToken cancellationToken)
+    {
+        Ensure.That(version).IsNotNull();
+        Ensure.That(chapter).IsNotNull();
+
+        var seconds = await context.Set<CourseVersionChapterCopy>()
+            .AsNoTracking()
+            .Where(copy => copy.CourseVersionId == version.Value && copy.ChapterId == chapter.Value && copy.Kind == ChapterKind.Video)
+            .Select(copy => copy.VideoDurationSeconds)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (seconds is { } found)
+        {
+            return Option<VideoDuration>.Some(VideoDuration.From(found));
+        }
+
+        return Option<VideoDuration>.None;
+    }
+
     public Task<bool> IsRetiredAsync(CourseVersionId version, CancellationToken cancellationToken)
     {
         Ensure.That(version).IsNotNull();

@@ -5,7 +5,7 @@ import { useI18n } from 'vue-i18n';
 import type { EditorialChapterDto } from '@/api/generated';
 import MarkdownView from '@/components/MarkdownView.vue';
 import { Button } from '@/components/ui/button';
-import { formatDuration } from './formatDuration';
+import { formatDuration } from '@/lib/formatDuration';
 
 interface ChapterListProps {
   /** The chapters in the order to show them. */

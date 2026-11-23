@@ -19,6 +19,7 @@
   <Project Path="tests/Kernel/Results.Tests/Results.Tests.csproj" />
   <Project Path="tests/BuildingBlocks/Storage.Tests/Storage.Tests.csproj" />
   <Project Path="tests/BuildingBlocks/Mail.Tests/Mail.Tests.csproj" />
+  <Project Path="tests/BuildingBlocks/RateLimits.Tests/RateLimits.Tests.csproj" />
   <Project Path="tests/BuildingBlocks/Persistence.Tests/Persistence.Tests.csproj" />
   <Project Path="tests/BuildingBlocks/Messaging.Tests/Messaging.Tests.csproj" />
   <Project Path="tests/Integration.Tests/Integration.Tests.csproj" />

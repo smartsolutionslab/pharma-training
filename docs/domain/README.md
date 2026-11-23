@@ -83,6 +83,8 @@ Stand der Diskussion vom 17.11.2026.
 | Rolle Redaktion | Keycloak-Realm-Rolle editor, getrennt von den Apothekenrollen in Organisation | Plattform-Mitarbeiter sind keine Apothekenmitglieder |
 | Matrix und Startversion | Matrix zeigt nur in der Apotheke zugewiesene Schulungen; begonnene Session bleibt auf ihrer Version, sonst aktuelle Version (Compliance hält sie) | Übersichtlich; konsistent mit Runde 9 |
 | Nachweis-Export | In Certification als ZIP mit PDFs und CSV, nur Bestätigungen aus der Beschäftigungszeit | PDFs liegen dort; kein synchroner Aufruf zwischen Services |
+| Zuweisungen bei Austritt | Austritt storniert offene und begonnene Zuweisungen der Person in dieser Apotheke, nicht abgeschlossene und nicht die anderer Apotheken; die Historie nennt die ausgetretene Person und „Mitgliedschaft beendet“; nichts wird storniert, solange sie dort eine weitere aktive Mitgliedschaft hat | Das Event nennt niemanden sonst; eine erneut eingeladene Person hat eine neue Mitgliedschaft (#30) |
+| Eigene Zuweisungen | Eine Leitung ändert oder zieht keine Zuweisung zurück, deren Lernende sie selbst ist (403 `compliance.own-assignment`); das tut eine andere Leitung der Apotheke | Vorgabe des Orchestrators bei #269, die der Owner überstimmen kann |
 
 ## Glossar (Ubiquitous Language)
 
@@ -211,7 +213,7 @@ Ein Stream pro Person × Schulungsversion und Durchlauf. Die Kapitelstruktur wir
 | `ProgressReset` | Nach `AttemptsExhausted`; die Kapitel der falsch beantworteten Fragen sind wieder offen |
 | `SessionFinished` | Nach `TestPassed` (Learning konsumiert es zusätzlich zu Certification); danach keine Änderungen |
 
-Invarianten: Fortschritt pro Kapitel wächst nur; `ContentCompleted` erst, wenn jedes Pflichtkapitel erfüllt ist; höchstens eine nicht beendete Session pro Person × Version. Der Client meldet Fortschritt gebündelt (beim Pausieren, am Kapitelende, spätestens alle 30 s), damit der Stream klein bleibt.
+Invarianten: Fortschritt pro Kapitel wächst nur; `ContentCompleted` erst, wenn jedes Pflichtkapitel erfüllt ist; höchstens eine nicht beendete Session pro Person × Version; Videofortschritt wächst höchstens so schnell, wie die Zeit seit dem letzten gespeicherten Fortschritt der Session es bei 1,25-facher Wiedergabe der Dauer aus der lokalen Kopie erlaubt (ADR 0024); sonst 422 `learning.progress-too-fast`, nichts wird gespeichert. Der Client meldet Fortschritt gebündelt (beim Pausieren, am Kapitelende, spätestens alle 30 s), damit der Stream klein bleibt.
 
 Auf einer zurückgezogenen Version (`CourseVersionRetired`) beginnt kein neuer Durchlauf (409 `learning.course-version-retired`); ein nicht beendeter wird weiter fortgesetzt, gelesen und fortgeschrieben. Eine nur abgelöste Version bleibt startbar.
 
@@ -299,6 +301,7 @@ Alle Pfade beginnen mit dem Modulnamen; der Edge leitet danach weiter. Kein Serv
 | catalog | `GET /catalog/course-versions/{id}` | Mitglied | Inhalt für den Player (ohne Fragen) |
 | compliance | `POST /compliance/pharmacies/{id}/assignments` | Leitung | Zuweisen an mehrere Mitarbeiter (C1, C2) |
 | compliance | `GET /compliance/pharmacies/{id}/members?jobFunction=` | Leitung | Aktive Mitglieder für den Zuweisungsassistenten, nach Name, filterbar nach Tätigkeit |
+| compliance | `GET …/assignments/{aid}` | Leitung | Zuweisung mit Historie (wer, was, wann) |
 | compliance | `PATCH …/assignments/{aid}`, `DELETE …/assignments/{aid}` | Leitung | Frist ändern, zurückziehen |
 | compliance | `GET /compliance/pharmacies/{id}/matrix?jobFunction=` | Leitung | Matrix Mitarbeiter × Schulung mit Status und Quote (C3); Zeilen = aktive Mitglieder, seitenweise; Spalten = Schulungen mit mindestens einer nicht stornierten Zuweisung in der Apotheke; Quote = konforme unter allen Zellen (je Person und Schulung die neueste nicht stornierte Zuweisung): offen, in Bearbeitung oder gesperrt ist konform, überfällig nicht, abgeschlossen (auch verspätet) bis einschließlich „gültig bis“ = deutscher Abschlusstag + Gültigkeitsmonate der neuesten Version; für alle Zeilen des Filters, je Schulung und gesamt; ohne Zelle keine Quote |
 | compliance | `GET /compliance/me/assignments?pharmacyId=` | Mitglied | Mein Dashboard: aktive Zuweisungen in der gewählten Apotheke, Überfällige zuerst, mit Startversion (C4) |
