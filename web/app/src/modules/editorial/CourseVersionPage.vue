@@ -299,13 +299,13 @@ async function returnVersion(reason: string): Promise<'done' | 'reasonRefused' |
     'return',
     () => workflow.returnToDraft(reason),
     (failure) =>
-      isKey(failure, 'editorial.workflow.returnForm.reasonInvalid') ||
+      isKey(failure, 'editorial.workflow.returnForm.reasonRefused') ||
       (isKey(failure, 'editorial.workflow.errors.changed') && version.value?.status === 'InReview'),
   );
   if (outcome === 'done') {
     return 'done';
   }
-  if (isKey(outcome, 'editorial.workflow.returnForm.reasonInvalid')) {
+  if (isKey(outcome, 'editorial.workflow.returnForm.reasonRefused')) {
     return 'reasonRefused';
   }
   notify.failure(workflowFailureText(outcome));

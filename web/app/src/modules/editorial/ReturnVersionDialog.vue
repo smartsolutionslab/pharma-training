@@ -59,7 +59,7 @@ const submit = handleSubmit(async (values) => {
     return;
   }
   if (outcome === 'reasonRefused') {
-    setFieldError('reason', 'editorial.workflow.returnForm.reasonInvalid');
+    setFieldError('reason', 'editorial.workflow.returnForm.reasonRefused');
   }
   await nextTick();
   textarea.value?.focus();

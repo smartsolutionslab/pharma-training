@@ -451,6 +451,8 @@ export const en: MessageSchema = {
         reasonRequired: 'Please give a reason.',
         reasonTooLong: 'The reason can be at most {max} characters long.',
         reasonInvalid: 'The reason contains control or format characters that are not allowed.',
+        reasonRefused:
+          'The reason must be 1 to {max} characters long without leading or trailing spaces, and may contain no control or format characters other than line breaks and tabs.',
       },
       errors: {
         notADraft: 'Only a draft can be submitted.',

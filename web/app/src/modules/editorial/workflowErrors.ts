@@ -21,7 +21,7 @@ const byCode: Record<string, MessageKey> = {
   'editorial.too-few-options': 'editorial.workflow.errors.questionDefect',
   'editorial.single-choice-one-correct': 'editorial.workflow.errors.questionDefect',
   'editorial.multiple-choice-a-correct': 'editorial.workflow.errors.questionDefect',
-  'editorial.invalid-return-reason': 'editorial.workflow.returnForm.reasonInvalid',
+  'editorial.invalid-return-reason': 'editorial.workflow.returnForm.reasonRefused',
 };
 
 /** Each step's text when it failed for a reason the page has no words of its own for. */

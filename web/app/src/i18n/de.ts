@@ -465,6 +465,8 @@ export const de = {
         reasonRequired: 'Geben Sie einen Grund an.',
         reasonTooLong: 'Der Grund darf höchstens {max} Zeichen lang sein.',
         reasonInvalid: 'Der Grund enthält unzulässige Steuer- oder Formatzeichen.',
+        reasonRefused:
+          'Der Grund muss ohne Leerraum am Anfang und Ende 1 bis {max} Zeichen lang sein und darf außer Zeilenumbrüchen und Tabulatoren keine Steuer- oder Formatzeichen enthalten.',
       },
       errors: {
         notADraft: 'Nur ein Entwurf kann eingereicht werden.',
