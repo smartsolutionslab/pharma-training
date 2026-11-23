@@ -194,17 +194,34 @@ public class AssignmentTestAccessTests
         assignment.StateOn(Day(2)).ShouldBe(AssignmentState.Locked);
     }
 
+    /// <summary>
+    /// Owner decision on #247, option (a): Learning announces a session once, so a learner who began before the course
+    /// was assigned is learning all the same; that start puts the assignment in progress, at the time it happened.
+    /// </summary>
     [Fact]
-    public void Events_that_happened_before_the_assignment_change_nothing()
+    public void A_start_before_the_assignment_puts_it_in_progress_when_it_happened()
     {
         var assignment = Assign();
 
         assignment.MarkStarted(Later(-1));
+
+        assignment.Status.ShouldBe(AssignmentStatus.InProgress);
+        assignment.StartedAt.ShouldBe(Later(-1));
+
+        assignment.MarkStarted(Later(1));
+
+        assignment.StartedAt.ShouldBe(Later(-1));
+    }
+
+    [Fact]
+    public void Locks_and_unlocks_that_happened_before_the_assignment_change_nothing()
+    {
+        var assignment = Assign();
+
         assignment.MarkLocked(Later(-1));
         assignment.Unlock(Later(-1));
 
         assignment.Status.ShouldBe(AssignmentStatus.Open);
-        assignment.StartedAt.ShouldBeNull();
         assignment.TestAccess.ShouldBe(TestAccess.Available);
         assignment.TestAccessChangedAt.ShouldBeNull();
 
