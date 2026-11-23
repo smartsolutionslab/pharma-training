@@ -64,11 +64,11 @@ function renderReordering() {
   });
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   queryClient.setQueryData(versionKey, version);
-  render(Reordering, { global: { plugins: [[VueQueryPlugin, { queryClient }]] } });
+  const { unmount } = render(Reordering, { global: { plugins: [[VueQueryPlugin, { queryClient }]] } });
   if (used.reordering === undefined) {
     throw new Error('The component did not set up.');
   }
-  return { reordering: used.reordering, queryClient };
+  return { reordering: used.reordering, queryClient, unmount };
 }
 
 /** The chapters' ids in the order the cache holds them. */
@@ -226,4 +226,63 @@ test('an order refused while a later move waits restores the order from before i
   await waitFor(() => expect(queryClient.getQueryState(versionKey)?.isInvalidated).toBe(true));
   expect(puts).toHaveLength(1);
   expect(notify.failure).toHaveBeenCalledOnce();
+});
+
+// Leaving or reloading the page while an order is not yet saved would drop it without a word (#223): until every order
+// has settled, the page asks the browser to confirm leaving it, by cancelling beforeunload.
+
+/** Whether the page would ask before it is left or reloaded now. */
+function asksBeforeLeaving() {
+  const event = new Event('beforeunload', { cancelable: true });
+  window.dispatchEvent(event);
+  return event.defaultPrevented;
+}
+
+test('while an order is being saved, leaving the page asks first; once it is saved, it does not', async () => {
+  const puts = holdEach();
+  const { reordering } = renderReordering();
+  expect(asksBeforeLeaving()).toBe(false);
+
+  const done = reordering.reorder([c.id, a.id, b.id]);
+  await waitFor(() => expect(puts).toHaveLength(1));
+  expect(asksBeforeLeaving()).toBe(true);
+
+  // A move made meanwhile waits for the first order, and the page keeps asking until it is saved too.
+  void reordering.reorder([c.id, b.id, a.id]);
+  puts[0]?.answer(Response.json({}));
+  await waitFor(() => expect(puts).toHaveLength(2));
+  expect(asksBeforeLeaving()).toBe(true);
+
+  puts[1]?.answer(Response.json({}));
+  await done;
+  expect(asksBeforeLeaving()).toBe(false);
+});
+
+test('once an order is refused and undone, leaving the page does not ask', async () => {
+  const puts = holdEach();
+  const { reordering } = renderReordering();
+
+  const done = reordering.reorder([c.id, a.id, b.id]);
+  await waitFor(() => expect(puts).toHaveLength(1));
+  expect(asksBeforeLeaving()).toBe(true);
+  puts[0]?.answer(new Response('', { status: 500 }));
+  await done;
+
+  expect(notify.failure).toHaveBeenCalledOnce();
+  expect(asksBeforeLeaving()).toBe(false);
+});
+
+test('an order still being saved when the list is gone keeps the page asking until it is saved', async () => {
+  const puts = holdEach();
+  const { reordering, unmount } = renderReordering();
+
+  const done = reordering.reorder([c.id, a.id, b.id]);
+  await waitFor(() => expect(puts).toHaveLength(1));
+  // Another page of the app: the order is still on its way, and a reload now would lose it.
+  unmount();
+  expect(asksBeforeLeaving()).toBe(true);
+
+  puts[0]?.answer(Response.json({}));
+  await done;
+  expect(asksBeforeLeaving()).toBe(false);
 });
