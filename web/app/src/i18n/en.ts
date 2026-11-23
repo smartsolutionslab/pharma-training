@@ -54,6 +54,7 @@ export const en: MessageSchema = {
     signInFailed: 'Sign-in failed: {message}',
     signingIn: 'Signing in…',
     signingOut: 'Signing out…',
+    configurationUnavailable: 'The application cannot be loaded right now. Please try again later.',
   },
   theme: {
     label: 'Theme',
