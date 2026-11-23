@@ -217,12 +217,12 @@ Aggregatgrenze ist die Prüfung pro LearningSession, nicht der einzelne Versuch:
 | Event (intern) | Bedeutung |
 | --- | --- |
 | `ExaminationUnlocked` | Nach `ContentCompleted` |
-| `AttemptStarted` | Gestellte Fragenversionen in fester Reihenfolge |
+| `AttemptStarted` | Gestellte Fragenversionen in fester Reihenfolge; Antwortoptionen in einer aus der AttemptId abgeleiteten Reihenfolge (ADR 0022) |
 | `AttemptSubmitted` | Antworten, Punktzahl, bestanden ja/nein |
 | `ExaminationPassed` | Führt zu `TestPassed`; terminal |
 | `ExaminationLocked` | Nach dem 3. Fehlversuch; führt zu `AttemptsExhausted` |
 
-Invarianten: Versuch nur, wenn freigeschaltet und kein Versuch offen; Bewertung serverseitig gegen die Testdefinition der Version; nach Bestehen keine weiteren Versuche; nach Sperre erst wieder nach erneutem `ContentCompleted`.
+Invarianten: Versuch nur, wenn freigeschaltet und kein Versuch offen; Antworten nur auf Fragen und Optionen des offenen Versuchs; bei Einfachauswahl genau eine Option; Bewertung serverseitig gegen die Testdefinition der Version; nach Bestehen keine weiteren Versuche; nach Sperre erst wieder nach erneutem `ContentCompleted`.
 
 ## Aggregate der übrigen Contexts (Entwurf)
 
@@ -300,7 +300,7 @@ Alle Pfade beginnen mit dem Modulnamen; der Edge leitet danach weiter. Kein Serv
 | learning | `GET /learning/sessions/{id}`, `POST …/{id}/progress` | Mitglied | Fortschritt lesen und melden (L1, L2) |
 | learning | `GET /learning/media/{chapterId}` | Mitglied | Kurzlebige Lese-URL für PDF/Video |
 | assessment | `GET /assessment/examinations/by-session/{sessionId}` | Mitglied | Teststatus |
-| assessment | `POST …/{id}/attempts`, `PUT …/attempts/current/answers/{qid}`, `POST …/attempts/current/submit` | Mitglied | Versuch starten, antworten, abgeben (A1, A2) |
+| assessment | `POST /assessment/examinations/{id}/attempts`, `PUT /assessment/examinations/{id}/attempts/current/answers/{qid}`, `POST /assessment/examinations/{id}/attempts/current/submit` | Mitglied | Versuch starten, antworten, abgeben (A1, A2) |
 | certification | `GET /certification/me/certificates`, `GET …/certificates/{id}/pdf` | Mitglied | Eigene Bestätigungen (Z1) |
 | certification | `GET /certification/pharmacies/{id}/certificates/export` | Leitung | ZIP mit PDFs und CSV-Index (Z3) |
 | certification | `GET /certification/verify/{code}` | öffentlich | QR-Prüfung (Z2) |
