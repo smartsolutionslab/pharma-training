@@ -1,8 +1,8 @@
 import { expect, test } from 'vitest';
 import { type MessageKey, setLanguage, t } from '@/i18n';
 
-// The chapter player's texts (#44), each a key in both catalogs (ADR 0007), German with Sie. The keys of the video, the
-// PDF and next/previous come with their own tasks.
+// The chapter player's texts (#44), each a key in both catalogs (ADR 0007), German with Sie. The video's keys came with
+// T4; the PDF's and next/previous come with their own tasks.
 const texts: Record<string, { de: string; en: string }> = {
   'modules.learning.details.player.title': { de: 'Schulung', en: 'Course' },
   'learning.player.loadFailed': {
@@ -32,6 +32,24 @@ const texts: Record<string, { de: string; en: string }> = {
     de: 'Scrollen Sie bis zum Ende, um das Kapitel abzuschließen.',
     en: 'Scroll to the end to complete the chapter.',
   },
+  'learning.player.video.label': { de: 'Video: {title}', en: 'Video: {title}' },
+  'learning.player.video.seekHint': {
+    de: 'Sie können nur bis zur bereits gesehenen Stelle vorspulen.',
+    en: 'You can only skip ahead to the point you have already watched.',
+  },
+  'learning.player.video.seekRefused': {
+    de: 'Vorspulen ist nur bis {position} möglich.',
+    en: 'You can only skip ahead to {position}.',
+  },
+  'learning.player.video.resumed': { de: 'Fortgesetzt bei {position}.', en: 'Resumed at {position}.' },
+  'learning.player.video.failed': {
+    de: 'Das Video konnte nicht abgespielt werden.',
+    en: 'The video could not be played.',
+  },
+  'learning.player.media.notReady': {
+    de: 'Die Datei wird noch bereitgestellt. Versuchen Sie es in einem Moment erneut.',
+    en: 'The file is still being prepared. Please try again in a moment.',
+  },
   'learning.player.progress.failed': {
     de: 'Ihr Fortschritt konnte nicht gespeichert werden. Er wird erneut gesendet.',
     en: 'Your progress could not be saved. It will be sent again.',
@@ -46,7 +64,7 @@ const texts: Record<string, { de: string; en: string }> = {
 // A table of keys, some not in the catalogs yet: each is looked up as a key, and an unknown one comes back as itself.
 const message = (key: string, values: Record<string, string> = {}) => t(key as MessageKey, values);
 // The placeholders stay placeholders here, so the message reads as the catalog writes it.
-const placeholders = { percent: '{percent}', title: '{title}' };
+const placeholders = { percent: '{percent}', title: '{title}', position: '{position}' };
 
 test("the chapter player's texts are in the German catalog", () => {
   setLanguage('de-DE', { remember: false });
