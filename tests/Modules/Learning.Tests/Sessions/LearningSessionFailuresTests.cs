@@ -12,7 +12,7 @@ public class LearningSessionFailuresTests
     [Fact]
     public void A_finished_session_answers_409_with_its_code()
     {
-        RecordProgressError refused = LearningSessionErrors.FinishedAlready(Session);
+        var refused = LearningSessionErrors.FinishedAlready(Session);
 
         var mapped = LearningSessionFailures.From(refused);
 
@@ -23,7 +23,7 @@ public class LearningSessionFailuresTests
     [Fact]
     public void A_chapter_outside_the_session_answers_422_with_its_code()
     {
-        RecordProgressError refused = LearningSessionErrors.ChapterNotInCourse(Session, ChapterId.From(Guid.CreateVersion7()));
+        var refused = LearningSessionErrors.ChapterNotInCourse(Session, ChapterId.From(Guid.CreateVersion7()));
 
         var mapped = LearningSessionFailures.From(refused);
 

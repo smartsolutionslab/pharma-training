@@ -71,7 +71,7 @@ public class GetLearningSessionTests
 
     private async Task<Guid> StartAsync(Guid courseVersionId)
     {
-        var started = await new StartLearningSessionHandler(copies, sessions, sessions, time)
+        var started = await new StartLearningSessionHandler(copies, sessions, sessions, sessions, time)
             .HandleAsync(new StartLearningSession(learner, CourseVersionId.From(courseVersionId)), TestContext.Current.CancellationToken);
         return started.Value.Id;
     }
