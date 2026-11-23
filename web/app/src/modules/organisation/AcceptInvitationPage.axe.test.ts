@@ -15,7 +15,8 @@ import { refusals } from './AcceptInvitationPage.data';
 // screen does is its own tests' (AcceptInvitationPage.test.ts). AcceptInvitationPage.data.ts has no example: the page
 // calls no query hook of the generated client. It is checked in each of the states it shows: without a token, ready to
 // accept a kept token (nothing posted before the user presses Accept the invitation), while the invitation is accepted,
-// and refused as the data file's refusals say (expired, for another address).
+// and refused as the data file's refusals say (expired, for another address, and changed at the same moment, with
+// Retry).
 
 // The invitation mail's link: its route keeps the token for this tab and the page posts it.
 const token = 'k7Yq2_Lm-9XwPz4RtV8sNc1HjD6bFgUe0OiA5yQrTmW';
@@ -107,7 +108,7 @@ const states: {
     state: 'while the invitation is accepted',
     address: `/invitations/accept#token=${token}`,
     act: accept,
-    shown: () => screen.findByText(t('organisation.accept.accepting')),
+    shown: () => screen.findByRole('heading', { level: 1, name: t('organisation.accept.accepting.title') }),
   },
   {
     state: 'for an expired invitation',
@@ -122,6 +123,13 @@ const states: {
     refusal: refusals.anotherAddress,
     act: accept,
     shown: () => screen.findByRole('heading', { level: 1, name: t('organisation.accept.anotherAddress.title') }),
+  },
+  {
+    state: 'for an invitation changed at the same moment, with Retry',
+    address: `/invitations/accept#token=${token}`,
+    refusal: refusals.invitationChanged,
+    act: accept,
+    shown: () => screen.findByRole('button', { name: t('shell.retry') }),
   },
 ];
 

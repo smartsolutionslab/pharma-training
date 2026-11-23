@@ -166,7 +166,7 @@ test('with a kept token the page shows the ready state and posts nothing until t
   expect(button).toBeEnabled();
   expect(main.getByRole('button', { name: t('organisation.accept.ready.accept') })).toBe(button);
   expect(main.queryByRole('button', { name: t('shell.retry') })).not.toBeInTheDocument();
-  expect(main.queryByText(t('organisation.accept.accepting'))).not.toBeInTheDocument();
+  expect(main.queryByRole('heading', { name: t('organisation.accept.accepting.title') })).not.toBeInTheDocument();
   expect(screen.getByRole('main')).not.toHaveAttribute('aria-busy');
 
   expect(acceptances()).toEqual([]);
@@ -218,12 +218,34 @@ test('pressing the button moves focus to the heading while the invitation is acc
   acceptance = () => answer.promise;
   await openAndAccept();
 
-  const accepting = await screen.findByRole('heading', { level: 1, name: t('organisation.accept.title') });
+  const accepting = await screen.findByRole('heading', { level: 1, name: t('organisation.accept.accepting.title') });
   await waitFor(() => expect(accepting).toHaveFocus());
   expect(document.activeElement).not.toBe(document.body);
 
   answer.settle(Response.json(pharmacyId));
 });
+
+// The accepting state's heading says what is happening now, not the button's words again: a screen reader announces
+// something new when the button is pressed.
+test.each([
+  { language: 'de-DE', heading: 'Die Einladung wird angenommen', button: 'Einladung annehmen' },
+  { language: 'en-GB', heading: 'Accepting the invitation', button: 'Accept the invitation' },
+] as const)(
+  'in $language pressing the button focuses a heading that says the invitation is being accepted',
+  async ({ language, heading, button }) => {
+    setLanguage(language, { remember: false });
+    const answer = deferred();
+    acceptance = () => answer.promise;
+    await openAndAccept();
+
+    const accepting = await screen.findByRole('heading', { level: 1, name: heading });
+    await waitFor(() => expect(accepting).toHaveFocus());
+    expect(accepting).not.toHaveTextContent(button);
+    expect(t('organisation.accept.accepting.title')).toBe(heading);
+
+    answer.settle(Response.json(pharmacyId));
+  },
+);
 
 // Two clicks before the page has rendered again, as a double-click or an impatient user sends them: one POST.
 test('pressing the button twice posts the token once', async () => {
@@ -346,15 +368,16 @@ test('an answer that is not a pharmacy id is no pharmacy to open: the page leads
   expect(notify.success).toHaveBeenCalledWith(t('organisation.accept.acceptedNotOpened'));
 });
 
-test('while the invitation is accepted the page is busy, a skeleton, and says so to a screen reader', async () => {
+test('while the invitation is accepted the page is busy, a skeleton, and its heading says so', async () => {
   const answer = deferred();
   acceptance = () => answer.promise;
   await openAndAccept();
 
   const main = await screen.findByRole('main');
   await waitFor(() => expect(main).toHaveAttribute('aria-busy', 'true'));
-  expect(within(main).getByText(t('organisation.accept.accepting'))).toHaveClass('sr-only');
-  expect(within(main).getByText('Die Einladung wird angenommen …')).toBeInTheDocument();
+  expect(
+    within(main).getByRole('heading', { level: 1, name: t('organisation.accept.accepting.title') }),
+  ).toHaveTextContent('Die Einladung wird angenommen');
   expect(main.querySelector('[data-slot="skeleton"]')).not.toBeNull();
   expect(document.body.textContent).not.toContain(token);
 
@@ -422,7 +445,7 @@ test('the token is posted once while the page renders again', async () => {
 
   // A switch of the language renders every text of the page again.
   setLanguage('en-GB', { remember: false });
-  expect(await screen.findByText('Accepting the invitation …')).toBeInTheDocument();
+  expect(await screen.findByRole('heading', { level: 1, name: 'Accepting the invitation' })).toBeInTheDocument();
   answer.settle(Response.json(pharmacyId));
 
   await waitFor(() => expect(router.currentRoute.value.path).toBe('/learning'));
@@ -696,7 +719,7 @@ test("a 409 invitation-changed shows the failed state with its own text and Retr
   ).toBeInTheDocument();
   expect(main.getByText(t('organisation.accept.invitationChanged'))).toBeInTheDocument();
   expect(
-    main.getByText('Die Einladung wurde gerade geändert. Öffnen Sie den Link aus der E-Mail erneut.'),
+    main.getByText('Die Einladung wurde gerade gleichzeitig geändert. Versuchen Sie es erneut.'),
   ).toBeInTheDocument();
   expect(main.queryByText(t('organisation.accept.failed.text'))).not.toBeInTheDocument();
   expect(main.queryByText(hostText)).not.toBeInTheDocument();
@@ -705,15 +728,13 @@ test("a 409 invitation-changed shows the failed state with its own text and Retr
   expect(acceptances()).toEqual([{ token }]);
 });
 
-test('in English a 409 invitation-changed says the invitation was changed just now', async () => {
+test('in English a 409 invitation-changed says the invitation was changed at the same moment, and to try again', async () => {
   setLanguage('en-GB', { remember: false });
   acceptance = async () => problem(409, 'organisation.invitation-changed', hostWords);
   await openAndAccept();
 
   expect(await screen.findByRole('heading', { level: 1, name: 'Invitation not accepted' })).toBeInTheDocument();
-  expect(
-    screen.getByText('The invitation was changed just now. Open the link from the e-mail again.'),
-  ).toBeInTheDocument();
+  expect(screen.getByText('The invitation was changed at the same moment. Please try again.')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
 });
 
@@ -924,6 +945,32 @@ test("a second link's refusal is shown in place of the state before it", async (
   expect(acceptances()).toEqual([{ token: second }]);
 });
 
+// The first invitation was accepted and the page is about to move on (reading the pharmacy's name) when a second link
+// is opened: the newer link wins and stays ready; the page neither leaves for the first nor announces it, and the
+// second is accepted when its button is pressed.
+test('a second link opened while the page moves on after an accept stays ready, and the page does not move on', async () => {
+  const name = deferred();
+  pharmacy = () => name.promise;
+  const { router } = await openAndAccept();
+  await waitFor(() =>
+    expect(requests().some((request) => request.endsWith(`/api/organisation/pharmacies/${pharmacyId}`))).toBe(true),
+  );
+
+  await router.push(secondLink);
+  expect(await acceptButton()).toBeEnabled();
+  const named = Response.json(joined);
+  pharmacy = async () => Response.json(joined);
+  name.settle(named);
+
+  await waitFor(() => expect(named.bodyUsed).toBe(true));
+  expect(router.currentRoute.value.path).toBe('/invitations/accept');
+  await userEvent.setup().click(await acceptButton());
+
+  await waitFor(() => expect(router.currentRoute.value.path).toBe('/learning'));
+  expect(acceptances()).toEqual([{ token }, { token: second }]);
+  expect(notify.success).toHaveBeenCalledTimes(1);
+});
+
 test('a second link with a malformed token leaves the address and the page says to open the link again', async () => {
   acceptance = async () => problem(403, 'organisation.invitation-for-another-address', hostWords);
   const { router } = await openAndAccept();
@@ -1033,14 +1080,14 @@ test.each([
     title: 'Einladung annehmen',
     text: 'Sie wurden eingeladen, Mitglied einer Apotheke zu werden. Nehmen Sie die Einladung an, um beizutreten.',
     accept: 'Einladung annehmen',
-    invitationChanged: 'Die Einladung wurde gerade geändert. Öffnen Sie den Link aus der E-Mail erneut.',
+    invitationChanged: 'Die Einladung wurde gerade gleichzeitig geändert. Versuchen Sie es erneut.',
   },
   {
     language: 'en-GB',
     title: 'Accept the invitation',
     text: 'You have been invited to become a member of a pharmacy. Accept the invitation to join.',
     accept: 'Accept the invitation',
-    invitationChanged: 'The invitation was changed just now. Open the link from the e-mail again.',
+    invitationChanged: 'The invitation was changed at the same moment. Please try again.',
   },
 ] as const)('the $language catalog holds the ready state and invitation-changed texts', (expected) => {
   setLanguage(expected.language, { remember: false });
@@ -1081,7 +1128,7 @@ test("pressing Retry moves focus to the heading while accepting, and to the next
 
   await user.click(screen.getByRole('button', { name: t('shell.retry') }));
 
-  const accepting = await screen.findByRole('heading', { level: 1, name: t('organisation.accept.title') });
+  const accepting = await screen.findByRole('heading', { level: 1, name: t('organisation.accept.accepting.title') });
   expect(accepting).toHaveAttribute('tabindex', '-1');
   await waitFor(() => expect(accepting).toHaveFocus());
   expect(document.activeElement).not.toBe(document.body);
@@ -1090,6 +1137,25 @@ test("pressing Retry moves focus to the heading while accepting, and to the next
 
   const tooMany = await screen.findByRole('heading', { level: 1, name: t('organisation.accept.tooMany.title') });
   await waitFor(() => expect(tooMany).toHaveFocus());
+});
+
+// Two clicks on Retry before the page has rendered again: one more POST, as for the Accept button.
+test('pressing Retry twice posts the token once more', async () => {
+  acceptance = async () => problem(503, undefined, 'Service Unavailable');
+  const { router } = await openAndAccept();
+  const retry = await screen.findByRole('button', { name: t('shell.retry') });
+  expect(acceptances()).toEqual([{ token }]);
+  const answer = deferred();
+  acceptance = () => answer.promise;
+
+  retry.click();
+  retry.click();
+
+  await waitFor(() => expect(acceptances()).toHaveLength(2));
+  answer.settle(Response.json(pharmacyId));
+
+  await waitFor(() => expect(router.currentRoute.value.path).toBe('/learning'));
+  expect(acceptances()).toEqual([{ token }, { token }]);
 });
 
 // The link opened 30 minutes or more before the page takes its token: the token kept for the tab has lapsed.

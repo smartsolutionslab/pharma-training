@@ -8,7 +8,8 @@ export const examples: Record<string, unknown> = {};
 export const emptyExamples: Record<string, unknown> = {};
 
 // The refusals the axe check shows the page with besides: how the host answers POST /organisation/invitations/accept
-// for an expired invitation and for a link forwarded to someone signed in with another address.
+// for an expired invitation, for a link forwarded to someone signed in with another address, and for an invitation
+// another save changed at the same moment, a refusal the page offers Retry for.
 export const refusals: Record<string, { status: number; body: Record<string, unknown> }> = {
   expired: {
     status: 410,
@@ -26,6 +27,15 @@ export const refusals: Record<string, { status: number; body: Record<string, unk
       title: 'Die Einladung gilt für eine andere E-Mail-Adresse.',
       status: 403,
       code: 'organisation.invitation-for-another-address',
+    },
+  },
+  invitationChanged: {
+    status: 409,
+    body: {
+      type: 'https://tools.ietf.org/html/rfc9110#section-15.5.10',
+      title: 'Die Einladung wurde gerade geändert.',
+      status: 409,
+      code: 'organisation.invitation-changed',
     },
   },
 };
