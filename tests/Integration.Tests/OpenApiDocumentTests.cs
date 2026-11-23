@@ -5,6 +5,8 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 
 public class OpenApiDocumentTests(AspireFixture aspire)
 {
+    private const string ComponentSchemas = "#/components/schemas/";
+
     private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
 
     /// <summary>The frontend's client is generated from web/app/openapi.json; it must describe the API the host serves.</summary>
@@ -48,6 +50,60 @@ public class OpenApiDocumentTests(AspireFixture aspire)
 
         schemas.Count.ShouldBeGreaterThan(0);
         withNull.ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// An upload is for a PDF or a video; a text chapter takes no file. The document the frontend's client is generated
+    /// from names only the kinds the endpoint accepts, so the client cannot offer Text where it is always refused.
+    /// </summary>
+    [Fact]
+    public async Task The_editorial_upload_requests_kind_allows_exactly_pdf_and_video()
+    {
+        var served = await ServedAsync();
+        var body = Resolve(served, served["paths"]?["/editorial/course-versions/{id}/uploads"]?["post"]?["requestBody"]?["content"]?["application/json"]?["schema"]);
+
+        var kind = Resolve(served, body["properties"]?["kind"]);
+
+        var values = kind["enum"]?.AsArray().Select(value => value?.GetValue<string>()).ToList();
+        values.ShouldNotBeNull($"the upload request's kind is an enum: {kind.ToJsonString()}");
+        values.ShouldBe(["Pdf", "Video"], ignoreOrder: true);
+    }
+
+    /// <summary>
+    /// A chapter's body may leave out what its kind does not take: a text chapter has no file or duration, a PDF no text
+    /// or duration, and the endpoint accepts each without them. The document requires only what the endpoint requires.
+    /// </summary>
+    [Fact]
+    public async Task The_editorial_chapter_request_requires_its_title_and_none_of_its_optional_content()
+    {
+        var served = await ServedAsync();
+        var chapter = Resolve(served, served["components"]?["schemas"]?["EditorialChapterRequest"]);
+
+        var required = chapter["required"]?.AsArray().Select(name => name?.GetValue<string>()).ToList() ?? [];
+
+        required.ShouldContain("title");
+        required.ShouldNotContain("text", $"a pdf or video chapter is sent without text; required: [{string.Join(", ", required)}]");
+        required.ShouldNotContain("file", $"a text chapter is sent without a file; required: [{string.Join(", ", required)}]");
+        required.ShouldNotContain("durationSeconds", $"only a video has a duration; required: [{string.Join(", ", required)}]");
+    }
+
+    private async Task<JsonObject> ServedAsync()
+    {
+        using var client = aspire.CreateHostClient();
+        return JsonNode.Parse(await client.GetStringAsync(new Uri("/openapi/v1.json", UriKind.Relative), TestContext.Current.CancellationToken))!.AsObject();
+    }
+
+    /// <summary>The schema itself, following a <c>$ref</c> to a component schema where it names one.</summary>
+    private static JsonObject Resolve(JsonObject document, JsonNode? schema)
+    {
+        schema.ShouldNotBeNull("the document has the schema");
+        if (schema["$ref"]?.GetValue<string>() is { } reference)
+        {
+            reference.ShouldStartWith(ComponentSchemas);
+            return Resolve(document, document["components"]?["schemas"]?[reference[ComponentSchemas.Length..]]);
+        }
+
+        return schema.AsObject();
     }
 
     private static void CollectEnumsWithNull(JsonNode? node, string path, List<string> withNull)

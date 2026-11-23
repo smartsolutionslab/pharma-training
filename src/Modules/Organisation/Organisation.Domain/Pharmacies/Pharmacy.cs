@@ -12,6 +12,12 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
     /// <summary>How long an invitation link works.</summary>
     public const int InvitationValidityDays = 14;
 
+    /// <summary>
+    /// How many links one invitation version may hold, so a mail that keeps being retried cannot mint links without
+    /// limit. The invitee holds the earlier ones; a renewal clears them.
+    /// </summary>
+    public const int MaxInvitationLinksPerVersion = 5;
+
     private readonly List<Membership> memberships = [];
 
     private Pharmacy(PharmacyId id, PharmacyName name, Timestamp registeredAt)
@@ -76,8 +82,8 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
     }
 
     /// <summary>
-    /// Renews an invitation that is still open or has run out: valid for 14 days from now, and the old link stops
-    /// working at once. Its new mail issues the new link.
+    /// Renews an invitation that is still open or has run out: its next version, valid for 14 days from now, and every
+    /// earlier link stops working at once. Its new mail issues the new link.
     /// </summary>
     public Result<Unit, DomainError> RenewInvitation(MembershipId membership, Timestamp now)
     {
@@ -95,7 +101,10 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
         return Success(Unit.Value);
     }
 
-    /// <summary>Issues the link of an open invitation that has not run out: the token's hash replaces any earlier one. Answers its expiry.</summary>
+    /// <summary>
+    /// Issues a link of an open invitation that has not run out: the token's hash joins those issued for the current
+    /// version, which keep working, up to <see cref="MaxInvitationLinksPerVersion"/>. Answers its expiry.
+    /// </summary>
     public Result<Timestamp, DomainError> IssueInvitationLink(MembershipId membership, InvitationToken token, Timestamp now)
     {
         Ensure.That(membership).IsNotNull();
@@ -113,9 +122,56 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
             return Failure(PharmacyErrors.InvitationExpired(Id, membership));
         }
 
+        if (invited.HoldsMostLinks())
+        {
+            return Failure(PharmacyErrors.InvitationLinkLimitReached(Id, membership));
+        }
+
         invited.IssueLink(InvitationTokenHash.Of(token));
         Raise(new InvitationLinkIssued(Id, membership));
         return Success(expiresAt);
+    }
+
+    /// <summary>
+    /// Takes back a link whose mail never reached the mail server, so it neither opens the invitation nor counts towards
+    /// <see cref="MaxInvitationLinksPerVersion"/>. A link the invitation no longer holds (it was renewed, accepted or
+    /// revoked since) is already gone: nothing changes then.
+    /// </summary>
+    public Result<Unit, DomainError> WithdrawInvitationLink(MembershipId membership, InvitationToken token)
+    {
+        Ensure.That(membership).IsNotNull();
+        Ensure.That(token).IsNotNull();
+
+        if (Find(membership) is not { Status: MembershipStatus.Invited } invited)
+        {
+            return Failure(PharmacyErrors.NoOpenInvitation(Id, membership));
+        }
+
+        if (invited.WithdrawLink(InvitationTokenHash.Of(token)))
+        {
+            Raise(new InvitationLinkWithdrawn(Id, membership));
+        }
+
+        return Success(Unit.Value);
+    }
+
+    /// <summary>
+    /// Records that the mail of the open invitation's version was sent, so a redelivery of its request does not mail it
+    /// again. A version that is no longer the open one (renewed, accepted or revoked since) is refused.
+    /// </summary>
+    public Result<Unit, DomainError> RecordInvitationMailed(MembershipId membership, InvitationVersion version)
+    {
+        Ensure.That(membership).IsNotNull();
+        Ensure.That(version).IsNotNull();
+
+        if (Find(membership) is not { Status: MembershipStatus.Invited } invited || invited.InvitationVersion != version)
+        {
+            return Failure(PharmacyErrors.NoOpenInvitation(Id, membership));
+        }
+
+        invited.RecordMailed(version);
+        Raise(new InvitationMailed(Id, membership, version));
+        return Success(Unit.Value);
     }
 
     /// <param name="token">The secret from the invitation link.</param>
@@ -123,7 +179,7 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
     /// <param name="name">The name the person goes by in Keycloak.</param>
     /// <param name="email">The address Keycloak verified for the person; it must be the invited one.</param>
     /// <param name="now">The moment of accepting.</param>
-    public Result<Unit, DomainError> AcceptInvitation(
+    public Result<Unit, AcceptInvitationError> AcceptInvitation(
         InvitationToken token,
         PersonId person,
         DisplayName name,
@@ -137,14 +193,14 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
         Ensure.That(now).IsNotNull();
 
         var hash = InvitationTokenHash.Of(token);
-        if (memberships.SingleOrDefault(m => m.Status == MembershipStatus.Invited && m.TokenHash == hash) is not { } invited)
+        if (memberships.SingleOrDefault(m => m.Status == MembershipStatus.Invited && m.Holds(hash)) is not { } invited)
         {
             return Failure(PharmacyErrors.InvitationNotFound(Id));
         }
 
         if (invited.InvitationExpiresAt! < now)
         {
-            return Failure(PharmacyErrors.InvitationExpired(Id, invited.Id));
+            return Failure(PharmacyErrors.AcceptedAfterExpiry(Id, invited.Id));
         }
 
         if (invited.Email != email)

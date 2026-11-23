@@ -31,8 +31,9 @@ public class ApproveQuestionTests
         store.Commits.ShouldBe(1);
     }
 
+    /// <summary>The first approval stands: a second one is a conflict with the question's state, and nothing is saved.</summary>
     [Fact]
-    public async Task The_latest_approval_stands()
+    public async Task Approving_an_approved_question_again_answers_conflict_and_the_first_approval_stands()
     {
         var version = DraftWithQuestion(out _, out var id);
         store.Stored.Add(version);
@@ -41,17 +42,21 @@ public class ApproveQuestionTests
 
         var approved = await Handler().HandleAsync(new ApproveQuestion(version.Id, id, Reviewer), TestContext.Current.CancellationToken);
 
-        approved.IsSuccess.ShouldBeTrue();
+        approved.IsFailure.ShouldBeTrue("an approved question was approved again");
+        approved.Error.Code.ShouldBe("editorial.question-already-approved");
+        approved.Error.Status.ShouldBe(HttpStatusCode.Conflict);
         var question = version.Questions.ShouldHaveSingleItem();
-        question.ReviewedBy.ShouldBe(Reviewer);
-        question.ReviewedAt.ShouldBe(Timestamp.From(Start.AddHours(3)));
-        store.Commits.ShouldBe(2);
+        question.ReviewedBy.ShouldBe(Author);
+        question.ReviewedAt.ShouldBe(Timestamp.From(Start));
+        store.Commits.ShouldBe(1);
     }
 
     [Fact]
     public async Task A_question_of_a_version_in_review_can_be_approved()
     {
-        var version = InReview();
+        var version = DraftWithQuestion(out _, out _);
+        version.SetBlueprint(new TestBlueprint(QuestionCount.From(1), ScorePercent.From(80), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
+        version.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
         var question = version.Questions.ShouldHaveSingleItem();
         store.Stored.Add(version);
 

@@ -49,7 +49,7 @@ public class AcceptInvitationTests
         membership.Person.ShouldBe(Anna);
         membership.Name.ShouldBe(AnnaName);
         membership.StartedAt.ShouldBe(Timestamp.From(now));
-        membership.TokenHash.ShouldBeNull();
+        membership.InvitationLinks.ShouldBeEmpty();
         store.Commits.ShouldBe(1);
         var started = store.Published.ShouldHaveSingleItem().ShouldBeOfType<MembershipStartedV1>();
         started.MembershipId.ShouldBe(invitation.Value);
@@ -72,6 +72,59 @@ public class AcceptInvitationTests
         store.Commits.ShouldBe(0);
         store.Published.ShouldBeEmpty();
         pharmacy.Membership(invitation).Status.ShouldBe(MembershipStatus.Invited);
+    }
+
+    [Fact]
+    public async Task A_link_no_pharmacy_holds_answers_exactly_what_the_domains_invitation_not_found_maps_to()
+    {
+        var accepted = await AcceptAsync(Token(), Anna, AnnaMail);
+
+        var mapped = PharmacyFailures.From(PharmacyErrors.InvitationNotFound(pharmacy.Id));
+        accepted.IsFailure.ShouldBeTrue();
+        accepted.Error.Code.ShouldBe(mapped.Code);
+        accepted.Error.Message.ShouldBe(mapped.Message);
+        accepted.Error.Status.ShouldBe(mapped.Status);
+    }
+
+    [Fact]
+    public async Task An_address_keycloak_has_not_verified_is_forbidden_and_nothing_changes_or_is_announced()
+    {
+        var accepted = await AcceptAsync(token, Anna, AnnaMail, verified: false);
+
+        accepted.IsFailure.ShouldBeTrue("an unverified address accepted the invitation");
+        accepted.Error.ShouldBe(PharmacyFailures.EmailNotVerified());
+        accepted.Error.Code.ShouldBe("organisation.email-not-verified");
+        accepted.Error.Status.ShouldBe(HttpStatusCode.Forbidden);
+        var open = pharmacy.Membership(invitation);
+        open.Status.ShouldBe(MembershipStatus.Invited);
+        open.Person.ShouldBeNull();
+        open.InvitationLinks.Select(link => link.Hash).ShouldBe([InvitationTokenHash.Of(token)]);
+        pharmacy.DomainEvents.ShouldBeEmpty();
+        store.Commits.ShouldBe(0);
+        store.Published.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task An_unverified_address_is_told_so_before_the_link_is_looked_up_so_it_learns_nothing_about_the_link()
+    {
+        var accepted = await AcceptAsync(Token(), Anna, AnnaMail, verified: false);
+
+        accepted.IsFailure.ShouldBeTrue();
+        accepted.Error.ShouldBe(PharmacyFailures.EmailNotVerified());
+        store.Commits.ShouldBe(0);
+        store.Published.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task The_invited_person_with_a_verified_address_still_accepts_after_an_unverified_attempt()
+    {
+        (await AcceptAsync(token, Anna, AnnaMail, verified: false)).IsFailure.ShouldBeTrue();
+
+        var accepted = await AcceptAsync(token, Anna, AnnaMail);
+
+        accepted.IsSuccess.ShouldBeTrue();
+        pharmacy.Membership(invitation).Status.ShouldBe(MembershipStatus.Active);
+        store.Published.ShouldHaveSingleItem();
     }
 
     [Theory]
@@ -154,7 +207,7 @@ public class AcceptInvitationTests
         forwarded.Error.Status.ShouldBe(HttpStatusCode.Forbidden);
         var open = pharmacy.Membership(invitation);
         open.Status.ShouldBe(MembershipStatus.Invited);
-        open.TokenHash.ShouldBe(InvitationTokenHash.Of(token));
+        open.InvitationLinks.Select(link => link.Hash).ShouldBe([InvitationTokenHash.Of(token)]);
         store.Commits.ShouldBe(0);
         store.Published.ShouldBeEmpty();
 
@@ -180,7 +233,7 @@ public class AcceptInvitationTests
         accepted.Error.Status.ShouldBe(HttpStatusCode.Conflict);
         var open = pharmacy.Membership(invitation);
         open.Status.ShouldBe(MembershipStatus.Invited);
-        open.TokenHash.ShouldBe(InvitationTokenHash.Of(token));
+        open.InvitationLinks.Select(link => link.Hash).ShouldBe([InvitationTokenHash.Of(token)]);
         store.Commits.ShouldBe(0);
         store.Published.ShouldBeEmpty();
     }
@@ -227,7 +280,7 @@ public class AcceptInvitationTests
 
     private static InvitationToken Token() => InvitationToken.From(Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(32)));
 
-    private Task<Result<Guid, ApiError>> AcceptAsync(InvitationToken presented, PersonId person, EmailAddress email) =>
+    private Task<Result<Guid, ApiError>> AcceptAsync(InvitationToken presented, PersonId person, EmailAddress email, bool verified = true) =>
         new AcceptInvitationHandler(store, store, time)
-            .HandleAsync(new AcceptInvitation(presented, person, AnnaName, email), TestContext.Current.CancellationToken);
+            .HandleAsync(new AcceptInvitation(presented, person, AnnaName, AccountEmail.From(email, verified)), TestContext.Current.CancellationToken);
 }

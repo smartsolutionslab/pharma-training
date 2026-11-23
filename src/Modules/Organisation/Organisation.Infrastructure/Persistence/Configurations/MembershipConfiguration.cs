@@ -9,6 +9,9 @@ public sealed class MembershipConfiguration : IEntityTypeConfiguration<Membershi
     /// <summary>The shadow foreign key to the pharmacy a membership belongs to; the Domain keeps it in the aggregate.</summary>
     internal const string PharmacyId = "PharmacyId";
 
+    /// <summary>The shadow foreign key from an invitation link to the membership that holds it.</summary>
+    private const string MembershipId = "MembershipId";
+
     private const int EnumLength = 20;
 
     public void Configure(EntityTypeBuilder<Membership> builder)
@@ -21,7 +24,9 @@ public sealed class MembershipConfiguration : IEntityTypeConfiguration<Membershi
         builder.Property(membership => membership.Id).HasColumnName("id").ValueGeneratedNever();
         builder.Property<PharmacyId>(PharmacyId).HasColumnName("pharmacy_id").IsRequired();
         builder.Property(membership => membership.Email).HasColumnName("email").HasMaxLength(EmailAddress.MaxLength).IsRequired();
-        builder.Property(membership => membership.TokenHash).HasColumnName("token_hash").HasMaxLength(InvitationTokenHash.Length);
+        // Rows from before versions were kept are each at their invitation's first version.
+        builder.Property(membership => membership.InvitationVersion).HasColumnName("invitation_version").HasDefaultValue(InvitationVersion.First).IsRequired();
+        builder.Property(membership => membership.InvitationMailedFor).HasColumnName("invitation_mailed_for");
         builder.Property(membership => membership.InvitationExpiresAt).HasColumnName("invitation_expires_at");
         builder.Property(membership => membership.Person).HasColumnName("person_id");
         builder.Property(membership => membership.Name).HasColumnName("name").HasMaxLength(DisplayName.MaxLength);
@@ -39,7 +44,23 @@ public sealed class MembershipConfiguration : IEntityTypeConfiguration<Membershi
         // Backed twice: Pharmacy.AcceptInvitation refuses a person already active in the pharmacy (PersonAlreadyMember),
         // and so does the database. Ended and revoked rows are left out, so someone who left can be accepted again.
         builder.HasIndex(PharmacyId, nameof(Membership.Person)).IsUnique().HasFilter("status = 'Active'");
-        // One row per token hash; NULLs (no open invitation) never collide in PostgreSQL.
-        builder.HasIndex(membership => membership.TokenHash).IsUnique();
+
+        // The links of the invitation's current version, one row each, owned by the membership: a renewal, accept or
+        // revoke that clears them deletes their rows.
+        builder.OwnsMany(membership => membership.InvitationLinks, links =>
+        {
+            links.ToTable("invitation_links");
+            links.WithOwner().HasForeignKey(MembershipId);
+            links.Property<MembershipId>(MembershipId).HasColumnName("membership_id");
+            links.Property(link => link.Hash).HasColumnName("token_hash").HasMaxLength(InvitationTokenHash.Length).IsRequired();
+            links.HasKey(MembershipId, nameof(InvitationLink.Hash));
+
+            // Backed twice: a token is 256 random bits, so no two links share a hash, and the database refuses one that would;
+            // an accept finds the one membership a link opens by it.
+            links.HasIndex(link => link.Hash).IsUnique();
+        });
+        builder.Navigation(membership => membership.InvitationLinks)
+            .HasField("invitationLinks")
+            .UsePropertyAccessMode(PropertyAccessMode.Field);
     }
 }

@@ -17,8 +17,12 @@
     <PackageReference Include="Aspire.Hosting.Azure.AppContainers" />
     <PackageReference Include="Aspire.Hosting.Azure.KeyVault" />
     <PackageReference Include="Aspire.Hosting.Azure.PostgreSQL" />
+    <!-- A newer Container Apps model than Aspire's own, for the environment's peer traffic encryption (Wiring/ContainerAppsEnvironment.cs). -->
+    <PackageReference Include="Azure.Provisioning.AppContainers" />
     <!-- Sets the emulator's CORS rule for the web app's origin (Wiring/BrowserUploads.cs). -->
     <PackageReference Include="Azure.Storage.Blobs" />
+    <!-- Reads the modules' Application assemblies and the contracts as metadata, never loading them (Wiring/MessagingTopology.cs). -->
+    <PackageReference Include="System.Reflection.MetadataLoadContext" />
   </ItemGroup>
 
   <ItemGroup>
@@ -29,5 +33,22 @@
          it again at every start (Wiring/ServiceHostProjects.cs). -->
     <ProjectReference Include="../Services/*/Host/Host.csproj" AspireProjectMetadataTypeName="$([System.IO.Path]::GetFileName($([System.IO.Path]::GetDirectoryName($([System.IO.Path]::GetDirectoryName(%(FullPath)))))))Service" />
   </ItemGroup>
+
+  <!-- Every module's Application and the contracts, built but neither referenced nor run: the broker grants each service's user
+       the exchanges of the events its consumers take and of its own module's events, which Wiring/MessagingTopology.cs reads
+       from these assemblies as metadata (docs/adr/0011). A new module's Application matches the glob; nothing lists one. -->
+  <ItemGroup>
+    <ProjectReference Include="../Modules/*/*.Application/*.Application.csproj;../Contracts/Contracts.csproj" ReferenceOutputAssembly="false" Private="false" IsAspireProjectResource="false" OutputItemType="MessagingAssembly" />
+  </ItemGroup>
+
+  <!-- Each built assembly's path, recorded on the AppHost's own assembly as AssemblyMetadata("MessagingAssembly", path). -->
+  <Target Name="RecordMessagingAssemblies" DependsOnTargets="ResolveProjectReferences" BeforeTargets="GetAssemblyAttributes">
+    <ItemGroup>
+      <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+        <_Parameter1>MessagingAssembly</_Parameter1>
+        <_Parameter2>%(MessagingAssembly.FullPath)</_Parameter2>
+      </AssemblyAttribute>
+    </ItemGroup>
+  </Target>
 
 </Project>

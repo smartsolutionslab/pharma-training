@@ -17,7 +17,7 @@ partial class EditorialModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261121223447_DeferQuestionForeignKeys";
+    public override string LastMigrationId => "20261123033927_RecordEveryReturn";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -105,6 +105,9 @@ partial class EditorialModelSnapshot : ModelSnapshot
 
                 b.HasIndex("CourseVersionId");
 
+                b.HasIndex("CourseVersionId", "File")
+                    .IsUnique();
+
                 b.ToTable("course_version_chapters", "editorial");
             });
 
@@ -133,6 +136,22 @@ partial class EditorialModelSnapshot : ModelSnapshot
                 b.Property<Guid?>("PublishedBy")
                     .HasColumnType("uuid")
                     .HasColumnName("published_by");
+
+                b.Property<DateTimeOffset?>("RetiredAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("retired_at");
+
+                b.Property<Guid?>("RetiredBy")
+                    .HasColumnType("uuid")
+                    .HasColumnName("retired_by");
+
+                b.Property<DateTimeOffset?>("ReturnedAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("returned_at");
+
+                b.Property<Guid?>("ReturnedBy")
+                    .HasColumnType("uuid")
+                    .HasColumnName("returned_by");
 
                 b.Property<uint>("RowVersion")
                     .IsConcurrencyToken()
@@ -175,11 +194,44 @@ partial class EditorialModelSnapshot : ModelSnapshot
 
                 b.HasKey("Id");
 
-                b.HasIndex("Course");
-
                 b.HasIndex("Status");
 
+                b.HasIndex("Course", "Number")
+                    .IsUnique()
+                    .HasDatabaseName("ix_course_versions_course_id_number");
+
                 b.ToTable("course_versions", "editorial");
+            });
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions.CourseVersionReturn", b =>
+            {
+                b.Property<Guid>("Id")
+                    .HasColumnType("uuid")
+                    .HasColumnName("id");
+
+                b.Property<string>("Reason")
+                    .IsRequired()
+                    .HasMaxLength(1000)
+                    .HasColumnType("character varying(1000)")
+                    .HasColumnName("reason");
+
+                b.Property<DateTimeOffset>("ReturnedAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("returned_at");
+
+                b.Property<Guid>("ReturnedBy")
+                    .HasColumnType("uuid")
+                    .HasColumnName("returned_by");
+
+                b.Property<Guid>("Version")
+                    .HasColumnType("uuid")
+                    .HasColumnName("course_version_id");
+
+                b.HasKey("Id");
+
+                b.HasIndex("Version", "ReturnedAt");
+
+                b.ToTable("course_version_returns", "editorial");
             });
 
         modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions.Question", b =>
@@ -272,6 +324,15 @@ partial class EditorialModelSnapshot : ModelSnapshot
                 b.HasOne("SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions.CourseVersion", null)
                     .WithMany("Chapters")
                     .HasForeignKey("CourseVersionId")
+                    .OnDelete(DeleteBehavior.Cascade)
+                    .IsRequired();
+            });
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions.CourseVersionReturn", b =>
+            {
+                b.HasOne("SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions.CourseVersion", null)
+                    .WithMany()
+                    .HasForeignKey("Version")
                     .OnDelete(DeleteBehavior.Cascade)
                     .IsRequired();
             });
