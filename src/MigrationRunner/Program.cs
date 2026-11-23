@@ -9,7 +9,17 @@ using Microsoft.EntityFrameworkCore;
 var builder = Host.CreateApplicationBuilder(args);
 builder.AddServiceDefaults();
 
-var module = builder.Configuration["Migrations:Module"]
+// Published, Keycloak's init container names no module but the schema its role owns (Migrations:OwnedSchema): it ensures
+// that role and schema alone, and nothing below runs (MigrationRun). A run naming neither fails here.
+using (var loggers = LoggerFactory.Create(logging => logging.AddConfiguration(builder.Configuration.GetSection("Logging")).AddSimpleConsole()))
+{
+    if (await MigrationRun.RunOwnedSchemaModeAsync(builder.Configuration, loggers.CreateLogger("MigrationRunner"), CancellationToken.None))
+    {
+        return;
+    }
+}
+
+var module = builder.Configuration[MigrationRun.ModuleSetting]
     ?? throw new InvalidOperationException("Migrations:Module is missing; the AppHost names the module whose database this run migrates.");
 // Every session the runner opens as the administrator, EF Core's and Marten's too (both read ConnectionStrings:database),
 // resolves unqualified names in pg_catalog alone: the module role holds CREATE on the database and could otherwise plant
@@ -52,7 +62,7 @@ await using (await MigrationGate.EnterAsync(administrator, CancellationToken.Non
     // migration history table they made.
     if (!string.IsNullOrWhiteSpace(application))
     {
-        await ModuleDatabaseRole.EnsureAsync(administrator, application, CancellationToken.None);
+        await ModuleDatabaseRole.EnsureAsync(administrator, application, host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("MigrationRunner"), CancellationToken.None);
     }
 }
 
