@@ -7,11 +7,17 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Cons
 
 /// <summary>
 /// Mails an invitation's link once its invite or renewal is committed, from the host's durable local queue
-/// (docs/adr/0004). It issues a fresh token at send time, commits its hash, then sends, so a mailed link is never dead
-/// on arrival and no token is ever at rest. A failure throws, so Wolverine retries it and then dead-letters it.
-/// It does not deduplicate on <c>Metadata.EventIdentifier</c>: a send that fails after the commit must be sent again,
-/// so a redelivery mails a second, newer link, and the invitation's state is the key. An invitation that is no longer
-/// open or has run out is dropped.
+/// (docs/adr/0004). Each invitation version is mailed once: a version already recorded as mailed is skipped, however
+/// often its message is delivered. Otherwise it issues a fresh token, commits its hash beside the version's earlier ones,
+/// reads the membership again, sends, and records the version as mailed. So a mailed link is never dead on arrival, no
+/// token is ever at rest, and a retry after a send that failed adds a link without killing the one the server may
+/// already have taken: every link of the version opens the invitation, up to
+/// <see cref="Pharmacy.MaxInvitationLinksPerVersion"/>, and a renewal clears them. A failure before the send throws, so
+/// Wolverine retries it and then dead-letters it.
+/// It does not deduplicate on <c>Metadata.EventIdentifier</c>: a send that failed must be sent again, and the
+/// invitation's version and its mailed mark are the key. An invitation that is no longer open or has run out is dropped,
+/// and so is one whose version holds the most links, without a throw, since a retry could never mail it.
+/// One gap remains: when the send returned but recording it failed, the message is mailed again and both links work.
 /// </summary>
 public sealed partial class InvitationMailRequestedV1Consumer(
     IPharmacyStore pharmacies,
@@ -37,17 +43,28 @@ public sealed partial class InvitationMailRequestedV1Consumer(
 
         var pharmacy = found.Value;
         var membership = MembershipId.From(message.MembershipId);
+        if (pharmacy.Memberships.SingleOrDefault(m => m.Id == membership) is { Status: MembershipStatus.Invited } open
+            && open.InvitationMailedFor == open.InvitationVersion)
+        {
+            AlreadyMailed(logger, message.MembershipId, open.InvitationVersion.Value);
+            return;
+        }
+
         var token = InvitationTokens.Next();
         var issued = pharmacy.IssueInvitationLink(membership, token, Timestamp.From(time.GetUtcNow()));
         if (issued.IsFailure)
         {
-            if (issued.Error is InvitationExpired)
+            switch (issued.Error)
             {
-                Expired(logger, issued.Error.Code, message.MembershipId);
-            }
-            else
-            {
-                NotOpen(logger, issued.Error.Code, message.MembershipId);
+                case InvitationExpired:
+                    Expired(logger, issued.Error.Code, message.MembershipId);
+                    break;
+                case InvitationLinkLimitReached:
+                    LinkLimitReached(logger, issued.Error.Code, message.MembershipId, Pharmacy.MaxInvitationLinksPerVersion);
+                    break;
+                default:
+                    NotOpen(logger, issued.Error.Code, message.MembershipId);
+                    break;
             }
 
             return;
@@ -56,6 +73,7 @@ public sealed partial class InvitationMailRequestedV1Consumer(
         // Composed before the commit, so a missing web app address fails before anything is written.
         var link = links.LinkTo($"/invitations/accept#token={token.Value}");
         var invited = pharmacy.Memberships.Single(m => m.Id == membership);
+        var version = invited.InvitationVersion;
         var mail = InvitationMails.Compose(pharmacy.Name, invited.Email, issued.Value, link);
 
         // A lost race throws, so Wolverine retries and the retry reloads the pharmacy; nothing is mailed for it.
@@ -63,26 +81,39 @@ public sealed partial class InvitationMailRequestedV1Consumer(
 
         // A revoke, accept, end or renewal that committed after this commit killed the link just stored. Read the
         // membership again from the store, no-tracking, so the read sees what others committed and not this run's own
-        // copy, and send only while it is still invited with this run's hash; only a change between this read and the
-        // server's acceptance of the mail still reaches the invitee (docs/adr/0004).
-        if (!await StillHoldsThisLinkAsync(pharmacy.Id, membership, InvitationTokenHash.Of(token), cancellationToken))
+        // copy, and send only while it is still invited at this version with this run's hash among its links; only a
+        // change between this read and the server's acceptance of the mail still reaches the invitee (docs/adr/0004).
+        if (!await StillHoldsThisLinkAsync(pharmacy.Id, membership, version, InvitationTokenHash.Of(token), cancellationToken))
         {
             ClosedBeforeSend(logger, message.MembershipId);
             return;
         }
 
         await mails.SendAsync(mail, cancellationToken);
+
+        // The mail is out: a failure from here on must not throw, or Wolverine would mail the version again. A save that
+        // lost a race leaves the version unmarked, and so does one refused because the invitation changed since.
+        if (pharmacy.RecordInvitationMailed(membership, version).IsFailure || !await unitOfWork.TryCommitAsync(cancellationToken))
+        {
+            MailedButNotRecorded(logger, message.MembershipId, version.Value);
+        }
     }
 
-    private async Task<bool> StillHoldsThisLinkAsync(PharmacyId pharmacy, MembershipId membership, InvitationTokenHash issued, CancellationToken cancellationToken)
+    private async Task<bool> StillHoldsThisLinkAsync(PharmacyId pharmacy, MembershipId membership, InvitationVersion version, InvitationTokenHash issued, CancellationToken cancellationToken)
     {
         var stored = await pharmacies.FindAsync(pharmacy, cancellationToken);
         return stored.HasValue
-            && stored.Value.Memberships.Any(m => m.Id == membership && m.Status == MembershipStatus.Invited && m.TokenHash == issued);
+            && stored.Value.Memberships.Any(m => m.Id == membership
+                && m.Status == MembershipStatus.Invited
+                && m.InvitationVersion == version
+                && m.InvitationLinks.Any(link => link.Hash == issued));
     }
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "No pharmacy holds membership {Membership}; its invitation mail is dropped.")]
     private static partial void PharmacyGone(ILogger logger, Guid membership);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "The invitation of membership {Membership} was mailed for version {Version} already; its mail is not sent again.")]
+    private static partial void AlreadyMailed(ILogger logger, Guid membership, int version);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "The invitation mail of membership {Membership} is dropped: {Code}.")]
     private static partial void NotOpen(ILogger logger, string code, Guid membership);
@@ -92,4 +123,10 @@ public sealed partial class InvitationMailRequestedV1Consumer(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "The invitation mail of membership {Membership} arrived after the invitation ran out and is dropped: {Code}.")]
     private static partial void Expired(ILogger logger, string code, Guid membership);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The invitation of membership {Membership} holds {Limit} links for its version already; its mail is dropped and not retried: {Code}.")]
+    private static partial void LinkLimitReached(ILogger logger, string code, Guid membership, int limit);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The invitation mail of membership {Membership} was sent for version {Version}, but recording it failed; a redelivery mails it again.")]
+    private static partial void MailedButNotRecorded(ILogger logger, Guid membership, int version);
 }

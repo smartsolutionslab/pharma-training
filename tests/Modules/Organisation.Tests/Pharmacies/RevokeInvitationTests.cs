@@ -25,7 +25,7 @@ public class RevokeInvitationTests
         revoked.IsSuccess.ShouldBeTrue();
         var membership = pharmacy.Membership(invitation);
         membership.Status.ShouldBe(MembershipStatus.Revoked);
-        membership.TokenHash.ShouldBeNull();
+        membership.InvitationLinks.ShouldBeEmpty();
         pharmacy.DomainEvents.OfType<InvitationRevoked>().ShouldHaveSingleItem().ShouldBe(new InvitationRevoked(pharmacy.Id, invitation));
         store.Commits.ShouldBe(1);
         TestPharmacies.Invite(pharmacy, "invitee@example.org");

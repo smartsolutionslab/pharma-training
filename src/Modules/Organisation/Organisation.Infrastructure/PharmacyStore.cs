@@ -24,10 +24,10 @@ public sealed class PharmacyStore(OrganisationDbContext context) : IPharmacyStor
     {
         Ensure.That(hash).IsNotNull();
 
-        // Across every pharmacy: the link names none. The unique index on token_hash finds at most one.
+        // Across every pharmacy: the link names none. The unique index on invitation_links.token_hash finds at most one.
         return await context.Set<Pharmacy>()
             .Include(pharmacy => pharmacy.Memberships)
-            .SingleOrDefaultAsync(pharmacy => pharmacy.Memberships.Any(membership => membership.TokenHash == hash), cancellationToken) is { } pharmacy
+            .SingleOrDefaultAsync(pharmacy => pharmacy.Memberships.Any(membership => membership.InvitationLinks.Any(link => link.Hash == hash)), cancellationToken) is { } pharmacy
             ? Option<Pharmacy>.Some(pharmacy)
             : Option<Pharmacy>.None;
     }

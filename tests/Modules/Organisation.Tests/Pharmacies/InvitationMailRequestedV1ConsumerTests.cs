@@ -47,7 +47,7 @@ public partial class InvitationMailRequestedV1ConsumerTests
         var token = TokenIn(mail);
         mail.Text.ShouldContain($"https://app.example/invitations/accept#token={token}", Case.Sensitive);
         mail.Text.ShouldContain("gültig bis 15.03.2027, 09:00 Uhr (UTC)", Case.Sensitive);
-        pharmacy.Membership(membership).TokenHash.ShouldBe(InvitationTokenHash.Of(InvitationToken.From(token)));
+        pharmacy.Membership(membership).InvitationLinks.Select(link => link.Hash).ShouldBe([InvitationTokenHash.Of(InvitationToken.From(token))]);
         commitsAtSend.ShouldBe([1], "the hash was not committed before the mail was sent");
         store.Published.ShouldBeEmpty();
     }
@@ -56,37 +56,14 @@ public partial class InvitationMailRequestedV1ConsumerTests
     public async Task A_mail_that_cannot_be_sent_fails_the_consumer()
     {
         var (pharmacy, membership) = Invited();
-        var before = pharmacy.Membership(membership).TokenHash;
+        var before = pharmacy.Membership(membership).InvitationLinks.Count;
         mails.SendAsync(Arg.Any<OutgoingMail>(), Arg.Any<CancellationToken>()).ThrowsAsync(new IOException("The SMTP server is gone."));
 
         await Should.ThrowAsync<IOException>(
             () => Consumer().HandleAsync(new InvitationMailRequestedV1(membership.Value, pharmacy.Id.Value), TestContext.Current.CancellationToken));
 
         store.Commits.ShouldBe(1);
-        pharmacy.Membership(membership).TokenHash.ShouldNotBe(before);
-    }
-
-    [Fact]
-    public async Task A_retry_after_a_failed_send_mails_a_new_link_and_only_that_one_works()
-    {
-        var (pharmacy, membership) = Invited();
-        List<OutgoingMail> attempted = [];
-        var attempts = 0;
-        mails.SendAsync(Arg.Any<OutgoingMail>(), Arg.Any<CancellationToken>()).Returns(call =>
-        {
-            attempted.Add(call.Arg<OutgoingMail>());
-            return ++attempts == 1 ? Task.FromException(new IOException("The SMTP server is gone.")) : Task.CompletedTask;
-        });
-        var message = new InvitationMailRequestedV1(membership.Value, pharmacy.Id.Value);
-
-        await Should.ThrowAsync<IOException>(() => Consumer().HandleAsync(message, TestContext.Current.CancellationToken));
-        await Consumer().HandleAsync(message, TestContext.Current.CancellationToken);
-
-        attempted.Count.ShouldBe(2, "the retry sent no second mail");
-        var first = TokenIn(attempted[0]);
-        var second = TokenIn(attempted[1]);
-        second.ShouldNotBe(first);
-        pharmacy.Membership(membership).TokenHash.ShouldBe(InvitationTokenHash.Of(InvitationToken.From(second)));
+        pharmacy.Membership(membership).InvitationLinks.Count.ShouldBe(before + 1);
     }
 
     [Fact]
@@ -126,7 +103,7 @@ public partial class InvitationMailRequestedV1ConsumerTests
         store.Commits.ShouldBe(1);
         var stored = store.Stored.Single(stored => stored.Id == pharmacy.Id).Membership(membership);
         stored.Status.ShouldBe(MembershipStatus.Invited);
-        stored.TokenHash.ShouldBeNull();
+        stored.InvitationLinks.ShouldBeEmpty();
         sent.ShouldBeEmpty("the invitation was renewed after the link's commit and before the send, which killed the link, yet this run mailed it");
     }
 
@@ -345,7 +322,7 @@ public partial class InvitationMailRequestedV1ConsumerTests
         renewed.RenewInvitation(membership, Timestamp.From(time.GetUtcNow())).IsSuccess.ShouldBeTrue();
         renewed.ClearDomainEvents();
         store.Stored[store.Stored.IndexOf(pharmacy)] = renewed;
-        pharmacy.Membership(membership).TokenHash.ShouldNotBeNull("the consumer's own copy must keep the link it committed");
+        pharmacy.Membership(membership).InvitationLinks.ShouldNotBeEmpty("the consumer's own copy must keep the link it committed");
     }
 
     private static FrontendLinks Links() => new(new ConfigurationBuilder()
