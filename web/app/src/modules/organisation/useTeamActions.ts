@@ -52,6 +52,9 @@ export function useTeamActions(pharmacy: MaybeRefOrGetter<MyPharmacyDto | undefi
     },
   );
 
+  /** Whether the page still shows the pharmacy an action was taken in: a refusal answered after a switch is not its. */
+  const stillShown = (takenIn: string | undefined) => takenIn !== undefined && toValue(pharmacy)?.id === takenIn;
+
   const current = () => {
     const shown = toValue(pharmacy);
     if (shown === undefined) {
@@ -121,6 +124,7 @@ export function useTeamActions(pharmacy: MaybeRefOrGetter<MyPharmacyDto | undefi
   }
 
   async function revoke(invitation: PharmacyInvitationDto) {
+    const takenIn = toValue(pharmacy)?.id;
     const values = { email: invitation.email };
     const failure = await attempt(
       'revoke',
@@ -131,7 +135,7 @@ export function useTeamActions(pharmacy: MaybeRefOrGetter<MyPharmacyDto | undefi
         await readInvitations(id);
       },
     );
-    if (failure !== undefined) {
+    if (failure !== undefined && stillShown(takenIn)) {
       refusal.value = { section: 'invitations', failure };
     }
     return failure;
@@ -152,7 +156,7 @@ export function useTeamActions(pharmacy: MaybeRefOrGetter<MyPharmacyDto | undefi
   }
 
   async function end(member: PharmacyMemberDto) {
-    const { name, membershipId } = current();
+    const { id: takenIn, name, membershipId } = current();
     const own = member.membershipId === membershipId;
     const values = { name: member.name, pharmacy: name };
     const failure = await attempt(
@@ -170,7 +174,7 @@ export function useTeamActions(pharmacy: MaybeRefOrGetter<MyPharmacyDto | undefi
         await readMembers(id);
       },
     );
-    if (failure !== undefined) {
+    if (failure !== undefined && stillShown(takenIn)) {
       refusal.value = { section: 'members', failure };
     }
     return failure;
