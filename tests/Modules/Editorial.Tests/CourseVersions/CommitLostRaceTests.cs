@@ -162,6 +162,45 @@ public class CommitLostRaceTests
         record.Level.ShouldBeOneOf(LogLevel.Warning, LogLevel.Error, LogLevel.Critical);
     }
 
+    /// <summary>
+    /// The aggregate need not be the top-level exception: one that another exception wraps is searched too, and its
+    /// other failure is logged once.
+    /// </summary>
+    [Fact]
+    public async Task The_other_failures_in_an_aggregate_inside_another_exception_with_a_lost_race_are_logged_once()
+    {
+        var ended = Ended(PostgresErrorCodes.DeadlockDetected);
+        var other = new InvalidOperationException("The envelopes could not be flushed.");
+        await using var services = OutboxFailingWith(new InvalidOperationException("flush", new AggregateException(ended, other)));
+
+        (await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken)).ShouldBeFalse();
+
+        var records = services.GetFakeLogCollector().GetSnapshot();
+        var record = records.Where(each => ReferenceEquals(each.Exception, other)).ShouldHaveSingleItem("the other failure inside the wrapped aggregate was not logged once");
+        record.Level.ShouldBeOneOf(LogLevel.Warning, LogLevel.Error, LogLevel.Critical);
+        records.Select(each => each.Exception).ShouldBe([ended, other], ignoreOrder: true);
+    }
+
+    /// <summary>
+    /// An aggregate inside an aggregate: every leaf failure but the lost race is logged once, the inner aggregate's
+    /// sibling of the lost race as much as the outer one's, and no aggregate is logged as a failure of its own.
+    /// </summary>
+    [Fact]
+    public async Task Every_other_failure_in_nested_aggregates_with_a_lost_race_is_logged_once()
+    {
+        var ended = Ended(PostgresErrorCodes.DeadlockDetected);
+        var siblingA = new InvalidOperationException("The envelopes could not be flushed.");
+        var siblingB = new TimeoutException("The outbox did not answer.");
+        await using var services = OutboxFailingWith(new AggregateException(new AggregateException(ended, siblingA), siblingB));
+
+        (await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken)).ShouldBeFalse();
+
+        var records = services.GetFakeLogCollector().GetSnapshot();
+        records.Where(each => ReferenceEquals(each.Exception, siblingA)).ShouldHaveSingleItem("the lost race's sibling in the inner aggregate was not logged once");
+        records.Where(each => ReferenceEquals(each.Exception, siblingB)).ShouldHaveSingleItem("the outer aggregate's other failure was not logged once");
+        records.Select(each => each.Exception).ShouldBe([ended, siblingA, siblingB], ignoreOrder: true);
+    }
+
     [Fact]
     public async Task An_aggregate_exception_holding_no_lost_race_still_throws()
     {
