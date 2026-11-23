@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
@@ -105,6 +106,9 @@ public class InvitationLimitEndpointTests
         var builder = WebApplication.CreateSlimBuilder();
         builder.Services.AddSingleton(Dispatching(store, time, limits));
         builder.Services.AddSingleton<TimeProvider>(time);
+
+        // The module maps every endpoint of its group, accept among them, which names the module's per-user limit.
+        builder.Services.AddUserRateLimit(OrganisationLimits.AcceptFrom(new ConfigurationBuilder().Build()));
         await using var app = builder.Build();
         new OrganisationModule().MapEndpoints(app);
         var endpoint = ((IEndpointRouteBuilder)app).DataSources

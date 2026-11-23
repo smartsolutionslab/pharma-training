@@ -37,6 +37,9 @@ public static class PharmacyFailures
 
     public static ApiError InvalidInvitationToken() => new InvalidInvitationToken();
 
+    /// <summary>The per-user limit on accepting invitations refused the request (docs/adr/0004).</summary>
+    public static ApiError AcceptLimitReached() => new AcceptLimitReached();
+
     /// <summary>
     /// The domain's refusals with the status each use case answers them with. An error no use case returns yet has no
     /// status here: it is mapped where it is first returned, never given a guessed one.

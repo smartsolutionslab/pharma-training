@@ -21,7 +21,8 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Api.Endpoints;
 /// membership in the pharmacy (managing members), or, to accept, by the token and the account's verified address, not
 /// by a realm role. Invite and renew each request an invitation mail, which is limited (docs/adr/0004): renewing
 /// within 10 minutes of the invitation's latest mail, or mailing beyond the pharmacy's 50 a UTC day, answers 429 with
-/// <c>Retry-After</c> and the instant as <c>retryAt</c>.
+/// <c>Retry-After</c> and the instant as <c>retryAt</c>. Accepting is limited per user, 10 a minute and 100 a day by
+/// default: over it, 429 <c>organisation.accept-limit-reached</c> with <c>Retry-After</c>, and the accept is not tried.
 /// </summary>
 public sealed class InvitationEndpoints : IEndpoint
 {
@@ -138,7 +139,8 @@ public sealed class InvitationEndpoints : IEndpoint
             var email = AccountEmail.From(caller.Value.Email, CallerClaims.HasVerifiedEmail(user));
             var command = new AcceptInvitation(token, caller.Value.Person, caller.Value.Name, email);
             return (await dispatcher.SendAsync(command, cancellationToken)).ToHttpResult();
-        }).RequireAuthorization();
+        }).RequireAuthorization()
+            .RequireUserRateLimit(OrganisationLimits.AcceptInvitation);
     }
 
     /// <summary>An empty id names nothing: answered as not found before its factory would refuse it.</summary>
