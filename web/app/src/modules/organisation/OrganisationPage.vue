@@ -122,7 +122,7 @@ const invitationRows = computed<InvitationRow[]>(() => {
 });
 
 const actions = useTeamActions(current);
-const { refusal, renewingId, isRevoking, isEnding } = actions;
+const { refusal, renewingId } = actions;
 
 const id = useId();
 const membersHeadingId = `${id}-members`;
@@ -162,19 +162,25 @@ function dialogClosed(event: Event) {
   target?.focus();
 }
 
+// Each dialog is one instance, opened again and again: each opening is counted, and what a call sent from one opening
+// answers closes the dialog only while that opening is still the one shown. Closed by a switch and opened again, the
+// dialog asks a new question, which an earlier answer never closes.
 const inviteOpen = ref(false);
+let inviteOpening = 0;
 /** The pharmacy the invite dialog was opened on: a submit validated after a switch still invites into that one. */
 const invitedIn = shallowRef<MyPharmacyDto>();
 
 function openInvite(event: Event) {
   openedFrom(event);
   invitedIn.value = current.value;
+  inviteOpening += 1;
   inviteOpen.value = true;
 }
 
 async function invite(request: InviteOrganisationMemberRequest) {
+  const opening = inviteOpening;
   const failure = await actions.invite(request, invitedIn.value);
-  if (failure === undefined) {
+  if (failure === undefined && opening === inviteOpening && inviteOpen.value) {
     focusAfterClose = inviteOpener.value?.$el as HTMLElement | undefined;
     inviteOpen.value = false;
   }
@@ -182,6 +188,7 @@ async function invite(request: InviteOrganisationMemberRequest) {
 }
 
 const changeOpen = ref(false);
+let changeOpening = 0;
 /** The member last asked about, and their pharmacy: the dialog keeps its words while it closes. */
 const changedMember = ref<PharmacyMemberDto>();
 const changedIn = shallowRef<MyPharmacyDto>();
@@ -190,6 +197,7 @@ function openChange(event: Event, member: PharmacyMemberDto) {
   openedFrom(event);
   changedMember.value = member;
   changedIn.value = current.value;
+  changeOpening += 1;
   changeOpen.value = true;
 }
 
@@ -198,8 +206,9 @@ async function change(request: ChangeOrganisationMembershipRequest) {
   if (member === undefined) {
     return undefined;
   }
+  const opening = changeOpening;
   const failure = await actions.change(member, request, changedIn.value);
-  if (failure === undefined) {
+  if (failure === undefined && opening === changeOpening && changeOpen.value) {
     changeOpen.value = false;
   }
   return failure;
@@ -210,12 +219,16 @@ type Confirmation =
   | { kind: 'end'; member: PharmacyMemberDto; pharmacy: string; own: boolean };
 
 const confirmOpen = ref(false);
+const confirmOpening = ref(0);
+/** The opening whose confirmed action is on its way: only that opening's confirmation is busy with it. */
+const confirmingIn = ref<number>();
 /** What the confirmation last asked about: it keeps its words while it closes. */
 const confirmation = ref<Confirmation>();
 
 function ask(event: Event, asked: Confirmation) {
   openedFrom(event);
   confirmation.value = asked;
+  confirmOpening.value += 1;
   confirmOpen.value = true;
 }
 
@@ -243,6 +256,7 @@ watch(
 
 const question = computed(() => {
   const asked = confirmation.value;
+  const pending = confirmingIn.value === confirmOpening.value;
   if (asked === undefined) {
     return { title: '', description: '', confirmLabel: '', pending: false };
   }
@@ -251,7 +265,7 @@ const question = computed(() => {
       title: t('organisation.team.revoke.title', { email: asked.invitation.email }),
       description: t('organisation.team.revoke.description'),
       confirmLabel: t('organisation.team.revoke.confirm'),
-      pending: isRevoking.value,
+      pending,
     };
   }
   const { name } = asked.member;
@@ -262,24 +276,34 @@ const question = computed(() => {
       ? t('organisation.team.end.descriptionSelf', { pharmacy })
       : t('organisation.team.end.description', { name, pharmacy }),
     confirmLabel: t('organisation.team.end.confirm'),
-    pending: isEnding.value,
+    pending,
   };
 });
 
 // Done or refused, the confirmation closes and the focus goes to its section's heading: a revoked or ended row is
-// gone, and a refusal shows under that heading.
+// gone, and a refusal shows under that heading. A confirmation asked again since (after a switch) stays open.
 async function confirm() {
   const asked = confirmation.value;
-  if (asked === undefined) {
+  const opening = confirmOpening.value;
+  if (asked === undefined || confirmingIn.value === opening) {
     return;
   }
-  if (asked.kind === 'revoke') {
-    await actions.revoke(asked.invitation);
-    focusAfterClose = invitationsHeading.value ?? undefined;
-  } else {
-    await actions.end(asked.member);
-    focusAfterClose = membersHeading.value ?? undefined;
+  confirmingIn.value = opening;
+  try {
+    if (asked.kind === 'revoke') {
+      await actions.revoke(asked.invitation);
+    } else {
+      await actions.end(asked.member);
+    }
+  } finally {
+    if (confirmingIn.value === opening) {
+      confirmingIn.value = undefined;
+    }
   }
+  if (opening !== confirmOpening.value || !confirmOpen.value) {
+    return;
+  }
+  focusAfterClose = (asked.kind === 'revoke' ? invitationsHeading.value : membersHeading.value) ?? undefined;
   confirmOpen.value = false;
 }
 </script>
