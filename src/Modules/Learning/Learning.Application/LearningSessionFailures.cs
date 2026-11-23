@@ -14,6 +14,8 @@ public static class LearningSessionFailures
 
     public static ApiError IdentityIncomplete() => new IdentityIncomplete();
 
+    public static ApiError MembershipMissing() => new MembershipMissing();
+
     /// <summary>A report that lost the append race on its session's stream.</summary>
     public static ApiError Changed(Guid id) => new LearningSessionChanged(id);
 

@@ -9,7 +9,8 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// Starting or resuming a learning session through the edge (story L1): a learner's first start creates the session
 /// on the version Learning holds, every later one answers the same session until it is finished, and a session is
 /// read only by its learner, who alone reports progress on it (story L2). Each test sends its own version's
-/// announcement and waits until Learning handled it.
+/// announcement and waits until Learning handled it, and makes the learners who start a session members of a pharmacy
+/// first, since only an active member may start one (#194).
 /// </summary>
 public class LearningSessionsTests(AspireFixture aspire)
 {
@@ -20,7 +21,7 @@ public class LearningSessionsTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var published = await PublishedToLearningAsync(cancellationToken);
-        using var client = await aspire.CreateHostClientAsync("employee-a");
+        using var client = await LearnerAsync("employee-a", cancellationToken);
 
         using var started = await StartAsync(client, published.CourseVersionId, cancellationToken);
 
@@ -45,7 +46,7 @@ public class LearningSessionsTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var published = await PublishedToLearningAsync(cancellationToken);
-        using var client = await aspire.CreateHostClientAsync("employee-a");
+        using var client = await LearnerAsync("employee-a", cancellationToken);
         using var first = await StartAsync(client, published.CourseVersionId, cancellationToken);
         first.StatusCode.ShouldBe(HttpStatusCode.Created, await first.Content.ReadAsStringAsync(cancellationToken));
 
@@ -60,7 +61,7 @@ public class LearningSessionsTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var published = await PublishedToLearningAsync(cancellationToken);
-        using var client = await aspire.CreateHostClientAsync("employee-a");
+        using var client = await LearnerAsync("employee-a", cancellationToken);
 
         var responses = await Task.WhenAll(
             StartAsync(client, published.CourseVersionId, cancellationToken),
@@ -106,8 +107,8 @@ public class LearningSessionsTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var published = await PublishedToLearningAsync(cancellationToken);
-        using var employeeA = await aspire.CreateHostClientAsync("employee-a");
-        using var employeeB = await aspire.CreateHostClientAsync("employee-b");
+        using var employeeA = await LearnerAsync("employee-a", cancellationToken);
+        using var employeeB = await LearnerAsync("employee-b", cancellationToken);
 
         using var startedByA = await StartAsync(employeeA, published.CourseVersionId, cancellationToken);
         using var startedByB = await StartAsync(employeeB, published.CourseVersionId, cancellationToken);
@@ -122,8 +123,8 @@ public class LearningSessionsTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var published = await PublishedToLearningAsync(cancellationToken);
-        using var employeeA = await aspire.CreateHostClientAsync("employee-a");
-        using var employeeB = await aspire.CreateHostClientAsync("employee-b");
+        using var employeeA = await LearnerAsync("employee-a", cancellationToken);
+        using var employeeB = await LearnerAsync("employee-b", cancellationToken);
         using var started = await StartAsync(employeeA, published.CourseVersionId, cancellationToken);
         started.StatusCode.ShouldBe(HttpStatusCode.Created, await started.Content.ReadAsStringAsync(cancellationToken));
 
@@ -137,7 +138,7 @@ public class LearningSessionsTests(AspireFixture aspire)
     public async Task Starting_a_version_learning_does_not_hold_answers_404()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        using var client = await aspire.CreateHostClientAsync("employee-a");
+        using var client = await LearnerAsync("employee-a", cancellationToken);
 
         using var unknown = await StartAsync(client, Guid.CreateVersion7(), cancellationToken);
         using var empty = await StartAsync(client, Guid.Empty, cancellationToken);
@@ -177,7 +178,7 @@ public class LearningSessionsTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var published = await PublishedToLearningAsync(ShortVideoSeconds, cancellationToken);
-        using var client = await aspire.CreateHostClientAsync("employee-a");
+        using var client = await LearnerAsync("employee-a", cancellationToken);
         var session = await StartedAsync(client, published, cancellationToken);
         var film = ChapterOf(published, "Video");
         await Task.Delay(ShortVideoWatched, cancellationToken);
@@ -202,7 +203,7 @@ public class LearningSessionsTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var published = await PublishedToLearningAsync(ShortVideoSeconds, cancellationToken);
-        using var client = await aspire.CreateHostClientAsync("employee-a");
+        using var client = await LearnerAsync("employee-a", cancellationToken);
         var session = await StartedAsync(client, published, cancellationToken);
         var film = ChapterOf(published, "Video");
         await Task.Delay(ShortVideoWatched, cancellationToken);
@@ -228,7 +229,7 @@ public class LearningSessionsTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var published = await PublishedToLearningAsync(ShortVideoSeconds, cancellationToken);
-        using var client = await aspire.CreateHostClientAsync("employee-a");
+        using var client = await LearnerAsync("employee-a", cancellationToken);
         var session = await StartedAsync(client, published, cancellationToken);
 
         foreach (var (kind, below, threshold) in new[] { ("Text", 99, 100), ("Pdf", 99, 100), ("Video", 94, 95) })
@@ -255,7 +256,7 @@ public class LearningSessionsTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var published = await PublishedToLearningAsync(cancellationToken);
-        using var employeeA = await aspire.CreateHostClientAsync("employee-a");
+        using var employeeA = await LearnerAsync("employee-a", cancellationToken);
         using var employeeB = await aspire.CreateHostClientAsync("employee-b");
         var session = await StartedAsync(employeeA, published, cancellationToken);
         var stored = await EventsInAsync(session.Id, cancellationToken);
@@ -288,7 +289,7 @@ public class LearningSessionsTests(AspireFixture aspire)
         var cancellationToken = TestContext.Current.CancellationToken;
         var published = await PublishedToLearningAsync(cancellationToken);
         var other = await PublishedToLearningAsync(cancellationToken);
-        using var client = await aspire.CreateHostClientAsync("employee-a");
+        using var client = await LearnerAsync("employee-a", cancellationToken);
         var session = await StartedAsync(client, published, cancellationToken);
         var stored = await EventsInAsync(session.Id, cancellationToken);
 
@@ -304,7 +305,7 @@ public class LearningSessionsTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var published = await PublishedToLearningAsync(cancellationToken);
-        using var client = await aspire.CreateHostClientAsync("employee-a");
+        using var client = await LearnerAsync("employee-a", cancellationToken);
         var session = await StartedAsync(client, published, cancellationToken);
         var text = ChapterOf(published, "Text");
 
@@ -334,7 +335,7 @@ public class LearningSessionsTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var published = await PublishedToLearningAsync(ShortVideoSeconds, cancellationToken);
-        using var client = await aspire.CreateHostClientAsync("employee-a");
+        using var client = await LearnerAsync("employee-a", cancellationToken);
         var session = await StartedAsync(client, published, cancellationToken);
         var chapters = published.Chapters.OrderBy(chapter => chapter.Position).Select(chapter => chapter.ChapterId).ToList();
         var film = ChapterOf(published, "Video");
@@ -395,7 +396,7 @@ public class LearningSessionsTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var published = await PublishedToLearningAsync(cancellationToken);
-        using var client = await aspire.CreateHostClientAsync("employee-a");
+        using var client = await LearnerAsync("employee-a", cancellationToken);
         var session = await StartedAsync(client, published, cancellationToken);
         var film = ChapterOf(published, "Video");
         var stored = await EventsInAsync(session.Id, cancellationToken);
@@ -417,7 +418,7 @@ public class LearningSessionsTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var published = await PublishedToLearningAsync(ShortVideoSeconds, cancellationToken);
-        using var client = await aspire.CreateHostClientAsync("employee-a");
+        using var client = await LearnerAsync("employee-a", cancellationToken);
         var session = await StartedAsync(client, published, cancellationToken);
         var film = ChapterOf(published, "Video");
 
@@ -459,6 +460,22 @@ public class LearningSessionsTests(AspireFixture aspire)
         command.Parameters.AddWithValue("id", session);
         command.Parameters.AddWithValue("chapter", chapter.ToString());
         return (long)(await command.ExecuteScalarAsync(cancellationToken))!;
+    }
+
+    /// <summary>The user's client, once Learning holds a membership of theirs.</summary>
+    private async Task<HttpClient> LearnerAsync(string user, CancellationToken cancellationToken)
+    {
+        var client = await aspire.CreateHostClientAsync(user);
+        try
+        {
+            await MemberAsync(aspire, SubjectOf(client), cancellationToken);
+            return client;
+        }
+        catch
+        {
+            client.Dispose();
+            throw;
+        }
     }
 
     private Task<PublishedEvent> PublishedToLearningAsync(CancellationToken cancellationToken) =>

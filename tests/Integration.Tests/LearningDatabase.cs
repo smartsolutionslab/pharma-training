@@ -4,12 +4,26 @@ using Npgsql;
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 
 /// <summary>
-/// Learning's side of the tests: Editorial's <c>CourseVersionPublishedV1</c> and <c>CourseVersionRetiredV1</c> sent as Editorial's Wolverine sends them,
-/// the barrier that Learning's inbox handled it, and Learning's own tables read directly.
+/// Learning's side of the tests: Editorial's <c>CourseVersionPublishedV1</c> and <c>CourseVersionRetiredV1</c> and Organisation's membership events sent
+/// as their publishers' Wolverine sends them, the barrier that Learning's inbox handled them, and Learning's own tables
+/// read directly.
+/// <para>
+/// Learning lets only active members of a pharmacy start or work on a session (#194), so a test's learner becomes one
+/// first through <see cref="MemberAsync(AspireFixture, Guid, CancellationToken)"/>: a membership of a fresh pharmacy,
+/// delivered straight to the broker. No test may make <c>visitor</c> (the person who is never a member) or
+/// <c>former-employee</c> (whose every membership is ended, in <c>LearningMembershipTests</c> alone) a member anywhere
+/// else, or those tests stop meaning anything.
+/// </para>
 /// </summary>
 internal static class LearningDatabase
 {
     public const string PublishedType = "SmartSolutionsLab.PharmaTraining.Contracts.Editorial.CourseVersionPublishedV1";
+
+    public const string StartedType = "SmartSolutionsLab.PharmaTraining.Contracts.Organisation.MembershipStartedV1";
+
+    public const string ChangedType = "SmartSolutionsLab.PharmaTraining.Contracts.Organisation.MembershipChangedV1";
+
+    public const string EndedType = "SmartSolutionsLab.PharmaTraining.Contracts.Organisation.MembershipEndedV1";
 
     public const string RetiredType = "SmartSolutionsLab.PharmaTraining.Contracts.Editorial.CourseVersionRetiredV1";
 
@@ -45,12 +59,44 @@ internal static class LearningDatabase
             new EventMetadata(Guid.CreateVersion7(), TimeProvider.System.GetUtcNow()));
 
     /// <summary>Sends the event under a new envelope id and waits until Learning's inbox has handled it.</summary>
-    public static async Task DeliverAsync(AspireFixture aspire, PublishedEvent published, CancellationToken cancellationToken)
+    public static Task DeliverAsync(AspireFixture aspire, PublishedEvent published, CancellationToken cancellationToken) =>
+        DeliverAsync(aspire, PublishedType, published, cancellationToken);
+
+    /// <summary>Sends any event under a new envelope id and waits until Learning's inbox has handled it.</summary>
+    public static async Task DeliverAsync<T>(AspireFixture aspire, string type, T message, CancellationToken cancellationToken)
     {
         var messageId = Guid.CreateVersion7();
-        await Broker.SendAsync(aspire, PublishedType, published, messageId, cancellationToken);
+        await Broker.SendAsync(aspire, type, message, messageId, cancellationToken);
         await WaitUntilHandledAsync(aspire, messageId, cancellationToken);
     }
+
+    /// <summary>Makes the person a member of a fresh pharmacy in Learning's copy, and answers the membership's id.</summary>
+    public static Task<Guid> MemberAsync(AspireFixture aspire, Guid person, CancellationToken cancellationToken) =>
+        MemberAsync(aspire, person, Guid.CreateVersion7(), cancellationToken);
+
+    /// <summary>Makes the person a member of the pharmacy in Learning's copy, and answers the membership's id.</summary>
+    public static async Task<Guid> MemberAsync(AspireFixture aspire, Guid person, Guid pharmacy, CancellationToken cancellationToken)
+    {
+        var started = Started(Guid.CreateVersion7(), person, pharmacy);
+        await DeliverAsync(aspire, StartedType, started, cancellationToken);
+        return started.MembershipId;
+    }
+
+    /// <summary>Ends the membership in Learning's copy.</summary>
+    public static Task EndAsync(AspireFixture aspire, Guid membership, Guid person, Guid pharmacy, CancellationToken cancellationToken) =>
+        DeliverAsync(aspire, EndedType, Ended(membership, person, pharmacy), cancellationToken);
+
+    /// <summary>A membership's start as Organisation publishes it.</summary>
+    public static StartedEvent Started(Guid membership, Guid person, Guid pharmacy) =>
+        new(membership, person, pharmacy, $"Learner {person}", "Pta", "Employee", TimeProvider.System.GetUtcNow(), new EventMetadata(Guid.CreateVersion7(), TimeProvider.System.GetUtcNow()));
+
+    /// <summary>A change of a membership's job function or role as Organisation publishes it; version 2 is the first change.</summary>
+    public static ChangedEvent Changed(Guid membership, Guid person, Guid pharmacy, int version) =>
+        new(membership, person, pharmacy, $"Learner {person}", "Pta", "Manager", version, new EventMetadata(Guid.CreateVersion7(), TimeProvider.System.GetUtcNow()));
+
+    /// <summary>A membership's ending as Organisation publishes it.</summary>
+    public static EndedEvent Ended(Guid membership, Guid person, Guid pharmacy) =>
+        new(membership, person, pharmacy, TimeProvider.System.GetUtcNow(), new EventMetadata(Guid.CreateVersion7(), TimeProvider.System.GetUtcNow()));
 
     /// <summary>The retirement of the published version, under metadata of its own each time it is built.</summary>
     public static RetiredEvent Retired(PublishedEvent published)
@@ -153,4 +199,10 @@ internal static class LearningDatabase
     public sealed record RetiredEvent(Guid CourseId, Guid CourseVersionId, EventMetadata Metadata);
 
     public sealed record PublishedEvent(Guid CourseId, Guid CourseVersionId, int VersionNumber, string Title, int ValidityMonths, IReadOnlyList<SentChapter> Chapters, EventMetadata Metadata);
+
+    public sealed record StartedEvent(Guid MembershipId, Guid PersonId, Guid PharmacyId, string DisplayName, string JobFunction, string Role, DateTimeOffset StartedAt, EventMetadata Metadata);
+
+    public sealed record ChangedEvent(Guid MembershipId, Guid PersonId, Guid PharmacyId, string DisplayName, string JobFunction, string Role, int Version, EventMetadata Metadata);
+
+    public sealed record EndedEvent(Guid MembershipId, Guid PersonId, Guid PharmacyId, DateTimeOffset EndedAt, EventMetadata Metadata);
 }
