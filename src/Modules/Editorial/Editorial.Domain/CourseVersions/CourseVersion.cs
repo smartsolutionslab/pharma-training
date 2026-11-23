@@ -235,7 +235,7 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
 
     /// <summary>
     /// Replaces a draft's test settings. Replacing them sends every question of the version back to review, copied
-    /// ones included, so reviewers sign off the changed test again.
+    /// ones included, so reviewers sign off the changed test again. The same settings again change nothing.
     /// </summary>
     public Result<Unit, DomainError> SetBlueprint(TestBlueprint blueprint)
     {
@@ -244,6 +244,11 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         if (!IsDraft)
         {
             return Failure(CourseVersionErrors.NotADraft(Id, Status));
+        }
+
+        if (blueprint == Blueprint)
+        {
+            return Success(Unit.Value);
         }
 
         Blueprint = blueprint;
