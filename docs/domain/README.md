@@ -149,7 +149,7 @@ Regeln:
 
 - Namen im Perfekt, Version im Typnamen (`CertificateIssuedV1`); eine Änderung, die Konsumenten bricht, wird eine neue Version.
 - Jedes Event trägt `EventId`, `OccurredAt` und die IDs, die Konsumenten zum Zuordnen brauchen (immer `CourseId` und `CourseVersionId`).
-- Keine Personendaten in Events aus event-sourced Services (Learning, Assessment): nur `PersonId`, damit Löschung nach DSGVO möglich bleibt. Namen liegen außerhalb von Events nur hier: in Organisation, in Certification, in Compliance (Namen der Mitglieder, `MemberName`) und in Editorial (Anzeigename der Person, die eine Frage freigegeben hat, `editorial.course_version_questions.reviewed_by_name`, aus dem Claim `name` zum Zeitpunkt der Freigabe und in jede Folgeversion übernommen; Entscheidung des Owners zu #205). Die Löschung (#115) muss jede dieser Stellen erreichen.
+- Keine Personendaten in Events aus event-sourced Services (Learning, Assessment): nur `PersonId`, damit Löschung nach DSGVO möglich bleibt. Namen liegen außerhalb von Events nur hier: in Organisation, in Certification, in Compliance (Namen der Mitglieder, `MemberName`) und in Editorial (Anzeigename der Person, die eine Frage freigegeben hat, `editorial.course_version_questions.reviewed_by_name`, aus dem Claim `name` zum Zeitpunkt der Freigabe und in jede Folgeversion übernommen; Entscheidung des Owners zu #205; und Anzeigename der Person, die eine Kursversion zurückgegeben hat, `editorial.course_version_returns.returned_by_name`, aus dem Claim `name` zum Zeitpunkt der Rückgabe; dieselbe Entscheidung, für Rückgaben angewandt in #220). Die Löschung (#115) muss jede dieser Stellen erreichen.
 - Prüfungsfragen mit Lösungen gehen nur an Assessment, nie an Catalog oder Frontend.
 
 | Event | Publisher | Konsumenten | Wichtige Felder |
@@ -204,7 +204,7 @@ Ein Stream pro Person × Schulungsversion und Durchlauf. Die Kapitelstruktur wir
 | `SessionStarted` | PersonId, CourseId, CourseVersionId, Pflichtkapitel |
 | `ChapterProgressRecorded` | Kapitel, gesehene Abschnitte bzw. Seiten; nur bei echtem Fortschritt |
 | `ChapterCompleted` | Kapitel erfüllt sein Abschlusskriterium |
-| `ContentCompleted` | Alle Pflichtkapitel erfüllt; einmal pro Zyklus |
+| `ContentCompleted` | Alle Pflichtkapitel erfüllt; einmal pro Zyklus. Schaltet nur die Prüfung frei und belegt allein keine Schulung (ADR 0018) |
 | `ProgressReset` | Nach `AttemptsExhausted`; die Kapitel der falsch beantworteten Fragen sind wieder offen |
 | `SessionFinished` | Nach `TestPassed` (Learning konsumiert es zusätzlich zu Certification); danach keine Änderungen |
 
@@ -254,7 +254,7 @@ Status: `Draft` → `InReview` → `Published` → `Superseded` bzw. `Retired`.
 | Command | Invarianten |
 | --- | --- |
 | `AddChapter` / `ReorderChapters` / `EditChapter` | Nur im Entwurf; Kapitel ist Text (Markdown), PDF oder Video (Blob + Dauer) |
-| `SetTestBlueprint` | Anzahl Fragen (Standard 10), Bestehensgrenze (Standard 80 %), Gültigkeit in Monaten |
+| `SetTestBlueprint` | Anzahl Fragen (Standard 10), Bestehensgrenze (Standard 80 %), Gültigkeit in Monaten; nur im Entwurf; eine Änderung einer der drei Vorgaben setzt die Freigabe aller Fragen zurück, auch kopierter; dieselben Werte ändern nichts |
 | `ApplyAiTestDraft` | Ersetzt nur ungeprüfte Fragen; jede Frage trägt Herkunft `AiDrafted` |
 | `EditQuestion` / `ApproveQuestion` | Freigabe vermerkt Redakteur und Zeitpunkt |
 | `SubmitForReview` | Mindestens ein Kapitel; Test vollständig laut Vorgaben |
@@ -277,7 +277,8 @@ Alle Pfade beginnen mit dem Modulnamen; der Edge leitet danach weiter. Kein Serv
 | --- | --- | --- | --- |
 | organisation | `POST /organisation/pharmacies` | angemeldet | Apotheke registrieren (O1) |
 | organisation | `GET /organisation/pharmacies/mine` | angemeldet | Eigene Mitgliedschaften, Apotheke wählen |
-| organisation | `GET /organisation/pharmacies/{id}/members` | Leitung | Mitglieder und offene Einladungen |
+| organisation | `GET /organisation/pharmacies/{id}/members?page&pageSize` | Leitung | Aktive Mitglieder nach Name (O3) |
+| organisation | `GET /organisation/pharmacies/{id}/invitations?page&pageSize` | Leitung | Offene und abgelaufene Einladungen nach Ablaufdatum (O2) |
 | organisation | `POST /organisation/pharmacies/{id}/invitations` | Leitung | Einladen (O2) |
 | organisation | `POST …/invitations/{membershipId}/renew`, `DELETE …/invitations/{membershipId}` | Leitung | Neu senden, zurückziehen |
 | organisation | `POST /organisation/invitations/accept` | angemeldet | Einladung annehmen |

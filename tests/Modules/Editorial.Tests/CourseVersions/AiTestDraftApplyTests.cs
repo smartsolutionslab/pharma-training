@@ -14,8 +14,9 @@ public class AiTestDraftApplyTests
     [Fact]
     public void Applying_a_draft_returns_the_ids_of_the_drafted_questions_in_their_order()
     {
-        var version = DraftWithApprovedQuestion(out var chapter, out var approved);
+        var version = DraftWithQuestion(out var chapter, out var approved);
         version.SetBlueprint(new TestBlueprint(QuestionCount.From(3), ScorePercent.From(80), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
+        version.ApproveQuestion(approved, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
         var first = QuestionId.New();
         var second = QuestionId.New();
         var handedOut = new Queue<QuestionId>([first, second]);

@@ -3,8 +3,8 @@ using System.Diagnostics.CodeAnalysis;
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 
 /// <summary>
-/// The display name of the editor who approved a question, as the access token's <c>name</c> claim carried it at approval
-/// time (#205): a historical record, not changed when the account's name changes. The name is the user's own (the realm
+/// The display name of the editor who approved a question (#205) or returned a course version to draft (#220), as the
+/// access token's <c>name</c> claim carried it at that time: a historical record, not changed when the account's name changes. The name is the user's own (the realm
 /// allows self-registration and lets users edit their name), so it is checked like any input: 1 to <see cref="MaxLength"/>
 /// characters after trimming, on one line, and plain text that holds no control character (a line break and a tab
 /// included), no format character (bidi overrides, zero-width characters) other than the zero-width joiners a script

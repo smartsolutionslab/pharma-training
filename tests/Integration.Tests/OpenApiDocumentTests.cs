@@ -87,6 +87,36 @@ public class OpenApiDocumentTests(AspireFixture aspire)
         required.ShouldNotContain("durationSeconds", $"only a video has a duration; required: [{string.Join(", ", required)}]");
     }
 
+    /// <summary>
+    /// The solutions go to Assessment and never to the frontend (docs/domain/README.md): no schema an assessment path
+    /// answers or takes, and no component schema of Assessment's, has a property that names correctness, however deep.
+    /// It catches an inline or anonymous type that the architecture rule AssessmentResponsesCarryNoSolutions might miss.
+    /// </summary>
+    [Fact]
+    public async Task No_assessment_schema_has_a_correctness_property()
+    {
+        var served = await ServedAsync();
+        var schemas = served["components"]?["schemas"]?.AsObject();
+        var paths = served["paths"]?.AsObject();
+        paths.ShouldNotBeNull("the document has paths");
+        List<string> correctness = [];
+        HashSet<string> visited = [];
+
+        var assessmentPaths = paths.Where(path => path.Key.StartsWith("/assessment/", StringComparison.Ordinal)).ToList();
+        foreach (var (name, path) in assessmentPaths)
+        {
+            CollectCorrectness(served, path, $"paths{name}", correctness, visited);
+        }
+
+        foreach (var (name, schema) in schemas?.Where(schema => schema.Key.StartsWith("Assessment", StringComparison.Ordinal)) ?? [])
+        {
+            CollectCorrectness(served, schema, $"{ComponentSchemas}{name}", correctness, visited);
+        }
+
+        assessmentPaths.ShouldNotBeEmpty("the document describes Assessment's endpoints");
+        correctness.ShouldBeEmpty();
+    }
+
     private async Task<JsonObject> ServedAsync()
     {
         using var client = aspire.CreateHostClient();
@@ -125,6 +155,41 @@ public class OpenApiDocumentTests(AspireFixture aspire)
             for (var index = 0; index < items.Count; index++)
             {
                 CollectEnumsWithNull(items[index], $"{path}/{index}", withNull);
+            }
+        }
+    }
+
+    /// <summary>Every property whose name contains "correct", ignoring case, in the node and what its <c>$ref</c>s name, each component once.</summary>
+    private static void CollectCorrectness(JsonObject document, JsonNode? node, string path, List<string> correctness, HashSet<string> visited)
+    {
+        if (node is JsonObject schema)
+        {
+            if (schema["$ref"]?.GetValue<string>() is { } reference && reference.StartsWith(ComponentSchemas, StringComparison.Ordinal))
+            {
+                var name = reference[ComponentSchemas.Length..];
+                if (visited.Add(name))
+                {
+                    CollectCorrectness(document, document["components"]?["schemas"]?[name], $"{path} -> {reference}", correctness, visited);
+                }
+            }
+
+            if (schema["properties"] is JsonObject properties)
+            {
+                correctness.AddRange(properties
+                    .Where(property => property.Key.Contains("correct", StringComparison.OrdinalIgnoreCase))
+                    .Select(property => $"{path}/properties/{property.Key}"));
+            }
+
+            foreach (var (key, child) in schema)
+            {
+                CollectCorrectness(document, child, $"{path}/{key}", correctness, visited);
+            }
+        }
+        else if (node is JsonArray items)
+        {
+            for (var index = 0; index < items.Count; index++)
+            {
+                CollectCorrectness(document, items[index], $"{path}/{index}", correctness, visited);
             }
         }
     }

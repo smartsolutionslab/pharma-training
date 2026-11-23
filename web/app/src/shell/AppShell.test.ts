@@ -203,6 +203,8 @@ test('the sidebar lists the start page and every module the user may see, from t
 // the tests' new report are for every signed-in user, the tests' review for editors, whatever their module's audience.
 const forEveryone = ['modules.organisation.pages.register.title', 'modules.reports.pages.new.title'];
 const forEditors = [...forEveryone, 'modules.reports.pages.review.title'];
+// Assigning a course (#37) is for a member who may manage the pharmacy, listed with its module, before registering.
+const forManagers = ['modules.compliance.pages.assign.title', ...forEveryone];
 
 const audiences = [
   {
@@ -233,7 +235,7 @@ const audiences = [
       'modules.organisation.title',
       'modules.reports.title',
     ],
-    below: forEveryone,
+    below: forManagers,
   },
   {
     who: 'an editor of no pharmacy',
@@ -306,6 +308,27 @@ test("an employee who opens a manager's page is told it is not available, and le
   expect(main.getByText(t('shell.gate.notInPharmacy', { name: 'Apotheke am Dom' }))).toBeInTheDocument();
   expect(main.getByRole('link', { name: t('shell.gate.goHome') })).toHaveAttribute('href', '/');
   expect(screen.queryByRole('heading', { name: organisation() })).not.toBeInTheDocument();
+});
+
+test('an employee who opens the page to assign a course is told it is not available, though the module is theirs', async () => {
+  answer([dom]);
+
+  await renderAt('/compliance/assign', { roles: [] });
+
+  const main = within(await screen.findByRole('main'));
+  expect(main.getByRole('heading', { name: t('shell.gate.notAvailable'), level: 1 })).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: t('modules.compliance.pages.assign.title') })).not.toBeInTheDocument();
+});
+
+test('a member who may manage the pharmacy opens the page to assign a course', async () => {
+  answer([markt]);
+
+  await renderAt('/compliance/assign', { roles: [] });
+
+  expect(
+    await screen.findByRole('heading', { name: t('modules.compliance.pages.assign.title'), level: 1 }),
+  ).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: t('shell.gate.notAvailable') })).not.toBeInTheDocument();
 });
 
 test('with several pharmacies and none chosen a pharmacy page asks the user to choose one', async () => {
@@ -492,7 +515,12 @@ test.each([
     within(dialog)
       .getAllByRole('option')
       .map((option) => option.textContent.trim()),
-  ).toEqual([home(), ...moduleRoutes.map((module) => t(module.titleKey)), ...titles(forEditors)]);
+  ).toEqual([
+    home(),
+    ...moduleRoutes.map((module) => t(module.titleKey)),
+    // renderAt's user also manages a pharmacy, so assigning a course (#37) is theirs too, listed with its module.
+    ...titles(['modules.compliance.pages.assign.title', ...forEditors]),
+  ]);
 
   await user.keyboard('{Escape}');
   await vi.waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());

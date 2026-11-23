@@ -35,6 +35,7 @@ public class CatalogCourseVersionsTests(AspireFixture aspire)
         version.Title.ShouldBe(published.Title);
         version.ValidityMonths.ShouldBe(24);
         version.IsRetired.ShouldBeFalse();
+        version.Status.ShouldBe("Current");
         version.Chapters.Select(chapter => chapter.Position).ShouldBe([1, 2, 3]);
         version.Chapters.Select(chapter => chapter.Kind).ShouldBe(["Text", "Video", "Pdf"]);
         version.Chapters[0].Text.ShouldBe("# Grundlagen\n\nKühlkette **immer** einhalten.");
@@ -151,6 +152,144 @@ public class CatalogCourseVersionsTests(AspireFixture aspire)
     }
 
     [Fact]
+    public async Task A_version_reads_as_current_until_a_newer_version_of_its_course_arrives_and_as_superseded_after()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("developer");
+        var courseId = Guid.CreateVersion7();
+        var older = Published(courseId, Guid.CreateVersion7(), 1);
+        var newer = Published(courseId, Guid.CreateVersion7(), 2);
+        await SendAsync(PublishedType, older, Guid.CreateVersion7(), cancellationToken);
+        (await WaitUntilReadableAsync(client, older.CourseVersionId, cancellationToken)).Status.ShouldBe("Current");
+
+        await SendAsync(PublishedType, newer, Guid.CreateVersion7(), cancellationToken);
+        await WaitUntilReadableAsync(client, newer.CourseVersionId, cancellationToken);
+
+        var olderRead = await ReadAsync(client, older.CourseVersionId, cancellationToken);
+        olderRead.Status.ShouldBe("Superseded");
+        olderRead.IsRetired.ShouldBeFalse();
+        (await ReadAsync(client, newer.CourseVersionId, cancellationToken)).Status.ShouldBe("Current");
+        (await ListedAsync(client, courseId, cancellationToken)).ShouldHaveSingleItem().CourseVersionId.ShouldBe(newer.CourseVersionId);
+    }
+
+    [Fact]
+    public async Task An_older_version_arriving_after_the_newer_reads_as_superseded_and_never_becomes_current()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("developer");
+        var courseId = Guid.CreateVersion7();
+        var older = Published(courseId, Guid.CreateVersion7(), 1);
+        var newer = Published(courseId, Guid.CreateVersion7(), 2);
+        await SendAsync(PublishedType, newer, Guid.CreateVersion7(), cancellationToken);
+        await WaitUntilReadableAsync(client, newer.CourseVersionId, cancellationToken);
+
+        await SendAsync(PublishedType, older, Guid.CreateVersion7(), cancellationToken);
+
+        (await WaitUntilReadableAsync(client, older.CourseVersionId, cancellationToken)).Status.ShouldBe("Superseded");
+        (await ReadAsync(client, newer.CourseVersionId, cancellationToken)).Status.ShouldBe("Current");
+        (await ListedAsync(client, courseId, cancellationToken)).ShouldHaveSingleItem().CourseVersionId.ShouldBe(newer.CourseVersionId);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Versions_delivered_twice_in_either_order_leave_only_the_newer_current(bool newerFirst)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("developer");
+        var courseId = Guid.CreateVersion7();
+        var older = Published(courseId, Guid.CreateVersion7(), 1);
+        var newer = Published(courseId, Guid.CreateVersion7(), 2);
+        PublishedEvent[] arrival = newerFirst ? [newer, older] : [older, newer];
+        PublishedEvent[] redelivery = newerFirst ? [older, newer] : [newer, older];
+        foreach (var published in arrival)
+        {
+            await SendAsync(PublishedType, published, Guid.CreateVersion7(), cancellationToken);
+            await WaitUntilReadableAsync(client, published.CourseVersionId, cancellationToken);
+        }
+
+        // The same events again, under other envelope ids and in the other order, so the inbox lets them through.
+        foreach (var published in redelivery)
+        {
+            var again = Guid.CreateVersion7();
+            await SendAsync(PublishedType, published, again, cancellationToken);
+            await WaitUntilHandledAsync(again, cancellationToken);
+        }
+
+        (await ReadAsync(client, older.CourseVersionId, cancellationToken)).Status.ShouldBe("Superseded");
+        (await ReadAsync(client, newer.CourseVersionId, cancellationToken)).Status.ShouldBe("Current");
+        (await ListedAsync(client, courseId, cancellationToken)).ShouldHaveSingleItem().CourseVersionId.ShouldBe(newer.CourseVersionId);
+    }
+
+    [Fact]
+    public async Task Two_versions_arriving_together_leave_only_the_newer_current()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("developer");
+        var courseId = Guid.CreateVersion7();
+        var older = Published(courseId, Guid.CreateVersion7(), 1);
+        var newer = Published(courseId, Guid.CreateVersion7(), 2);
+
+        // No barrier between the two: the listener may handle them in parallel.
+        await SendAsync(PublishedType, older, Guid.CreateVersion7(), cancellationToken);
+        await SendAsync(PublishedType, newer, Guid.CreateVersion7(), cancellationToken);
+        await WaitUntilReadableAsync(client, older.CourseVersionId, cancellationToken);
+        await WaitUntilReadableAsync(client, newer.CourseVersionId, cancellationToken);
+
+        (await ReadAsync(client, older.CourseVersionId, cancellationToken)).Status.ShouldBe("Superseded");
+        (await ReadAsync(client, newer.CourseVersionId, cancellationToken)).Status.ShouldBe("Current");
+        (await ListedAsync(client, courseId, cancellationToken)).ShouldHaveSingleItem().CourseVersionId.ShouldBe(newer.CourseVersionId);
+    }
+
+    [Fact]
+    public async Task Retiring_the_newer_version_leaves_the_older_superseded_and_the_course_unlisted()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("developer");
+        var courseId = Guid.CreateVersion7();
+        var older = Published(courseId, Guid.CreateVersion7(), 1);
+        var newer = Published(courseId, Guid.CreateVersion7(), 2);
+        await SendAsync(PublishedType, older, Guid.CreateVersion7(), cancellationToken);
+        await WaitUntilReadableAsync(client, older.CourseVersionId, cancellationToken);
+        await SendAsync(PublishedType, newer, Guid.CreateVersion7(), cancellationToken);
+        await WaitUntilReadableAsync(client, newer.CourseVersionId, cancellationToken);
+
+        var retirement = Guid.CreateVersion7();
+        await SendAsync(RetiredType, Retired(courseId, newer.CourseVersionId), retirement, cancellationToken);
+        await WaitUntilHandledAsync(retirement, cancellationToken);
+
+        (await ReadAsync(client, older.CourseVersionId, cancellationToken)).Status.ShouldBe("Superseded");
+        var newerRead = await ReadAsync(client, newer.CourseVersionId, cancellationToken);
+        newerRead.Status.ShouldBe("Retired");
+        newerRead.IsRetired.ShouldBeTrue();
+        (await ListedAsync(client, courseId, cancellationToken)).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task A_superseded_version_that_is_retired_reads_as_retired()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("developer");
+        var courseId = Guid.CreateVersion7();
+        var older = Published(courseId, Guid.CreateVersion7(), 1);
+        var newer = Published(courseId, Guid.CreateVersion7(), 2);
+        await SendAsync(PublishedType, older, Guid.CreateVersion7(), cancellationToken);
+        await WaitUntilReadableAsync(client, older.CourseVersionId, cancellationToken);
+        await SendAsync(PublishedType, newer, Guid.CreateVersion7(), cancellationToken);
+        await WaitUntilReadableAsync(client, newer.CourseVersionId, cancellationToken);
+
+        var retirement = Guid.CreateVersion7();
+        await SendAsync(RetiredType, Retired(courseId, older.CourseVersionId), retirement, cancellationToken);
+        await WaitUntilHandledAsync(retirement, cancellationToken);
+
+        var olderRead = await ReadAsync(client, older.CourseVersionId, cancellationToken);
+        olderRead.Status.ShouldBe("Retired");
+        olderRead.IsRetired.ShouldBeTrue();
+        (await ReadAsync(client, newer.CourseVersionId, cancellationToken)).Status.ShouldBe("Current");
+        (await ListedAsync(client, courseId, cancellationToken)).ShouldHaveSingleItem().CourseVersionId.ShouldBe(newer.CourseVersionId);
+    }
+
+    [Fact]
     public async Task An_unknown_course_version_is_not_found()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -219,6 +358,13 @@ public class CatalogCourseVersionsTests(AspireFixture aspire)
 
     private Task SendAsync<T>(string type, T message, Guid messageId, CancellationToken cancellationToken) =>
         Broker.SendAsync(aspire, type, message, messageId, cancellationToken);
+
+    private static async Task<ReadVersion> ReadAsync(HttpClient client, Guid courseVersionId, CancellationToken cancellationToken)
+    {
+        var version = await client.GetFromJsonAsync<ReadVersion>(VersionUri(courseVersionId), cancellationToken);
+        version.ShouldNotBeNull();
+        return version;
+    }
 
     /// <summary>Barrier (a): the version is stored once Catalog answers it.</summary>
     private static async Task<ReadVersion> WaitUntilReadableAsync(HttpClient client, Guid courseVersionId, CancellationToken cancellationToken)
@@ -325,7 +471,7 @@ public class CatalogCourseVersionsTests(AspireFixture aspire)
 
     private sealed record ReadChapter(Guid ChapterId, int Position, string Title, string Kind, int? VideoDurationSeconds, string? Text);
 
-    private sealed record ReadVersion(Guid CourseId, Guid CourseVersionId, int VersionNumber, string Title, int ValidityMonths, bool IsRetired, IReadOnlyList<ReadChapter> Chapters);
+    private sealed record ReadVersion(Guid CourseId, Guid CourseVersionId, int VersionNumber, string Title, int ValidityMonths, bool IsRetired, string Status, IReadOnlyList<ReadChapter> Chapters);
 
     private sealed record ListedCourse(Guid CourseId, Guid CourseVersionId, int VersionNumber, string Title, int ValidityMonths);
 

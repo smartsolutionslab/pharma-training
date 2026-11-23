@@ -275,7 +275,7 @@ public class RepublishCourseVersionsTests
 
     private async Task PublishAsync(CourseVersion version)
     {
-        var published = await new PublishCourseVersionHandler(store, store, ReviewSettings.Default, time)
+        var published = await new PublishCourseVersionHandler(store, store, new FakeBlobUrls(time), ReviewSettings.Default, time)
             .HandleAsync(new PublishCourseVersion(version.Id, Reviewer), TestContext.Current.CancellationToken);
         published.IsSuccess.ShouldBeTrue();
         version.Status.ShouldBe(CourseVersionStatus.Published);

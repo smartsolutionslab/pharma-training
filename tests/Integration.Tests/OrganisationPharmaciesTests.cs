@@ -15,6 +15,13 @@ public class OrganisationPharmaciesTests(AspireFixture aspire)
     private static readonly Uri Pharmacies = new("/organisation/pharmacies", UriKind.Relative);
     private static readonly Uri Mine = new("/organisation/pharmacies/mine?page=1&pageSize=100", UriKind.Relative);
 
+    private readonly OrganisationDatabase database = new(aspire);
+
+    /// <summary>
+    /// The founder, <c>owner</c>, signs in with an address Keycloak has verified (<see cref="RealmUsersTests"/>), so this is
+    /// also the verified caller's registration.
+    /// </summary>
+
     [Fact]
     public async Task A_registered_pharmacy_is_read_back_by_its_founder_as_its_manager_and_listed_among_theirs()
     {
@@ -38,6 +45,22 @@ public class OrganisationPharmaciesTests(AspireFixture aspire)
         var mine = await client.GetFromJsonAsync<MyPharmacyPage>(Mine, cancellationToken);
         mine!.Items.ShouldContain(pharmacy);
         mine.PageSize.ShouldBe(100);
+    }
+
+    [Fact]
+    public async Task An_account_whose_address_keycloak_has_not_verified_cannot_register_a_pharmacy()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("unverified");
+        var name = $"Apotheke {Guid.CreateVersion7()}";
+
+        using var refused = await client.PostAsJsonAsync(Pharmacies, new { name, jobFunction = "Pharmacist" }, cancellationToken);
+
+        refused.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await refused.Content.ReadFromJsonAsync<Problem>(cancellationToken))!.Code.ShouldBe("organisation.email-not-verified");
+        var mine = await client.GetFromJsonAsync<MyPharmacyPage>(Mine, cancellationToken);
+        mine!.Items.ShouldNotContain(pharmacy => pharmacy.Name == name);
+        (await database.PharmaciesNamedAsync(name, cancellationToken)).ShouldBe(0);
     }
 
     [Fact]

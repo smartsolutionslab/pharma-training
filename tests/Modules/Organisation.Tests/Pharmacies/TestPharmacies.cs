@@ -24,22 +24,22 @@ internal static class TestPharmacies
     public static MembershipId FounderOf(Pharmacy pharmacy) => pharmacy.Memberships[0].Id;
 
     /// <summary>Invites the person and lets them accept, so they are an active member with the role given.</summary>
-    public static MembershipId AddMember(Pharmacy pharmacy, PersonId person, MembershipRole role, JobFunction jobFunction = JobFunction.Pta)
+    public static MembershipId AddMember(Pharmacy pharmacy, PersonId person, MembershipRole role, JobFunction jobFunction = JobFunction.Pta, string name = "Anna Berger")
     {
         var token = Token();
         var email = EmailAddress.From($"member-{person.Value:N}@example.org");
         var membership = MembershipId.New();
         pharmacy.Invite(membership, email, jobFunction, role, RegisteredAt).IsSuccess.ShouldBeTrue();
         pharmacy.IssueInvitationLink(membership, token, RegisteredAt).IsSuccess.ShouldBeTrue();
-        pharmacy.AcceptInvitation(token, person, DisplayName.From("Anna Berger"), email, RegisteredAt).IsSuccess.ShouldBeTrue();
+        pharmacy.AcceptInvitation(token, person, DisplayName.From(name), email, RegisteredAt).IsSuccess.ShouldBeTrue();
         return membership;
     }
 
-    /// <summary>An invitation nobody has accepted yet, whose mail has not issued its link yet.</summary>
-    public static MembershipId Invite(Pharmacy pharmacy, string email)
+    /// <summary>An invitation nobody has accepted yet, whose mail has not issued its link yet, made at the time given (by default when the pharmacy was registered), so it runs out 14 days later.</summary>
+    public static MembershipId Invite(Pharmacy pharmacy, string email, Timestamp? at = null)
     {
         var membership = MembershipId.New();
-        pharmacy.Invite(membership, EmailAddress.From(email), JobFunction.Pta, MembershipRole.Employee, RegisteredAt).IsSuccess.ShouldBeTrue();
+        pharmacy.Invite(membership, EmailAddress.From(email), JobFunction.Pta, MembershipRole.Employee, at ?? RegisteredAt).IsSuccess.ShouldBeTrue();
         return membership;
     }
 

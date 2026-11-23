@@ -6,7 +6,8 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// <summary>
 /// Runs the broker's entrypoint script, as the AppHost publishes it, in the broker's own image (Docker required). The
 /// image's <c>docker-entrypoint.sh</c> is replaced by a stub on the <c>PATH</c> that prints its arguments, the definitions
-/// file and the names of the variables it was handed, as <c>env</c> lists them (bash's own <c>compgen -e</c> leaves out a
+/// file, the names of the variables it was handed and, where the run planted one (<c>PLANT_LINKS</c>), the owner, size and
+/// content of the file the planted symlinks point to, as <c>env</c> lists them (bash's own <c>compgen -e</c> leaves out a
 /// name that is not a shell identifier, which still reaches the process), and starts no RabbitMQ.
 /// </summary>
 public static class BrokerEntrypoint
@@ -23,8 +24,16 @@ public static class BrokerEntrypoint
         cat /tmp/rabbitmq-definitions.json
         printf '\n%s\n' '{{Separator}}'
         env | cut -d= -f1
+        printf '%s\n' '{{Separator}}'
+        if [ -e /tmp/planted ]; then stat -c '%U %s' /tmp/planted; cat /tmp/planted; fi
         STUB
         chmod +x /stub/docker-entrypoint.sh
+        if [ -n "${PLANT_LINKS-}" ]; then
+          printf 'planted' > /tmp/planted
+          mkdir -p /etc/rabbitmq/conf.d
+          ln -sf /tmp/planted /etc/rabbitmq/conf.d/90-definitions.conf
+          ln -sf /tmp/planted /tmp/rabbitmq-definitions.json
+        fi
         export PATH="/stub:$PATH"
         exec /bin/bash -c "$1"
         """;
@@ -85,8 +94,8 @@ public static class BrokerEntrypoint
         await process.WaitForExitAsync(timeout.Token);
 
         var parts = (await output).Split(Separator + "\n");
-        return parts.Length == 3
-            ? new EntrypointRun(process.ExitCode, await output, await error, parts[0].TrimEnd('\n'), parts[1].TrimEnd('\n'), [.. parts[2].Split('\n', StringSplitOptions.RemoveEmptyEntries)])
-            : new EntrypointRun(process.ExitCode, await output, await error, string.Empty, string.Empty, []);
+        return parts.Length == 4
+            ? new EntrypointRun(process.ExitCode, await output, await error, parts[0].TrimEnd('\n'), parts[1].TrimEnd('\n'), [.. parts[2].Split('\n', StringSplitOptions.RemoveEmptyEntries)], parts[3].TrimEnd('\n'))
+            : new EntrypointRun(process.ExitCode, await output, await error, string.Empty, string.Empty, [], string.Empty);
     }
 }

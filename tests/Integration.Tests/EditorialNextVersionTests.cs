@@ -6,8 +6,8 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 
 /// <summary>
 /// An editor drafts the next version of a published one through the edge (E7, <c>POST …/{id}/next</c>): a draft of
-/// the same course numbered one higher, its content copied with new ids and its questions still approved until they or
-/// their chapter change. One successor per version; only a published version has one.
+/// the same course numbered one higher, its content copied with new ids and its questions still approved until they,
+/// their chapter or the test's settings change. One successor per version; only a published version has one.
 /// </summary>
 [Collection(EditorialDrafts.Name)]
 public class EditorialNextVersionTests(AspireFixture aspire)
@@ -60,6 +60,28 @@ public class EditorialNextVersionTests(AspireFixture aspire)
         var questions = changed.Questions.Where(question => question.ChapterId == chapter.Id).ToList();
         questions.ShouldNotBeEmpty();
         questions.ShouldAllBe(question => question.Review == "Unreviewed");
+    }
+
+    [Fact]
+    public async Task A_copied_question_loses_its_approval_when_a_setting_of_the_next_version_changes()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var first = await PublishedAsync(client, cancellationToken);
+        var id = await DraftNextAsync(client, first.Id, cancellationToken);
+        var copied = await ReadContentAsync(client, id, cancellationToken);
+        copied.Questions.ShouldNotBeEmpty();
+        copied.Questions.ShouldAllBe(question => question.Review == "Approved");
+
+        var path = new Uri($"/editorial/course-versions/{id}/blueprint", UriKind.Relative);
+        using (var set = await client.PutAsJsonAsync(path, new { questions = 1, passingScorePercent = 81, validityMonths = 12 }, cancellationToken))
+        {
+            set.StatusCode.ShouldBe(HttpStatusCode.OK, $"PUT {path} answered {(int)set.StatusCode}.");
+        }
+
+        var changed = await ReadContentAsync(client, id, cancellationToken);
+        changed.Questions.Select(question => question.Id).ShouldBe(copied.Questions.Select(question => question.Id));
+        changed.Questions.ShouldAllBe(question => question.Review == "Unreviewed" && question.ReviewedBy == null && question.ReviewedAt == null);
     }
 
     [Fact]
