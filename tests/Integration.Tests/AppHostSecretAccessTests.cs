@@ -58,6 +58,45 @@ public class AppHostSecretAccessTests
         }
     }
 
+    /// <summary>
+    /// Each service reads its own broker connection string and no other service's, nor any password; the broker reads its
+    /// admin's password and every service user's password, each a secret of its own, and no connection string (#183).
+    /// </summary>
+    [Fact]
+    public async Task Each_service_reads_its_own_broker_secret_and_the_broker_every_users_password()
+    {
+        var bicep = await PublishedAppHost.PublishAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
+        await using var builder = await PublishedAppHost.ModelAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
+        var services = PublishedAppHost.Services(builder).Select(service => service.Name).ToList();
+        var apps = bicep.ContainerApps;
+
+        services.ShouldNotBeEmpty();
+        foreach (var service in services)
+        {
+            apps.ShouldContainKey(service);
+            var identity = Identity(apps[service]).ShouldNotBeNull($"{service} reads Key Vault secrets under no identity of its own.");
+            PublishedBicep.KeyVaultSecretsReferenced(apps[service])
+                .Where(secret => secret.StartsWith("messaging-", StringComparison.Ordinal))
+                .ShouldBe([$"messaging-{service}-connection-string"], ignoreOrder: false, $"{service} should read its own broker connection string and no other broker secret.");
+            bicep.RoleAssignmentsOf(identity)
+                .Where(assignment => assignment.Role == KeyVaultSecretsUser && assignment.ScopeType == VaultSecret && assignment.ScopeName.StartsWith("messaging-", StringComparison.Ordinal))
+                .Select(assignment => assignment.ScopeName)
+                .ShouldBe([$"messaging-{service}-connection-string"], ignoreOrder: false, $"{service} should be granted its own broker connection string alone.");
+        }
+
+        List<string> passwords = [.. services.Select(service => $"messaging-{service}-password").Append("messaging-password").Order(StringComparer.Ordinal)];
+        apps.ShouldContainKey("messaging");
+        var brokerIdentity = Identity(apps["messaging"]).ShouldNotBeNull("The broker reads Key Vault secrets under no identity of its own.");
+        PublishedBicep.KeyVaultSecretsReferenced(apps["messaging"])
+            .ShouldBe(passwords, ignoreOrder: false, "The broker should read its admin's password and every service user's password, and no other secret.");
+        bicep.RoleAssignmentsOf(brokerIdentity)
+            .Where(assignment => assignment.Role == KeyVaultSecretsUser && assignment.ScopeType == VaultSecret)
+            .Select(assignment => assignment.ScopeName)
+            .Order(StringComparer.Ordinal)
+            .ShouldBe(passwords, ignoreOrder: false, "The broker should be granted its admin's password and every service user's password alone.");
+        bicep.Module("messaging-roles-secrets").ShouldNotContain("messaging-definitions", Case.Sensitive, "messaging-roles-secrets still grants the definitions document.");
+    }
+
     [Fact]
     public async Task No_identity_holds_a_role_on_the_whole_vault()
     {
