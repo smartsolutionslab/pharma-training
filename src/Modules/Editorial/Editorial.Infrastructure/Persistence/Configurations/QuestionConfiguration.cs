@@ -34,6 +34,7 @@ public sealed class QuestionConfiguration : IEntityTypeConfiguration<Question>
         builder.Property(question => question.Review).HasColumnName("review").HasConversion<string>().HasMaxLength(EnumLength).IsRequired();
         builder.Property(question => question.ReviewedBy).HasColumnName("reviewed_by");
         builder.Property(question => question.ReviewedAt).HasColumnName("reviewed_at");
+        builder.Property(question => question.ReviewedByName).HasColumnName("reviewed_by_name").HasMaxLength(ReviewerName.MaxLength);
 
         // The database refuses a question whose chapter is gone; the Domain removes a chapter's questions with it.
         // In the database this key and the options' key below are DEFERRABLE INITIALLY DEFERRED, and this one is

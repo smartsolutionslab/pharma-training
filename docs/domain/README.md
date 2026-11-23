@@ -149,7 +149,7 @@ Regeln:
 
 - Namen im Perfekt, Version im Typnamen (`CertificateIssuedV1`); eine Änderung, die Konsumenten bricht, wird eine neue Version.
 - Jedes Event trägt `EventId`, `OccurredAt` und die IDs, die Konsumenten zum Zuordnen brauchen (immer `CourseId` und `CourseVersionId`).
-- Keine Personendaten in Events aus event-sourced Services (Learning, Assessment): nur `PersonId`. Namen leben nur in Organisation und Certification, damit Löschung nach DSGVO möglich bleibt.
+- Keine Personendaten in Events aus event-sourced Services (Learning, Assessment): nur `PersonId`, damit Löschung nach DSGVO möglich bleibt. Namen liegen außerhalb von Events nur hier: in Organisation, in Certification, in Compliance (Namen der Mitglieder, `MemberName`) und in Editorial (Anzeigename der Person, die eine Frage freigegeben hat, `editorial.course_version_questions.reviewed_by_name`, aus dem Claim `name` zum Zeitpunkt der Freigabe und in jede Folgeversion übernommen; Entscheidung des Owners zu #205). Die Löschung (#115) muss jede dieser Stellen erreichen.
 - Prüfungsfragen mit Lösungen gehen nur an Assessment, nie an Catalog oder Frontend.
 
 | Event | Publisher | Konsumenten | Wichtige Felder |
@@ -160,6 +160,7 @@ Regeln:
 | `PharmacyRegistered` | Organisation | Compliance, Certification | PharmacyId, Name |
 | `MembershipStarted` | Organisation | Compliance, Certification | MembershipId, PersonId, PharmacyId, DisplayName, JobFunction, Role |
 | `MembershipEnded` | Organisation | Compliance | MembershipId, PersonId, PharmacyId, EndedAt |
+| `MembershipChanged` | Organisation | Compliance | MembershipId, PersonId, PharmacyId, DisplayName, JobFunction, Role, Version |
 | `CourseAssigned` | Compliance | (keiner in MVP 1, später Benachrichtigung) | AssignmentId, PersonId, PharmacyId, CourseId, DueDate |
 | `AssignmentCompleted` | Compliance | (keiner in MVP 1) | AssignmentId, CertificateId, CompletedAt, Late |
 | `LearningSessionStarted` | Learning | Compliance | SessionId, PersonId, CourseId, CourseVersionId |

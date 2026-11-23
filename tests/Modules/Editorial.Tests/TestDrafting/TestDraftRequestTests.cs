@@ -77,8 +77,8 @@ public class TestDraftRequestTests
         var approved = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
         var otherApproved = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
         version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).IsSuccess.ShouldBeTrue();
-        version.ApproveQuestion(approved, Author, Now).IsSuccess.ShouldBeTrue();
-        version.ApproveQuestion(otherApproved, Author, Now).IsSuccess.ShouldBeTrue();
+        version.ApproveQuestion(approved, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
+        version.ApproveQuestion(otherApproved, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
 
         var request = TestDraftRequest.For(version).Value;
 
@@ -127,7 +127,7 @@ public class TestDraftRequestTests
         for (var index = 0; index < approved; index++)
         {
             var question = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
-            version.ApproveQuestion(question, Author, Now).IsSuccess.ShouldBeTrue();
+            version.ApproveQuestion(question, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
         }
 
         version.SetBlueprint(Blueprint(blueprint)).IsSuccess.ShouldBeTrue();

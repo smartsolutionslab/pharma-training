@@ -26,6 +26,8 @@ public sealed class MembershipConfiguration : IEntityTypeConfiguration<Membershi
         builder.Property(membership => membership.Email).HasColumnName("email").HasMaxLength(EmailAddress.MaxLength).IsRequired();
         // Rows from before versions were kept are each at their invitation's first version.
         builder.Property(membership => membership.InvitationVersion).HasColumnName("invitation_version").HasDefaultValue(InvitationVersion.First).IsRequired();
+        // Rows from before versions were kept are each at version 1: no change was ever announced for them.
+        builder.Property(membership => membership.Version).HasColumnName("version").HasDefaultValue(MembershipVersion.First).IsRequired();
         builder.Property(membership => membership.InvitationMailedFor).HasColumnName("invitation_mailed_for");
         builder.Property(membership => membership.InvitationExpiresAt).HasColumnName("invitation_expires_at");
         builder.Property(membership => membership.Person).HasColumnName("person_id");

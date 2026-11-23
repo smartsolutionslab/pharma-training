@@ -32,25 +32,8 @@ public sealed class MembershipStartedV1Consumer(IMemberStore members, IComplianc
             PersonId.From(message.PersonId),
             PharmacyId.From(message.PharmacyId),
             MemberName.From(message.DisplayName),
-            ToJobFunction(message.JobFunction),
-            ToRole(message.Role)));
+            OrganisationValues.ToJobFunction(message.JobFunction),
+            OrganisationValues.ToRole(message.Role)));
         await unitOfWork.CommitAsync(cancellationToken);
     }
-
-    private static JobFunction ToJobFunction(JobFunctionV1 jobFunction) => jobFunction switch
-    {
-        JobFunctionV1.Pharmacist => JobFunction.Pharmacist,
-        JobFunctionV1.Pta => JobFunction.Pta,
-        JobFunctionV1.Pka => JobFunction.Pka,
-        JobFunctionV1.Trainee => JobFunction.Trainee,
-        JobFunctionV1.Other => JobFunction.Other,
-        _ => throw new InvalidOperationException($"Job function {jobFunction} has no counterpart in Compliance."),
-    };
-
-    private static MembershipRole ToRole(MembershipRoleV1 role) => role switch
-    {
-        MembershipRoleV1.Manager => MembershipRole.Manager,
-        MembershipRoleV1.Employee => MembershipRole.Employee,
-        _ => throw new InvalidOperationException($"Role {role} has no counterpart in Compliance."),
-    };
 }

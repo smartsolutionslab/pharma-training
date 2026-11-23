@@ -28,6 +28,9 @@ public static class CourseVersionFailures
 
     public static ApiError IdentityIncomplete() => new IdentityIncomplete();
 
+    /// <summary>An approval whose token names no display name that fits a <see cref="ReviewerName"/> (#205).</summary>
+    public static ApiError ReviewerNameMissing() => new ReviewerNameMissing();
+
     /// <summary>A return's reason that is missing, blank, too long or holds a control or format character.</summary>
     public static ApiError InvalidReturnReason() => new InvalidReturnReason();
 

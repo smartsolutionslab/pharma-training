@@ -33,6 +33,9 @@ public sealed class Question : Entity<QuestionId>
 
     public Timestamp? ReviewedAt { get; private set; }
 
+    /// <summary>The approver's display name as the token carried it at approval time; null while unreviewed and for approvals recorded before #205.</summary>
+    public ReviewerName? ReviewedByName { get; private set; }
+
     internal static Question From(QuestionId id, DraftedQuestion draft, Provenance provenance, Func<AnswerOptionId> newOptionId)
     {
         var question = new Question(id, draft.Text, draft.Type, draft.Chapter, provenance);
@@ -49,10 +52,11 @@ public sealed class Question : Entity<QuestionId>
         MarkUnreviewed();
     }
 
-    internal void Approve(PersonId editor, Timestamp now)
+    internal void Approve(PersonId editor, ReviewerName name, Timestamp now)
     {
         Review = ReviewState.Approved;
         ReviewedBy = editor;
+        ReviewedByName = name;
         ReviewedAt = now;
     }
 
@@ -60,6 +64,7 @@ public sealed class Question : Entity<QuestionId>
     {
         Review = ReviewState.Unreviewed;
         ReviewedBy = null;
+        ReviewedByName = null;
         ReviewedAt = null;
     }
 
@@ -87,7 +92,7 @@ public sealed class Question : Entity<QuestionId>
 
     internal Question CopyFor(QuestionId id, ChapterId chapter, Func<AnswerOptionId> newOptionId)
     {
-        var copy = new Question(id, Text, Type, chapter, Provenance) { Review = Review, ReviewedBy = ReviewedBy, ReviewedAt = ReviewedAt };
+        var copy = new Question(id, Text, Type, chapter, Provenance) { Review = Review, ReviewedBy = ReviewedBy, ReviewedByName = ReviewedByName, ReviewedAt = ReviewedAt };
         copy.ReplaceOptions([.. options.Select(option => (option.Text, option.Correctness))], newOptionId);
         return copy;
     }
