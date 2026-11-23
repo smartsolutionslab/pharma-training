@@ -596,6 +596,14 @@ export const de = {
       media: {
         notReady: 'Die Datei wird noch bereitgestellt. Versuchen Sie es in einem Moment erneut.',
       },
+      pdf: {
+        label: 'PDF: {title}',
+        page: 'Seite {page} von {pages}',
+        hint: 'Blättern Sie bis zur letzten Seite, um das Kapitel abzuschließen.',
+        next: 'Nächste Seite',
+        previous: 'Vorherige Seite',
+        failed: 'Das PDF konnte nicht angezeigt werden.',
+      },
       progress: {
         failed: 'Ihr Fortschritt konnte nicht gespeichert werden. Er wird erneut gesendet.',
         saveNow: 'Jetzt speichern',

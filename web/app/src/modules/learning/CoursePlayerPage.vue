@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
+import PdfChapter from './PdfChapter.vue';
 import TextChapter from './TextChapter.vue';
 import { type PlayerChapter, useCoursePlayer } from './useCoursePlayer';
 import { useProgressReporter } from './useProgressReporter';
@@ -171,7 +172,15 @@ const chapterHeadingId = 'course-player-chapter';
             @tracking="(percent) => current !== undefined && trackProgress(current, percent)"
             @announce="announce"
           />
-          <!-- The PDF chapter (PdfChapter) takes its place here with its own task. -->
+          <PdfChapter
+            v-else-if="current.kind === 'Pdf'"
+            :key="current.chapterId"
+            :chapter-id="current.chapterId"
+            :title="current.title"
+            :progress-percent="current.progressPercent"
+            :completed="current.completed"
+            @progress="(percent) => current !== undefined && reportProgress(current, percent)"
+          />
         </section>
       </div>
     </template>

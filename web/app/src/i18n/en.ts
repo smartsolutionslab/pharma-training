@@ -580,6 +580,14 @@ export const en: MessageSchema = {
       media: {
         notReady: 'The file is still being prepared. Please try again in a moment.',
       },
+      pdf: {
+        label: 'PDF: {title}',
+        page: 'Page {page} of {pages}',
+        hint: 'Scroll to the last page to complete the chapter.',
+        next: 'Next page',
+        previous: 'Previous page',
+        failed: 'The PDF could not be shown.',
+      },
       progress: {
         failed: 'Your progress could not be saved. It will be sent again.',
         saveNow: 'Save now',
