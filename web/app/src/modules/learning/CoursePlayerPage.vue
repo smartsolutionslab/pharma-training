@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { BookOpen, CircleCheck } from '@lucide/vue';
-import { nextTick, ref, useTemplateRef, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, useTemplateRef, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { type RouteLocationRaw, RouterLink, useRoute, useRouter } from 'vue-router';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -28,14 +29,61 @@ const reporter = useProgressReporter(sessionId, {
 });
 const { failed: reportFailed, finished: sessionFinished } = reporter;
 
-// A chapter left sends what it had pending.
+/** The longest a navigation waits for the pending report's answer; the report is on its way either way. */
+const flushWait = 2_000;
+
+/** Sends what is pending and resolves once it is answered, or after flushWait at the latest. */
+async function flushBeforeLeaving() {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      reporter.flush(),
+      new Promise<void>((resolve) => {
+        timeout = setTimeout(resolve, flushWait);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+// A chapter left (?chapter= changes) or the page left reports what was pending first. A guard of the router's own,
+// since the page may be rendered without a RouterView, where in-component guards never run.
+const router = useRouter();
+const route = useRoute();
+const removeGuard = router.beforeEach(async (to, from) => {
+  if (to.fullPath !== from.fullPath) {
+    await flushBeforeLeaving();
+  }
+});
+onBeforeUnmount(removeGuard);
+
+/** The address of a chapter: this page with it in ?chapter=. */
+const chapterLocation = (chapter: PlayerChapter): RouteLocationRaw => ({
+  query: { ...route.query, chapter: chapter.chapterId },
+});
+const currentIndex = computed(() =>
+  chapters.value.findIndex((chapter) => chapter.chapterId === current.value?.chapterId),
+);
+const previousChapter = computed(() => (currentIndex.value > 0 ? chapters.value[currentIndex.value - 1] : undefined));
+const nextChapter = computed(() => (currentIndex.value >= 0 ? chapters.value[currentIndex.value + 1] : undefined));
+
+function openChapter(chapter: PlayerChapter | undefined) {
+  if (chapter !== undefined) {
+    void router.push(chapterLocation(chapter));
+  }
+}
+
+const chapterHeading = useTemplateRef<HTMLElement>('chapterHeading');
+// The chapter's heading takes the focus once another chapter shows, so the learner reads on from its title.
 watch(
   () => current.value?.chapterId,
   (_chapterId, previous) => {
     if (previous !== undefined) {
-      void reporter.flush();
+      chapterHeading.value?.focus();
     }
   },
+  { flush: 'post' },
 );
 
 function reportProgress(chapter: PlayerChapter, percent: number) {
@@ -127,25 +175,35 @@ const chapterHeadingId = 'course-player-chapter';
               v-for="chapter in chapters"
               :key="chapter.chapterId"
               :aria-current="chapter.chapterId === current?.chapterId ? 'step' : undefined"
-              :class="[
-                'flex flex-col gap-1 rounded-md border p-3',
-                chapter.chapterId === current?.chapterId ? 'border-primary bg-accent' : 'border-border',
-              ]"
             >
-              <span class="text-body">{{ chapter.title }}</span>
-              <span class="text-caption text-muted-foreground flex flex-wrap items-center gap-2">
-                <span>{{ t(`glossary.chapterKind.${chapter.kind}`) }}</span>
-                <span class="inline-flex items-center gap-1 tabular-nums">
-                  <CircleCheck v-if="chapter.completed" class="size-4" aria-hidden="true" />{{ stateOf(chapter) }}
-                </span>
-              </span>
+              <!-- custom: the item says which chapter is current (step), not the link that every query here matches. -->
+              <RouterLink v-slot="{ href, navigate }" :to="chapterLocation(chapter)" custom>
+                <a
+                  :href="href"
+                  :class="[
+                    'hover:bg-accent focus-visible:ring-ring flex flex-col gap-1 rounded-md border p-3 focus-visible:ring-2 focus-visible:outline-none motion-safe:transition-colors',
+                    chapter.chapterId === current?.chapterId ? 'border-primary bg-accent' : 'border-border',
+                  ]"
+                  @click="navigate"
+                >
+                  <span class="text-body">{{ chapter.title }}</span>
+                  <span class="text-caption text-muted-foreground flex flex-wrap items-center gap-2">
+                    <span>{{ t(`glossary.chapterKind.${chapter.kind}`) }}</span>
+                    <span class="inline-flex items-center gap-1 tabular-nums">
+                      <CircleCheck v-if="chapter.completed" class="size-4" aria-hidden="true" />{{ stateOf(chapter) }}
+                    </span>
+                  </span>
+                </a>
+              </RouterLink>
             </li>
           </ol>
         </nav>
 
         <section v-if="current !== undefined" :aria-labelledby="chapterHeadingId" class="flex flex-col gap-4">
           <div class="flex flex-wrap items-center gap-3">
-            <h2 :id="chapterHeadingId" tabindex="-1" class="text-title focus:outline-none">{{ current.title }}</h2>
+            <h2 :id="chapterHeadingId" ref="chapterHeading" tabindex="-1" class="text-title focus:outline-none">
+              {{ current.title }}
+            </h2>
             <span
               v-if="current.completed"
               class="bg-secondary text-secondary-foreground text-caption inline-flex items-center gap-1 rounded-md px-2 py-0.5"
@@ -181,6 +239,14 @@ const chapterHeadingId = 'course-player-chapter';
             :completed="current.completed"
             @progress="(percent) => current !== undefined && reportProgress(current, percent)"
           />
+          <div class="flex flex-wrap justify-between gap-3">
+            <Button variant="outline" :disabled="previousChapter === undefined" @click="openChapter(previousChapter)">
+              {{ t('learning.player.previous') }}
+            </Button>
+            <Button :disabled="nextChapter === undefined" @click="openChapter(nextChapter)">
+              {{ t('learning.player.next') }}
+            </Button>
+          </div>
         </section>
       </div>
     </template>

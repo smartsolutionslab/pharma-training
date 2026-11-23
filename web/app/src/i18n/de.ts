@@ -581,6 +581,8 @@ export const de = {
         progress: '{percent} bearbeitet',
         open: 'Offen',
       },
+      next: 'Nächstes Kapitel',
+      previous: 'Vorheriges Kapitel',
       chapterDone: 'Kapitel „{title}“ erledigt.',
       contentCompleted: 'Sie haben alle Kapitel bearbeitet. Der Test ist jetzt freigeschaltet.',
       text: {

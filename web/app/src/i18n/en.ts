@@ -565,6 +565,8 @@ export const en: MessageSchema = {
         progress: '{percent} done',
         open: 'Not started',
       },
+      next: 'Next chapter',
+      previous: 'Previous chapter',
       chapterDone: 'Chapter “{title}” done.',
       contentCompleted: 'You have worked through all chapters. The test is now unlocked.',
       text: {
