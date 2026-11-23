@@ -96,6 +96,51 @@ public class BlueprintApprovalResetTests
         version.Status.ShouldBe(CourseVersionStatus.Published);
     }
 
+    [Fact]
+    public void Saving_the_same_settings_again_keeps_every_approval_and_raises_no_event()
+    {
+        var version = DraftWithTwoApprovedQuestions();
+        var approvals = Approvals(version);
+        IReadOnlyList<object> eventsBefore = [.. version.DomainEvents];
+
+        // A new instance with equal values, so value equality is what is tested, not reference equality.
+        var same = Blueprint(10, 80, 12);
+        same.ShouldNotBeSameAs(version.Blueprint);
+        var set = version.SetBlueprint(same);
+
+        set.IsSuccess.ShouldBeTrue();
+        version.Blueprint.ShouldBe(TestBlueprint.Default);
+        Approvals(version).ShouldBe(approvals);
+        version.Questions.ShouldAllBe(question => question.Review == ReviewState.Approved);
+        version.DomainEvents.Count.ShouldBe(eventsBefore.Count);
+        for (var index = 0; index < eventsBefore.Count; index++)
+        {
+            version.DomainEvents[index].ShouldBeSameAs(eventsBefore[index]);
+        }
+    }
+
+    /// <summary>A regression pin of the check order, green before and after #199: a version that is no draft refuses first.</summary>
+    [Fact]
+    public void Saving_the_same_settings_on_a_version_in_review_is_still_refused_as_not_a_draft()
+    {
+        var version = InReview();
+        var approvals = Approvals(version);
+        var same = new TestBlueprint(
+            QuestionCount.From(version.Blueprint.Questions.Value),
+            ScorePercent.From(version.Blueprint.PassingScore.Value),
+            RecurrenceInterval.From(version.Blueprint.Validity.Value));
+
+        var set = version.SetBlueprint(same);
+
+        set.IsFailure.ShouldBeTrue();
+        set.Error.ShouldBeOfType<NotADraft>().Code.ShouldBe("editorial.not-a-draft");
+        Approvals(version).ShouldBe(approvals);
+        version.Questions.ShouldAllBe(question => question.Review == ReviewState.Approved);
+    }
+
+    private static IReadOnlyList<(QuestionId Id, ReviewState Review, PersonId? ReviewedBy, Timestamp? ReviewedAt)> Approvals(CourseVersion version) =>
+        [.. version.Questions.Select(question => (question.Id, question.Review, question.ReviewedBy, question.ReviewedAt))];
+
     private static void ChangingTakesEveryApprovalAway(TestBlueprint changed)
     {
         var version = DraftWithTwoApprovedQuestions();

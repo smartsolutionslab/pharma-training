@@ -59,6 +59,22 @@ public class SetTestBlueprintTests
     }
 
     [Fact]
+    public async Task Saving_the_same_blueprint_again_keeps_every_approval()
+    {
+        var version = DraftWithApprovedQuestion(out _, out var question);
+        store.Stored.Add(version);
+
+        var set = await SetAsync(version.Id, Blueprint(10, 80, 12));
+
+        set.IsSuccess.ShouldBeTrue();
+        version.Blueprint.ShouldBe(TestBlueprint.Default);
+        var kept = version.Questions.ShouldHaveSingleItem();
+        kept.Id.ShouldBe(question);
+        kept.Review.ShouldBe(ReviewState.Approved);
+        kept.ReviewedBy.ShouldBe(Author);
+    }
+
+    [Fact]
     public async Task A_count_below_the_questions_held_removes_none()
     {
         var version = DraftWithQuestion(out var chapter, out var first);

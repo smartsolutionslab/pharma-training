@@ -68,6 +68,30 @@ public class EditorialBlueprintTests(AspireFixture aspire)
     }
 
     [Fact]
+    public async Task Saving_the_same_settings_again_keeps_every_approval()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var id = await CreateAsync(client, cancellationToken);
+        var chapter = await AddChapterAsync(client, id, cancellationToken);
+        var first = await AddQuestionAsync(client, id, chapter, cancellationToken);
+        var second = await AddQuestionAsync(client, id, chapter, cancellationToken);
+        await ApproveAsync(client, id, first, cancellationToken);
+        await ApproveAsync(client, id, second, cancellationToken);
+        var before = await ReadAsync(client, id, cancellationToken);
+        before.Questions.ShouldNotBeNull();
+        before.Questions.ShouldAllBe(read => read.Review == "Approved" && read.ReviewedBy != null && read.ReviewedAt != null);
+
+        using var set = await client.PutAsJsonAsync(Blueprint(id), new { questions = 10, passingScorePercent = 80, validityMonths = 12 }, cancellationToken);
+
+        set.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var version = await ReadAsync(client, id, cancellationToken);
+        version.Blueprint.ShouldBe(new BlueprintView(10, 80, 12));
+        version.Questions.ShouldNotBeNull();
+        version.Questions.OrderBy(read => read.Id).ShouldBe(before.Questions.OrderBy(read => read.Id));
+    }
+
+    [Fact]
     public async Task Numbers_sent_as_strings_are_read_as_numbers()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
