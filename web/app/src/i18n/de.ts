@@ -419,12 +419,14 @@ export const de = {
         open: 'Offen:',
         chapters: 'Die Version hat Kapitel.',
         chaptersMissing: 'Die Version braucht mindestens ein Kapitel.',
-        questions: 'Der Test hat alle {required} Fragen.',
-        questionsMissing: 'Der Test hat {held} von {required} Fragen.',
-        questionsTooMany: 'Der Test hat {held} Fragen, vorgegeben sind {required}.',
-        approved: 'Alle Fragen sind freigegeben.',
-        approvedNone: 'Noch keine Frage ist freigegeben.',
-        approvedSome: '{approved} von {held} Fragen sind freigegeben.',
+        questions: 'Der Test hat die verlangte Frage. | Der Test hat alle {count} verlangten Fragen.',
+        questionsMissing:
+          'Der Test hat die verlangte Frage noch nicht. | Der Test hat {held} von {count} verlangten Fragen.',
+        questionsTooMany:
+          'Der Test hat {held} Fragen, verlangt ist eine. | Der Test hat {held} Fragen, verlangt sind {count}.',
+        approved: 'Alle Fragen sind geprüft.',
+        approvedNone: 'Noch keine Frage ist geprüft.',
+        approvedSome: 'Eine von {held} Fragen ist geprüft. | {count} von {held} Fragen sind geprüft.',
         submitted: 'Die Version ist zur Prüfung eingereicht.',
         notSubmitted: 'Die Version muss noch zur Prüfung eingereicht werden.',
         fourEyes:

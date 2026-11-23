@@ -8,6 +8,7 @@ import {
   usePostEditorialCourseVersionsIdReturn,
   usePostEditorialCourseVersionsIdSubmit,
 } from '@/api/generated';
+import { ApiError } from '@/api/baseApi';
 
 /** What a step of the workflow came to: taken, or what the client threw. */
 export type WorkflowResult = { ok: true } | { ok: false; error: unknown };
@@ -16,9 +17,15 @@ export type WorkflowResult = { ok: true } | { ok: false; error: unknown };
 const stepTaken = (_data: unknown, _variables: unknown, _result: unknown, { client }: { client: QueryClient }) =>
   client.invalidateQueries({ queryKey: getGetEditorialCourseVersionsQueryKey() });
 
-/** A refused step may mean the version changed meanwhile: the version alone (not its returns) is read again first. */
-const stepRefused = (_error: unknown, { id }: { id: string }, _result: unknown, { client }: { client: QueryClient }) =>
-  client.invalidateQueries({ queryKey: getGetEditorialCourseVersionsIdQueryKey(id), exact: true });
+/**
+ * A refused step may mean the version changed meanwhile: the version alone (not its returns) is read again, and the
+ * step answers once it has been. A step that never reached the host changed nothing, and the host is likely out of
+ * reach: the version is marked stale, but the step answers at once, not after the read's retries.
+ */
+const stepRefused = (error: unknown, { id }: { id: string }, _result: unknown, { client }: { client: QueryClient }) => {
+  const read = client.invalidateQueries({ queryKey: getGetEditorialCourseVersionsIdQueryKey(id), exact: true });
+  return error instanceof ApiError ? read : undefined;
+};
 
 const mutation = { mutation: { onSuccess: stepTaken, onError: stepRefused } };
 

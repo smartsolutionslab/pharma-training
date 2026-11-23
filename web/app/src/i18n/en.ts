@@ -405,16 +405,20 @@ export const en: MessageSchema = {
         open: 'Open:',
         chapters: 'The version has chapters.',
         chaptersMissing: 'The version needs at least one chapter.',
-        questions: 'The test has all {required} questions.',
-        questionsMissing: 'The test has {held} of {required} questions.',
-        questionsTooMany: 'The test has {held} questions; its blueprint asks for {required}.',
+        questions:
+          'The test has the one question its blueprint asks for. | The test has all {count} questions its blueprint asks for.',
+        questionsMissing:
+          'The test does not have the one question its blueprint asks for yet. | The test has {held} of the {count} questions its blueprint asks for.',
+        questionsTooMany:
+          'The test has {held} questions; its blueprint asks for one. | The test has {held} questions; its blueprint asks for {count}.',
         approved: 'Every question is approved.',
         approvedNone: 'No question is approved yet.',
-        approvedSome: '{approved} of {held} questions are approved.',
+        approvedSome: 'One of {held} questions is approved. | {count} of {held} questions are approved.',
         submitted: 'The version has been submitted for review.',
         notSubmitted: 'The version still has to be submitted for review.',
-        fourEyes: 'You submitted this version. With four eyes, someone else must publish it.',
-        publisherApproved: 'You approved questions of this version. With four eyes, someone else must publish it.',
+        fourEyes: 'You submitted this version. Four-eyes approval requires someone else to publish it.',
+        publisherApproved:
+          'You approved questions of this version. Four-eyes approval requires someone else to publish it.',
       },
       publishConfirm: {
         title: 'Publish this version?',
@@ -445,9 +449,9 @@ export const en: MessageSchema = {
         tooManyQuestions: 'The test has more questions than allowed.',
         questionNotApproved: 'Every question must be approved before publishing.',
         questionDefect: 'A question is incomplete. Check its answer options and correct answers in the test.',
-        fourEyes: 'With four eyes, whoever submitted the version cannot publish it. Ask another editor.',
+        fourEyes: 'Four-eyes approval does not let whoever submitted the version publish it. Ask another editor.',
         publisherApprovedQuestions:
-          'With four eyes, whoever approved questions of this version cannot publish it. Ask another editor.',
+          'Four-eyes approval does not let whoever approved questions of this version publish it. Ask another editor.',
         changed: 'The version has changed in the meantime. You now see its current state; please try again.',
         notFound: 'This version no longer exists.',
         identityIncomplete: 'Your sign-in names no person. Please sign in again.',

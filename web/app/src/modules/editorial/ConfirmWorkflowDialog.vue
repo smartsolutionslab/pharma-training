@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { Button } from '@/components/ui/button';
 import {
@@ -25,15 +26,26 @@ interface ConfirmWorkflowDialogProps {
 const { step, number, title, pending } = defineProps<ConfirmWorkflowDialogProps>();
 const emit = defineEmits<{ confirm: [step: 'publish' | 'retire']; cancel: []; closed: [event: Event] }>();
 const { t } = useI18n();
+
+/** The step last asked about: the dialog keeps its words while it animates out. */
+const shown = ref(step);
+watch(
+  () => step,
+  (asked) => {
+    if (asked !== undefined) {
+      shown.value = asked;
+    }
+  },
+);
 </script>
 
 <template>
   <Dialog :open="step !== undefined" @update:open="(open) => !open && !pending && emit('cancel')">
     <DialogContent :close-disabled="pending" @close-auto-focus="(event: Event) => emit('closed', event)">
-      <template v-if="step !== undefined">
+      <template v-if="shown !== undefined">
         <DialogHeader>
-          <DialogTitle>{{ t(`editorial.workflow.${step}Confirm.title`) }}</DialogTitle>
-          <DialogDescription>{{ t(`editorial.workflow.${step}Confirm.text`, { number, title }) }}</DialogDescription>
+          <DialogTitle>{{ t(`editorial.workflow.${shown}Confirm.title`) }}</DialogTitle>
+          <DialogDescription>{{ t(`editorial.workflow.${shown}Confirm.text`, { number, title }) }}</DialogDescription>
         </DialogHeader>
         <DialogFooter>
           <DialogClose as-child>
@@ -41,11 +53,11 @@ const { t } = useI18n();
           </DialogClose>
           <Button
             type="button"
-            :variant="step === 'retire' ? 'destructive' : 'default'"
+            :variant="shown === 'retire' ? 'destructive' : 'default'"
             :disabled="pending"
-            @click="emit('confirm', step)"
+            @click="step !== undefined && emit('confirm', step)"
           >
-            {{ t(`editorial.workflow.${step}Confirm.confirm`) }}
+            {{ t(`editorial.workflow.${shown}Confirm.confirm`) }}
           </Button>
         </DialogFooter>
       </template>

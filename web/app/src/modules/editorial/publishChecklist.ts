@@ -5,7 +5,10 @@ import { testCounts } from './testCounts';
 /** Why four eyes refused this page's publish: the editor submitted the version, or approved some of its questions. */
 export type PublishRefusal = 'fourEyes' | 'publisherApproved';
 
-/** One item of the publishing checklist: whether it is met, and the catalog key and values of its text. */
+/**
+ * One item of the publishing checklist: whether it is met, and the catalog key and values of its text. A plural text
+ * is chosen by its values' `count`.
+ */
 export interface ChecklistItem {
   name: 'chapters' | 'questions' | 'approved' | 'submitted' | PublishRefusal;
   met: boolean;
@@ -40,7 +43,7 @@ export function publishChecklist(
 
 function questionsItem(held: number, required: number): ChecklistItem {
   if (held === required) {
-    return { name: 'questions', met: true, key: 'editorial.workflow.checklist.questions', values: { required } };
+    return { name: 'questions', met: true, key: 'editorial.workflow.checklist.questions', values: { count: required } };
   }
   return {
     name: 'questions',
@@ -49,7 +52,7 @@ function questionsItem(held: number, required: number): ChecklistItem {
       held < required
         ? 'editorial.workflow.checklist.questionsMissing'
         : 'editorial.workflow.checklist.questionsTooMany',
-    values: { held, required },
+    values: { held, count: required },
   };
 }
 
@@ -62,7 +65,7 @@ function approvedItem(approved: number, held: number): ChecklistItem {
       name: 'approved',
       met: false,
       key: 'editorial.workflow.checklist.approvedSome',
-      values: { approved, held },
+      values: { count: approved, held },
     };
   }
   return { name: 'approved', met: true, key: 'editorial.workflow.checklist.approved', values: {} };

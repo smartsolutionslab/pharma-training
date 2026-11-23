@@ -15,7 +15,8 @@ export const returnReasonSchema = z.object({
     .string()
     .trim()
     .min(1, 'editorial.workflow.returnForm.reasonRequired')
-    .max(returnReasonMaxLength, 'editorial.workflow.returnForm.reasonTooLong')
+    // Counted in UTF-16 code units, as the host counts: zod's max counts code points, an emoji as one.
+    .refine((reason) => reason.length <= returnReasonMaxLength, 'editorial.workflow.returnForm.reasonTooLong')
     .refine((reason) => !notPlainText.test(reason), 'editorial.workflow.returnForm.reasonInvalid'),
 });
 

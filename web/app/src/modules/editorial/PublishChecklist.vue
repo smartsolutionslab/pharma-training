@@ -24,7 +24,7 @@ const headingId = 'publish-checklist-title';
           <span class="sr-only">{{
             `${t(item.met ? 'editorial.workflow.checklist.done' : 'editorial.workflow.checklist.open')} `
           }}</span>
-          {{ t(item.key, item.values) }}
+          {{ item.values.count === undefined ? t(item.key, item.values) : t(item.key, item.values, item.values.count) }}
         </span>
       </li>
     </ul>

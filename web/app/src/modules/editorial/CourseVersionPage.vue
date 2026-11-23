@@ -37,12 +37,7 @@ const router = useRouter();
 const id = computed(() => String(route.params.id ?? ''));
 /** The id goes into the requests' paths: one that is no UUID names no version, and is never sent. */
 const validId = computed(() => z.uuid().safeParse(id.value).success);
-const {
-  data: version,
-  isPending,
-  isError,
-  error,
-} = useGetEditorialCourseVersionsId(id, { query: { enabled: validId } });
+const { data: version, isPending, error } = useGetEditorialCourseVersionsId(id, { query: { enabled: validId } });
 const { add, replace, remove, isSaving } = useChapterMutations(id);
 const { reorder } = useReorderChapters(id);
 const { draftNext } = useDraftNextVersion(id);
@@ -69,11 +64,14 @@ const stepping = ref<WorkflowAction>();
 /** The step a confirmation is asked for. */
 const confirming = ref<'publish' | 'retire'>();
 const returning = ref(false);
-/** Why four eyes refused this page's publish, for the version as it was then: it holds until its id or status changes. */
-const fourEyesRefusal = ref<{ id: string; status: string; reason: PublishRefusal }>();
+/** Why four eyes refused this page's publish: it holds until the version's id or status changes. */
+const fourEyesRefusal = ref<PublishRefusal>();
 /** The elements to focus, the first one there, once it can take focus and no dialog is open or closing. */
 const focusWhenReady = ref<string[]>();
+/** Whether a step's dialog has been told to close and has not yet given the focus back. */
 let dialogClosing = false;
+/** How many of the steps' dialogs are on the page: none while it shows no version. */
+let dialogsMounted = 0;
 const stepButtonId = (action: WorkflowAction) => `course-version-${action}`;
 
 /** The steps each status offers. */
@@ -95,9 +93,13 @@ const checklist = computed(() => {
   if (shown === undefined || (shown.status !== 'Draft' && shown.status !== 'InReview')) {
     return undefined;
   }
-  const refusal = fourEyesRefusal.value;
-  const applies = refusal !== undefined && refusal.id === shown.id && refusal.status === shown.status;
-  return publishChecklist(shown, applies ? refusal.reason : undefined);
+  return publishChecklist(shown, fourEyesRefusal.value);
+});
+
+// A refusal says why this version could not be published as it was: returned, submitted again or another one, it no
+// longer does.
+watch([() => version.value?.id, () => version.value?.status], () => {
+  fourEyesRefusal.value = undefined;
 });
 
 const notFound = computed(() => error.value instanceof ApiError && error.value.status === 404);
@@ -201,9 +203,19 @@ function dialogClosed(event: Event) {
   focusPending();
 }
 
-/** Closes the step's dialog; the focus moves once it has closed. */
+/** A dialog taken off the page while it closed never says it closed: the focus is free to move. */
+function dialogMounted() {
+  dialogsMounted += 1;
+}
+function dialogUnmounted() {
+  dialogsMounted -= 1;
+  dialogClosing = false;
+  focusPending();
+}
+
+/** Closes the step's dialog; the focus moves once it has closed, or at once when no dialog is on the page. */
 function closeDialogs() {
-  if (confirming.value !== undefined || returning.value) {
+  if ((confirming.value !== undefined || returning.value) && dialogsMounted > 0) {
     dialogClosing = true;
   }
   confirming.value = undefined;
@@ -234,11 +246,7 @@ async function take(action: WorkflowAction, step: () => Promise<WorkflowResult>,
     return false;
   }
   if (key === 'editorial.workflow.errors.fourEyes' || key === 'editorial.workflow.errors.publisherApprovedQuestions') {
-    fourEyesRefusal.value = {
-      id: before.id,
-      status: before.status,
-      reason: key === 'editorial.workflow.errors.fourEyes' ? 'fourEyes' : 'publisherApproved',
-    };
+    fourEyesRefusal.value = key === 'editorial.workflow.errors.fourEyes' ? 'fourEyes' : 'publisherApproved';
   }
   closeDialogs();
   focusWhenReady.value = [stepButtonId(action), headingId];
@@ -308,7 +316,7 @@ async function confirmRemove(chapter: EditorialChapterDto) {
       </div>
     </template>
     <p v-else-if="notFound" class="text-body">{{ t('editorial.version.notFound') }}</p>
-    <p v-else-if="isError || version === undefined" role="alert" class="text-body text-destructive">
+    <p v-else-if="version === undefined" role="alert" class="text-body text-destructive">
       {{ t('editorial.version.loadFailed') }}
     </p>
     <template v-else>
@@ -334,7 +342,12 @@ async function confirmRemove(chapter: EditorialChapterDto) {
         {{ t(`editorial.version.readOnly.${version.status}`) }}
       </p>
       <div v-if="version.status === 'Published'">
-        <Button :id="newVersionId" type="button" :disabled="draftingNext" @click="draftNextVersion">
+        <Button
+          :id="newVersionId"
+          type="button"
+          :disabled="draftingNext || stepping !== undefined"
+          @click="draftNextVersion"
+        >
           {{ t('editorial.version.newVersion') }}
         </Button>
       </div>
@@ -390,6 +403,8 @@ async function confirmRemove(chapter: EditorialChapterDto) {
         @confirm="confirmStep"
         @cancel="cancelDialog"
         @closed="dialogClosed"
+        @vue:mounted="dialogMounted"
+        @vue:unmounted="dialogUnmounted"
       />
       <ReturnVersionDialog
         :open="returning"
@@ -397,6 +412,8 @@ async function confirmRemove(chapter: EditorialChapterDto) {
         :on-return="returnVersion"
         @cancel="cancelDialog"
         @closed="dialogClosed"
+        @vue:mounted="dialogMounted"
+        @vue:unmounted="dialogUnmounted"
       />
       <template v-if="editable">
         <Dialog :open="form !== undefined" @update:open="(open) => !open && !chapterUploading && (form = undefined)">
