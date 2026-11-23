@@ -144,7 +144,7 @@ describe('the question list', () => {
       ),
     ).toBeInTheDocument();
     expect(within(card(2)).getByText('Von Hand geschrieben, noch nicht geprüft')).toBeInTheDocument();
-    // An approved question is not said to be unreviewed; who approved it, and when, is T8's.
+    // An approved question is not said to be unreviewed; who approved it, and when, is CourseTestPage.provenance.test.ts's.
     expect(within(card(0)).queryByText(/noch nicht geprüft/)).not.toBeInTheDocument();
   });
 
