@@ -354,12 +354,12 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
 
     /// <summary>
     /// The learner opened the course (LearningSessionStarted): an open assignment goes in progress. The earliest start
-    /// wins; a start before the assignment, or of a completed or cancelled one, changes nothing. A start does not
-    /// unlock the test: only relearned content does (owner decision on #32, ADR 0019).
+    /// wins, also one before the assignment (owner decision on #247); a start of a completed or cancelled one changes
+    /// nothing. A start does not unlock the test: only relearned content does (owner decision on #32, ADR 0019).
     /// </summary>
     public void MarkStarted(Timestamp at)
     {
-        if (!IsActive || at < AssignedAt)
+        if (!IsActive)
         {
             return;
         }

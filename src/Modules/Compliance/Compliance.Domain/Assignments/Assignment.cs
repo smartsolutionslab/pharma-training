@@ -157,15 +157,16 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
 
     /// <summary>
     /// The learner opened the course (LearningSessionStarted): an open assignment goes in progress. The earliest start
-    /// wins, so the order the starts arrive in does not matter; a start before the assignment was assigned, or of a
-    /// completed or cancelled one, changes nothing. A start no longer unlocks the test: only relearned content does
-    /// (<see cref="Unlock"/>, docs/adr/0019).
+    /// wins, so the order the starts arrive in does not matter. A start before the assignment was assigned counts too
+    /// (owner decision on #247): Learning announces a session once, so a learner who began earlier is learning all the
+    /// same. A start of a completed or cancelled assignment changes nothing. A start no longer unlocks the test: only
+    /// relearned content does (<see cref="Unlock"/>, docs/adr/0019).
     /// </summary>
     public void MarkStarted(Timestamp at)
     {
         Ensure.That(at).IsNotNull();
 
-        if (!IsActive || at < AssignedAt)
+        if (!IsActive)
         {
             return;
         }
