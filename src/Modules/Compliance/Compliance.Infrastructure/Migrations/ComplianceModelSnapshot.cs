@@ -17,7 +17,7 @@ partial class ComplianceModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261123090843_CreateAssignments";
+    public override string LastMigrationId => "20261123154132_AddAssignmentTestAccessChangedAt";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -92,6 +92,10 @@ partial class ComplianceModelSnapshot : ModelSnapshot
                     .HasMaxLength(32)
                     .HasColumnType("character varying(32)")
                     .HasColumnName("test_access");
+
+                b.Property<DateTimeOffset?>("TestAccessChangedAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("test_access_changed_at");
 
                 b.ComplexCollection(typeof(List<Dictionary<string, object>>), "history", "SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Assignments.Assignment.history#AssignmentChange", b1 =>
                     {
