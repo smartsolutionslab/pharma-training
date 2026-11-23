@@ -87,9 +87,12 @@ public class AppHostPublishParametersTests
         }
     }
 
-    /// <summary>Every service's broker user is named after its module unless the deployment says otherwise (#183).</summary>
+    /// <summary>
+    /// Every service's broker user is named after its module, with no parameter to override it (docs/adr/0011): an
+    /// overridden name could collide with another user's and take over its definitions entry.
+    /// </summary>
     [Fact]
-    public async Task Every_services_broker_user_is_a_parameter_named_after_its_module_by_default()
+    public async Task No_services_broker_user_name_is_a_parameter()
     {
         await using var builder = await PublishedAppHost.ModelAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
         var services = PublishedAppHost.Services(builder);
@@ -97,11 +100,8 @@ public class AppHostPublishParametersTests
         services.ShouldNotBeEmpty();
         foreach (var service in services)
         {
-            var name = $"messaging-{service.Name}-username";
-            var parameter = Parameter(builder, name);
-
-            parameter.Secret.ShouldBeFalse($"{name} is not a secret.");
-            parameter.Default.ShouldNotBeNull($"{name} has no default.").GetDefaultValue().ShouldBe(service.Name);
+            builder.Resources.OfType<ParameterResource>().Select(parameter => parameter.Name)
+                .ShouldNotContain($"messaging-{service.Name}-username", $"{service.Name}'s broker user name can be overridden.");
         }
     }
 
@@ -177,6 +177,7 @@ public class AppHostPublishParametersTests
     private static bool Holds(AzureKeyVaultSecretResource secret, ParameterResource parameter) =>
         ReferenceEquals(secret.Value, parameter)
             || (secret.Value is ReferenceExpression expression
+                && expression.Format == "{0}"
                 && expression.ValueProviders.Count == 1
                 && ReferenceEquals(expression.ValueProviders[0], parameter));
 

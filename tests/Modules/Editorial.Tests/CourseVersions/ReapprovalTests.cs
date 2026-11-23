@@ -22,7 +22,7 @@ public class ReapprovalTests
     {
         var version = DraftWithApprovedQuestion(out _, out var id);
 
-        var approved = version.ApproveQuestion(id, sameEditor ? Author : Reviewer, Later);
+        var approved = version.ApproveQuestion(id, sameEditor ? Author : Reviewer, sameEditor ? AuthorsName : ReviewersName, Later);
 
         approved.IsFailure.ShouldBeTrue("an approved question was approved again");
         approved.Error.Code.ShouldBe(QuestionAlreadyApproved);
@@ -38,7 +38,7 @@ public class ReapprovalTests
         var version = InReview();
         var question = version.Questions.ShouldHaveSingleItem();
 
-        var approved = version.ApproveQuestion(question.Id, Reviewer, Later);
+        var approved = version.ApproveQuestion(question.Id, Reviewer, ReviewersName, Later);
 
         approved.IsFailure.ShouldBeTrue("an approved question of a version in review was approved again");
         approved.Error.Code.ShouldBe(QuestionAlreadyApproved);
@@ -53,7 +53,7 @@ public class ReapprovalTests
         var version = DraftWithApprovedQuestion(out var chapter, out var id);
         version.EditQuestion(id, MultipleChoice(chapter), AnswerOptionId.New).IsSuccess.ShouldBeTrue();
 
-        var approved = version.ApproveQuestion(id, Reviewer, Later);
+        var approved = version.ApproveQuestion(id, Reviewer, ReviewersName, Later);
 
         approved.IsSuccess.ShouldBeTrue();
         var question = version.Questions.ShouldHaveSingleItem();

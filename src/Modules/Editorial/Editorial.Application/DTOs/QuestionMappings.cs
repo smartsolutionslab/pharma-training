@@ -20,6 +20,8 @@ public static class QuestionMappings
             question.Provenance.ToDto(),
             question.Review.ToDto(),
             question.ReviewedBy?.Value,
+            question.ReviewedAt?.Value,
+            question.ReviewedByName?.Value,
             question.ReviewedAt?.Value);
     }
 }

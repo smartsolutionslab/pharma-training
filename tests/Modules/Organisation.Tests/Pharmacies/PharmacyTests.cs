@@ -405,6 +405,55 @@ public class PharmacyTests
         MembershipRole.Employee.Grants(Capability.AssignCourses).ShouldBeFalse();
     }
 
+    [Fact]
+    public void A_founder_and_an_accepted_member_start_at_version_one()
+    {
+        var pharmacy = Register();
+        var token = Token();
+        var anna = Accepted(pharmacy, Invite(pharmacy, AnnaMail, token), token);
+
+        pharmacy.Memberships[0].Version.ShouldBe(MembershipVersion.First);
+        pharmacy.Memberships.Single(m => m.Id == anna).Version.ShouldBe(MembershipVersion.First);
+    }
+
+    [Fact]
+    public void Each_change_moves_the_membership_version_on_by_one()
+    {
+        var pharmacy = Register();
+        var token = Token();
+        var anna = Accepted(pharmacy, Invite(pharmacy, AnnaMail, token), token);
+
+        pharmacy.ChangeMembership(anna, JobFunction.Pka, MembershipRole.Employee).IsSuccess.ShouldBeTrue();
+        pharmacy.Memberships.Single(m => m.Id == anna).Version.ShouldBe(MembershipVersion.From(2));
+        pharmacy.ChangeMembership(anna, JobFunction.Pka, MembershipRole.Manager).IsSuccess.ShouldBeTrue();
+
+        pharmacy.Memberships.Single(m => m.Id == anna).Version.ShouldBe(MembershipVersion.From(3));
+        var changes = pharmacy.DomainEvents.OfType<MembershipChanged>().ToList();
+        changes.Count.ShouldBe(2);
+        changes[0].Version.ShouldBe(MembershipVersion.From(2));
+        changes[1].ShouldBe(new MembershipChanged(
+            pharmacy.Id,
+            anna,
+            Anna,
+            DisplayName.From("Anna Berger"),
+            JobFunction.Pka,
+            MembershipRole.Manager,
+            MembershipVersion.From(3)));
+    }
+
+    [Fact]
+    public void A_change_to_the_values_a_membership_already_has_keeps_its_version()
+    {
+        var pharmacy = Register();
+        var token = Token();
+        var anna = Accepted(pharmacy, Invite(pharmacy, AnnaMail, token), token);
+
+        pharmacy.ChangeMembership(anna, JobFunction.Pta, MembershipRole.Employee).IsSuccess.ShouldBeTrue();
+
+        pharmacy.DomainEvents.OfType<MembershipChanged>().ShouldBeEmpty();
+        pharmacy.Memberships.Single(m => m.Id == anna).Version.ShouldBe(MembershipVersion.First);
+    }
+
     private static Pharmacy Register() =>
         Pharmacy.Register(
             PharmacyId.New(),

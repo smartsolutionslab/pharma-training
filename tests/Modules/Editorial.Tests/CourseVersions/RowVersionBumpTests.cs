@@ -120,7 +120,7 @@ public sealed class RowVersionBumpTests : IDisposable
     {
         var version = DraftWithQuestion(out _, out var question);
         context.Attach(version);
-        version.ApproveQuestion(question, Reviewer, Now).IsSuccess.ShouldBeTrue();
+        version.ApproveQuestion(question, Reviewer, ReviewersName, Now).IsSuccess.ShouldBeTrue();
 
         await BumpAsync();
 

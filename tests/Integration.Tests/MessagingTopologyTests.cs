@@ -38,7 +38,7 @@ public class MessagingTopologyTests
         consumed.ShouldBeEmpty();
         published.ShouldNotContain(InvitationMailRequested);
         published.ShouldBe(
-            [Contracts + "Organisation.MembershipEndedV1", Contracts + "Organisation.MembershipStartedV1", Contracts + "Organisation.PharmacyRegisteredV1"],
+            [Contracts + "Organisation.MembershipChangedV1", Contracts + "Organisation.MembershipEndedV1", Contracts + "Organisation.MembershipStartedV1", Contracts + "Organisation.PharmacyRegisteredV1"],
             ignoreOrder: false);
     }
 
@@ -57,7 +57,7 @@ public class MessagingTopologyTests
         var (consumed, _) = MessagingTopology.Of("compliance");
 
         consumed.ShouldBe(
-            [CourseVersionPublished, CourseVersionRetired, Contracts + "Organisation.MembershipEndedV1", Contracts + "Organisation.MembershipStartedV1"],
+            [CourseVersionPublished, CourseVersionRetired, Contracts + "Organisation.MembershipChangedV1", Contracts + "Organisation.MembershipEndedV1", Contracts + "Organisation.MembershipStartedV1"],
             ignoreOrder: false);
     }
 

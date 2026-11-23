@@ -10,6 +10,11 @@ internal static class CourseVersionBuilder
     public static readonly PersonId Reviewer = PersonId.From(Guid.CreateVersion7());
     public static readonly PersonId Approver = PersonId.From(Guid.CreateVersion7());
 
+    // The display names each person's token carries (#205). Not "ReviewerName": the type of that name is imported too.
+    public static readonly ReviewerName AuthorsName = ReviewerName.From("Erika Editor");
+    public static readonly ReviewerName ReviewersName = ReviewerName.From("Rita Reviewer");
+    public static readonly ReviewerName ApproversName = ReviewerName.From("Anton Approver");
+
     public static CourseVersion Draft(string title = "Hygiene 2027") =>
         CourseVersion.DraftFirst(CourseVersionId.New(), CourseId.New(), CourseTitle.From(title), Author);
 
@@ -27,7 +32,7 @@ internal static class CourseVersionBuilder
         var version = DraftWithChapter(out chapter, title);
         version.SetBlueprint(new TestBlueprint(QuestionCount.From(1), ScorePercent.From(80), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
         var question = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
-        version.ApproveQuestion(question, Author, Now).IsSuccess.ShouldBeTrue();
+        version.ApproveQuestion(question, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
         return version;
     }
 
@@ -45,7 +50,7 @@ internal static class CourseVersionBuilder
 
     /// <summary>
     /// A version of two questions, submitted by the author: the author approved the first before submitting, the
-    /// given editor the second, before the submission or while the version is in review.
+    /// given editor the second, under <see cref="ApproversName"/>, before the submission or while the version is in review.
     /// </summary>
     public static CourseVersion InReviewWithASecondApprover(PersonId approver, bool approvedWhileInReview = true)
     {
@@ -53,16 +58,16 @@ internal static class CourseVersionBuilder
         version.SetBlueprint(new TestBlueprint(QuestionCount.From(2), ScorePercent.From(80), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
         var first = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
         var second = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
-        version.ApproveQuestion(first, Author, Now).IsSuccess.ShouldBeTrue();
+        version.ApproveQuestion(first, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
         if (!approvedWhileInReview)
         {
-            version.ApproveQuestion(second, approver, Now).IsSuccess.ShouldBeTrue();
+            version.ApproveQuestion(second, approver, ApproversName, Now).IsSuccess.ShouldBeTrue();
         }
 
         version.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
         if (approvedWhileInReview)
         {
-            version.ApproveQuestion(second, approver, Now).IsSuccess.ShouldBeTrue();
+            version.ApproveQuestion(second, approver, ApproversName, Now).IsSuccess.ShouldBeTrue();
         }
 
         return version;

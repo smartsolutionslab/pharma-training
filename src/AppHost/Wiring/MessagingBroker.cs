@@ -13,7 +13,7 @@ public sealed class MessagingBroker
 
     internal MessagingBroker(
         IResourceBuilder<RabbitMQServerResource> resource,
-        IReadOnlyDictionary<string, IResourceBuilder<ParameterResource>> userNames,
+        IReadOnlyDictionary<string, string> userNames,
         Dictionary<string, ReferenceExpression> connectionStrings)
     {
         Resource = resource;
@@ -25,10 +25,10 @@ public sealed class MessagingBroker
     public IResourceBuilder<RabbitMQServerResource> Resource { get; }
 
     /// <summary>
-    /// The user name of each service's own user (<c>messaging-&lt;module&gt;-username</c>), by module in ordinal order: the
-    /// user RabbitMQ vouches for as a message's <c>user_id</c>, which tells a service whose module published it.
+    /// The user name of each service's own user, by module in ordinal order (each is named after its module): the user
+    /// RabbitMQ vouches for as a message's <c>user_id</c>, which tells a service whose module published it.
     /// </summary>
-    internal IReadOnlyDictionary<string, IResourceBuilder<ParameterResource>> UserNames { get; }
+    internal IReadOnlyDictionary<string, string> UserNames { get; }
 
     /// <summary>The run-mode connection string of the module's own user.</summary>
     internal ReferenceExpression ConnectionStringOf(string module) =>
