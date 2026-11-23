@@ -1,4 +1,4 @@
-import { cleanup, screen, within } from '@testing-library/vue';
+import { cleanup, screen, waitFor, within } from '@testing-library/vue';
 import userEvent from '@testing-library/user-event';
 import { createPinia } from 'pinia';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
@@ -7,18 +7,25 @@ import { t } from '@/i18n';
 import { useSelectedPharmacyStore } from '@/stores/selectedPharmacy';
 import {
   answering,
+  anna,
   ben,
+  changeButton,
   endButton,
   type Fetch,
   fixClock,
   invitationsSection,
+  inviteButton,
   markt,
   membersSection,
+  minePath,
   problem,
+  readsOf,
   renderTeamPage,
   revokeButton,
+  rowOf,
   type TeamHost,
   teamHost,
+  writesOf,
   you,
 } from './teamFixtures';
 
@@ -127,6 +134,8 @@ test('an end refused only after the page switched to another pharmacy is not sho
   answer(problem(409, 'organisation.last-manager', 'x'));
 
   await vi.waitFor(() => expect(notify.failure).toHaveBeenCalled());
+  // The confirmation closes only once end has returned: whatever it would show is shown by then.
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   expect(within(membersSection()).queryByRole('alert')).not.toBeInTheDocument();
   expect(screen.queryByText(t('organisation.team.errors.lastManager'))).not.toBeInTheDocument();
 });
@@ -143,6 +152,181 @@ test('a revoke refused only after the page switched to another pharmacy is not s
   answer(problem(404, 'organisation.no-open-invitation', 'x'));
 
   await vi.waitFor(() => expect(notify.failure).toHaveBeenCalled());
+  // The confirmation closes only once revoke has returned: whatever it would show is shown by then.
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   expect(within(invitationsSection()).queryByRole('alert')).not.toBeInTheDocument();
   expect(screen.queryByText(t('organisation.team.errors.noOpenInvitation'))).not.toBeInTheDocument();
+});
+
+// A dialog opened on one pharmacy asks about that pharmacy: switched to another, it closes, so it never names the other
+// pharmacy, never acts on it and never shows what the first one's host answered.
+
+/** Whether the page shows the Apotheke am Ufer, with its (empty) lists. */
+async function showingUfer() {
+  expect(await screen.findByText(t('organisation.team.intro', { pharmacy: ufer.name }))).toBeInTheDocument();
+  await screen.findByText(t('organisation.team.members.empty'));
+}
+
+/** The requests that changed something at the Apotheke am Ufer. */
+const uferWrites = () => writesOf(fetch).filter(({ path }) => path.includes(ufer.id));
+
+test('an invitation refused only after the page switched to another pharmacy is not shown there', async () => {
+  let answer: (response: Response) => void = () => undefined;
+  host.invite = () => new Promise<Response>((resolve) => (answer = resolve));
+  const { user, store } = await renderOnMarkt();
+  await waitFor(() => expect(inviteButton()).toBeEnabled());
+  await user.click(inviteButton());
+  const dialog = within(await screen.findByRole('dialog', { name: t('organisation.team.invite.title') }));
+  await user.click(dialog.getByRole('textbox', { name: t('organisation.team.invite.email') }));
+  await user.paste('dora@example.com');
+  await user.selectOptions(
+    dialog.getByRole('combobox', { name: t('organisation.team.invite.jobFunction') }),
+    t('glossary.jobFunction.Pta'),
+  );
+  await user.click(dialog.getByRole('button', { name: t('organisation.team.invite.submit') }));
+
+  store.choose(ufer.id);
+  await showingUfer();
+  answer(problem(409, 'organisation.already-member-or-invited', 'x'));
+
+  await vi.waitFor(() => expect(notify.failure).toHaveBeenCalled());
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  expect(screen.queryByText(t('organisation.team.errors.alreadyMemberOrInvited'))).not.toBeInTheDocument();
+  expect(uferWrites()).toEqual([]);
+});
+
+test('a change refused only after the page switched to another pharmacy is not shown there', async () => {
+  let answer: (response: Response) => void = () => undefined;
+  host.change = () => new Promise<Response>((resolve) => (answer = resolve));
+  const { user, store } = await renderOnMarkt();
+  await user.click(await changeButton(anna));
+  const dialog = within(await screen.findByRole('dialog', { name: t('organisation.team.change.title') }));
+  await user.click(dialog.getByRole('button', { name: t('organisation.team.change.submit') }));
+
+  store.choose(ufer.id);
+  await showingUfer();
+  answer(problem(409, 'organisation.last-manager', 'x'));
+
+  await vi.waitFor(() => expect(notify.failure).toHaveBeenCalled());
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  expect(
+    screen.queryByText(t('organisation.team.change.description', { name: anna.name, pharmacy: ufer.name })),
+  ).not.toBeInTheDocument();
+  expect(screen.queryByText(t('organisation.team.errors.lastManager'))).not.toBeInTheDocument();
+  expect(uferWrites()).toEqual([]);
+});
+
+test('an open change dialog closes once the page shows another pharmacy', async () => {
+  const { user, store } = await renderOnMarkt();
+  await user.click(await changeButton(anna));
+  await screen.findByRole('dialog', { name: t('organisation.team.change.title') });
+
+  store.choose(ufer.id);
+  await showingUfer();
+
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  expect(uferWrites()).toEqual([]);
+});
+
+test('an open end confirmation closes once the page shows another pharmacy and never names it', async () => {
+  const { user, store } = await renderOnMarkt();
+  await user.click(await endButton(anna));
+  await screen.findByRole('dialog', { name: t('organisation.team.end.title', { name: anna.name }) });
+
+  store.choose(ufer.id);
+  await showingUfer();
+
+  expect(
+    screen.queryByText(t('organisation.team.end.description', { name: anna.name, pharmacy: ufer.name })),
+  ).not.toBeInTheDocument();
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  expect(uferWrites()).toEqual([]);
+});
+
+// Ending one's own membership goes to the start page, but only from the pharmacy it ended: switched to another, the
+// page stays on that one, and the memberships are read again all the same.
+test('an own membership ended only after the page switched to another pharmacy stays on that pharmacy', async () => {
+  let answer: (response: Response) => void = () => undefined;
+  host.end = () => new Promise<Response>((resolve) => (answer = resolve));
+  const { user, store, router, queryClient } = await renderOnMarkt();
+  const push = vi.spyOn(router, 'push');
+  await user.click(await endButton(you));
+  await user.click(await confirmIn(t('organisation.team.end.confirm')));
+
+  store.choose(ufer.id);
+  await showingUfer();
+  const before = readsOf(fetch, minePath).length;
+  host.memberships = [ufer];
+  answer(new Response(null, { status: 200 }));
+
+  await vi.waitFor(() =>
+    expect(notify.success).toHaveBeenCalledWith(t('organisation.team.end.endedSelf', { pharmacy: markt.name })),
+  );
+  await waitFor(() => expect(readsOf(fetch, minePath).length).toBeGreaterThan(before));
+  await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+  expect(push).not.toHaveBeenCalled();
+  expect(router.currentRoute.value.path).toBe('/organisation');
+  expect(await screen.findByText(t('organisation.team.intro', { pharmacy: ufer.name }))).toBeInTheDocument();
+});
+
+// A refusal answered after a switch still says which pharmacy refused, so its toast over another one is not mistaken
+// for that one's.
+test('the toast of a revoke refused only after the page switched names the pharmacy that refused it', async () => {
+  let answer: (response: Response) => void = () => undefined;
+  host.revoke = () => new Promise<Response>((resolve) => (answer = resolve));
+  const { user, store } = await renderOnMarkt();
+  await user.click(await revokeButton(ben));
+  await user.click(await confirmIn(t('organisation.team.revoke.confirm')));
+
+  store.choose(ufer.id);
+  await showingUfer();
+  answer(problem(404, 'organisation.no-open-invitation', 'x'));
+
+  await vi.waitFor(() => expect(notify.failure).toHaveBeenCalled());
+  expect(notify.failure).toHaveBeenCalledWith(
+    'In Apotheke am Markt: Diese Einladung ist nicht mehr offen: Sie wurde angenommen oder zurückgezogen.',
+  );
+});
+
+// Switched away and back before the host answers, the page shows the pharmacy the action was taken in again: its
+// refusal shows there under its section's heading, as if nothing had been switched.
+test('an end refused after switching to another pharmacy and back shows under the members again', async () => {
+  let answer: (response: Response) => void = () => undefined;
+  host.end = () => new Promise<Response>((resolve) => (answer = resolve));
+  const { user, store } = await renderOnMarkt();
+  await user.click(await endButton(you));
+  await user.click(await confirmIn(t('organisation.team.end.confirm')));
+
+  store.choose(ufer.id);
+  await showingUfer();
+  store.choose(markt.id);
+  expect(await screen.findByText(t('organisation.team.intro', { pharmacy: markt.name }))).toBeInTheDocument();
+  await rowOf(anna.name);
+  answer(problem(409, 'organisation.last-manager', 'x'));
+
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  expect(await within(membersSection()).findByRole('alert')).toHaveTextContent(
+    t('organisation.team.errors.lastManager'),
+  );
+});
+
+test('a revoke refused after switching to another pharmacy and back shows under the invitations again', async () => {
+  let answer: (response: Response) => void = () => undefined;
+  host.revoke = () => new Promise<Response>((resolve) => (answer = resolve));
+  const { user, store } = await renderOnMarkt();
+  await user.click(await revokeButton(ben));
+  await user.click(await confirmIn(t('organisation.team.revoke.confirm')));
+
+  store.choose(ufer.id);
+  await showingUfer();
+  store.choose(markt.id);
+  expect(await screen.findByText(t('organisation.team.intro', { pharmacy: markt.name }))).toBeInTheDocument();
+  await rowOf(ben.email);
+  answer(problem(404, 'organisation.no-open-invitation', 'x'));
+
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  expect(await within(invitationsSection()).findByRole('alert')).toHaveTextContent(
+    t('organisation.team.errors.noOpenInvitation'),
+  );
+  expect(notify.failure).toHaveBeenCalledWith(t('organisation.team.errors.noOpenInvitation'));
 });
