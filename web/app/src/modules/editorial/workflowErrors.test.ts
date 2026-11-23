@@ -6,7 +6,7 @@ import { type WorkflowAction, workflowFailure, workflowFailureText } from './wor
 // What the course version page says when a step of the workflow (#26: submit, publish, return, retire) is refused or
 // fails: a key of the catalogs chosen by the module's code where the page knows the code. The three defects of a
 // question publishing finds (422) say one thing; a policy's 403 without a code says the editor may not take the step;
-// a return's refused reason (400 invalid-return-reason) is the reason field's own message. A module's refusal with a
+// a return's refused reason (400 invalid-return-reason) is the reason field's message stating the host's whole rule. A module's refusal with a
 // code the page does not know says the host's words (ADR 0007: ApiError.serverMessage, until #147 translates them);
 // anything else, a network failure included, says the step failed.
 
@@ -130,14 +130,6 @@ const answers: [string, WorkflowAction, () => unknown, string, string, string][]
     'editorial.workflow.errors.notPublished',
     'Nur eine veröffentlichte Version kann zurückgezogen werden.',
     'Only a published version can be retired.',
-  ],
-  [
-    '400 invalid-return-reason, the reason field’s own message',
-    'return',
-    refusal(400, 'editorial.invalid-return-reason'),
-    'editorial.workflow.returnForm.reasonInvalid',
-    'Der Grund enthält unzulässige Steuer- oder Formatzeichen.',
-    'The reason contains control or format characters that are not allowed.',
   ],
   ...(['submit', 'publish', 'return', 'retire'] as const).map(
     (action): [string, WorkflowAction, () => unknown, string, string, string] => [
@@ -289,4 +281,40 @@ test("the host's words are never what the page says for a code it knows or a fai
 // noChapters is a key of its own, with the checklist's text.
 test('a refused submit without chapters says what the checklist says', () => {
   expect(t('editorial.workflow.errors.noChapters')).toBe(t('editorial.workflow.checklist.chaptersMissing'));
+});
+
+// The host refuses a reason for more than a control character (ADR 0013): missing, empty or over 1000 characters once
+// trimmed, or holding a control or format character other than a line break or a tab. The page cannot tell which, so
+// the reason field states the whole rule (#201); reasonInvalid stays the client's own check for such a character.
+describe('a return refused for its reason (400 invalid-return-reason)', () => {
+  const reasonRefused = 'editorial.workflow.returnForm.reasonRefused';
+  const rule = {
+    de: 'Der Grund muss ohne Leerraum am Anfang und Ende 1 bis 1000 Zeichen lang sein und darf außer Zeilenumbrüchen und Tabulatoren keine Steuer- oder Formatzeichen enthalten.',
+    en: 'The reason must be 1 to 1000 characters long without leading or trailing spaces, and may contain no control or format characters other than line breaks and tabs.',
+  };
+
+  test("is the reason field's message stating the host's whole rule", () => {
+    expect(workflowFailure('return', refusal(400, 'editorial.invalid-return-reason')())).toEqual({
+      key: reasonRefused,
+    });
+  });
+
+  test('states the rule with its maximum in German', () => {
+    const key: string = reasonRefused;
+
+    expect(t(key, { max: 1000 })).toBe(rule.de);
+  });
+
+  test('states the rule with its maximum in English', () => {
+    setLanguage('en-GB', { remember: false });
+    const key: string = reasonRefused;
+
+    expect(t(key, { max: 1000 })).toBe(rule.en);
+  });
+
+  test("keeps reasonInvalid for the client's own check of a control or format character", () => {
+    const key: string = 'editorial.workflow.returnForm.reasonInvalid';
+
+    expect(t(key)).toBe('Der Grund enthält unzulässige Steuer- oder Formatzeichen.');
+  });
 });
