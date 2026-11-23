@@ -585,7 +585,7 @@ export const en: MessageSchema = {
       pdf: {
         label: 'PDF: {title}',
         page: 'Page {page} of {pages}',
-        hint: 'Scroll to the last page to complete the chapter.',
+        hint: 'Go to the last page to complete the chapter.',
         next: 'Next page',
         previous: 'Previous page',
         failed: 'The PDF could not be shown.',
