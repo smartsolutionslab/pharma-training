@@ -2354,6 +2354,7 @@
           "title",
           "validityMonths",
           "isRetired",
+          "status",
           "chapters"
         ],
         "type": "object",
@@ -2388,6 +2389,9 @@
           "isRetired": {
             "type": "boolean"
           },
+          "status": {
+            "$ref": "#/components/schemas/CatalogCourseVersionStatus"
+          },
           "chapters": {
             "type": "array",
             "items": {
@@ -2395,6 +2399,13 @@
             }
           }
         }
+      },
+      "CatalogCourseVersionStatus": {
+        "enum": [
+          "Current",
+          "Superseded",
+          "Retired"
+        ]
       },
       "CatalogSampleDto": {
         "required": [
