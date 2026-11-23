@@ -115,6 +115,7 @@ MVP 1 besteht aus acht Contexts. Der Kernfluss läuft von der Zuweisung über da
 flowchart LR
   subgraph MVP1[MVP 1]
     Organisation -- Mitglieder --> Compliance
+    Organisation -- Mitglieder --> Learning
     Organisation --- Identity
     Editorial -- Freigabe --> Catalog
     Catalog -- "Version + Fragen" --> Assessment
@@ -158,9 +159,9 @@ Regeln:
 | `TestDefinitionPublished` | Editorial | Assessment | CourseVersionId, Questions inkl. richtiger Antworten, PassingScorePercent, MaxAttempts |
 | `CourseVersionRetired` | Editorial | Catalog, Compliance | CourseId, CourseVersionId |
 | `PharmacyRegistered` | Organisation | Compliance, Certification | PharmacyId, Name |
-| `MembershipStarted` | Organisation | Compliance, Certification | MembershipId, PersonId, PharmacyId, DisplayName, JobFunction, Role |
-| `MembershipEnded` | Organisation | Compliance | MembershipId, PersonId, PharmacyId, EndedAt |
-| `MembershipChanged` | Organisation | Compliance | MembershipId, PersonId, PharmacyId, DisplayName, JobFunction, Role, Version |
+| `MembershipStarted` | Organisation | Compliance, Certification, Learning | MembershipId, PersonId, PharmacyId, DisplayName, JobFunction, Role |
+| `MembershipEnded` | Organisation | Compliance, Learning | MembershipId, PersonId, PharmacyId, EndedAt |
+| `MembershipChanged` | Organisation | Compliance, Learning | MembershipId, PersonId, PharmacyId, DisplayName, JobFunction, Role, Version |
 | `CourseAssigned` | Compliance | (keiner in MVP 1, später Benachrichtigung) | AssignmentId, PersonId, PharmacyId, CourseId, DueDate |
 | `AssignmentCompleted` | Compliance | (keiner in MVP 1) | AssignmentId, CertificateId, CompletedAt, Late |
 | `LearningSessionStarted` | Learning | Compliance | SessionId, PersonId, CourseId, CourseVersionId |
@@ -309,6 +310,7 @@ Lokale Kopien, die daraus folgen:
 - **Compliance** hält Namen der Mitglieder (`MembershipStarted`) und Titel der Schulungen (`CourseVersionPublished`) für Matrix und Dashboard. Der Status kommt aus der Zuweisung selbst; Learning wird nicht abgefragt.
 - **Certification** hält Mitgliedschaften mit Beginn und Ende, damit der Export nur Bestätigungen aus der Beschäftigungszeit bei dieser Apotheke enthält.
 - **Learning** und **Assessment** halten Kapitelstruktur bzw. Testdefinition der Version.
+- **Learning** hält Mitgliedschaften ohne Namen, Rolle und Tätigkeit (Beginn, Änderungen, Ende), um nur aktive Mitglieder lernen zu lassen; nach dem Ende bleibt die eigene Sitzung lesbar.
 
 ### Vue-Seiten
 
