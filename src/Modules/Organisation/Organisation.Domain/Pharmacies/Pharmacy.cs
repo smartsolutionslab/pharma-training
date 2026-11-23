@@ -339,13 +339,14 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
     }
 
     /// <summary>
-    /// The day a mail requested now counts on: today, or the stored day when it is later, so an instance whose clock is
-    /// behind around 00:00 UTC adds to the new day's tally instead of restarting the old day's.
+    /// The day a mail requested now counts on: today, or the stored day when it is tomorrow, so an instance whose clock
+    /// is behind around 00:00 UTC adds to the new day's tally instead of restarting the old day's. A stored day further
+    /// ahead (a clock days ahead, a hand-edited row) is not trusted: today counts and the tally restarts.
     /// </summary>
     private UtcDay CountingDay(Timestamp now)
     {
         var today = UtcDay.Of(now);
-        if (InvitationMailDay is { } stored && stored.Value > today.Value)
+        if (InvitationMailDay is { } stored && stored.Value.DayNumber - today.Value.DayNumber == 1)
         {
             return stored;
         }
