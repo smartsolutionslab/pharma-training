@@ -1,4 +1,5 @@
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.EventSourcing;
+using SmartSolutionsLab.PharmaTraining.Contracts;
 using SmartSolutionsLab.PharmaTraining.Modules.Learning.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.ReadModels;
 using SmartSolutionsLab.PharmaTraining.Modules.Learning.Domain.LearningSessions;
@@ -8,15 +9,31 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Tests.Sessions;
 
 /// <summary>
 /// Learning's session streams in memory, and their views as the inline projection keeps them: a view is the stream
-/// folded through the projection, so it follows every save at once, as Marten's inline projection does.
+/// folded through the projection, so it follows every save at once, as Marten's inline projection does. It is also the
+/// module's unit of work: what is published is sent only once committed. <see cref="Steps"/> records saves, publishes
+/// and commits in the order they happened. <see cref="LoseNextSave"/> makes the next save lose a race on its stream, as
+/// an append does when another one landed since the session was loaded: <see cref="TrySaveAsync"/> answers
+/// <see langword="false"/>, and <see cref="SaveAsync"/> throws, as Marten's expected-version check does.
 /// </summary>
-internal sealed class InMemoryLearningSessions : ILearningAggregateStore, ILearningSessions
+internal sealed class InMemoryLearningSessions : ILearningAggregateStore, ILearningSessions, ILearningUnitOfWork
 {
+    public const string Saved = "save";
+    public const string Queued = "publish";
+    public const string Committed = "commit";
+
     private readonly Dictionary<Guid, List<IDomainEvent>> streams = [];
+    private readonly List<IntegrationEvent> queued = [];
+    private bool loseNextSave;
 
     public IReadOnlyDictionary<Guid, List<IDomainEvent>> Streams => streams;
 
     public int Saves { get; private set; }
+
+    public List<IntegrationEvent> Published { get; } = [];
+
+    public int Commits { get; private set; }
+
+    public List<string> Steps { get; } = [];
 
     public Task<Option<TAggregate>> LoadAsync<TAggregate>(IAggregateId id, CancellationToken cancellationToken)
         where TAggregate : class, IEventSourced
@@ -33,17 +50,31 @@ internal sealed class InMemoryLearningSessions : ILearningAggregateStore, ILearn
 
     public Task SaveAsync(IEventSourced aggregate, CancellationToken cancellationToken)
     {
-        var history = streams.GetValueOrDefault(aggregate.Id.Value) ?? [];
-        if (history.Count != aggregate.Version)
+        if (loseNextSave)
         {
+            loseNextSave = false;
             throw new InvalidOperationException($"The stream {aggregate.Id.Value} moved on since it was loaded.");
         }
 
-        streams[aggregate.Id.Value] = [.. history, .. aggregate.PendingEvents];
-        aggregate.MarkStored();
-        Saves++;
+        Append(aggregate);
         return Task.CompletedTask;
     }
+
+    /// <summary>What the module's store answers once it opts in to lost races: <see langword="false"/> with nothing stored and the aggregate left unmarked.</summary>
+    public Task<bool> TrySaveAsync(IEventSourced aggregate, CancellationToken cancellationToken)
+    {
+        if (loseNextSave)
+        {
+            loseNextSave = false;
+            return Task.FromResult(false);
+        }
+
+        Append(aggregate);
+        return Task.FromResult(true);
+    }
+
+    /// <summary>The next save, whichever way it is made, loses the race on its stream and stores nothing.</summary>
+    public void LoseNextSave() => loseNextSave = true;
 
     public Task<IReadOnlyList<LearningSessionView>> ListAsync(PersonId learner, CourseVersionId version, CancellationToken cancellationToken)
     {
@@ -57,4 +88,34 @@ internal sealed class InMemoryLearningSessions : ILearningAggregateStore, ILearn
         Task.FromResult(streams.TryGetValue(id.Value, out var stream)
             ? Option<LearningSessionView>.Some(LearningSessionViews.Project(stream))
             : Option<LearningSessionView>.None);
+
+    public Task PublishAsync(IntegrationEvent integrationEvent)
+    {
+        queued.Add(integrationEvent);
+        Steps.Add(Queued);
+        return Task.CompletedTask;
+    }
+
+    public Task CommitAsync(CancellationToken cancellationToken)
+    {
+        Published.AddRange(queued);
+        queued.Clear();
+        Commits++;
+        Steps.Add(Committed);
+        return Task.CompletedTask;
+    }
+
+    private void Append(IEventSourced aggregate)
+    {
+        var history = streams.GetValueOrDefault(aggregate.Id.Value) ?? [];
+        if (history.Count != aggregate.Version)
+        {
+            throw new InvalidOperationException($"The stream {aggregate.Id.Value} moved on since it was loaded.");
+        }
+
+        streams[aggregate.Id.Value] = [.. history, .. aggregate.PendingEvents];
+        aggregate.MarkStored();
+        Saves++;
+        Steps.Add(Saved);
+    }
 }

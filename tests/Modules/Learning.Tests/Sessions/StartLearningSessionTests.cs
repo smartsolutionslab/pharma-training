@@ -1,5 +1,6 @@
 using System.Net;
 using Microsoft.Extensions.Time.Testing;
+using SmartSolutionsLab.PharmaTraining.Contracts.Learning;
 using SmartSolutionsLab.PharmaTraining.Modules.Learning.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.Commands.StartLearningSession;
 using SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.ReadModels;
@@ -114,7 +115,76 @@ public class StartLearningSessionTests
         sessions.Saves.ShouldBe(0);
     }
 
-    private StartLearningSessionHandler Handler() => new(copies, sessions, sessions, time);
+    [Fact]
+    public async Task Starting_a_version_announces_the_session_once_with_its_ids()
+    {
+        var started = await StartAsync(learner);
+
+        var announced = sessions.Published.ShouldHaveSingleItem().ShouldBeOfType<LearningSessionStartedV1>();
+        announced.SessionId.ShouldBe(started.Value.Id);
+        announced.PersonId.ShouldBe(learner.Value);
+        announced.CourseId.ShouldBe(version.CourseId);
+        announced.CourseVersionId.ShouldBe(version.Id);
+        sessions.Commits.ShouldBe(1);
+        sessions.Steps.ShouldBe([InMemoryLearningSessions.Saved, InMemoryLearningSessions.Queued, InMemoryLearningSessions.Committed]);
+    }
+
+    [Fact]
+    public async Task Resuming_a_session_announces_nothing()
+    {
+        await StartAsync(learner);
+        var steps = sessions.Steps.Count;
+        time.Advance(TimeSpan.FromHours(1));
+
+        var again = await StartAsync(learner);
+
+        again.Value.Created.ShouldBeFalse();
+        sessions.Published.Count.ShouldBe(1);
+        sessions.Commits.ShouldBe(1);
+        sessions.Steps.Count.ShouldBe(steps);
+    }
+
+    [Fact]
+    public async Task A_version_Learning_does_not_hold_announces_nothing()
+    {
+        var started = await Handler().HandleAsync(
+            new StartLearningSession(learner, CourseVersionId.From(Guid.CreateVersion7())),
+            TestContext.Current.CancellationToken);
+
+        started.IsFailure.ShouldBeTrue();
+        sessions.Published.ShouldBeEmpty();
+        sessions.Commits.ShouldBe(0);
+        sessions.Steps.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task After_a_finished_session_the_next_run_is_announced_under_its_own_id()
+    {
+        var now = Timestamp.From(time.GetUtcNow());
+        var finished = LearningSession.Start(
+            LearningSessionId.For(learner, Version, SessionRun.First),
+            learner,
+            CourseId.From(version.CourseId),
+            Version,
+            [ChapterId.From(Intro)],
+            [ChapterId.From(Handbook)],
+            [ChapterId.From(Film)],
+            now);
+        finished.Finish(now);
+        await sessions.SaveAsync(finished, TestContext.Current.CancellationToken);
+        time.Advance(TimeSpan.FromDays(365));
+
+        var started = await StartAsync(learner);
+
+        var announced = sessions.Published.ShouldHaveSingleItem().ShouldBeOfType<LearningSessionStartedV1>();
+        announced.SessionId.ShouldBe(LearningSessionId.For(learner, Version, SessionRun.From(2)).Value);
+        announced.SessionId.ShouldBe(started.Value.Id);
+        announced.PersonId.ShouldBe(learner.Value);
+        announced.CourseVersionId.ShouldBe(version.Id);
+        sessions.Commits.ShouldBe(1);
+    }
+
+    private StartLearningSessionHandler Handler() => new(copies, sessions, sessions, sessions, time);
 
     private Task<Result<LearningSessionStart, ApiError>> StartAsync(PersonId person) =>
         Handler().HandleAsync(new StartLearningSession(person, Version), TestContext.Current.CancellationToken);
