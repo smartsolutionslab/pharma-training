@@ -10,8 +10,9 @@ public static class UserRateLimitEndpoints
     /// <summary>
     /// Counts every request that reaches the endpoint, after authorization, under the limit a module registered as
     /// <paramref name="name"/> with <c>AddUserRateLimit</c>; a caller over it gets 429 with <c>Retry-After</c> and the
-    /// limit's refusal, and the endpoint does not run (docs/adr/0020). A name no module registered fails when the
-    /// endpoints are built, not per request.
+    /// limit's refusal, and the endpoint does not run (docs/adr/0020). A name no module registered does not stop the
+    /// host: the check runs in the endpoint filter factory, when routing first builds the endpoints, so the first request
+    /// routed to the host (or building its OpenAPI document) fails with an <see cref="InvalidOperationException"/> naming it.
     /// </summary>
     public static RouteHandlerBuilder RequireUserRateLimit(this RouteHandlerBuilder builder, string name)
     {
