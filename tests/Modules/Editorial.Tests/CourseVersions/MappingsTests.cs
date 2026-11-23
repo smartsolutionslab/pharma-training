@@ -1,3 +1,4 @@
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.RepublishCourseVersions;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.DTOs;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 using static SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersions.CourseVersionBuilder;
@@ -91,5 +92,17 @@ public class MappingsTests
             new EditorialChapterDto(pdf.Value, 2, "Hygieneplan", EditorialChapterKind.Pdf, null, "courses/plan.pdf", null),
             new EditorialChapterDto(video.Value, 3, "Vorführung", EditorialChapterKind.Video, null, "courses/demo.mp4", 90),
         ]);
+    }
+
+    /// <summary>Each count lands in its own field: the three differ, so a swap shows.</summary>
+    [Fact]
+    public void Republished_events_map_to_a_dto_with_their_three_counts()
+    {
+        var dto = new RepublishedEvents(5, 4, 2).ToDto();
+
+        dto.ShouldBe(new EditorialRepublishedEventsDto(5, 4, 2));
+        dto.CourseVersions.ShouldBe(5);
+        dto.TestDefinitions.ShouldBe(4);
+        dto.Retirements.ShouldBe(2);
     }
 }
