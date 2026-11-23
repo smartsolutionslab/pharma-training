@@ -136,14 +136,18 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1, $"There is no membership {membership} whose invitation mail was requested.");
     }
 
-    /// <summary>Sets the pharmacy's tally of invitation mails to the count given, all of them requested today (UTC).</summary>
-    public async Task SetInvitationMailsTodayAsync(Guid pharmacy, int count, CancellationToken cancellationToken)
+    /// <summary>
+    /// Sets the pharmacy's tally of invitation mails to the count given, all of them requested on the UTC day given. Pass
+    /// the day the host counts on, from <see cref="TimeProvider.System"/>, not the database's clock.
+    /// </summary>
+    public async Task SetInvitationMailsAsync(Guid pharmacy, DateOnly day, int count, CancellationToken cancellationToken)
     {
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand(
-            "UPDATE organisation.pharmacies SET invitation_mail_day = (now() at time zone 'utc')::date, invitation_mails_that_day = @count WHERE id = @id",
+            "UPDATE organisation.pharmacies SET invitation_mail_day = @day, invitation_mails_that_day = @count WHERE id = @id",
             connection);
         command.Parameters.AddWithValue("id", pharmacy);
+        command.Parameters.Add(new NpgsqlParameter("day", NpgsqlDbType.Date) { Value = day });
         command.Parameters.AddWithValue("count", count);
         (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1, $"There is no pharmacy {pharmacy}.");
     }
