@@ -53,7 +53,12 @@ public sealed class CourseVersionConfiguration : IEntityTypeConfiguration<Course
             .HasField("questions")
             .UsePropertyAccessMode(PropertyAccessMode.Field);
 
-        builder.HasIndex(version => version.Course);
+        // One number per course, backed twice: DraftNextVersionHandler refuses an existing number with
+        // editorial.next-version-exists; a racing insert answers 409 already-exists. It also serves lookups by course
+        // (its leading column).
+        builder.HasIndex(version => new { version.Course, version.Number })
+            .IsUnique()
+            .HasDatabaseName("ix_course_versions_course_id_number");
         builder.HasIndex(version => version.Status);
     }
 }

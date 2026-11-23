@@ -46,10 +46,11 @@ public abstract partial class ModuleUnitOfWork<TContext>(IServiceProvider servic
     /// <see cref="PostgresException"/> attached so its stack shows where the deadlock happened (Npgsql redacts
     /// PostgreSQL's Detail unless <c>Include Error Detail</c> is set, so keep it off; Where names the relation and
     /// tuple, never values), so a deadlock that keeps happening (two handlers taking locks in opposite orders) shows in
-    /// the telemetry, not only as 409s; a row version that moved on is ordinary and is not logged. Every other inner
-    /// exception of an <see cref="AggregateException"/> that holds the lost race is logged as a warning of its own,
-    /// with it attached, so it is not lost with the aggregate answered as a 409. The filter also covers Wolverine's
-    /// flush after the commit, but that flush catches each envelope's send failure itself (Wolverine 6.64.0, outside
+    /// the telemetry, not only as 409s; a row version that moved on is ordinary and is not logged. Every other failure
+    /// in the exception's tree (followed through each <see cref="Exception.InnerException"/> and every
+    /// <see cref="AggregateException"/>'s inner exceptions, at any depth) is logged once as a warning of its own, with it
+    /// attached, so it is not lost with the save answered as a 409; no wrapper or aggregate is logged by itself. The
+    /// filter also covers Wolverine's flush after the commit, but that flush catches each envelope's send failure itself (Wolverine 6.64.0, outside
     /// <c>DurabilityMode.ServerlessWithOutbox</c>, which deletes the sent envelopes' outbox rows after the commit with
     /// no such catch), so a 40P01 or 40001 cannot come from a write that already committed; recheck both when upgrading
     /// Wolverine or changing its durability mode. Every other failure is rethrown as it came.
@@ -64,12 +65,9 @@ public abstract partial class ModuleUnitOfWork<TContext>(IServiceProvider servic
         catch (Exception exception) when (EndedAsLostRace(exception) is { } ended)
         {
             LogLostRace(Logger, ended, ended.SqlState, typeof(TContext).Name);
-            if (exception is AggregateException aggregate)
+            foreach (var other in Leaves(exception).Distinct<Exception>(ReferenceEqualityComparer.Instance).Where(leaf => !ReferenceEquals(leaf, ended)))
             {
-                foreach (var other in aggregate.InnerExceptions.Where(inner => !ReferenceEquals(EndedAsLostRace(inner), ended)))
-                {
-                    LogOtherFailure(Logger, other, typeof(TContext).Name);
-                }
+                LogOtherFailure(Logger, other, typeof(TContext).Name);
             }
 
             return false;
@@ -90,6 +88,19 @@ public abstract partial class ModuleUnitOfWork<TContext>(IServiceProvider servic
         AggregateException aggregate => aggregate.InnerExceptions.Select(EndedAsLostRace).FirstOrDefault(ended => ended is not null),
         { InnerException: { } inner } => EndedAsLostRace(inner),
         _ => null,
+    };
+
+    /// <summary>
+    /// The failures at the ends of the exception's tree: each wrapper is followed through its
+    /// <see cref="Exception.InnerException"/>, each <see cref="AggregateException"/> through all its inner exceptions, at
+    /// any depth, and neither a wrapper nor an aggregate is a failure of its own. A lost race is a leaf, whatever it wraps.
+    /// </summary>
+    private static IEnumerable<Exception> Leaves(Exception exception) => exception switch
+    {
+        PostgresException { SqlState: PostgresErrorCodes.DeadlockDetected or PostgresErrorCodes.SerializationFailure } => [exception],
+        AggregateException aggregate => aggregate.InnerExceptions.SelectMany(Leaves),
+        { InnerException: { } inner } => Leaves(inner),
+        _ => [exception],
     };
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "PostgreSQL ended a save of {Context} with SqlState {SqlState}; answered as a lost race.")]

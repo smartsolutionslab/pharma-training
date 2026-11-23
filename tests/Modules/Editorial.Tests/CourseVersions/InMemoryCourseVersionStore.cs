@@ -27,6 +27,12 @@ internal sealed class InMemoryCourseVersionStore : ICourseVersionStore, IEditori
 
     public Task<Option<CourseVersion>> FindForUpdateAsync(CourseVersionId id, CancellationToken cancellationToken) => Find(id);
 
+    /// <summary>The committed version with that number for the course; what is added but not committed is not seen.</summary>
+    public Task<Option<CourseVersionId>> FindByNumberAsync(CourseId course, VersionNumber number, CancellationToken cancellationToken) =>
+        Task.FromResult(Stored.SingleOrDefault(version => version.Course == course && version.Number == number) is { } version
+            ? Option<CourseVersionId>.Some(version.Id)
+            : Option<CourseVersionId>.None);
+
     public Task<PagedResult<CourseVersion>> ListAsync(CourseVersionStatus? status, Page page, PageSize pageSize, CancellationToken cancellationToken)
     {
         List<CourseVersion> matching = [.. Stored

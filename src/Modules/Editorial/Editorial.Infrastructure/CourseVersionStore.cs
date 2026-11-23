@@ -27,6 +27,15 @@ public sealed class CourseVersionStore(EditorialDbContext context) : ICourseVers
     public Task<Option<CourseVersion>> FindForUpdateAsync(CourseVersionId id, CancellationToken cancellationToken) =>
         FindInOneSnapshotAsync(WithContent(), id, cancellationToken);
 
+    public async Task<Option<CourseVersionId>> FindByNumberAsync(CourseId course, VersionNumber number, CancellationToken cancellationToken) =>
+        await context.Set<CourseVersion>()
+            .AsNoTracking()
+            .Where(version => version.Course == course && version.Number == number)
+            .Select(version => version.Id)
+            .SingleOrDefaultAsync(cancellationToken) is { } stored
+            ? Option<CourseVersionId>.Some(stored)
+            : Option<CourseVersionId>.None;
+
     public async Task<PagedResult<CourseVersion>> ListAsync(CourseVersionStatus? status, Page page, PageSize pageSize, CancellationToken cancellationToken)
     {
         Ensure.That(page).IsNotNull();
