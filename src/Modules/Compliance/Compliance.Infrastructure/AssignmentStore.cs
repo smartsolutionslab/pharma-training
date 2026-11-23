@@ -40,4 +40,11 @@ public sealed class AssignmentStore(ComplianceDbContext context) : IAssignmentSt
             .ToListAsync(cancellationToken);
 
     public void Add(Assignment assignment) => context.Add(assignment);
+
+    public async Task<IReadOnlyList<Assignment>> ActiveOfLearnerInPharmacyAsync(PersonId learner, PharmacyId pharmacy, CancellationToken cancellationToken) =>
+        await context.Set<Assignment>()
+            .Where(assignment => assignment.Learner == learner
+                && assignment.Pharmacy == pharmacy
+                && (assignment.Status == AssignmentStatus.Open || assignment.Status == AssignmentStatus.InProgress))
+            .ToListAsync(cancellationToken);
 }

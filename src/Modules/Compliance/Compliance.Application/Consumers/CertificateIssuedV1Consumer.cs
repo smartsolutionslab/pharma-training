@@ -4,6 +4,7 @@ using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Assignments;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Assignments.Events;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Courses;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Members;
+using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Progress;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application.Consumers;
 
@@ -17,8 +18,11 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application.Consum
 /// Two deliveries handled at once both load the same rows; the second commit loses on the row version
 /// (docs/adr/0002-lost-updates-answer-409-through-the-use-case.md) and throws, nothing of it is saved or sent, and the
 /// retry finds nothing active.
+/// It also keeps a copy of the certificate, whether or not it completes anything, from which the dashboard tells that a
+/// session of the course is finished (docs/adr/0024); that copy is deduplicated on the certificate id and saved in the
+/// same commit, and two deliveries at once race only on its primary key: the loser throws and its retry finds the copy.
 /// </summary>
-public sealed class CertificateIssuedV1Consumer(IAssignmentStore assignments, IComplianceUnitOfWork unitOfWork)
+public sealed class CertificateIssuedV1Consumer(IAssignmentStore assignments, ILearnerProgressStore progress, IComplianceUnitOfWork unitOfWork)
 {
     public async Task HandleAsync(CertificateIssuedV1 message, CancellationToken cancellationToken)
     {
@@ -29,14 +33,18 @@ public sealed class CertificateIssuedV1Consumer(IAssignmentStore assignments, IC
         Ensure.That(message.CourseVersionId, nameof(message.CourseVersionId)).IsNotEmpty();
         Ensure.That(message.IssuedAt, nameof(message.IssuedAt)).Satisfies(at => at != default, "must be set.");
 
-        var active = await assignments.ActiveOfLearnerAsync(PersonId.From(message.PersonId), CourseId.From(message.CourseId), cancellationToken);
-        if (active.Count == 0)
+        var certificate = CertificateId.From(message.CertificateId);
+        var person = PersonId.From(message.PersonId);
+        var course = CourseId.From(message.CourseId);
+        var issuedAt = Timestamp.From(message.IssuedAt);
+        var kept = false;
+        if (!await progress.HasCertificateAsync(certificate, cancellationToken))
         {
-            return;
+            progress.Add(IssuedCertificate.Of(certificate, person, course, CourseVersionId.From(message.CourseVersionId), issuedAt));
+            kept = true;
         }
 
-        var certificate = CertificateId.From(message.CertificateId);
-        var issuedAt = Timestamp.From(message.IssuedAt);
+        var active = await assignments.ActiveOfLearnerAsync(person, course, cancellationToken);
         var announced = 0;
         foreach (var assignment in active)
         {
@@ -60,7 +68,7 @@ public sealed class CertificateIssuedV1Consumer(IAssignmentStore assignments, IC
             }
         }
 
-        if (announced == 0)
+        if (!kept && announced == 0)
         {
             return;
         }

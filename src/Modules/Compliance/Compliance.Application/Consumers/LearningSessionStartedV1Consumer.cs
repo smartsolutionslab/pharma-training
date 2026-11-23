@@ -2,6 +2,7 @@ using SmartSolutionsLab.PharmaTraining.Contracts.Learning;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Assignments;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Courses;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Members;
+using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Progress;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application.Consumers;
 
@@ -11,8 +12,11 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application.Consum
 /// (<c>Metadata.OccurredAt</c>, docs/adr/0019), so a second delivery, a replay and a reordering change nothing by
 /// themselves, which is stronger, since it also absorbs an old event under a new identifier. A save that lost a race
 /// throws, and the retry reloads and applies it again.
+/// It also keeps a copy of the start, whether or not the person has an active assignment of the course, from which the
+/// dashboard tells the running session's version (docs/adr/0024); that copy is deduplicated on the session id, and two
+/// deliveries at once race only on its primary key: the loser throws and its retry finds the copy.
 /// </summary>
-public sealed class LearningSessionStartedV1Consumer(IAssignmentStore assignments, IComplianceUnitOfWork unitOfWork)
+public sealed class LearningSessionStartedV1Consumer(IAssignmentStore assignments, ILearnerProgressStore progress, IComplianceUnitOfWork unitOfWork)
 {
     public async Task HandleAsync(LearningSessionStartedV1 message, CancellationToken cancellationToken)
     {
@@ -22,13 +26,23 @@ public sealed class LearningSessionStartedV1Consumer(IAssignmentStore assignment
         Ensure.That(message.CourseId, nameof(message.CourseId)).IsNotEmpty();
         Ensure.That(message.CourseVersionId, nameof(message.CourseVersionId)).IsNotEmpty();
 
-        var active = await assignments.ActiveOfLearnerAsync(PersonId.From(message.PersonId), CourseId.From(message.CourseId), cancellationToken);
-        if (active.Count == 0)
+        var session = LearningSessionId.From(message.SessionId);
+        var person = PersonId.From(message.PersonId);
+        var course = CourseId.From(message.CourseId);
+        var at = Timestamp.From(message.Metadata.OccurredAt);
+        var kept = false;
+        if (!await progress.HasSessionStartAsync(session, cancellationToken))
+        {
+            progress.Add(LearningSessionStart.Of(session, person, course, CourseVersionId.From(message.CourseVersionId), at));
+            kept = true;
+        }
+
+        var active = await assignments.ActiveOfLearnerAsync(person, course, cancellationToken);
+        if (!kept && active.Count == 0)
         {
             return;
         }
 
-        var at = Timestamp.From(message.Metadata.OccurredAt);
         foreach (var assignment in active)
         {
             assignment.MarkStarted(at);
