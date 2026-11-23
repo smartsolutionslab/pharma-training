@@ -26,5 +26,12 @@ public sealed class AssignmentStore(ComplianceDbContext context) : IAssignmentSt
         return found.ToHashSet();
     }
 
+    public async Task<IReadOnlyList<Assignment>> ActiveOfLearnerAsync(PersonId learner, CourseId course, CancellationToken cancellationToken) =>
+        await context.Set<Assignment>()
+            .Where(assignment => assignment.Learner == learner
+                && assignment.Course == course
+                && (assignment.Status == AssignmentStatus.Open || assignment.Status == AssignmentStatus.InProgress))
+            .ToListAsync(cancellationToken);
+
     public void Add(Assignment assignment) => context.Add(assignment);
 }

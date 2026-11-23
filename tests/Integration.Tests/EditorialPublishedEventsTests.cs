@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
+using System.Web;
 using RabbitMQ.Client;
 using static SmartSolutionsLab.PharmaTraining.Integration.Tests.EditorialWorkflow;
 
@@ -16,10 +18,12 @@ public class EditorialPublishedEventsTests(AspireFixture aspire)
 {
     private const string CourseVersionPublishedExchange = "SmartSolutionsLab.PharmaTraining.Contracts.Editorial.CourseVersionPublishedV1";
     private const string TestDefinitionPublishedExchange = "SmartSolutionsLab.PharmaTraining.Contracts.Editorial.TestDefinitionPublishedV1";
+    private const string ChapterFilesReleasedExchange = "SmartSolutionsLab.PharmaTraining.Contracts.Editorial.ChapterFilesReleasedV1";
 
     private static readonly TimeSpan WaitTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(250);
     private static readonly string[] SolutionProperties = ["questions", "options", "isCorrect"];
+    private static readonly byte[] SmallPdf = Encoding.ASCII.GetBytes("%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n");
 
     /// <summary>
     /// Counts on queues of the test's own, up to a marker version published after the refused attempt. Editorial sends
@@ -83,6 +87,41 @@ public class EditorialPublishedEventsTests(AspireFixture aspire)
         var chapter = version.Chapters.ShouldHaveSingleItem();
         chapter.ChapterId.ShouldBe(published.Chapter);
         chapter.Kind.ShouldBe("Text");
+    }
+
+    /// <summary>
+    /// #41: a version with a PDF chapter also releases the chapter's file, with a read URL Editorial signed on its own
+    /// container for fifteen minutes, to be shown inline as a PDF. A version of the test's own is published first, so
+    /// Wolverine has declared the exchange, which no queue was bound to before.
+    /// </summary>
+    [Fact]
+    public async Task Publishing_a_version_with_a_pdf_chapter_puts_its_released_files_on_the_broker()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        await using var connection = await Broker.ConnectAsync(aspire, cancellationToken);
+        await using var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
+        await PublishedWithPdfChapterAsync(client, SmallPdf, cancellationToken);
+        await Broker.WaitForExchangeAsync(connection, ChapterFilesReleasedExchange, cancellationToken);
+        var queue = await Broker.BindQueueAsync(channel, ChapterFilesReleasedExchange, cancellationToken);
+
+        var signedAfter = TimeProvider.System.GetUtcNow();
+        var (versionId, chapterId) = await PublishedWithPdfChapterAsync(client, SmallPdf, cancellationToken);
+
+        var released = await Broker.ReceiveAsync<JsonElement>(channel, queue, received => VersionOf(received) == versionId, cancellationToken);
+        var file = released.GetProperty("files").EnumerateArray().ShouldHaveSingleItem();
+        file.GetProperty("chapterId").GetGuid().ShouldBe(chapterId);
+        file.GetProperty("kind").GetString().ShouldBe("Pdf");
+        var readUrl = new Uri(file.GetProperty("readUrl").GetString().ShouldNotBeNull());
+        readUrl.AbsolutePath.ShouldContain("/editorial/course-versions/");
+        var query = HttpUtility.ParseQueryString(readUrl.Query);
+        query["sp"].ShouldBe("r");
+        query["rsct"].ShouldBe("application/pdf");
+        query["rscd"].ShouldBe("inline");
+        query["sig"].ShouldNotBeNullOrWhiteSpace();
+        var expiresAt = file.GetProperty("expiresAt").GetDateTimeOffset();
+        expiresAt.ShouldBeGreaterThan(signedAfter);
+        expiresAt.ShouldBeLessThanOrEqualTo(TimeProvider.System.GetUtcNow().AddMinutes(15));
     }
 
     /// <summary>

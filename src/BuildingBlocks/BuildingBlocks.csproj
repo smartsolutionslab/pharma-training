@@ -8,6 +8,9 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Microsoft.Extensions.AI" />
     <PackageReference Include="WolverineFx.EntityFrameworkCore" />
+    <!-- Wolverine's message storage in a module's database, which the MigrationRunner builds and every service host uses
+         through one configuration (Persistence/ModuleMessageStorage.cs). -->
+    <PackageReference Include="WolverineFx.Postgresql" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
     <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />

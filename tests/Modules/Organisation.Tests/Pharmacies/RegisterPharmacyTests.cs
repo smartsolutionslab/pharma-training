@@ -1,5 +1,7 @@
 using Microsoft.Extensions.Time.Testing;
+using System.Net;
 using SmartSolutionsLab.PharmaTraining.Contracts.Organisation;
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Commands.RegisterPharmacy;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
 
@@ -68,9 +70,24 @@ public class RegisterPharmacyTests
         membershipStarted.StartedAt.ShouldBe(Start.AddMinutes(5));
     }
 
+    [Fact]
+    public async Task An_unverified_founder_is_refused_and_nothing_is_stored_published_or_committed()
+    {
+        var store = new InMemoryPharmacyStore();
+
+        var refused = await Handler(store).HandleAsync(Command("Stadt-Apotheke", verified: false), TestContext.Current.CancellationToken);
+
+        refused.IsFailure.ShouldBeTrue();
+        refused.Error.Code.ShouldBe("organisation.email-not-verified");
+        refused.Error.Status.ShouldBe(HttpStatusCode.Forbidden);
+        store.Stored.ShouldBeEmpty();
+        store.Published.ShouldBeEmpty();
+        store.Commits.ShouldBe(0);
+    }
+
     private static RegisterPharmacyHandler Handler(InMemoryPharmacyStore store) =>
         new(store, store, new FakeTimeProvider(Start));
 
-    private static RegisterPharmacy Command(string name, JobFunction jobFunction = JobFunction.Pharmacist) =>
-        new(PharmacyName.From(name), jobFunction, Owner, DisplayName.From("Olaf Owner"), EmailAddress.From("owner@example.com"));
+    private static RegisterPharmacy Command(string name, JobFunction jobFunction = JobFunction.Pharmacist, bool verified = true) =>
+        new(PharmacyName.From(name), jobFunction, Owner, DisplayName.From("Olaf Owner"), AccountEmail.From(EmailAddress.From("owner@example.com"), verified));
 }

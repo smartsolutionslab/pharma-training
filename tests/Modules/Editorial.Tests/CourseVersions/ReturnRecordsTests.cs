@@ -7,7 +7,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersion
 
 /// <summary>
 /// Returning a version in review to draft hands back a <see cref="CourseVersionReturn"/>, the record of who returned it,
-/// when and why; the version keeps the latest editor and time, and raises <see cref="CourseVersionReturned"/> with the
+/// under which name (#220), when and why; the version keeps the latest editor and time, and raises <see cref="CourseVersionReturned"/> with the
 /// reason (#181). A later return yields a record of its own and changes none before it.
 /// </summary>
 public class ReturnRecordsTests
@@ -21,11 +21,12 @@ public class ReturnRecordsTests
     {
         var version = InReview();
 
-        var returned = version.ReturnToDraft(Reviewer, Reason, Later);
+        var returned = version.ReturnToDraft(Reviewer, ReviewersName, Reason, Later);
 
         returned.IsSuccess.ShouldBeTrue();
         returned.Value.Version.ShouldBe(version.Id);
         returned.Value.ReturnedBy.ShouldBe(Reviewer);
+        returned.Value.ReturnedByName.ShouldBe(ReviewersName);
         returned.Value.ReturnedAt.ShouldBe(Later);
         returned.Value.Reason.ShouldBe(Reason);
         version.Status.ShouldBe(CourseVersionStatus.Draft);
@@ -49,7 +50,7 @@ public class ReturnRecordsTests
     {
         var version = DraftWithChapter(out _);
 
-        var returned = version.ReturnToDraft(Reviewer, Reason, Later);
+        var returned = version.ReturnToDraft(Reviewer, ReviewersName, Reason, Later);
 
         returned.IsFailure.ShouldBeTrue();
         CourseVersionFailures.From(returned.Error).Code.ShouldBe("editorial.not-in-review");
@@ -64,7 +65,7 @@ public class ReturnRecordsTests
     {
         var version = InReview();
 
-        version.ReturnToDraft(Author, Reason, Later).IsSuccess.ShouldBeTrue();
+        version.ReturnToDraft(Author, AuthorsName, Reason, Later).IsSuccess.ShouldBeTrue();
 
         version.ReturnedBy.ShouldBe(Author);
     }
@@ -74,16 +75,18 @@ public class ReturnRecordsTests
     public void A_second_return_yields_a_second_record_and_leaves_the_first_as_it_was()
     {
         var version = InReview();
-        var first = version.ReturnToDraft(Reviewer, Reason, Now).Value;
+        var first = version.ReturnToDraft(Reviewer, ReviewersName, Reason, Now).Value;
         version.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
 
-        var second = version.ReturnToDraft(Approver, OtherReason, Later).Value;
+        var second = version.ReturnToDraft(Approver, ApproversName, OtherReason, Later).Value;
 
         second.Id.ShouldNotBe(first.Id);
         first.ReturnedBy.ShouldBe(Reviewer);
+        first.ReturnedByName.ShouldBe(ReviewersName);
         first.Reason.ShouldBe(Reason);
         first.ReturnedAt.ShouldBe(Now);
         second.ReturnedBy.ShouldBe(Approver);
+        second.ReturnedByName.ShouldBe(ApproversName);
         second.Reason.ShouldBe(OtherReason);
         second.ReturnedAt.ShouldBe(Later);
         version.ReturnedBy.ShouldBe(Approver);

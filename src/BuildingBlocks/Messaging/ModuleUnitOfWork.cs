@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
+using Wolverine.Runtime;
 using Wolverine.EntityFrameworkCore;
 
 namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
@@ -19,7 +20,7 @@ public abstract partial class ModuleUnitOfWork<TContext>(IServiceProvider servic
 
     private ILogger? logger;
 
-    private IDbContextOutbox<TContext> Outbox => outbox ??= services.GetRequiredService<IDbContextOutbox<TContext>>();
+    private IDbContextOutbox<TContext> Outbox => outbox ??= Resolve(services);
 
     private ILogger Logger => logger ??= services.GetService<ILogger<ModuleUnitOfWork<TContext>>>() ?? NullLogger<ModuleUnitOfWork<TContext>>.Instance;
 
@@ -102,6 +103,23 @@ public abstract partial class ModuleUnitOfWork<TContext>(IServiceProvider servic
         { InnerException: { } inner } => Leaves(inner),
         _ => [exception],
     };
+
+    /// <summary>
+    /// The scope's outbox, allowed to flush after every commit. Wolverine's default flushes a message context once and
+    /// keeps what a later commit stores in the outbox unsent (with a warning) until a durability pass finds it, so a use
+    /// case that commits more than once in a scope (a republish, one commit per course version) would send only its first
+    /// commit's events at once. Each flush sends only the envelopes stored since the last one.
+    /// </summary>
+    private static IDbContextOutbox<TContext> Resolve(IServiceProvider services)
+    {
+        var resolved = services.GetRequiredService<IDbContextOutbox<TContext>>();
+        if (resolved is MessageContext context)
+        {
+            context.MultiFlushMode = MultiFlushMode.AllowMultiples;
+        }
+
+        return resolved;
+    }
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "PostgreSQL ended a save of {Context} with SqlState {SqlState}; answered as a lost race.")]
     private static partial void LogLostRace(ILogger logger, Exception exception, string sqlState, string context);

@@ -21,13 +21,13 @@ internal static class ModuleBlobContainer
     // string names its blob service BlobEndpoint.
     private static readonly string[] EndpointKeys = ["Endpoint", "BlobEndpoint"];
 
-    /// <summary>The container, to read what lies in it.</summary>
-    public static BlobContainerClient From(IConfiguration configuration)
+    /// <summary>The container, to read what lies in it, or to write into it, with the client options given.</summary>
+    public static BlobContainerClient From(IConfiguration configuration, BlobClientOptions? options = null)
     {
         var location = Locate(configuration);
         var service = location.AccountConnectionString is { } account
-            ? new BlobServiceClient(account)
-            : new BlobServiceClient(location.ServiceUri, ServiceIdentity.Credential(configuration));
+            ? new BlobServiceClient(account, options)
+            : new BlobServiceClient(location.ServiceUri, ServiceIdentity.Credential(configuration), options);
         return service.GetBlobContainerClient(location.ContainerName);
     }
 

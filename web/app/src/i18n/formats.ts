@@ -1,17 +1,23 @@
 import type { Language } from './language';
 
-// Dates and numbers are formatted through vue-i18n's d() and n() with these formats, in the browser's time zone.
+// Dates and numbers are formatted through vue-i18n's d() and n() with these formats, in the browser's time zone, but for
+// germanDay: the host's day (DayInGermany()), in Europe/Berlin whatever the browser's zone.
 const date: Intl.DateTimeFormatOptions = { day: '2-digit', month: '2-digit', year: 'numeric' };
 const dateTime: Intl.DateTimeFormatOptions = { ...date, hour: '2-digit', minute: '2-digit' };
+const long: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long', year: 'numeric' };
+const germanDay: Intl.DateTimeFormatOptions = { ...date, timeZone: 'Europe/Berlin' };
 
 const integer: Intl.NumberFormatOptions = { maximumFractionDigits: 0 };
 const percent: Intl.NumberFormatOptions = { style: 'percent', maximumFractionDigits: 0 };
 const megabytes: Intl.NumberFormatOptions = { style: 'unit', unit: 'megabyte', maximumFractionDigits: 0 };
 
-/** d(value, 'date') gives 22.11.2026 and 22/11/2026; 'dateTime' adds hour and minute. */
+/**
+ * d(value, 'date') gives 22.11.2026 and 22/11/2026; 'dateTime' adds hour and minute; 'long' 22. November 2026 and
+ * 22 November 2026; 'germanDay' as 'date', the day in Germany.
+ */
 export const datetimeFormats = {
-  'de-DE': { date, dateTime },
-  'en-GB': { date, dateTime },
+  'de-DE': { date, dateTime, long, germanDay },
+  'en-GB': { date, dateTime, long, germanDay },
 } satisfies Record<Language, Record<string, Intl.DateTimeFormatOptions>>;
 
 /** n(value, 'integer') gives 1.312 and 1,312; n(share, 'percent') gives 80 % and 80%; n(size, 'megabytes') 2.048 MB and 2,048 MB. */

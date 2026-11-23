@@ -134,6 +134,20 @@ public class ExaminationReplayTests
         replayedExhausted.ChaptersToRelearn.ShouldBe([Hygiene, Gloves], ignoreOrder: true);
     }
 
+    [Fact]
+    public void Replaying_an_exhausted_examination_restores_when_it_was_exhausted()
+    {
+        var examination = Open();
+        Attempt(examination, Wrong);
+        Attempt(examination, Wrong);
+        Attempt(examination, Wrong);
+
+        var replayed = Replay(examination);
+
+        replayed.ExhaustedAt.ShouldNotBeNull();
+        replayed.ExhaustedAt.ShouldBe(examination.ExhaustedAt);
+    }
+
     private static Examination Open() =>
         Examination.Open(
             ExaminationId.New(),

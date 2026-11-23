@@ -1,3 +1,4 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Storage;
 using SmartSolutionsLab.PharmaTraining.Contracts.Editorial;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.DTOs;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
@@ -5,8 +6,10 @@ using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.IntegrationEvents;
 
 /// <summary>
-/// How a published course version is announced to other modules; pure, no I/O. The course version goes out with its
-/// chapters and without questions; its test, with the solutions, goes out separately and to Assessment only.
+/// How a course version is announced to other modules; pure, no I/O. The course version goes out with its chapters
+/// and without questions; its test, with the solutions, goes out separately and to Assessment only; the files of its PDF
+/// and video chapters go out with the read URLs Editorial signed on them, for Learning to copy (#41); its retirement
+/// names the course and the version.
 /// </summary>
 public static class EditorialIntegrationEventMappings
 {
@@ -54,5 +57,37 @@ public static class EditorialIntegrationEventMappings
                     option.Id.Value,
                     option.Text.Value,
                     option.Correctness == Correctness.Correct))]))]);
+    }
+
+    public static CourseVersionRetiredV1 ToCourseVersionRetiredV1(this CourseVersion version)
+    {
+        Ensure.That(version).IsNotNull();
+
+        return new CourseVersionRetiredV1(version.Course.Value, version.Id.Value);
+    }
+
+    /// <summary>
+    /// The version's PDF and video chapters, in chapter order, each with the read URL signed on its file and that URL's
+    /// expiry; text chapters have no file and are left out. A file chapter without a URL is a bug of the caller, which
+    /// signs one per file chapter, and is refused rather than released without its file.
+    /// </summary>
+    public static ChapterFilesReleasedV1 ToChapterFilesReleasedV1(this CourseVersion version, IReadOnlyDictionary<ChapterId, BlobUrl> readUrls)
+    {
+        Ensure.That(version).IsNotNull();
+        Ensure.That(readUrls).IsNotNull();
+
+        var files = version.Chapters.Where(chapter => chapter.Kind is ChapterKind.Pdf or ChapterKind.Video).ToList();
+        foreach (var chapter in files)
+        {
+            Ensure.That(chapter.Id.Value.ToString(), nameof(readUrls)).Satisfies(_ => readUrls.ContainsKey(chapter.Id), "Every PDF and video chapter needs a signed read URL.");
+        }
+
+        return new ChapterFilesReleasedV1(
+            version.Id.Value,
+            [.. files.Select(chapter => new ReleasedChapterFileV1(
+                chapter.Id.Value,
+                chapter.Kind.ToV1(),
+                readUrls[chapter.Id].Url,
+                readUrls[chapter.Id].ExpiresAt))]);
     }
 }

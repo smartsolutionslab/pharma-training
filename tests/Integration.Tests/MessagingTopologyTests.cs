@@ -12,6 +12,8 @@ public class MessagingTopologyTests
 {
     private const string Contracts = "SmartSolutionsLab.PharmaTraining.Contracts.";
 
+    private const string ChapterFilesReleased = Contracts + "Editorial.ChapterFilesReleasedV1";
+
     private const string CourseVersionPublished = Contracts + "Editorial.CourseVersionPublishedV1";
 
     private const string CourseVersionRetired = Contracts + "Editorial.CourseVersionRetiredV1";
@@ -43,21 +45,30 @@ public class MessagingTopologyTests
     }
 
     [Fact]
-    public void Editorial_publishes_the_test_definition_beside_the_course_versions()
+    public void Editorial_publishes_the_test_definition_and_the_released_files_beside_the_course_versions()
     {
         var (consumed, published) = MessagingTopology.Of("editorial");
 
         consumed.ShouldBeEmpty();
-        published.ShouldBe([CourseVersionPublished, CourseVersionRetired, TestDefinitionPublished], ignoreOrder: false);
+        published.ShouldBe([ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired, TestDefinitionPublished], ignoreOrder: false);
+    }
+
+    /// <summary>#41: Learning copies the files Editorial releases, so its queue is bound to their exchange too.</summary>
+    [Fact]
+    public void Learning_consumes_the_course_versions_and_the_released_files()
+    {
+        var (consumed, _) = MessagingTopology.Of("learning");
+
+        consumed.ShouldBe([ChapterFilesReleased, CourseVersionPublished], ignoreOrder: false);
     }
 
     [Fact]
-    public void Compliance_consumes_the_course_versions_and_the_memberships()
+    public void Compliance_consumes_the_course_versions_the_memberships_and_the_learning_progress()
     {
         var (consumed, _) = MessagingTopology.Of("compliance");
 
         consumed.ShouldBe(
-            [CourseVersionPublished, CourseVersionRetired, Contracts + "Organisation.MembershipChangedV1", Contracts + "Organisation.MembershipEndedV1", Contracts + "Organisation.MembershipStartedV1"],
+            [Contracts + "Assessment.AttemptsExhaustedV1", CourseVersionPublished, CourseVersionRetired, Contracts + "Learning.ContentCompletedV1", Contracts + "Learning.LearningSessionStartedV1", Contracts + "Organisation.MembershipChangedV1", Contracts + "Organisation.MembershipEndedV1", Contracts + "Organisation.MembershipStartedV1"],
             ignoreOrder: false);
     }
 

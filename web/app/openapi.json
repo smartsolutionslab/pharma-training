@@ -1426,6 +1426,25 @@
         }
       }
     },
+    "/editorial/course-versions/republish": {
+      "post": {
+        "tags": [
+          "Host"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorialRepublishedEventsDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/editorial/samples": {
       "post": {
         "tags": [
@@ -1744,6 +1763,36 @@
         }
       }
     },
+    "/learning/media/{chapterId}": {
+      "get": {
+        "tags": [
+          "LearningMediaEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "chapterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningMediaUrlDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/learning/sessions": {
       "post": {
         "tags": [
@@ -1972,6 +2021,54 @@
       }
     },
     "/organisation/pharmacies/{id}/invitations": {
+      "get": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "maximum": 21474837,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedResultOfPharmacyInvitationDto"
+                }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "tags": [
           "Host"
@@ -2113,6 +2210,56 @@
                 "schema": {
                   "type": "string",
                   "format": "uuid"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organisation/pharmacies/{id}/members": {
+      "get": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "maximum": 21474837,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedResultOfPharmacyMemberDto"
                 }
               }
             }
@@ -2830,6 +2977,7 @@
           "title",
           "validityMonths",
           "isRetired",
+          "status",
           "chapters"
         ],
         "type": "object",
@@ -2864,6 +3012,9 @@
           "isRetired": {
             "type": "boolean"
           },
+          "status": {
+            "$ref": "#/components/schemas/CatalogCourseVersionStatus"
+          },
           "chapters": {
             "type": "array",
             "items": {
@@ -2871,6 +3022,13 @@
             }
           }
         }
+      },
+      "CatalogCourseVersionStatus": {
+        "enum": [
+          "Current",
+          "Superseded",
+          "Retired"
+        ]
       },
       "CatalogSampleDto": {
         "required": [
@@ -3438,6 +3596,7 @@
         "required": [
           "id",
           "returnedBy",
+          "returnedByName",
           "returnedAt",
           "reason"
         ],
@@ -3450,6 +3609,12 @@
           "returnedBy": {
             "type": "string",
             "format": "uuid"
+          },
+          "returnedByName": {
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "returnedAt": {
             "type": "string",
@@ -3628,6 +3793,40 @@
           "MultipleChoice"
         ]
       },
+      "EditorialRepublishedEventsDto": {
+        "required": [
+          "courseVersions",
+          "testDefinitions",
+          "retirements"
+        ],
+        "type": "object",
+        "properties": {
+          "courseVersions": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "testDefinitions": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "retirements": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "EditorialSampleDto": {
         "required": [
           "id",
@@ -3746,6 +3945,31 @@
           "Pdf",
           "Video"
         ]
+      },
+      "LearningMediaUrlDto": {
+        "required": [
+          "url",
+          "expiresAt",
+          "contentType",
+          "kind"
+        ],
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "contentType": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/LearningChapterKind"
+          }
+        }
       },
       "LearningSampleDto": {
         "required": [
@@ -4401,6 +4625,88 @@
           }
         }
       },
+      "PagedResultOfPharmacyInvitationDto": {
+        "required": [
+          "items",
+          "totalCount",
+          "page",
+          "pageSize"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PharmacyInvitationDto"
+            }
+          },
+          "totalCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "page": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "pageSize": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "PagedResultOfPharmacyMemberDto": {
+        "required": [
+          "items",
+          "totalCount",
+          "page",
+          "pageSize"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PharmacyMemberDto"
+            }
+          },
+          "totalCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "page": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "pageSize": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "PermissionDto": {
         "required": [
           "name"
@@ -4409,6 +4715,69 @@
         "properties": {
           "name": {
             "type": "string"
+          }
+        }
+      },
+      "PharmacyInvitationDto": {
+        "required": [
+          "membershipId",
+          "email",
+          "jobFunction",
+          "role",
+          "expiresAt"
+        ],
+        "type": "object",
+        "properties": {
+          "membershipId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "email": {
+            "type": "string"
+          },
+          "jobFunction": {
+            "$ref": "#/components/schemas/OrganisationJobFunction"
+          },
+          "role": {
+            "$ref": "#/components/schemas/OrganisationMembershipRole"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PharmacyMemberDto": {
+        "required": [
+          "membershipId",
+          "personId",
+          "name",
+          "jobFunction",
+          "role",
+          "since"
+        ],
+        "type": "object",
+        "properties": {
+          "membershipId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "personId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "jobFunction": {
+            "$ref": "#/components/schemas/OrganisationJobFunction"
+          },
+          "role": {
+            "$ref": "#/components/schemas/OrganisationMembershipRole"
+          },
+          "since": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
@@ -4514,6 +4883,9 @@
     },
     {
       "name": "MemberEndpoints"
+    },
+    {
+      "name": "LearningMediaEndpoints"
     },
     {
       "name": "LearningSessionEndpoints"

@@ -15,7 +15,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Api.Endpoints;
 
 /// <summary>
 /// Register a pharmacy, list the pharmacies I am an active member of, and read one of them. Any signed-in user may
-/// register one; who sees which pharmacy is decided by their membership, not by a role.
+/// register one whose address Keycloak verified; who sees which pharmacy is decided by their membership, not by a role.
 /// </summary>
 public sealed class PharmacyEndpoints : IEndpoint
 {
@@ -44,7 +44,9 @@ public sealed class PharmacyEndpoints : IEndpoint
             }
 
             var founder = caller.Value;
-            var command = new RegisterPharmacy(name, jobFunction.ToDomain(), founder.Person, founder.Name, founder.Email);
+            // Only a verified address may found a pharmacy; the use case refuses an unverified one.
+            var email = AccountEmail.From(founder.Email, CallerClaims.HasVerifiedEmail(user));
+            var command = new RegisterPharmacy(name, jobFunction.ToDomain(), founder.Person, founder.Name, email);
             return (await dispatcher.SendAsync(command, cancellationToken)).ToCreatedHttpResult(Location);
         }).RequireAuthorization();
 

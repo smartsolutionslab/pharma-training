@@ -94,8 +94,9 @@ public class ApprovalReviewerNameTests
     [Fact]
     public void Applying_an_ai_test_draft_keeps_the_reviewers_name_of_an_approved_question()
     {
-        var version = DraftWithApprovedQuestion(out var chapter, out var approved);
+        var version = DraftWithQuestion(out var chapter, out var approved);
         version.SetBlueprint(new TestBlueprint(QuestionCount.From(3), ScorePercent.From(80), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
+        version.ApproveQuestion(approved, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
 
         version.ApplyAiTestDraft([SingleChoice(chapter), SingleChoice(chapter)], QuestionId.New, AnswerOptionId.New).IsSuccess.ShouldBeTrue();
 

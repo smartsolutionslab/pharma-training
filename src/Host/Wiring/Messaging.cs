@@ -5,7 +5,6 @@ using SmartSolutionsLab.PharmaTraining.Host.Messaging;
 using Wolverine;
 using Wolverine.EntityFrameworkCore;
 using Wolverine.ErrorHandling;
-using Wolverine.Postgresql;
 using Wolverine.RabbitMQ;
 using Wolverine.RabbitMQ.Internal;
 
@@ -62,7 +61,10 @@ public static class Messaging
         {
             // Handler code is generated at startup. For production, pre-generate it (see docs/adr).
             options.UseRuntimeCompilation();
-            options.PersistMessagesWithPostgresql(database, "wolverine");
+            // The storage the MigrationRunner built as the administrator, with this same configuration (docs/adr/0005).
+            // Published, the service logs in as its module's role, which holds no CREATE on the database: the check at
+            // start-up finds the storage complete and changes nothing, and a missing table fails the start.
+            options.PersistModuleMessages(database);
             options.UseEntityFrameworkCoreTransactions();
             options.Policies.UseDurableOutboxOnAllSendingEndpoints();
             options.Policies.UseDurableInboxOnAllListeners();
@@ -78,7 +80,8 @@ public static class Messaging
             options.OnException<ForgedPublisherException>().MoveToErrorQueue();
             // A consumer that throws is tried again, the wait doubling from 1 second, before its message is dead-lettered
             // (seven attempts, about a minute; see docs/adr). The retry is scheduled in the durable inbox, so the
-            // listener delivers other messages meanwhile.
+            // listener delivers other messages meanwhile. Each attempt is cancelled after Wolverine's default of 60 seconds,
+            // or after the consumer's own [ConsumerTimeout] (UseConsumerTimeouts below; docs/adr/0002).
             options.OnAnyException().ScheduleRetry(
                 TimeSpan.FromSeconds(1),
                 TimeSpan.FromSeconds(2),
@@ -110,7 +113,8 @@ public static class Messaging
                 options.Discovery.IncludeAssembly(ModuleAssemblies.Of(module, "Application"));
             }
             options.ResolveDispatcherFromScope()
-                .ResolveModuleServicesFromScope(modules);
+                .ResolveModuleServicesFromScope(modules)
+                .UseConsumerTimeouts();
         });
 
         return services;

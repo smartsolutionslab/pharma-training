@@ -27,6 +27,9 @@ public sealed class Examination : EventSourcedAggregate<ExaminationId>
 
     public ExaminationStatus Status { get; private set; }
 
+    /// <summary>When the examination was last exhausted; null until it first is. A completion published after it unlocks (docs/adr/0012).</summary>
+    public Timestamp? ExhaustedAt { get; private set; }
+
     public IReadOnlyList<TestAttempt> Attempts => attempts;
 
     /// <summary>The open attempt, or none.</summary>
@@ -203,5 +206,6 @@ public sealed class Examination : EventSourcedAggregate<ExaminationId>
     {
         ChaptersToRelearn = exhausted.FailedChapters;
         Status = ExaminationStatus.Exhausted;
+        ExhaustedAt = exhausted.ExhaustedAt;
     }
 }

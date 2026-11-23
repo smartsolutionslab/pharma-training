@@ -11,7 +11,7 @@ public static class CourseVersionMappings
         return new CatalogCourseDto(version.CourseId, version.Id, version.VersionNumber, version.Title, version.ValidityMonths);
     }
 
-    public static CatalogCourseVersionDto ToCatalogCourseVersionDto(this CourseVersion version, bool isRetired)
+    public static CatalogCourseVersionDto ToCatalogCourseVersionDto(this CourseVersion version, CatalogCourseVersionStatus status)
     {
         Ensure.That(version).IsNotNull();
 
@@ -21,7 +21,8 @@ public static class CourseVersionMappings
             version.VersionNumber,
             version.Title,
             version.ValidityMonths,
-            isRetired,
+            status == CatalogCourseVersionStatus.Retired,
+            status,
             [.. version.Chapters.OrderBy(chapter => chapter.Position).ThenBy(chapter => chapter.ChapterId).Select(ToCatalogChapterDto)]);
     }
 
