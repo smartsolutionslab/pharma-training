@@ -105,12 +105,12 @@ public class OpenApiDocumentTests(AspireFixture aspire)
         var assessmentPaths = paths.Where(path => path.Key.StartsWith("/assessment/", StringComparison.Ordinal)).ToList();
         foreach (var (name, path) in assessmentPaths)
         {
-            CollectCorrectness(served, path, $"paths{name}", correctness, visited);
+            CollectSolutionNames(served, path, $"paths{name}", correctness, visited);
         }
 
         foreach (var (name, schema) in schemas?.Where(schema => schema.Key.StartsWith("Assessment", StringComparison.Ordinal)) ?? [])
         {
-            CollectCorrectness(served, schema, $"{ComponentSchemas}{name}", correctness, visited);
+            CollectSolutionNames(served, schema, $"{ComponentSchemas}{name}", correctness, visited);
         }
 
         assessmentPaths.ShouldNotBeEmpty("the document describes Assessment's endpoints");
@@ -160,7 +160,7 @@ public class OpenApiDocumentTests(AspireFixture aspire)
     }
 
     /// <summary>Every property whose name contains "correct", ignoring case, in the node and what its <c>$ref</c>s name, each component once.</summary>
-    private static void CollectCorrectness(JsonObject document, JsonNode? node, string path, List<string> correctness, HashSet<string> visited)
+    internal static void CollectSolutionNames(JsonObject document, JsonNode? node, string path, List<string> found, HashSet<string> visited)
     {
         if (node is JsonObject schema)
         {
@@ -169,27 +169,27 @@ public class OpenApiDocumentTests(AspireFixture aspire)
                 var name = reference[ComponentSchemas.Length..];
                 if (visited.Add(name))
                 {
-                    CollectCorrectness(document, document["components"]?["schemas"]?[name], $"{path} -> {reference}", correctness, visited);
+                    CollectSolutionNames(document, document["components"]?["schemas"]?[name], $"{path} -> {reference}", found, visited);
                 }
             }
 
             if (schema["properties"] is JsonObject properties)
             {
-                correctness.AddRange(properties
+                found.AddRange(properties
                     .Where(property => property.Key.Contains("correct", StringComparison.OrdinalIgnoreCase))
                     .Select(property => $"{path}/properties/{property.Key}"));
             }
 
             foreach (var (key, child) in schema)
             {
-                CollectCorrectness(document, child, $"{path}/{key}", correctness, visited);
+                CollectSolutionNames(document, child, $"{path}/{key}", found, visited);
             }
         }
         else if (node is JsonArray items)
         {
             for (var index = 0; index < items.Count; index++)
             {
-                CollectCorrectness(document, items[index], $"{path}/{index}", correctness, visited);
+                CollectSolutionNames(document, items[index], $"{path}/{index}", found, visited);
             }
         }
     }
