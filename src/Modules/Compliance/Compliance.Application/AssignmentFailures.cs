@@ -40,6 +40,9 @@ public static class AssignmentFailures
     /// <summary>A change's reason is longer than <see cref="ChangeReason.MaxLength"/>.</summary>
     public static ApiError InvalidChangeReason() => new InvalidChangeReason(ChangeReason.MaxLength);
 
+    /// <summary>A manager may not move or withdraw an assignment of their own (orchestrator's default on #269).</summary>
+    public static ApiError OwnAssignment() => new OwnAssignment();
+
     public static ApiError LearnerNotAMember(Guid person) => new LearnerNotAMember(person);
 
     /// <summary>The save lost a race to another, or deadlocked with it; nothing of it was saved or announced.</summary>

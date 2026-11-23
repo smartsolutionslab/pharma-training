@@ -40,6 +40,12 @@ public sealed class ChangeAssignmentDueDateHandler(
             return Failure(AssignmentFailures.AssignmentNotFound(command.Assignment.Value));
         }
 
+        // Nobody manages their own assignment: another manager of the pharmacy moves or withdraws it.
+        if (found.Value.Learner == command.By)
+        {
+            return Failure(AssignmentFailures.OwnAssignment());
+        }
+
         var changed = found.Value.ChangeDueDate(command.DueDate, command.By, command.Reason, now);
         if (changed.IsFailure)
         {

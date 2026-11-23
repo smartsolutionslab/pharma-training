@@ -75,12 +75,12 @@ public sealed class AssignmentChangeEndpoints : IEndpoint
         ChangeReason? reason = null;
         if (!string.IsNullOrWhiteSpace(request.Reason))
         {
-            if (request.Reason.Length > ChangeReason.MaxLength)
+            if (!ChangeReason.TryFrom(request.Reason, out var given))
             {
                 return Refused(AssignmentFailures.InvalidChangeReason());
             }
 
-            reason = ChangeReason.From(request.Reason);
+            reason = given;
         }
 
         var (pharmacy, assignment, caller) = target.Value;

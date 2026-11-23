@@ -33,6 +33,12 @@ public sealed class CancelAssignmentHandler(
             return Failure(AssignmentFailures.AssignmentNotFound(command.Assignment.Value));
         }
 
+        // Nobody manages their own assignment: another manager of the pharmacy moves or withdraws it.
+        if (found.Value.Learner == command.By)
+        {
+            return Failure(AssignmentFailures.OwnAssignment());
+        }
+
         var cancelled = found.Value.Cancel(command.By, ChangeReason.Withdrawn, Timestamp.From(time.GetUtcNow()));
         if (cancelled.IsFailure)
         {
