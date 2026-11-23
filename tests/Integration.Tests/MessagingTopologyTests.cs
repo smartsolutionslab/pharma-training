@@ -20,6 +20,10 @@ public class MessagingTopologyTests
 
     private const string InvitationMailRequested = Contracts + "Organisation.InvitationMailRequestedV1";
 
+    private const string ContentCompleted = Contracts + "Learning.ContentCompletedV1";
+
+    private const string LearningSessionStarted = Contracts + "Learning.LearningSessionStartedV1";
+
     [Fact]
     public void Catalog_consumes_the_two_course_version_exchanges_and_publishes_none()
     {
@@ -59,6 +63,15 @@ public class MessagingTopologyTests
         consumed.ShouldBe(
             [CourseVersionPublished, CourseVersionRetired, Contracts + "Organisation.MembershipEndedV1", Contracts + "Organisation.MembershipStartedV1"],
             ignoreOrder: false);
+    }
+
+    [Fact]
+    public void Learning_consumes_the_two_course_version_exchanges_and_publishes_its_session_events()
+    {
+        var (consumed, published) = MessagingTopology.Of("learning");
+
+        consumed.ShouldBe([CourseVersionPublished, CourseVersionRetired], ignoreOrder: false);
+        published.ShouldBe([ContentCompleted, LearningSessionStarted], ignoreOrder: false);
     }
 
     [Fact]

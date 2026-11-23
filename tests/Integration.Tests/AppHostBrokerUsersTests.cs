@@ -25,10 +25,14 @@ public class AppHostBrokerUsersTests(AspireFixture aspire)
 
     private const string MembershipStarted = Contracts + "Organisation.MembershipStartedV1";
 
+    private const string ContentCompleted = Contracts + "Learning.ContentCompletedV1";
+
+    private const string LearningSessionStarted = Contracts + "Learning.LearningSessionStartedV1";
+
     /// <summary>The default exchange's name in RabbitMQ's permissions.</summary>
     private const string DefaultExchange = "amq.default";
 
-    /// <summary>The grants D1 of #183 works out for four modules on main: configure, write and read.</summary>
+    /// <summary>The grants D1 of #183 works out for five modules on main: configure, write and read.</summary>
     public static TheoryData<string, string[], string[], string[]> Grants { get; } = new()
     {
         {
@@ -48,6 +52,12 @@ public class AppHostBrokerUsersTests(AspireFixture aspire)
             ["editorial", CourseVersionPublished, CourseVersionRetired, TestDefinitionPublished],
             ["editorial", CourseVersionPublished, CourseVersionRetired, TestDefinitionPublished],
             ["editorial"]
+        },
+        {
+            "learning",
+            ["learning", ContentCompleted, LearningSessionStarted, CourseVersionPublished, CourseVersionRetired],
+            ["learning", ContentCompleted, LearningSessionStarted],
+            ["learning", CourseVersionPublished, CourseVersionRetired]
         },
         {
             "organisation",
