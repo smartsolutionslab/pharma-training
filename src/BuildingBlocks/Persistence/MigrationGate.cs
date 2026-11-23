@@ -10,11 +10,14 @@ namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Persistence;
 /// </summary>
 public sealed class MigrationGate : IAsyncDisposable
 {
-    private const string Key = "hashtextextended('pharma-training:migrations:' || current_database(), 0)";
+    // Schema-qualified, with the seed typed as pg_catalog's own (text, bigint), besides the session's pinned search_path: a
+    // module role may plant a hashtextextended(text, integer) in a schema named after the administrator, an exact match for
+    // an integer literal that would win over pg_catalog's and run as the administrator (CVE-2018-1058, AdministratorSession).
+    private const string Key = "pg_catalog.hashtextextended('pharma-training:migrations:' || pg_catalog.current_database(), 0::bigint)";
 
-    private const string Enter = $"SELECT pg_advisory_lock({Key})";
+    private const string Enter = $"SELECT pg_catalog.pg_advisory_lock({Key})";
 
-    private const string Leave = $"SELECT pg_advisory_unlock({Key})";
+    private const string Leave = $"SELECT pg_catalog.pg_advisory_unlock({Key})";
 
     private readonly NpgsqlConnection connection;
 
@@ -26,7 +29,7 @@ public sealed class MigrationGate : IAsyncDisposable
         Ensure.That(administrator, nameof(administrator)).IsNotNullOrWhiteSpace();
 
         // Unpooled: the lock belongs to the session, which must end with the gate.
-        var connection = new NpgsqlConnection(new NpgsqlConnectionStringBuilder(administrator) { Pooling = false }.ConnectionString);
+        var connection = new NpgsqlConnection(new NpgsqlConnectionStringBuilder(AdministratorSession.Pinned(administrator)) { Pooling = false }.ConnectionString);
         try
         {
             await connection.OpenAsync(cancellationToken);
