@@ -1,0 +1,39 @@
+# 0019: The edge forwards bodies behind 100-continue
+
+**Status:** Accepted (#214)
+
+## Context
+
+- Every request to a module passes the edge, `src/Edge`, a YARP 2.3.0 host (`docs/adr/fabric/backend-topology-services.md`). It forwards to the services over HTTP/1.1 (YARP asks for HTTP/2 with `RequestVersionOrLower`, which over `http://` is HTTP/1.1), sending the headers and streaming the body straight after.
+- Some service routes cap their body with `RequestSizeLimitAttribute` (Editorial's upload request 4 096 bytes, Editorial's return 16 384, Compliance's assign 65 536). Kestrel refuses a body over the cap like this:
+  - with a `Content-Length`: `Http1ContentLengthMessageBody.OnReadStarting` throws `RequestBodyTooLarge` on the first read, before any `100 Continue`;
+  - of unknown length (chunked): Kestrel counts the bytes as it reads them and throws once they pass the cap, partway through the body.
+  Either way the host answers `413` with its problem details, disables keep-alive, skips draining the body (`HttpProtocol` drains only a request it did not reject) and closes the socket while the edge's body bytes are still in flight or unread, so the socket is reset.
+- On the edge, SocketsHttpHandler waits for the request body's send to finish even after it has read the final status line. The reset fails that send, `SendAsync` throws and drops the `413` it read, and YARP answers `502` (`ForwarderError.Request` or `RequestBodyDestination`). Whether the caller sees the service's `413` or the edge's `502` is a race the larger body loses more often: main went red on `EditorialChapterUploadsTests`, `ComplianceAssignmentsTests` and `EditorialWorkflowTests`, each of which posts one oversized body.
+- Reproduced in a two-Kestrel harness (YARP 2.3.0, a 65 536-byte route, 50 posts per row): at 4 MB, 46 of 50 posts with a `Content-Length` and 48 of 50 chunked ones got `502`. The red test `EdgeRequestBodyLimitTests` posts 50 bodies of about 3.9 MB of each kind through the edge.
+
+## Decision
+
+- **Every body the edge forwards goes with `Expect: 100-continue`.** A request transform sets it on each forwarded request that has content. A service whose cap is below the body's length throws in `OnReadStarting`, which runs before Kestrel would send `100 Continue`, and answers `413` at once. SocketsHttpHandler, given a final status of 300 or more before any `100` for a body longer than its `Expect100ErrorSendThreshold` (1 024 bytes), never sends the body and closes the connection afterwards; no body bytes are in flight, so nothing resets. YARP handles exactly this case (`HttpForwarder`: a non-1xx answer to `Expect: 100-continue` means the body copy never started) and forwards the `413` with its body. The edge never read the caller's body, so its own Kestrel drains it after the response, and the caller reads a clean `413`.
+- **A body of unknown length is read whole at the edge first** (`EnableBuffering` and `DrainAsync`) and forwarded with its now-known `Content-Length`, so the service decides on the length before it reads a byte. Without this, `Expect` alone still gave 46 `502`s of 50 for chunked 4 MB bodies in the harness.
+- **The forwarder's client waits for the `100` without a timeout** (`Expect100ContinueTimeout = Timeout.InfiniteTimeSpan`, `ContinueWaitingForwarderHttpClientFactory`). With the default of one second, a service slower than that to answer (a cold key fetch before authorization) gets the body anyway and the race is back: 1 `502` in 50 in the harness with a service that waits 1.5 s. Every destination is Kestrel, which sends `100 Continue` as soon as an endpoint reads the body, so the fallback is never needed; YARP's activity timeout (100 s, answered `504`) still bounds the wait.
+- Both are wired by `ForwardBodiesBehindContinue()` (`src/Edge/Wiring/ForwardedBodies.cs`), chained in `ModuleRoutes`. Nothing names a module, a route or a cap, and no service host changes.
+- YARP's forwarder client is its own `SocketsHttpHandler`, not an `IHttpClientFactory` client, so the rules on `AddStandardResilienceHandler` and the retry predicate do not touch it.
+
+### Options rejected
+
+- **h2c from the edge to the services.** Kestrel serves only HTTP/1.1 on a cleartext endpoint that allows HTTP/1.1 and HTTP/2 (`HttpConnection.SelectProtocol`: ambiguous without ALPN). h2c would need endpoints that speak HTTP/2 alone, which breaks every HTTP/1.1 caller of a service (health checks, the AppHost, direct test calls).
+- **The edge maps `IForwarderErrorFeature` to `413`.** The feature carries only the error and the exception; SocketsHttpHandler throws away the response it read when the body send fails, so the edge never has the service's status, let alone its problem details.
+- **The service drains the body before it answers.** Kestrel deliberately skips the drain after a `RequestBodyTooLarge` rejection, and draining would only move the bound to wherever the service gives up.
+- **The edge enforces each route's cap.** The edge cannot know a route's cap without a list of modules and routes, which the topology forbids.
+
+## Consequences
+
+- One more round trip for every forwarded body: the edge sends the headers, waits for the service's `100 Continue`, then sends the body. Requests without a body are unchanged.
+- A body of unknown length is held at the edge before it is forwarded: in memory up to 30 KB (`EnableBuffering`'s default threshold, 30 720 bytes), then in a temporary file (under `ASPNETCORE_TEMP` or the system's temporary directory), deleted when the request ends. Its whole size is written to the edge's disk before the service sees a byte, up to the edge's own Kestrel cap. Uploads go to blob storage through upload URLs, not through the edge, and the SPA's browser sends a `Content-Length` with every body, so in practice this is the API clients that stream (such as the integration tests' `PostAsJsonAsync`).
+- **Known gap: a body larger than the edge's own Kestrel cap** (`MaxRequestBodySize`, 30 000 000 bytes by default) is not answered with a clean `413`. Observed in the harness, ten posts of each kind of 31 000 000 bytes:
+  - of unknown length: the edge's buffering read throws Kestrel's `BadHttpRequestException` (status `413`, "Request body too large") inside the request transform. YARP treats a transform's exception as `ForwarderError.RequestCreation` and answers **`502`**, never `413`; the service is never called. 10 of 10 got `502`.
+  - with a `Content-Length`: the service, whose cap is the same 30 000 000 by default or lower, refuses it with `413` before the `100`, and the edge forwards that `413`. The edge's own Kestrel then refuses to drain a body over its cap and closes the connection while the caller is still sending, so a caller that did not itself ask for `100-continue` sees the connection reset, not the `413`. 10 of 10 failed with an `IOException`. This was so before this change too.
+  No route in the repository accepts anything near 30 MB. Answering these with `413` is a follow-up, not part of #214.
+- A service that answers an error without reading a body of more than 1 024 bytes now costs that pooled connection: SocketsHttpHandler closes it rather than send the body it held back. The next request opens a new one.
+- HTTP/2 callers at the edge take the same path on the forwarded side; no test exercises them.
