@@ -17,6 +17,35 @@ function recordRequests(page: Page) {
 /** The token of an invitation link: what follows `#token=`. */
 const tokenOf = (link: string) => link.slice(link.indexOf('#token=') + '#token='.length);
 
+/** Every POST that accepts an invitation, from the moment the test starts recording. */
+function recordAcceptances(page: Page) {
+  const accepted: string[] = [];
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && request.url().endsWith('/organisation/invitations/accept')) {
+      accepted.push(request.url());
+    }
+  });
+  return accepted;
+}
+
+/**
+ * The page is ready to accept: "Einladung annehmen", naming no pharmacy, with the token out of the address and storage
+ * and nothing posted yet; pressing its button accepts the invitation (the owner's decision on #13, 2026-11-23).
+ */
+async function acceptOn(page: Page, pharmacy: string, token: string, accepted: string[]) {
+  const button = page.getByRole('button', { name: 'Einladung annehmen' });
+  // From the link through Keycloak's sign-in back to the page: longer than one page after a cold start.
+  await expect(button).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('heading', { name: 'Einladung annehmen', level: 1 })).toBeVisible();
+  await expect(page.getByRole('main')).not.toContainText(pharmacy);
+  await expect(page).toHaveURL(/\/invitations\/accept$/);
+  expect(page.url()).not.toContain(token);
+  expect(await page.evaluate(() => sessionStorage.getItem('invitation-token'))).toBeNull();
+  expect(accepted).toEqual([]);
+  await button.click();
+  await expect.poll(() => accepted.length).toBe(1);
+}
+
 /** The app has accepted the invitation: "Meine Schulungen", in the pharmacy, with nothing of the link kept. */
 async function expectMemberOn(page: Page, pharmacy: string, token: string) {
   await expect(
@@ -40,13 +69,16 @@ test('an invited employee signs in from the link and lands on Meine Schulungen i
   const link = invitationLink(await mailText(request, 'employee-a@example.com', pharmacy));
   const token = tokenOf(link);
   const sent = recordRequests(page);
+  const accepted = recordAcceptances(page);
 
   await page.goto(link);
   await expect(page.getByLabel('Username or email')).toBeVisible();
   expect(page.url()).not.toContain(token);
   await signInAs(page, 'employee-a');
 
+  await acceptOn(page, pharmacy, token, accepted);
   await expectMemberOn(page, pharmacy, token);
+  expect(accepted).toHaveLength(1);
   expect(sent.filter((value) => value.includes(token))).toEqual([]);
 });
 
@@ -58,9 +90,11 @@ test('a forwarded link signed in as someone else says the invitation is for anot
   const invited = `${unique('forwarded')}@example.com`;
   await inviteToNewPharmacy(request, pharmacy, invited);
   const link = invitationLink(await mailText(request, invited, pharmacy));
+  const accepted = recordAcceptances(page);
 
   await page.goto(link);
   await signInAs(page, 'employee-b');
+  await acceptOn(page, pharmacy, tokenOf(link), accepted);
 
   await expect(page.getByRole('heading', { name: 'Einladung für eine andere Adresse', level: 1 })).toBeVisible();
   await expect(page).toHaveURL(/\/invitations\/accept$/);
@@ -76,6 +110,7 @@ test('an invited person without an account registers, verifies the address and l
   await inviteToNewPharmacy(request, pharmacy, invited);
   const link = invitationLink(await mailText(request, invited, pharmacy));
   const token = tokenOf(link);
+  const accepted = recordAcceptances(page);
 
   await page.goto(link);
   await page.getByRole('link', { name: 'Register' }).click();
@@ -96,10 +131,12 @@ test('an invited person without an account registers, verifies the address and l
   await page.goto(verification ?? '');
   // Keycloak may first ask to confirm the address with a link of its own, when it no longer knows the session.
   const proceed = page.getByRole('link', { name: /proceed/i });
-  await expect(proceed.or(page.getByRole('heading', { name: 'Meine Schulungen', level: 1 }))).toBeVisible();
+  const ready = page.getByRole('button', { name: 'Einladung annehmen' });
+  await expect(proceed.or(ready)).toBeVisible();
   if (await proceed.isVisible()) {
     await proceed.click();
   }
 
+  await acceptOn(page, pharmacy, token, accepted);
   await expectMemberOn(page, pharmacy, token);
 });
