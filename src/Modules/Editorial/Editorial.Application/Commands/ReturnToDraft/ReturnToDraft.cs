@@ -5,6 +5,6 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Command
 
 /// <summary>
 /// A version in review goes back to its editors as a draft, and takes changes again; who returns it, when and why is
-/// stored as a record of its own, in the same save.
+/// stored as a record of its own, in the same save, with the name the editor's token carries (#220).
 /// </summary>
-public sealed record ReturnToDraft(CourseVersionId Version, PersonId Editor, ReturnReason Reason) : ICommand<Result<Unit, ApiError>>;
+public sealed record ReturnToDraft(CourseVersionId Version, PersonId Editor, ReviewerName EditorName, ReturnReason Reason) : ICommand<Result<Unit, ApiError>>;
