@@ -228,6 +228,41 @@ public class ReportProgressTests
         sessions.Steps.ShouldBeEmpty();
     }
 
+    [Fact]
+    public async Task A_report_that_loses_the_race_answers_409_session_changed()
+    {
+        var session = await StartedAsync();
+        var stored = sessions.Streams[session.Value].Count;
+        sessions.LoseNextSave();
+
+        var reported = await ReportAsync(session, Film, 60);
+
+        reported.IsFailure.ShouldBeTrue("the lost append was answered as a success");
+        reported.Error.ShouldBe(LearningSessionFailures.Changed(session.Value));
+        reported.Error.Code.ShouldBe("learning.session-changed");
+        reported.Error.Status.ShouldBe(HttpStatusCode.Conflict);
+        sessions.Streams[session.Value].Count.ShouldBe(stored);
+    }
+
+    [Fact]
+    public async Task A_report_that_loses_the_race_publishes_nothing()
+    {
+        var session = await StartedAsync();
+        await ReportAsync(session, Intro, 100);
+        await ReportAsync(session, Handbook, 100);
+        sessions.Steps.Clear();
+        sessions.LoseNextSave();
+
+        var reported = await ReportAsync(session, Film, 95);
+
+        reported.IsFailure.ShouldBeTrue("the lost append was answered as a success");
+        reported.Error.Code.ShouldBe("learning.session-changed");
+        sessions.Published.ShouldBeEmpty();
+        sessions.Commits.ShouldBe(0);
+        sessions.Steps.ShouldBeEmpty();
+        sessions.Streams[session.Value].OfType<ContentCompleted>().ShouldBeEmpty();
+    }
+
     private ReportProgressHandler Handler() => new(sessions, sessions, time);
 
     /// <summary>A session whose every chapter the learner completed through the use case, so its first ContentCompletedV1 is published.</summary>
