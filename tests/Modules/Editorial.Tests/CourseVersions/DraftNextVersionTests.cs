@@ -8,7 +8,8 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersion
 
 /// <summary>
 /// An editor drafts the next version of a published one (E7): a draft of the same course numbered one higher, a copy
-/// of its content with new ids whose approved questions stay approved. One successor per version: a second is refused
+/// of its content with new ids whose approved questions stay approved until their chapter, they themselves or the
+/// test's settings change. One successor per version: a second is refused
 /// while the first exists.
 /// </summary>
 public class DraftNextVersionTests

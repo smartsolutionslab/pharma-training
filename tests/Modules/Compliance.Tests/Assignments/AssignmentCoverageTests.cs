@@ -122,22 +122,11 @@ public class AssignmentCoverageTests
     }
 
     [Fact]
-    public void A_lock_before_the_start_changes_nothing()
-    {
-        var assignment = Assign(DueInDays(30));
-
-        assignment.MarkLocked();
-
-        assignment.TestAccess.ShouldBe(TestAccess.Available);
-        assignment.StateOn(Day(1)).ShouldBe(AssignmentState.Open);
-    }
-
-    [Fact]
     public void Completing_keeps_the_certificate_and_announces_it()
     {
         var assignment = Assign(DueInDays(30));
         assignment.MarkStarted(Later(1));
-        assignment.MarkLocked();
+        assignment.MarkLocked(Later(2));
         assignment.ClearDomainEvents();
         var certificate = Certificate();
 

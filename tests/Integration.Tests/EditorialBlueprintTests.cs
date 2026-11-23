@@ -7,8 +7,9 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 
 /// <summary>
 /// An editor sets the test blueprint of a draft through the edge (story E3): how many questions, the passing score
-/// and how long a certificate is valid. A version is read back with its blueprint; what a caller gets wrong is
-/// refused with its own code and never reaches 500; a version that is no draft keeps its blueprint.
+/// and how long a certificate is valid. A version is read back with its blueprint; a changed setting takes every
+/// question's approval away (#199); what a caller gets wrong is refused with its own code and never reaches 500; a
+/// version that is no draft keeps its blueprint.
 /// </summary>
 [Collection(EditorialDrafts.Name)]
 public class EditorialBlueprintTests(AspireFixture aspire)
@@ -41,26 +42,53 @@ public class EditorialBlueprintTests(AspireFixture aspire)
         (await ReadAsync(client, id, cancellationToken)).Blueprint.ShouldBe(new BlueprintView(12, 75, 24));
     }
 
-    [Fact]
-    public async Task A_blueprint_change_leaves_the_questions_and_their_approval_as_they_were()
+    [Theory]
+    [InlineData(11, 80, 12)]
+    [InlineData(10, 81, 12)]
+    [InlineData(10, 80, 13)]
+    public async Task Changing_one_setting_takes_every_questions_approval_away(int questions, int passingScore, int validityMonths)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await aspire.CreateHostClientAsync("editor");
         var id = await CreateAsync(client, cancellationToken);
         var chapter = await AddChapterAsync(client, id, cancellationToken);
-        var question = await AddQuestionAsync(client, id, chapter, cancellationToken);
-        using (var approved = await client.PostAsync(new Uri($"/editorial/course-versions/{id}/questions/{question}/approve", UriKind.Relative), null, cancellationToken))
-        {
-            approved.StatusCode.ShouldBe(HttpStatusCode.OK);
-        }
+        var first = await AddQuestionAsync(client, id, chapter, cancellationToken);
+        var second = await AddQuestionAsync(client, id, chapter, cancellationToken);
+        await ApproveAsync(client, id, first, cancellationToken);
+        await ApproveAsync(client, id, second, cancellationToken);
 
-        using var set = await client.PutAsJsonAsync(Blueprint(id), new { questions = 1, passingScorePercent = 80, validityMonths = 12 }, cancellationToken);
+        using var set = await client.PutAsJsonAsync(Blueprint(id), new { questions, passingScorePercent = passingScore, validityMonths }, cancellationToken);
 
         set.StatusCode.ShouldBe(HttpStatusCode.OK);
         var version = await ReadAsync(client, id, cancellationToken);
-        version.Blueprint.ShouldBe(new BlueprintView(1, 80, 12));
+        version.Blueprint.ShouldBe(new BlueprintView(questions, passingScore, validityMonths));
         version.Questions.ShouldNotBeNull();
-        version.Questions.Select(read => (read.Id, read.Review)).ShouldBe([(question, "Approved")]);
+        version.Questions.Select(read => read.Id).ShouldBe([first, second], ignoreOrder: true);
+        version.Questions.ShouldAllBe(read => read.Review == "Unreviewed" && read.ReviewedBy == null && read.ReviewedAt == null);
+    }
+
+    [Fact]
+    public async Task Saving_the_same_settings_again_keeps_every_approval()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var id = await CreateAsync(client, cancellationToken);
+        var chapter = await AddChapterAsync(client, id, cancellationToken);
+        var first = await AddQuestionAsync(client, id, chapter, cancellationToken);
+        var second = await AddQuestionAsync(client, id, chapter, cancellationToken);
+        await ApproveAsync(client, id, first, cancellationToken);
+        await ApproveAsync(client, id, second, cancellationToken);
+        var before = await ReadAsync(client, id, cancellationToken);
+        before.Questions.ShouldNotBeNull();
+        before.Questions.ShouldAllBe(read => read.Review == "Approved" && read.ReviewedBy != null && read.ReviewedAt != null);
+
+        using var set = await client.PutAsJsonAsync(Blueprint(id), new { questions = 10, passingScorePercent = 80, validityMonths = 12 }, cancellationToken);
+
+        set.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var version = await ReadAsync(client, id, cancellationToken);
+        version.Blueprint.ShouldBe(new BlueprintView(10, 80, 12));
+        version.Questions.ShouldNotBeNull();
+        version.Questions.OrderBy(read => read.Id).ShouldBe(before.Questions.OrderBy(read => read.Id));
     }
 
     [Fact]
@@ -202,6 +230,13 @@ public class EditorialBlueprintTests(AspireFixture aspire)
         return await added.Content.ReadFromJsonAsync<Guid>(cancellationToken);
     }
 
+    private static async Task ApproveAsync(HttpClient client, Guid id, Guid question, CancellationToken cancellationToken)
+    {
+        var path = new Uri($"/editorial/course-versions/{id}/questions/{question}/approve", UriKind.Relative);
+        using var approved = await client.PostAsync(path, null, cancellationToken);
+        approved.StatusCode.ShouldBe(HttpStatusCode.OK, $"POST {path} answered {(int)approved.StatusCode}.");
+    }
+
     private static async Task<string> CodeOfAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -213,7 +248,7 @@ public class EditorialBlueprintTests(AspireFixture aspire)
 
     private sealed record VersionView(Guid Id, string Status, BlueprintView? Blueprint, IReadOnlyList<QuestionView>? Questions);
 
-    private sealed record QuestionView(Guid Id, string Review);
+    private sealed record QuestionView(Guid Id, string Review, Guid? ReviewedBy, DateTimeOffset? ReviewedAt);
 
     private sealed record BlueprintView(int Questions, int PassingScorePercent, int ValidityMonths);
 

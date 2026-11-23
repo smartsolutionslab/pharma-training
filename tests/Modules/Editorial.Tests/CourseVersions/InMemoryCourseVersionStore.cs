@@ -23,6 +23,9 @@ internal sealed class InMemoryCourseVersionStore : ICourseVersionStore, IEditori
     /// <summary>The integration events published through the unit of work and committed with it.</summary>
     public List<IntegrationEvent> Published { get; } = [];
 
+    /// <summary>The integration events of each commit, one entry per commit, in the order they were committed.</summary>
+    public List<IReadOnlyList<IntegrationEvent>> PublishedPerCommit { get; } = [];
+
     /// <summary>The records of the returns added through the store and committed with the unit of work, in the order they were added.</summary>
     public List<CourseVersionReturn> Returns { get; } = [];
 
@@ -74,6 +77,20 @@ internal sealed class InMemoryCourseVersionStore : ICourseVersionStore, IEditori
         return Task.FromResult<IReadOnlyList<CourseVersion>>(published);
     }
 
+    /// <summary>
+    /// The committed versions whose publish or retirement was announced, by course and then by version number; what is
+    /// added but not committed is not seen.
+    /// </summary>
+    public Task<IReadOnlyList<CourseVersionId>> ListAnnouncedAsync(CancellationToken cancellationToken)
+    {
+        List<CourseVersionId> announced = [.. Stored
+            .Where(version => version.PublishedAt is not null || version.RetiredAt is not null)
+            .OrderBy(version => version.Course.Value)
+            .ThenBy(version => version.Number.Value)
+            .Select(version => version.Id)];
+        return Task.FromResult<IReadOnlyList<CourseVersionId>>(announced);
+    }
+
     public Task PublishAsync(IntegrationEvent integrationEvent)
     {
         pending.Add(integrationEvent);
@@ -85,6 +102,7 @@ internal sealed class InMemoryCourseVersionStore : ICourseVersionStore, IEditori
         Stored.AddRange(added);
         added.Clear();
         Published.AddRange(pending);
+        PublishedPerCommit.Add([.. pending]);
         pending.Clear();
         Returns.AddRange(pendingReturns);
         pendingReturns.Clear();
