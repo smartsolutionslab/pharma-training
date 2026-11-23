@@ -72,6 +72,16 @@ test("pageOf finds the module's page by the address's second segment", () => {
   });
 });
 
+// Assigning a course (#37) is for managers, though the compliance module is for every employee.
+test("pageOf finds the compliance module's page to assign a course, for managers", () => {
+  expect(pageOf('/compliance/assign')).toMatchObject({
+    path: 'assign',
+    titleKey: 'modules.compliance.pages.assign.title',
+    audience: 'manager',
+  });
+  expect(pageOf('/compliance')).toMatchObject({ path: 'compliance', audience: 'employee' });
+});
+
 test('pageOf finds the module for an address in it that is none of its pages', () => {
   expect(pageOf('/organisation')).toMatchObject({
     path: 'organisation',

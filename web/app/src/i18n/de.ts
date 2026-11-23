@@ -81,7 +81,12 @@ export const de = {
     learning: { title: 'Meine Schulungen' },
     assessment: { title: 'Tests' },
     certification: { title: 'Teilnahmebestätigungen' },
-    compliance: { title: 'Zuweisungen' },
+    compliance: {
+      title: 'Zuweisungen',
+      pages: {
+        assign: { title: 'Schulung zuweisen' },
+      },
+    },
     catalog: { title: 'Schulungskatalog' },
     organisation: {
       title: 'Mitglieder',
@@ -97,6 +102,83 @@ export const de = {
       details: {
         version: { title: 'Schulungsversion' },
         test: { title: 'Test' },
+      },
+    },
+  },
+  compliance: {
+    assign: {
+      notAllowed: 'Sie dürfen in dieser Apotheke keine Schulungen zuweisen.',
+      steps: {
+        label: 'Schritte',
+        course: 'Schulung',
+        learners: 'Teilnehmende',
+        due: 'Fälligkeit',
+        review: 'Prüfen',
+      },
+      next: 'Weiter',
+      back: 'Zurück',
+      submit: 'Zuweisen',
+      retry: 'Erneut versuchen',
+      changed: 'Die Zuweisungen wurden inzwischen geändert. Prüfen Sie die Angaben und weisen Sie erneut zu.',
+      failed: 'Die Schulung konnte nicht zugewiesen werden. Versuchen Sie es erneut.',
+      course: {
+        title: 'Schulung wählen',
+        columns: {
+          title: 'Titel',
+          version: 'Version',
+          validity: 'Gültigkeit',
+        },
+        months: 'ein Monat | {count} Monate',
+        choose: '{title} wählen',
+        required: 'Wählen Sie eine Schulung.',
+        empty: 'Es gibt noch keine veröffentlichten Schulungen.',
+        loadFailed: 'Die Schulungen konnten nicht geladen werden.',
+        gone: 'Diese Schulung kann nicht mehr zugewiesen werden. Wählen Sie eine andere.',
+      },
+      learners: {
+        title: 'Teilnehmende wählen',
+        columns: {
+          select: 'Auswahl',
+          name: 'Name',
+          jobFunction: 'Tätigkeit',
+        },
+        select: '{name} auswählen',
+        selectJobFunction: 'Alle mit der Tätigkeit {jobFunction} auswählen',
+        clear: 'Auswahl aufheben',
+        count: 'Niemand ausgewählt | Eine Person ausgewählt | {count} Personen ausgewählt',
+        required: 'Wählen Sie mindestens eine Person.',
+        tooMany: 'Sie können höchstens {max} Personen auf einmal zuweisen.',
+        empty: 'Die Apotheke hat noch keine aktiven Mitglieder.',
+        invite: 'Mitglieder einladen',
+        loadFailed: 'Die Mitglieder konnten nicht geladen werden.',
+      },
+      due: {
+        title: 'Fälligkeit festlegen',
+        date: 'Fällig am',
+        repeat: 'Jährlich wiederholen',
+        required: 'Geben Sie ein Fälligkeitsdatum an.',
+        inThePast: 'Das Fälligkeitsdatum darf nicht in der Vergangenheit liegen.',
+        tooFar: 'Das Fälligkeitsdatum darf höchstens 10 Jahre in der Zukunft liegen.',
+      },
+      review: {
+        title: 'Zuweisung prüfen',
+        course: 'Schulung',
+        learners: 'Teilnehmende ({count})',
+        due: 'Fällig am',
+        recurrence: 'Wiederholung',
+        yearly: 'Jährlich',
+        once: 'Keine',
+      },
+      result: {
+        title: 'Ergebnis',
+        assigned: 'Die Schulung wurde einer Person zugewiesen. | Die Schulung wurde {count} Personen zugewiesen.',
+        noneAssigned: 'Die Schulung wurde niemandem zugewiesen.',
+        refused: 'Nicht zugewiesen',
+        alreadyActive: '{name}: Diese Schulung ist bereits zugewiesen.',
+        notAMember: '{name}: nicht mehr Mitglied der Apotheke.',
+        other: '{name}: {message}',
+        again: 'Weitere Schulung zuweisen',
+        home: 'Zur Startseite',
       },
     },
   },
@@ -116,6 +198,8 @@ export const de = {
       registeredNotOpened:
         'Die Apotheke {name} wurde registriert, konnte aber nicht geöffnet werden. Wählen Sie sie unter „Apotheke“ in der Seitenleiste.',
       failed: 'Die Apotheke konnte nicht registriert werden. Versuchen Sie es erneut.',
+      emailNotVerified:
+        'Ihre E-Mail-Adresse ist noch nicht bestätigt. Bestätigen Sie sie über den Link in der Bestätigungs-E-Mail, und registrieren Sie die Apotheke dann erneut.',
     },
     accept: {
       accepting: {

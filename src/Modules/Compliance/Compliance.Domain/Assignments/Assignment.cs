@@ -61,6 +61,9 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
 
     public Timestamp? StartedAt { get; private set; }
 
+    /// <summary>When the lock or unlock last applied to the test happened; null until the first (docs/adr/0019).</summary>
+    public Timestamp? TestAccessChangedAt { get; private set; }
+
     public Timestamp? CompletedAt { get; private set; }
 
     public CertificateId? Certificate { get; private set; }
@@ -152,28 +155,66 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
         return Success(Unit.Value);
     }
 
-    /// <summary>The learner opened the course (LearningSessionStarted). Late or repeated events change nothing.</summary>
+    /// <summary>
+    /// The learner opened the course (LearningSessionStarted): an open assignment goes in progress. The earliest start
+    /// wins, so the order the starts arrive in does not matter. A start before the assignment was assigned counts too
+    /// (owner decision on #247): Learning announces a session once, so a learner who began earlier is learning all the
+    /// same. A start of a completed or cancelled assignment changes nothing. A start no longer unlocks the test: only
+    /// relearned content does (<see cref="Unlock"/>, docs/adr/0019).
+    /// </summary>
     public void MarkStarted(Timestamp at)
     {
         Ensure.That(at).IsNotNull();
+
+        if (!IsActive)
+        {
+            return;
+        }
 
         if (Status == AssignmentStatus.Open)
         {
             Status = AssignmentStatus.InProgress;
             StartedAt = at;
         }
-
-        // A new session after a lock unlocks the test.
-        TestAccess = TestAccess.Available;
+        else if (StartedAt is null || at < StartedAt)
+        {
+            StartedAt = at;
+        }
     }
 
-    /// <summary>Three failed attempts (AttemptsExhausted).</summary>
-    public void MarkLocked()
+    /// <summary>
+    /// Three failed attempts (AttemptsExhausted) lock the test, unless a lock or unlock that happened later was applied
+    /// already; on the same instant the lock wins (docs/adr/0019). A lock while the assignment is open is kept and shows
+    /// once it is in progress.
+    /// </summary>
+    public void MarkLocked(Timestamp at)
     {
-        if (Status == AssignmentStatus.InProgress)
+        Ensure.That(at).IsNotNull();
+
+        if (!IsActive || at < AssignedAt || (TestAccessChangedAt is not null && at < TestAccessChangedAt))
         {
-            TestAccess = TestAccess.LockedAfterFailedAttempts;
+            return;
         }
+
+        TestAccess = TestAccess.LockedAfterFailedAttempts;
+        TestAccessChangedAt = at;
+    }
+
+    /// <summary>
+    /// The learner worked through the content again (ContentCompleted): the test is available, unless a lock or unlock
+    /// that happened at the same time or later was applied already (docs/adr/0019). It never changes the status.
+    /// </summary>
+    public void Unlock(Timestamp at)
+    {
+        Ensure.That(at).IsNotNull();
+
+        if (!IsActive || at < AssignedAt || (TestAccessChangedAt is not null && at <= TestAccessChangedAt))
+        {
+            return;
+        }
+
+        TestAccess = TestAccess.Available;
+        TestAccessChangedAt = at;
     }
 
     /// <summary>

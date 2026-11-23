@@ -235,6 +235,15 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         return (long)(await command.ExecuteScalarAsync(cancellationToken) ?? 0L);
     }
 
+    /// <summary>The number of pharmacies stored under the name.</summary>
+    public async Task<long> PharmaciesNamedAsync(string name, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("SELECT count(*) FROM organisation.pharmacies WHERE name = @name", connection);
+        command.Parameters.AddWithValue("name", name);
+        return (long)(await command.ExecuteScalarAsync(cancellationToken) ?? 0L);
+    }
+
     /// <summary>The pharmacy row's PostgreSQL row version (<c>xmin</c>), which every update of the row moves on.</summary>
     public async Task<string> RowVersionAsync(Guid pharmacy, CancellationToken cancellationToken)
     {

@@ -32,7 +32,10 @@ public class ListCourseVersionReturnsTests
         listed.Value.Items.Select(item => item.Id).ShouldBe([later.Id.Value, earlier.Id.Value]);
         listed.Value.Items[0].Reason.ShouldBe(Second.Value);
         listed.Value.Items[0].ReturnedBy.ShouldBe(Approver.Value);
+        listed.Value.Items[0].ReturnedByName.ShouldBe("Anton Approver");
         listed.Value.Items[1].Reason.ShouldBe(First.Value);
+        listed.Value.Items[1].ReturnedBy.ShouldBe(Reviewer.Value);
+        listed.Value.Items[1].ReturnedByName.ShouldBe("Rita Reviewer");
         listed.Value.TotalCount.ShouldBe(2);
     }
 
@@ -115,12 +118,16 @@ public class ListCourseVersionReturnsTests
     /// <summary>Returns the version as the use case does, record added and committed, then submits it again for the next return.</summary>
     private async Task<CourseVersionReturn> ReturnAsync(CourseVersion version, PersonId editor, ReturnReason reason, Timestamp at)
     {
-        var record = version.ReturnToDraft(editor, reason, at).Value;
+        var record = version.ReturnToDraft(editor, NameOf(editor), reason, at).Value;
         store.AddReturn(record);
         await store.CommitAsync(TestContext.Current.CancellationToken);
         version.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
         return record;
     }
+
+    /// <summary>The builder's name for each of its people, as their tokens would carry it.</summary>
+    private static ReviewerName NameOf(PersonId person) =>
+        person == Approver ? ApproversName : person == Author ? AuthorsName : ReviewersName;
 
     private Task<Result<PagedResult<EditorialCourseVersionReturnDto>, ApiError>> ListAsync(Guid version, Page page, PageSize pageSize) =>
         new ListCourseVersionReturnsHandler(store).HandleAsync(new ListCourseVersionReturns(version, page, pageSize), TestContext.Current.CancellationToken);
