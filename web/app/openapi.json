@@ -1681,6 +1681,46 @@
         }
       }
     },
+    "/learning/sessions/{id}/progress": {
+      "post": {
+        "tags": [
+          "LearningSessionEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportLearningProgressRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningSessionDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/learning/samples": {
       "post": {
         "tags": [
@@ -4030,6 +4070,28 @@
               "type": "string",
               "format": "uuid"
             }
+          }
+        }
+      },
+      "ReportLearningProgressRequest": {
+        "required": [
+          "chapterId",
+          "percent"
+        ],
+        "type": "object",
+        "properties": {
+          "chapterId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "percent": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           }
         }
       },
