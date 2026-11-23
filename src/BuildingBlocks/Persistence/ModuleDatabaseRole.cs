@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
 
 namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Persistence;
@@ -12,7 +14,8 @@ namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Persistence;
 /// table is picked up by the next one; runs on one database wait for each other. It may never change EF Core's migration
 /// history. The session resolves names in pg_catalog alone (<see cref="AdministratorSession"/>), the role's password
 /// reaches the server only as a SCRAM-SHA-256 verifier (<see cref="ScramSha256Verifier"/>), and a database grant that
-/// grants nothing fails the run.
+/// grants nothing fails the run. It also revokes CONNECT on the server's maintenance database from PUBLIC, where a revoke
+/// that changed nothing is a warning alone (<see cref="MaintenanceDatabase"/>).
 /// </summary>
 public static class ModuleDatabaseRole
 {
@@ -125,8 +128,17 @@ public static class ModuleDatabaseRole
     /// Creates or updates the role <paramref name="application"/> logs in as, in its database, logged in as
     /// <paramref name="administrator"/>; both name the same database.
     /// </summary>
-    public static async Task EnsureAsync(string administrator, string application, CancellationToken cancellationToken)
+    public static Task EnsureAsync(string administrator, string application, CancellationToken cancellationToken) =>
+        EnsureAsync(administrator, application, NullLogger.Instance, cancellationToken);
+
+    /// <summary>
+    /// Creates or updates the role <paramref name="application"/> logs in as, in its database, logged in as
+    /// <paramref name="administrator"/>; both name the same database. What it could not close, it logs to
+    /// <paramref name="logger"/>.
+    /// </summary>
+    public static async Task EnsureAsync(string administrator, string application, ILogger logger, CancellationToken cancellationToken)
     {
+        Ensure.That(logger, nameof(logger)).IsNotNull();
         Ensure.That(administrator, nameof(administrator)).IsNotNullOrWhiteSpace();
         Ensure.That(application, nameof(application)).IsNotNullOrWhiteSpace();
 
@@ -166,6 +178,7 @@ public static class ModuleDatabaseRole
             await ensure.ExecuteNonQueryAsync(cancellationToken);
         }
 
+        await MaintenanceDatabase.CloseToPublicAsync(connection, transaction, logger, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
 }
