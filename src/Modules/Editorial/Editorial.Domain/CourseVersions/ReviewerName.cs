@@ -7,8 +7,9 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersio
 /// time (#205): a historical record, not changed when the account's name changes. The name is the user's own (the realm
 /// allows self-registration and lets users edit their name), so it is checked like any input: 1 to <see cref="MaxLength"/>
 /// characters after trimming, on one line, and plain text that holds no control character (a line break and a tab
-/// included), no format character (bidi overrides, zero-width characters), line or paragraph separator, private-use or
-/// unassigned code point, and no unpaired surrogate. <see cref="From"/> guards a value the code already trusts;
+/// included), no format character (bidi overrides, zero-width characters) other than the zero-width joiners a script
+/// writes names with (see <see cref="PlainText"/>), no line or paragraph separator, private-use or unassigned code point,
+/// and no unpaired surrogate. <see cref="From"/> guards a value the code already trusts;
 /// <see cref="TryFrom"/> checks a token's, so a bad one is no name rather than an exception. Both trim it first.
 /// </summary>
 public sealed record ReviewerName : IValueObject<string>

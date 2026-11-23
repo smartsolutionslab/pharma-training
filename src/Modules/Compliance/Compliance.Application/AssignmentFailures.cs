@@ -3,7 +3,7 @@ using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Assignments;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application;
 
-/// <summary>Everything the assignments' use cases refuse, each with its own code.</summary>
+/// <summary>Everything the assignments' use cases and the assign wizard's member list refuse, each with its own code.</summary>
 public static class AssignmentFailures
 {
     public static ApiError IdentityIncomplete() => new IdentityIncomplete();
@@ -30,6 +30,9 @@ public static class AssignmentFailures
     public static ApiError DueDateTooFar(int maximumYears) => new DueDateTooFar(maximumYears);
 
     public static ApiError InvalidRecurrence() => new InvalidRecurrence(RecurrenceInterval.MinimumMonths, RecurrenceInterval.MaximumMonths);
+
+    /// <summary>The job function asked for is a number no job function has.</summary>
+    public static ApiError InvalidJobFunction() => new InvalidJobFunction();
 
     public static ApiError LearnerNotAMember(Guid person) => new LearnerNotAMember(person);
 
