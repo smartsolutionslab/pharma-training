@@ -27,5 +27,6 @@
 
 - **The namespace Guid in `ExaminationId` must never change**, and neither may the byte layout of the derivation. Every stored examination's stream id was derived from them; a change would open a second examination for a session that already has one.
 - Examination ids are not time-ordered. Nothing sorts by them.
+- A window remains: the Marten append and the EF commit of the handled marker are two transactions. If an unlock is saved but the marker's commit fails on every retry, the message dead-letters, and a later replay of that dead letter, after the learner exhausted the examination again, would unlock it once more. Closing it means recording the marker in the same Marten session as the append; that is left to a follow-up.
 - `handled_content_completions` grows by one row per completion. That is small for MVP 1's volume; pruning, if ever needed, is a later decision.
 - `ContentCompletedV1` may arrive before the version's `TestDefinitionPublishedV1`. Opening needs no definition, so it opens anyway; starting an attempt (#46) reports a missing definition.
