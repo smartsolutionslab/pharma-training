@@ -1,7 +1,7 @@
 // Organisation service — Domain (module.style: ddd, module.ddd-depth: strict)
 // One file for review; in the project every type lives in its own file under Domain/Pharmacies/.
 // Identities (PharmacyId, MembershipId, PersonId) and Timestamp: same shape as in Compliance.Domain.cs;
-// this service's Timestamp adds PlusDays(int days) => From(Value.AddDays(days)).
+// this service's Timestamp adds PlusDays(int days) => From(Value.AddDays(days)) and Plus(TimeSpan span) => From(Value.Add(span)).
 
 using System.Security.Cryptography;
 using System.Text;
@@ -138,6 +138,82 @@ public sealed record MembershipVersion : IValueObject<int>
     public MembershipVersion Next() => new(Value + 1);
 }
 
+/// <summary>A UTC calendar day, from 00:00 UTC to the next; the day a pharmacy's invitation mails are counted in.</summary>
+public sealed record UtcDay : IValueObject<DateOnly>
+{
+    private UtcDay(DateOnly value) => Value = value;
+
+    public DateOnly Value { get; }
+
+    public Timestamp Start => Timestamp.From(new DateTimeOffset(Value.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero));
+
+    public static UtcDay From(DateOnly value) => new(value);
+
+    public static UtcDay Of(Timestamp instant) => new(DateOnly.FromDateTime(instant.Value.UtcDateTime));
+
+    public UtcDay Next() => new(Value.AddDays(1));
+}
+
+/// <summary>How many invitation mails a pharmacy has requested on one UTC day.</summary>
+public sealed record InvitationMailCount : IValueObject<int>
+{
+    private InvitationMailCount(int value) => Value = value;
+
+    public int Value { get; }
+
+    public static InvitationMailCount Zero => new(0);
+
+    public static InvitationMailCount From(int value)
+    {
+        Ensure.That(value).AtLeast(0);
+        return new InvitationMailCount(value);
+    }
+
+    public InvitationMailCount Next() => new(Value + 1);
+}
+
+/// <summary>How long after its latest mail request an invitation may be renewed again: more than nothing, at most a day.</summary>
+public sealed record RenewCooldown : IValueObject<TimeSpan>
+{
+    private RenewCooldown(TimeSpan value) => Value = value;
+
+    public TimeSpan Value { get; }
+
+    public static RenewCooldown From(TimeSpan value)
+    {
+        Ensure.That((decimal)value.Ticks).Satisfies(ticks => ticks > 0 && ticks <= TimeSpan.TicksPerDay, $"a renew cooldown is more than nothing and at most a day; got {value}.");
+        return new RenewCooldown(value);
+    }
+}
+
+/// <summary>How many invitation mails a pharmacy may request on one UTC day: from 1 to 10000.</summary>
+public sealed record DailyMailCap : IValueObject<int>
+{
+    public const int Maximum = 10000;
+
+    private DailyMailCap(int value) => Value = value;
+
+    public int Value { get; }
+
+    public static DailyMailCap From(int value)
+    {
+        Ensure.That(value).InRange(1, Maximum);
+        return new DailyMailCap(value);
+    }
+}
+
+/// <summary>The host's limits on invitation mails (docs/adr/0004); <see cref="Default"/> is 10 minutes and 50 mails.</summary>
+public sealed record InvitationMailLimits(RenewCooldown RenewCooldown, DailyMailCap DailyMailCap)
+{
+    public const int DefaultRenewCooldownMinutes = 10;
+
+    public const int DefaultMailsPerPharmacyPerDay = 50;
+
+    public static InvitationMailLimits Default { get; } = new(
+        RenewCooldown.From(TimeSpan.FromMinutes(DefaultRenewCooldownMinutes)),
+        DailyMailCap.From(DefaultMailsPerPharmacyPerDay));
+}
+
 /// <summary>One link issued for the open invitation's current version, kept as its token's hash only.</summary>
 public sealed class InvitationLink
 {
@@ -211,6 +287,9 @@ public sealed class Membership : Entity<MembershipId>
     /// <summary>The version whose mail was sent; a version that is mailed is not mailed again.</summary>
     public InvitationVersion? InvitationMailedFor { get; private set; }
 
+    /// <summary>When the newest invitation mail was requested, by the invite or a renewal; none for a founder.</summary>
+    public Timestamp? InvitationRequestedAt { get; private set; }
+
     public Timestamp? InvitationExpiresAt { get; private set; }
 
     public PersonId? Person { get; private set; }
@@ -229,8 +308,8 @@ public sealed class Membership : Entity<MembershipId>
 
     internal bool IsActiveManager => Status == MembershipStatus.Active && Role == MembershipRole.Manager;
 
-    internal static Membership Invited(MembershipId id, EmailAddress email, JobFunction jobFunction, MembershipRole role, Timestamp expiresAt) =>
-        new(id) { Email = email, InvitationExpiresAt = expiresAt, JobFunction = jobFunction, Role = role, Status = MembershipStatus.Invited };
+    internal static Membership Invited(MembershipId id, EmailAddress email, JobFunction jobFunction, MembershipRole role, Timestamp now, Timestamp expiresAt) =>
+        new(id) { Email = email, InvitationRequestedAt = now, InvitationExpiresAt = expiresAt, JobFunction = jobFunction, Role = role, Status = MembershipStatus.Invited };
 
     internal static Membership Founder(MembershipId id, EmailAddress email, PersonId person, DisplayName name, JobFunction jobFunction, Timestamp now) =>
         new(id) { Email = email, Person = person, Name = name, JobFunction = jobFunction, Role = MembershipRole.Manager, Status = MembershipStatus.Active, StartedAt = now };
@@ -276,9 +355,16 @@ public sealed class Membership : Entity<MembershipId>
 
     internal void RecordMailed(InvitationVersion version) => InvitationMailedFor = version;
 
-    internal void RenewInvitation(Timestamp expiresAt)
+    /// <summary>The instant from which the invitation may be renewed again; none while no mail was ever requested.</summary>
+    internal Option<Timestamp> RenewableFrom(RenewCooldown cooldown) =>
+        InvitationRequestedAt is { } requestedAt
+            ? Option<Timestamp>.Some(requestedAt.Plus(cooldown.Value))
+            : Option<Timestamp>.None;
+
+    internal void RenewInvitation(Timestamp now, Timestamp expiresAt)
     {
         invitationLinks.Clear(); // the old links stop working at once; the renewal's mail issues the new one
+        InvitationRequestedAt = now;
         InvitationExpiresAt = expiresAt;
         InvitationVersion = InvitationVersion.Next();
     }
@@ -313,6 +399,12 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
 
     public IReadOnlyList<Membership> Memberships => memberships;
 
+    /// <summary>The UTC day of the pharmacy's latest counted invitation mail; none before its first.</summary>
+    public UtcDay? InvitationMailDay { get; private set; }
+
+    /// <summary>How many invitation mails the pharmacy requested on <see cref="InvitationMailDay"/>.</summary>
+    public InvitationMailCount InvitationMailsThatDay { get; private set; } = InvitationMailCount.Zero;
+
     /// <summary>The person who registers the pharmacy becomes its first manager at once.</summary>
     public static Pharmacy Register(
         PharmacyId id,
@@ -332,30 +424,53 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
         return pharmacy;
     }
 
-    /// <summary>Invites the address for 14 days; it holds no link until its mail issues one (IssueInvitationLink).</summary>
-    public Result<MembershipId, DomainError> Invite(MembershipId id, EmailAddress email, JobFunction jobFunction, MembershipRole role, Timestamp now)
+    /// <summary>
+    /// Invites the address for 14 days; it holds no link until its mail issues one (IssueInvitationLink). Its mail counts
+    /// toward the pharmacy's daily cap, which refuses it once reached.
+    /// </summary>
+    public Result<MembershipId, DomainError> Invite(MembershipId id, EmailAddress email, JobFunction jobFunction, MembershipRole role, Timestamp now, InvitationMailLimits limits)
     {
         if (memberships.Any(m => m.Email == email && m.Status is MembershipStatus.Invited or MembershipStatus.Active))
         {
             return Failure(new AlreadyMemberOrInvited(Id, email));
         }
 
+        if (DailyCapReached(now, limits.DailyMailCap) is Some<Timestamp> tomorrow)
+        {
+            return Failure(new TooManyInvitationsToday(Id, tomorrow.Value));
+        }
+
         var expiresAt = now.PlusDays(InvitationValidityDays);
-        memberships.Add(Membership.Invited(id, email, jobFunction, role, expiresAt));
+        CountInvitationMail(now);
+        memberships.Add(Membership.Invited(id, email, jobFunction, role, now, expiresAt));
         Raise(new MemberInvited(Id, id, expiresAt));
         return Success(id);
     }
 
-    /// <summary>Renews an open or expired invitation for 14 days from now, as its next version; the old links stop working at once.</summary>
-    public Result<Unit, DomainError> RenewInvitation(MembershipId membership, Timestamp now)
+    /// <summary>
+    /// Renews an open or expired invitation for 14 days from now, as its next version; the old links stop working at once.
+    /// Refused within the cooldown since the invitation's latest mail request, and once the pharmacy's daily cap is reached.
+    /// </summary>
+    public Result<Unit, DomainError> RenewInvitation(MembershipId membership, Timestamp now, InvitationMailLimits limits)
     {
         if (Find(membership) is not { Status: MembershipStatus.Invited } invited)
         {
             return Failure(new NoOpenInvitation(Id, membership));
         }
 
+        if (invited.RenewableFrom(limits.RenewCooldown) is Some<Timestamp> renewableFrom && now < renewableFrom.Value)
+        {
+            return Failure(new InvitationRenewedTooSoon(Id, membership, renewableFrom.Value));
+        }
+
+        if (DailyCapReached(now, limits.DailyMailCap) is Some<Timestamp> tomorrow)
+        {
+            return Failure(new TooManyInvitationsToday(Id, tomorrow.Value));
+        }
+
         var expiresAt = now.PlusDays(InvitationValidityDays);
-        invited.RenewInvitation(expiresAt);
+        CountInvitationMail(now);
+        invited.RenewInvitation(now, expiresAt);
         Raise(new MemberInvited(Id, membership, expiresAt));
         return Success(Unit.Value);
     }
@@ -505,6 +620,30 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
             : Option<Membership>.None;
 
     private Membership? Find(MembershipId id) => memberships.SingleOrDefault(m => m.Id == id);
+
+    /// <summary>The start of the day after the counted one when its mails have reached the cap; none while another may be sent.</summary>
+    private Option<Timestamp> DailyCapReached(Timestamp now, DailyMailCap cap)
+    {
+        var day = CountingDay(now);
+        return InvitationMailDay == day && InvitationMailsThatDay.Value >= cap.Value
+            ? Option<Timestamp>.Some(day.Next().Start)
+            : Option<Timestamp>.None;
+    }
+
+    /// <summary>Counts one invitation mail toward the counted day's tally: the first of a new day starts it afresh.</summary>
+    private void CountInvitationMail(Timestamp now)
+    {
+        var day = CountingDay(now);
+        InvitationMailsThatDay = InvitationMailDay == day ? InvitationMailsThatDay.Next() : InvitationMailCount.Zero.Next();
+        InvitationMailDay = day;
+    }
+
+    /// <summary>Today, or the stored day when it is later: a clock behind around 00:00 UTC adds to the new day's tally instead of restarting it.</summary>
+    private UtcDay CountingDay(Timestamp now)
+    {
+        var today = UtcDay.Of(now);
+        return InvitationMailDay is { } stored && stored.Value > today.Value ? stored : today;
+    }
 }
 
 // ───────────────────────────── Domain events ─────────────────────────────
@@ -554,6 +693,12 @@ public sealed record InvitationExpired(PharmacyId Pharmacy, MembershipId Members
 
 public sealed record InvitationLinkLimitReached(PharmacyId Pharmacy, MembershipId Membership)
     : DomainError("organisation.invitation-link-limit-reached", "The invitation already holds as many links as one invitation version may; renew it to issue a new one.");
+
+public sealed record InvitationRenewedTooSoon(PharmacyId Pharmacy, MembershipId Membership, Timestamp RetryAt)
+    : DomainError("organisation.invitation-renewed-too-soon", "The invitation was mailed a moment ago; renew it once the waiting time has passed.");
+
+public sealed record TooManyInvitationsToday(PharmacyId Pharmacy, Timestamp RetryAt)
+    : DomainError("organisation.too-many-invitations-today", "The pharmacy has sent as many invitation mails today as it may; try again tomorrow.");
 
 public sealed record InvitationForAnotherAddress(PharmacyId Pharmacy, MembershipId Membership)
     : DomainError("organisation.invitation-for-another-address", "Die Einladung gilt für eine andere E-Mail-Adresse.");
