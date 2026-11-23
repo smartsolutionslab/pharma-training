@@ -15,6 +15,7 @@ import {
   dialogClosings,
   type Fetch,
   refused,
+  refusedWith,
   renderVersionPage,
   requestsOf,
   stepTaken,
@@ -696,6 +697,95 @@ describe('a step failing on the network', () => {
     await waitFor(() => expect(notify.failure).toHaveBeenCalledWith(t('editorial.workflow.errors.submitFailed')));
     await waitFor(() => expect(actionButton('submit')).toHaveFocus());
     expect(actionButton('submit')).toBeEnabled();
+  });
+});
+
+describe('a step refused for a reason that does not change the version', () => {
+  // The step is answered, then every read fails as well: the app's client retries a failed read three times, about
+  // seven seconds in all. Only a 409, a 422 or a module's refusal of a version still there is waited for.
+  const answers: [string, () => Response][] = [
+    ["an edge's 502", () => new Response('Bad Gateway', { status: 502 })],
+    ["a policy's 403 without a code", () => refused(403)],
+    ['a 404 without a code', () => new Response('', { status: 404 })],
+    ['the 404 of a version that is gone', () => refused(404, 'editorial.course-version-not-found')],
+  ];
+
+  test.each(answers)(
+    '%s is reported at once with a query client that retries, and frees the steps',
+    async (_name, answer) => {
+      let failing = false;
+      const online = answering(host);
+      host.step = async () => {
+        failing = true;
+        return answer();
+      };
+      fetch.mockImplementation(async (input, init) =>
+        failing && (init?.method ?? 'GET') === 'GET'
+          ? new Response('Bad Gateway', { status: 502 })
+          : online(input, init),
+      );
+      // The app's client.
+      const queryClient = new QueryClient();
+      onTestFinished(() => queryClient.cancelQueries());
+      const user = userEvent.setup();
+      await renderVersionPage(versionId, title, queryClient);
+
+      await user.click(actionButton('submit') ?? document.body);
+
+      await waitFor(() => expect(notify.failure).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(actionButton('submit')).toBeEnabled());
+      await waitFor(() => expect(actionButton('submit')).toHaveFocus());
+    },
+  );
+});
+
+describe('a refusal of a module the page has no words of its own for', () => {
+  const unknown = () => refusedWith(409, { title: 'Die Version ist gesperrt.', code: 'editorial.something-new' });
+
+  test("says the host's title", async () => {
+    host.step = async () => unknown();
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(actionButton('submit') ?? document.body);
+
+    await waitFor(() => expect(notify.failure).toHaveBeenCalledWith('Die Version ist gesperrt.'));
+  });
+
+  test("says the host's title in English too, until #147 translates it", async () => {
+    setLanguage('en-GB', { remember: false });
+    host.step = async () => unknown();
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(actionButton('submit') ?? document.body);
+
+    await waitFor(() => expect(notify.failure).toHaveBeenCalledWith('Die Version ist gesperrt.'));
+  });
+});
+
+describe('drafting the next version', () => {
+  test('keeps Retire shut until the host has answered', async () => {
+    showing(versionOf('Published'));
+    let answer: (response: Response) => void = () => undefined;
+    const online = answering(host);
+    fetch.mockImplementation((input, init) =>
+      init?.method === 'POST' && String(input).endsWith('/next')
+        ? new Promise<Response>((resolve) => {
+            answer = resolve;
+          })
+        : online(input, init),
+    );
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(screen.getByRole('button', { name: t('editorial.version.newVersion') }));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: t('editorial.version.newVersion') })).toBeDisabled());
+    expect(actionButton('retire')).toBeDisabled();
+    answer(refused(409, 'editorial.not-published'));
+    await waitFor(() => expect(notify.failure).toHaveBeenCalled());
+    await waitFor(() => expect(actionButton('retire')).toBeEnabled());
   });
 });
 
