@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n';
 import type { ComplianceJobFunction } from '@/api/generated';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { MatrixTally } from './useTeamMatrix';
+import { rateFigure } from './matrixRate';
 
 // The compliance rate: the share of the assignments on track, over the filter (the job function, and the course if one
 // is chosen), with its counts and what it covers; skeletons in its shape while the matrix loads. Its figures are announced politely, so a filter's new ones are heard.
@@ -40,7 +41,11 @@ const scope = computed(() =>
     <h2 :id="headingId" class="text-body font-semibold">{{ t('compliance.matrix.rate.title') }}</h2>
     <div aria-live="polite" class="flex flex-col gap-1">
       <p class="text-display tabular-nums">
-        {{ tally.rate === null ? t('compliance.matrix.rate.noValue') : n(tally.rate, 'percent') }}
+        {{
+          tally.rate === null
+            ? t('compliance.matrix.rate.noValue')
+            : n(rateFigure(tally.rate).value, rateFigure(tally.rate).format)
+        }}
       </p>
       <p v-if="tally.rate === null" class="text-body">{{ t('compliance.matrix.rate.none') }}</p>
       <template v-else>
