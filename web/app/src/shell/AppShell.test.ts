@@ -515,7 +515,12 @@ test.each([
     within(dialog)
       .getAllByRole('option')
       .map((option) => option.textContent.trim()),
-  ).toEqual([home(), ...moduleRoutes.map((module) => t(module.titleKey)), ...titles(forEditors)]);
+  ).toEqual([
+    home(),
+    ...moduleRoutes.map((module) => t(module.titleKey)),
+    // renderAt's user also manages a pharmacy, so assigning a course (#37) is theirs too, listed with its module.
+    ...titles(['modules.compliance.pages.assign.title', ...forEditors]),
+  ]);
 
   await user.keyboard('{Escape}');
   await vi.waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
