@@ -3,14 +3,16 @@ using Npgsql;
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 
 /// <summary>
-/// Compliance's local copies through the running application: Organisation's membership events and Editorial's course
-/// version events reach Compliance through the broker and are stored in its own tables, once each, whatever order they
-/// arrive in and however often. Compliance answers none of it yet, so its tables are read directly.
+/// Compliance's local copies through the running application: Organisation's membership events (started, changed,
+/// ended) and Editorial's course version events reach Compliance through the broker and are stored in its own tables,
+/// once each, whatever order they arrive in and however often. Compliance answers none of it yet, so its tables are
+/// read directly.
 /// </summary>
 public class ComplianceLocalCopiesTests(AspireFixture aspire)
 {
     private const string StartedType = "SmartSolutionsLab.PharmaTraining.Contracts.Organisation.MembershipStartedV1";
     private const string EndedType = "SmartSolutionsLab.PharmaTraining.Contracts.Organisation.MembershipEndedV1";
+    private const string ChangedType = "SmartSolutionsLab.PharmaTraining.Contracts.Organisation.MembershipChangedV1";
     private const string PublishedType = "SmartSolutionsLab.PharmaTraining.Contracts.Editorial.CourseVersionPublishedV1";
     private const string RetiredType = "SmartSolutionsLab.PharmaTraining.Contracts.Editorial.CourseVersionRetiredV1";
     private const string EndingsById = "select count(*) from compliance.membership_endings where id = @id";
@@ -85,6 +87,36 @@ public class ComplianceLocalCopiesTests(AspireFixture aspire)
         (await MembersAsync(first.MembershipId, cancellationToken)).ShouldHaveSingleItem().PersonId.ShouldBe(personId);
         (await MembersAsync(second.MembershipId, cancellationToken)).ShouldHaveSingleItem().PersonId.ShouldBe(personId);
         (await CountAsync(MembersByPerson, personId, cancellationToken)).ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task A_change_is_stored_beside_its_member()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var started = Started(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7());
+        await DeliverAsync(StartedType, started, cancellationToken);
+        var changed = Changed(started, "Manager", 2);
+
+        await DeliverAsync(ChangedType, changed, cancellationToken);
+
+        (await ChangesAsync(started.MembershipId, cancellationToken)).ShouldHaveSingleItem()
+            .ShouldBe(new ChangeRow(started.PersonId, started.PharmacyId, 2, changed.DisplayName, "Pka", "Manager"));
+        (await MembersAsync(started.MembershipId, cancellationToken)).ShouldHaveSingleItem().Role.ShouldBe("Employee");
+    }
+
+    [Fact]
+    public async Task A_change_arriving_before_its_start_is_kept_and_a_redelivered_change_adds_no_row()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var started = Started(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7());
+        var changed = Changed(started, "Manager", 2);
+
+        await DeliverAsync(ChangedType, changed, cancellationToken);
+        await DeliverAsync(StartedType, started, cancellationToken);
+        await DeliverAsync(ChangedType, changed with { Metadata = NewMetadata() }, cancellationToken);
+
+        (await ChangesAsync(started.MembershipId, cancellationToken)).ShouldHaveSingleItem().Version.ShouldBe(2);
+        (await MembersAsync(started.MembershipId, cancellationToken)).ShouldHaveSingleItem();
     }
 
     [Fact]
@@ -166,6 +198,9 @@ public class ComplianceLocalCopiesTests(AspireFixture aspire)
     private static EndedEvent Ended(StartedEvent started) =>
         new(started.MembershipId, started.PersonId, started.PharmacyId, TimeProvider.System.GetUtcNow(), NewMetadata());
 
+    private static ChangedEvent Changed(StartedEvent started, string role, int version) =>
+        new(started.MembershipId, started.PersonId, started.PharmacyId, $"Ada Byron {Guid.CreateVersion7()}", "Pka", role, version, NewMetadata());
+
     private static PublishedEvent Published(Guid courseId, Guid courseVersionId, int versionNumber) =>
         new(
             courseId,
@@ -203,6 +238,23 @@ public class ComplianceLocalCopiesTests(AspireFixture aspire)
         return rows;
     }
 
+    private async Task<List<ChangeRow>> ChangesAsync(Guid membershipId, CancellationToken cancellationToken)
+    {
+        await using var connection = await ComplianceDatabase.OpenAsync(aspire, cancellationToken);
+        await using var command = new NpgsqlCommand(
+            "select person_id, pharmacy_id, version, display_name, job_function, role from compliance.membership_changes where membership_id = @id",
+            connection);
+        command.Parameters.AddWithValue("id", membershipId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        List<ChangeRow> rows = [];
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            rows.Add(new ChangeRow(reader.GetGuid(0), reader.GetGuid(1), reader.GetInt32(2), reader.GetString(3), reader.GetString(4), reader.GetString(5)));
+        }
+
+        return rows;
+    }
+
     private async Task<List<CourseVersionRow>> CourseVersionsAsync(Guid courseVersionId, CancellationToken cancellationToken)
     {
         await using var connection = await ComplianceDatabase.OpenAsync(aspire, cancellationToken);
@@ -226,6 +278,10 @@ public class ComplianceLocalCopiesTests(AspireFixture aspire)
     private sealed record StartedEvent(Guid MembershipId, Guid PersonId, Guid PharmacyId, string DisplayName, string JobFunction, string Role, DateTimeOffset StartedAt, EventMetadata Metadata);
 
     private sealed record EndedEvent(Guid MembershipId, Guid PersonId, Guid PharmacyId, DateTimeOffset EndedAt, EventMetadata Metadata);
+
+    private sealed record ChangedEvent(Guid MembershipId, Guid PersonId, Guid PharmacyId, string DisplayName, string JobFunction, string Role, int Version, EventMetadata Metadata);
+
+    private sealed record ChangeRow(Guid PersonId, Guid PharmacyId, int Version, string DisplayName, string JobFunction, string Role);
 
     private sealed record SentChapter(Guid ChapterId, int Position, string Title, string Kind, int? VideoDurationSeconds, string? Text, string? File);
 
