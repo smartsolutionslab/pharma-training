@@ -67,6 +67,19 @@ public class ListMyAssignmentsTests
         result.Value.PageSize.ShouldBe(PageSize.Default.Value);
     }
 
+    /// <summary>A query reads without tracking (AGENTS.md, CQRS logical), so the list never asks for tracked assignments.</summary>
+    [Fact]
+    public async Task The_list_reads_the_assignments_without_tracking()
+    {
+        await ComplianceMembers.StartAsync(members, Anna, Pharmacy, MembershipRole.Employee);
+        Assigned(Anna, Course("Hygiene").Course, InThreeWeeks);
+
+        var result = await ListAsync(Anna);
+
+        result.Value.Items.ShouldHaveSingleItem();
+        assignments.TrackedReadsOfLearnerInPharmacy.ShouldBe(0);
+    }
+
     [Fact]
     public async Task Overdue_comes_first_then_by_due_date_then_by_title_ignoring_case_then_by_assignment_id()
     {

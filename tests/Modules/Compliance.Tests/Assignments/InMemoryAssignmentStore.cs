@@ -61,8 +61,23 @@ internal sealed class InMemoryAssignmentStore : IAssignmentStore, IComplianceUni
     public Task<Option<Assignment>> ReadInPharmacyAsync(PharmacyId pharmacy, AssignmentId assignment, CancellationToken cancellationToken) =>
         Task.FromResult(InPharmacy(pharmacy, assignment));
 
+    /// <summary>How often a tracked read of a learner's active assignments in a pharmacy was asked for; a query asks for none.</summary>
+    public int TrackedReadsOfLearnerInPharmacy { get; private set; }
+
+    public Task<IReadOnlyList<Assignment>> ReadActiveOfLearnerInPharmacyAsync(PersonId learner, PharmacyId pharmacy, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<Assignment> active =
+        [
+            .. Stored.Where(assignment => assignment.Learner == learner
+                && assignment.Pharmacy == pharmacy
+                && assignment.Status is AssignmentStatus.Open or AssignmentStatus.InProgress),
+        ];
+        return Task.FromResult(active);
+    }
+
     public Task<IReadOnlyList<Assignment>> ActiveOfLearnerInPharmacyAsync(PersonId learner, PharmacyId pharmacy, CancellationToken cancellationToken)
     {
+        TrackedReadsOfLearnerInPharmacy++;
         IReadOnlyList<Assignment> active =
         [
             .. Stored.Where(assignment => assignment.Learner == learner
