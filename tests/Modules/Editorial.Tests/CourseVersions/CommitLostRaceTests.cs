@@ -128,7 +128,8 @@ public class CommitLostRaceTests
 
         await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken);
 
-        var record = services.GetFakeLogCollector().GetSnapshot().ShouldHaveSingleItem();
+        // An aggregate's other failure is logged too, on a record of its own; the lost race is the one record about it.
+        var record = services.GetFakeLogCollector().GetSnapshot().Where(each => each.Exception is PostgresException).ShouldHaveSingleItem();
         record.Level.ShouldBe(LogLevel.Warning);
         record.Message.ShouldContain(sqlState);
         record.Message.ShouldContain(nameof(EditorialDbContext));
@@ -143,6 +144,22 @@ public class CommitLostRaceTests
         await using var services = OutboxFailingWith(Wrapped(Ended(sqlState), BehindAnotherFailureInAnAggregate));
 
         (await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken)).ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// An aggregate that holds a lost race beside an unrelated failure still answers as the lost race (409), but the other
+    /// failure is logged, at Warning or above, rather than lost with the aggregate.
+    /// </summary>
+    [Fact]
+    public async Task The_other_failures_in_an_aggregate_with_a_lost_race_are_logged_not_lost()
+    {
+        var other = new InvalidOperationException("The envelopes could not be flushed.");
+        await using var services = OutboxFailingWith(new AggregateException(Ended(PostgresErrorCodes.DeadlockDetected), other));
+
+        (await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken)).ShouldBeFalse();
+
+        var record = services.GetFakeLogCollector().GetSnapshot().Where(each => ReferenceEquals(each.Exception, other)).ShouldHaveSingleItem();
+        record.Level.ShouldBeOneOf(LogLevel.Warning, LogLevel.Error, LogLevel.Critical);
     }
 
     [Fact]

@@ -1,7 +1,4 @@
-using System.Net.Sockets;
-using MailKit;
 using MailKit.Net.Smtp;
-using MailKit.Security;
 using Microsoft.Extensions.Configuration;
 using MimeKit;
 
@@ -86,22 +83,14 @@ public sealed class SmtpMailSender : IMailSender
             // The server's text (550 5.1.1 <anna@example.org>: ...) stays out of the exception, its logs and dead letters.
             throw new MailNotSentException($"The SMTP server refused the mail at {refused.ErrorCode} with {(int)refused.StatusCode} {refused.StatusCode}.");
         }
-        catch (Exception failed) when (IsTransportFailure(failed))
+        catch (Exception failed)
         {
-            // A reply the client cannot read, a failed TLS handshake or login, or a dropped connection may carry the
-            // server's text or the recipient as well; only the kind of failure goes on. The bound's own cancellation passes.
+            // Whatever else the client throws before the bound fires (a reply it cannot read, a failed TLS handshake or
+            // login, a dropped connection, a timeout, an operation it refuses) may carry the server's address, its text or
+            // the recipient; only the kind of failure goes on, without the exception itself.
             throw new MailNotSentException($"The mail was not sent: {failed.GetType().Name}.");
         }
     }
-
-    private static bool IsTransportFailure(Exception failed) =>
-        failed is SmtpProtocolException
-            or SslHandshakeException
-            or AuthenticationException
-            or IOException
-            or SocketException
-            or ServiceNotConnectedException
-            or ServiceNotAuthenticatedException;
 
     /// <summary>
     /// The message, its headers set only through MimeKit, so no subject or address can add a header. The recipient is

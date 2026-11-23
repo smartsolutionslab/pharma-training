@@ -1,4 +1,6 @@
-namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
+
+namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application;
 
 /// <summary>
 /// The account's address as Keycloak reports it, with whether Keycloak verified it. Whoever dispatches an accept says

@@ -21,8 +21,17 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Api.Endpoints;
 /// </summary>
 public sealed class UploadEndpoints : IEndpoint
 {
-    /// <summary>The charset of a body that names none, JSON's own, refusing invalid bytes rather than replacing them.</summary>
-    private static readonly Encoding StrictUtf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+    /// <summary>
+    /// The most bytes the route reads of a body. The body is read whole into a string before it is parsed, and a request
+    /// is a few bytes of JSON, so a larger one is refused by the server (413) rather than read into memory.
+    /// </summary>
+    private const int UploadRequestLimit = 4096;
+
+    /// <summary>
+    /// The charset of a body that names none, JSON's own, refusing invalid bytes rather than replacing them. Its preamble
+    /// is the UTF-8 byte-order mark, so the reader skips one that leads the body instead of handing it to the parser.
+    /// </summary>
+    private static readonly Encoding StrictUtf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: true, throwOnInvalidBytes: true);
 
     public void Map(IEndpointRouteBuilder endpoints)
     {
@@ -42,6 +51,7 @@ public sealed class UploadEndpoints : IEndpoint
             return (await dispatcher.QueryAsync(new RequestChapterUpload(id, kind.ToEditorialChapterKind()), cancellationToken)).ToHttpResult();
         })
         .Accepts<EditorialUploadRequest>("application/json")
+        .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(UploadRequestLimit))
         .RequireAuthorization(EditorialPolicyNames.Edit);
     }
 

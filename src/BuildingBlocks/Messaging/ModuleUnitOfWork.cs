@@ -41,14 +41,17 @@ public abstract partial class ModuleUnitOfWork<TContext>(IServiceProvider servic
     /// at one of its statements, where EF Core wraps it in a plain <see cref="DbUpdateException"/>; at the commit EF Core
     /// owns, where it wraps it in <see cref="DbUpdateConcurrencyException"/>; and, once a handler publishes, at the commit
     /// of Wolverine's envelope transaction through <c>Database.CommitTransactionAsync</c>, where it arrives as a bare
-    /// <see cref="PostgresException"/> or inside another exception, any inner exception of an <see cref="AggregateException"/>
-    /// included. Each is logged as a warning naming its SqlState, with the <see cref="PostgresException"/> attached so its stack shows where the deadlock happened (Npgsql redacts
-    /// PostgreSQL's Detail unless <c>Include Error Detail</c> is set, so keep it off; Where names the relation and tuple,
-    /// never values), so a deadlock that keeps happening (two handlers taking locks in opposite orders) shows in the
-    /// telemetry, not only as 409s; a row version that moved on is ordinary and is not logged. The filter also covers Wolverine's flush after
-    /// the commit, but that flush catches each envelope's send failure itself (Wolverine 6.64.0, outside
-    /// <c>DurabilityMode.ServerlessWithOutbox</c>, which deletes the sent envelopes' outbox rows after the commit with no
-    /// such catch), so a 40P01 or 40001 cannot come from a write that already committed; recheck both when upgrading
+    /// <see cref="PostgresException"/> or inside another exception, any inner exception of an
+    /// <see cref="AggregateException"/> included. Each is logged as a warning naming its SqlState, with the
+    /// <see cref="PostgresException"/> attached so its stack shows where the deadlock happened (Npgsql redacts
+    /// PostgreSQL's Detail unless <c>Include Error Detail</c> is set, so keep it off; Where names the relation and
+    /// tuple, never values), so a deadlock that keeps happening (two handlers taking locks in opposite orders) shows in
+    /// the telemetry, not only as 409s; a row version that moved on is ordinary and is not logged. Every other inner
+    /// exception of an <see cref="AggregateException"/> that holds the lost race is logged as a warning of its own,
+    /// with it attached, so it is not lost with the aggregate answered as a 409. The filter also covers Wolverine's
+    /// flush after the commit, but that flush catches each envelope's send failure itself (Wolverine 6.64.0, outside
+    /// <c>DurabilityMode.ServerlessWithOutbox</c>, which deletes the sent envelopes' outbox rows after the commit with
+    /// no such catch), so a 40P01 or 40001 cannot come from a write that already committed; recheck both when upgrading
     /// Wolverine or changing its durability mode. Every other failure is rethrown as it came.
     /// </summary>
     public async Task<bool> TryCommitAsync(CancellationToken cancellationToken)
@@ -61,6 +64,14 @@ public abstract partial class ModuleUnitOfWork<TContext>(IServiceProvider servic
         catch (Exception exception) when (EndedAsLostRace(exception) is { } ended)
         {
             LogLostRace(Logger, ended, ended.SqlState, typeof(TContext).Name);
+            if (exception is AggregateException aggregate)
+            {
+                foreach (var other in aggregate.InnerExceptions.Where(inner => !ReferenceEquals(EndedAsLostRace(inner), ended)))
+                {
+                    LogOtherFailure(Logger, other, typeof(TContext).Name);
+                }
+            }
+
             return false;
         }
         catch (DbUpdateConcurrencyException)
@@ -83,4 +94,7 @@ public abstract partial class ModuleUnitOfWork<TContext>(IServiceProvider servic
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "PostgreSQL ended a save of {Context} with SqlState {SqlState}; answered as a lost race.")]
     private static partial void LogLostRace(ILogger logger, Exception exception, string sqlState, string context);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "A save of {Context} that lost a race also failed otherwise; the save was answered as a lost race.")]
+    private static partial void LogOtherFailure(ILogger logger, Exception exception, string context);
 }
