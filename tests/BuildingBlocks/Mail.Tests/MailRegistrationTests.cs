@@ -1,9 +1,9 @@
+using System.Runtime.Loader;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Modules;
-using SmartSolutionsLab.PharmaTraining.Modules.Catalog.Api;
 
 namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Mail.Tests;
 
@@ -96,7 +96,16 @@ public class MailRegistrationTests
         var builder = Microsoft.Extensions.Hosting.Host.CreateApplicationBuilder(new HostApplicationBuilderSettings { EnvironmentName = Environments.Production, DisableDefaults = true });
         builder.Configuration.AddInMemoryCollection([new KeyValuePair<string, string?>("ConnectionStrings:database", "Host=localhost")]);
         builder.Services.AddSingleton(TimeProvider.System);
-        builder.Services.AddModuleInfrastructure<CatalogModule>(builder.Configuration);
+        AssemblyLoadContext.Default.Resolving += NoMailModule.EmptyLayers;
+        try
+        {
+            builder.Services.AddModuleInfrastructure<NoMailModule>(builder.Configuration);
+        }
+        finally
+        {
+            AssemblyLoadContext.Default.Resolving -= NoMailModule.EmptyLayers;
+        }
+
         builder.Services.ShouldNotContain(service => service.ServiceType == typeof(IMailSender), "the infrastructure of a module that sends no mail registered a mail sender");
         builder.Services.ShouldNotContain(service => service.ServiceType == typeof(IFrontendLinks), "the infrastructure of a module that sends no mail registered the links into the web app");
         using var host = builder.Build();

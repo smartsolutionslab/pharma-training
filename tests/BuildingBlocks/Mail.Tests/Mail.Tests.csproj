@@ -7,8 +7,6 @@
 
   <ItemGroup>
     <ProjectReference Include="../../../src/BuildingBlocks/BuildingBlocks.csproj" />
-    <!-- A module that sends no mail, whose infrastructure a host registers without the mail settings (docs/adr/0004). -->
-    <ProjectReference Include="../../../src/Modules/Catalog/Catalog.Api/Catalog.Api.csproj" />
   </ItemGroup>
 
   <ItemGroup>
