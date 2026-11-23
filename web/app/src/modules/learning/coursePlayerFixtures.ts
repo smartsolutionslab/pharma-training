@@ -57,6 +57,7 @@ export function courseVersion(
     title: 'Hygiene in der Apotheke',
     validityMonths: 12,
     isRetired: false,
+    status: 'Current',
     chapters,
   };
 }

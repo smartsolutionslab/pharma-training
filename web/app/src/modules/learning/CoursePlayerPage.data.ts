@@ -17,6 +17,7 @@ const version = {
   title: 'Hygiene in der Apotheke',
   validityMonths: 12,
   isRetired: false,
+  status: 'Current',
   chapters: [
     {
       chapterId: introduction,
