@@ -91,6 +91,24 @@ public class ReturnReasonTests
         Should.Throw<GuardException>(() => ReturnReason.From(value)).Message.ShouldContain(Message);
     }
 
+    /// <summary>
+    /// An unpaired surrogate cannot be shown either (#181, O3): alone, a high or low one in the middle of text, and a high
+    /// one at its end. The value is built from the code unit, since an attribute's string would not keep it unpaired.
+    /// </summary>
+    [Theory]
+    [InlineData("", 0xD800, "")]
+    [InlineData("a", 0xD800, "b")]
+    [InlineData("a", 0xDC00, "b")]
+    [InlineData("Quelle fehlt", 0xDBFF, "")]
+    public void A_reason_with_an_unpaired_surrogate_is_refused(string before, int surrogate, string after)
+    {
+        var value = before + (char)surrogate + after;
+        char.IsSurrogate(value[before.Length]).ShouldBeTrue();
+
+        ReturnReason.TryFrom(value, out _).ShouldBeFalse($"TryFrom accepted U+{surrogate:X4} after \"{before}\"");
+        Should.Throw<GuardException>(() => ReturnReason.From(value)).Message.ShouldContain(Message);
+    }
+
     [Fact]
     public void Line_breaks_and_tabs_are_kept_inside_a_reason() =>
         ReturnReason.From("Erstens\r\nZweitens\tDrittens").Value.ShouldBe("Erstens\r\nZweitens\tDrittens");
