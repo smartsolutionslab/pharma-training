@@ -2690,7 +2690,8 @@
           "assignmentId",
           "state",
           "dueDate",
-          "lastCompletedOn"
+          "lastCompletedOn",
+          "validUntil"
         ],
         "type": "object",
         "properties": {
@@ -2715,6 +2716,13 @@
               "string"
             ],
             "format": "date"
+          },
+          "validUntil": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date"
           }
         }
       },
@@ -2722,7 +2730,8 @@
         "required": [
           "courseId",
           "title",
-          "activeAssignments",
+          "assignments",
+          "compliantAssignments",
           "overdueAssignments",
           "complianceRate"
         ],
@@ -2735,7 +2744,15 @@
           "title": {
             "type": "string"
           },
-          "activeAssignments": {
+          "assignments": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "compliantAssignments": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
               "integer",
@@ -2766,7 +2783,8 @@
         "required": [
           "courses",
           "members",
-          "activeAssignments",
+          "assignments",
+          "compliantAssignments",
           "overdueAssignments",
           "complianceRate"
         ],
@@ -2781,7 +2799,15 @@
           "members": {
             "$ref": "#/components/schemas/PagedResultOfComplianceMatrixRowDto"
           },
-          "activeAssignments": {
+          "assignments": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "compliantAssignments": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
               "integer",

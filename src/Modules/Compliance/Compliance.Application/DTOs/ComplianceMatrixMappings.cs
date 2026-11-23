@@ -18,7 +18,8 @@ public static class ComplianceMatrixMappings
         return new ComplianceMatrixDto(
             [.. matrix.Courses.Select(course => course.ToDto())],
             new PagedResult<ComplianceMatrixRowDto>([.. rows], matrix.Rows.Count, page.Value, pageSize.Value),
-            matrix.Tally.Active,
+            matrix.Tally.Assignments,
+            matrix.Tally.Compliant,
             matrix.Tally.Overdue,
             matrix.Tally.ComplianceRate);
     }
@@ -27,7 +28,13 @@ public static class ComplianceMatrixMappings
     {
         Ensure.That(course).IsNotNull();
 
-        return new ComplianceMatrixCourseDto(course.Course.Value, course.Title.Value, course.Tally.Active, course.Tally.Overdue, course.Tally.ComplianceRate);
+        return new ComplianceMatrixCourseDto(
+            course.Course.Value,
+            course.Title.Value,
+            course.Tally.Assignments,
+            course.Tally.Compliant,
+            course.Tally.Overdue,
+            course.Tally.ComplianceRate);
     }
 
     public static ComplianceMatrixRowDto ToDto(this ComplianceMatrixRow row)
@@ -45,6 +52,6 @@ public static class ComplianceMatrixMappings
     {
         Ensure.That(cell).IsNotNull();
 
-        return new ComplianceMatrixCellDto(cell.Course.Value, cell.Assignment.Value, cell.State.ToDto(), cell.DueDate.Value, cell.LastCompletedOn?.Value);
+        return new ComplianceMatrixCellDto(cell.Course.Value, cell.Assignment.Value, cell.State.ToDto(), cell.DueDate.Value, cell.LastCompletedOn?.Value, cell.ValidUntil?.Value);
     }
 }

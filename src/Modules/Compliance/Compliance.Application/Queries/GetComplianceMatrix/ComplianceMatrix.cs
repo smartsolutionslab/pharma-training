@@ -5,8 +5,8 @@ using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Members;
 namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application.Queries.GetComplianceMatrix;
 
 /// <summary>
-/// The team matrix before it is paged: every course assigned in the pharmacy as a column, whatever the assignment's
-/// status or learner; every given member as a row; a cell where the member holds a non-cancelled assignment of the
+/// The team matrix before it is paged: every course with a non-cancelled assignment in the pharmacy as a column,
+/// whatever its learner; every given member as a row; a cell where the member holds a non-cancelled assignment of the
 /// course, showing the latest; and the tally over every cell.
 /// </summary>
 public sealed class ComplianceMatrix
@@ -42,7 +42,10 @@ public sealed class ComplianceMatrix
         Ensure.That(courses).IsNotNull();
         Ensure.That(today).IsNotNull();
 
-        var assigned = assignments.Select(assignment => assignment.Course).ToHashSet();
+        var assigned = assignments
+            .Where(assignment => assignment.Status != AssignmentStatus.Cancelled)
+            .Select(assignment => assignment.Course)
+            .ToHashSet();
         List<PublishedCourse> columns =
         [
             .. courses
@@ -67,10 +70,10 @@ public sealed class ComplianceMatrix
             .. columns.Select(column => new ComplianceMatrixCourse(
                 column.Course,
                 column.Title,
-                AssignmentTally.Of(cells.Where(cell => cell.Course == column.Course).Select(cell => cell.State)))),
+                AssignmentTally.Of(cells.Where(cell => cell.Course == column.Course), today))),
         ];
 
-        return new ComplianceMatrix(tallied, rows, AssignmentTally.Of(cells.Select(cell => cell.State)));
+        return new ComplianceMatrix(tallied, rows, AssignmentTally.Of(cells, today));
     }
 
     private static List<ComplianceMatrixCell> CellsOf(
@@ -95,7 +98,11 @@ public sealed class ComplianceMatrix
                 .OfType<Timestamp>()
                 .Order()
                 .LastOrDefault();
-            cells.Add(new ComplianceMatrixCell(column.Course, shown.Id, shown.StateOn(today), shown.DueDate, lastCompleted?.DayInGermany()));
+            var state = shown.StateOn(today);
+            var validUntil = state is AssignmentState.Completed or AssignmentState.CompletedLate && shown.CompletedAt is { } completedAt
+                ? CalendarDate.From(completedAt.DayInGermany().Value.AddMonths(column.Latest.Validity.Value))
+                : null;
+            cells.Add(new ComplianceMatrixCell(column.Course, shown.Id, state, shown.DueDate, lastCompleted?.DayInGermany(), validUntil));
         }
 
         return cells;
