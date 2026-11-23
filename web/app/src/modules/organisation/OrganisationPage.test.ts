@@ -14,6 +14,7 @@ import {
   membersHeading,
   membersPath,
   membersSection,
+  minePath,
   never,
   problem,
   readsOf,
@@ -189,6 +190,32 @@ test.each([
   const alert = await within(await waitFor(() => membersSection())).findByRole('alert');
   expect(alert).toHaveTextContent(t(key));
   expect(alert).not.toHaveTextContent('Words of the host');
+});
+
+// A list refused because the membership is gone, or may no longer manage members, reads the caller's memberships
+// again, as a refused action does: the page then follows what the host says the caller now is.
+test.each([
+  ['members', 403, 'organisation.capability-missing'],
+  ['members', 404, 'organisation.pharmacy-not-found'],
+  ['invitations', 403, 'organisation.capability-missing'],
+  ['invitations', 404, 'organisation.pharmacy-not-found'],
+] as const)('%s the host refuses with %i %s read the caller’s memberships again', async (list, status, code) => {
+  const refuse = async () => {
+    host.memberships = status === 403 ? [coursesOnly] : [];
+    return problem(status, code, 'x');
+  };
+  if (list === 'members') {
+    host.membersAnswer = refuse;
+  } else {
+    host.invitationsAnswer = refuse;
+  }
+  await renderTeamPage();
+
+  await waitFor(() => expect(readsOf(fetch, minePath).length).toBeGreaterThan(1));
+  if (status === 403) {
+    expect(await screen.findByText(t('organisation.team.notAllowed', { pharmacy: markt.name }))).toBeInTheDocument();
+  }
+  await waitFor(() => expect(screen.queryByRole('region')).not.toBeInTheDocument());
 });
 
 test('invitations that cannot be loaded are reported in their section, and the members still show', async () => {

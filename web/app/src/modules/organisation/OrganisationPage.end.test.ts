@@ -189,6 +189,24 @@ test('the refusal under the heading goes once the next action succeeds', async (
   await waitFor(() => expect(within(membersSection()).queryByRole('alert')).not.toBeInTheDocument());
 });
 
+// The refusal keeps what it is, not its words: switched to English, it says it in English.
+test('the refusal under the heading follows a switch of language', async () => {
+  host.end = async () => problem(409, 'organisation.last-manager', 'The last active manager cannot be removed.');
+  const { user, confirm } = await openEnd(you);
+  await user.click(confirm);
+  expect(await within(membersSection()).findByRole('alert')).toHaveTextContent(
+    'Die letzte Apothekenleitung kann nicht ausgetragen oder zum Mitarbeiter gemacht werden.',
+  );
+
+  setLanguage('en-GB', { remember: false });
+
+  await waitFor(() =>
+    expect(within(membersSection()).getByRole('alert')).toHaveTextContent(
+      'The last pharmacy manager cannot be removed or made an employee.',
+    ),
+  );
+});
+
 test('a membership no longer active is reported and the members are read again', async () => {
   host.end = async (membershipId) => {
     host.members = host.members.filter((member) => member.membershipId !== membershipId);

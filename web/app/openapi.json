@@ -508,6 +508,63 @@
         }
       }
     },
+    "/compliance/pharmacies/{id}/matrix": {
+      "get": {
+        "tags": [
+          "MatrixEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "maximum": 21474837,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "jobFunction",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/ComplianceJobFunction"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComplianceMatrixDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/compliance/pharmacies/{id}/members": {
       "get": {
         "tags": [
@@ -932,6 +989,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/EditorialContentReviewDto"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1435,6 +1502,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/EditorialTestDraftDto"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -2735,6 +2812,16 @@
           }
         }
       },
+      "ComplianceAssignmentState": {
+        "enum": [
+          "Open",
+          "InProgress",
+          "Locked",
+          "Overdue",
+          "Completed",
+          "CompletedLate"
+        ]
+      },
       "ComplianceCourseAssignmentDto": {
         "required": [
           "assigned",
@@ -2764,6 +2851,183 @@
           "Trainee",
           "Other"
         ]
+      },
+      "ComplianceMatrixCellDto": {
+        "required": [
+          "courseId",
+          "assignmentId",
+          "state",
+          "dueDate",
+          "lastCompletedOn",
+          "validUntil"
+        ],
+        "type": "object",
+        "properties": {
+          "courseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "assignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ComplianceAssignmentState"
+          },
+          "dueDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "lastCompletedOn": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date"
+          },
+          "validUntil": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date"
+          }
+        }
+      },
+      "ComplianceMatrixCourseDto": {
+        "required": [
+          "courseId",
+          "title",
+          "assignments",
+          "compliantAssignments",
+          "overdueAssignments",
+          "complianceRate"
+        ],
+        "type": "object",
+        "properties": {
+          "courseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "assignments": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "compliantAssignments": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "overdueAssignments": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "complianceRate": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d\u002B)?(?:[eE][\u002B-]?\\d\u002B)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "ComplianceMatrixDto": {
+        "required": [
+          "courses",
+          "members",
+          "assignments",
+          "compliantAssignments",
+          "overdueAssignments",
+          "complianceRate"
+        ],
+        "type": "object",
+        "properties": {
+          "courses": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComplianceMatrixCourseDto"
+            }
+          },
+          "members": {
+            "$ref": "#/components/schemas/PagedResultOfComplianceMatrixRowDto"
+          },
+          "assignments": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "compliantAssignments": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "overdueAssignments": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "complianceRate": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d\u002B)?(?:[eE][\u002B-]?\\d\u002B)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "ComplianceMatrixRowDto": {
+        "required": [
+          "personId",
+          "name",
+          "jobFunction",
+          "cells"
+        ],
+        "type": "object",
+        "properties": {
+          "personId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "jobFunction": {
+            "$ref": "#/components/schemas/ComplianceJobFunction"
+          },
+          "cells": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComplianceMatrixCellDto"
+            }
+          }
+        }
       },
       "ComplianceMemberDto": {
         "required": [
@@ -3938,6 +4202,47 @@
           }
         }
       },
+      "PagedResultOfComplianceMatrixRowDto": {
+        "required": [
+          "items",
+          "totalCount",
+          "page",
+          "pageSize"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComplianceMatrixRowDto"
+            }
+          },
+          "totalCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "page": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "pageSize": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "PagedResultOfComplianceMemberDto": {
         "required": [
           "items",
@@ -4556,6 +4861,9 @@
     },
     {
       "name": "AssignmentEndpoints"
+    },
+    {
+      "name": "MatrixEndpoints"
     },
     {
       "name": "MemberEndpoints"

@@ -10,7 +10,8 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// What Learning announces on the broker (story L2): a session once when it is created, never when it is resumed, and
 /// its content once per cycle when its last chapter is worked through. Each test counts on a queue of its own, up to a
 /// marker session announced after the steps it counts: Learning sends the events of one type in the order it commits
-/// them, so the marker's comes after any the counted steps would have sent.
+/// them, so the marker's comes after any the counted steps would have sent. The learner is made a member of a pharmacy
+/// first, since only an active member may start a session (#194).
 /// </summary>
 public class LearningSessionEventsTests(AspireFixture aspire)
 {
@@ -22,6 +23,7 @@ public class LearningSessionEventsTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await aspire.CreateHostClientAsync("employee-a");
+        await MemberAsync(aspire, SubjectOf(client), cancellationToken);
         await using var connection = await Broker.ConnectAsync(aspire, cancellationToken);
         await using var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
         var queue = await ListenAsync(client, connection, channel, StartedExchange, complete: false, cancellationToken);
@@ -47,6 +49,7 @@ public class LearningSessionEventsTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await aspire.CreateHostClientAsync("employee-a");
+        await MemberAsync(aspire, SubjectOf(client), cancellationToken);
         await using var connection = await Broker.ConnectAsync(aspire, cancellationToken);
         await using var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
         var queue = await ListenAsync(client, connection, channel, CompletedExchange, complete: true, cancellationToken);
@@ -78,6 +81,7 @@ public class LearningSessionEventsTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await aspire.CreateHostClientAsync("employee-a");
+        await MemberAsync(aspire, SubjectOf(client), cancellationToken);
         await using var connection = await Broker.ConnectAsync(aspire, cancellationToken);
         await using var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
         var queue = await ListenAsync(client, connection, channel, CompletedExchange, complete: true, cancellationToken);
@@ -87,16 +91,25 @@ public class LearningSessionEventsTests(AspireFixture aspire)
         await ReportOkAsync(client, session.Id, ChapterOf(published, "Text"), 100, cancellationToken);
         await ReportOkAsync(client, session.Id, ChapterOf(published, "Pdf"), 100, cancellationToken);
         var film = ChapterOf(published, "Video");
+        await Task.Delay(ShortVideoWatched, cancellationToken);
 
         var racing = await Task.WhenAll(
             ReportProgressAsync(client, session.Id, film, 95, cancellationToken),
             ReportProgressAsync(client, session.Id, film, 100, cancellationToken));
         try
         {
+            // A racer that loads after the other's report landed sees the session clock at that report (ADR 0024), so its
+            // video gain may be refused as too fast; one of the two still lands, and the content completes once.
             foreach (var response in racing)
             {
-                response.StatusCode.ShouldBeOneOf([HttpStatusCode.OK, HttpStatusCode.Conflict], await response.Content.ReadAsStringAsync(cancellationToken));
+                response.StatusCode.ShouldBeOneOf([HttpStatusCode.OK, HttpStatusCode.Conflict, HttpStatusCode.UnprocessableEntity], await response.Content.ReadAsStringAsync(cancellationToken));
+                if (response.StatusCode == HttpStatusCode.UnprocessableEntity)
+                {
+                    (await EditorialWorkflow.CodeOfAsync(response, cancellationToken)).ShouldBe("learning.progress-too-fast");
+                }
             }
+
+            racing.ShouldContain(response => response.StatusCode == HttpStatusCode.OK);
         }
         finally
         {
@@ -146,11 +159,12 @@ public class LearningSessionEventsTests(AspireFixture aspire)
         return await BodyOfAsync(started, cancellationToken);
     }
 
-    /// <summary>Works through every chapter: text and PDF to the end, the video to 95 %.</summary>
+    /// <summary>Works through every chapter: text and PDF to the end, the video to 95 % once its playback time has passed.</summary>
     private static async Task CompleteAsync(HttpClient client, Guid session, PublishedEvent published, CancellationToken cancellationToken)
     {
         await ReportOkAsync(client, session, ChapterOf(published, "Text"), 100, cancellationToken);
         await ReportOkAsync(client, session, ChapterOf(published, "Pdf"), 100, cancellationToken);
+        await Task.Delay(ShortVideoWatched, cancellationToken);
         await ReportOkAsync(client, session, ChapterOf(published, "Video"), 95, cancellationToken);
     }
 
@@ -173,9 +187,10 @@ public class LearningSessionEventsTests(AspireFixture aspire)
 
     private static Guid ChapterOf(PublishedEvent published, string kind) => published.Chapters.Single(chapter => chapter.Kind == kind).ChapterId;
 
+    /// <summary>Every version here has a <see cref="ShortVideoSeconds"/> video, so working through it takes a second, not the 420 s a real film would.</summary>
     private async Task<PublishedEvent> PublishedToLearningAsync(CancellationToken cancellationToken)
     {
-        var published = Published(Guid.CreateVersion7());
+        var published = Published(Guid.CreateVersion7(), ShortVideoSeconds);
         await DeliverAsync(aspire, published, cancellationToken);
         return published;
     }

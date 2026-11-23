@@ -6,7 +6,14 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Tests.Sessions;
 /// <summary>Local copies of published course versions, as Learning's consumer stores them.</summary>
 internal static class CourseVersionCopies
 {
+    /// <summary>The default video length of a copy, the 420 s film the unit tests watch.</summary>
+    public const int VideoSeconds = 420;
+
     public static CourseVersionCopy Of(Guid courseVersionId, params (Guid ChapterId, int Position, ChapterKind Kind)[] chapters) =>
+        Of(courseVersionId, VideoSeconds, chapters);
+
+    /// <summary>A copy whose video chapters last <paramref name="videoSeconds"/>; null stands for a copy that lost its video's duration.</summary>
+    public static CourseVersionCopy Of(Guid courseVersionId, int? videoSeconds, params (Guid ChapterId, int Position, ChapterKind Kind)[] chapters) =>
         new()
         {
             Id = courseVersionId,
@@ -18,7 +25,7 @@ internal static class CourseVersionCopies
                 ChapterId = chapter.ChapterId,
                 Position = chapter.Position,
                 Kind = chapter.Kind,
-                VideoDurationSeconds = chapter.Kind == ChapterKind.Video ? 420 : null,
+                VideoDurationSeconds = chapter.Kind == ChapterKind.Video ? videoSeconds : null,
             })],
         };
 }

@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/vue-query';
-import { computed, type MaybeRefOrGetter, ref, toValue } from 'vue';
+import { computed, type MaybeRefOrGetter, ref, toValue, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import {
   type ChangeOrganisationMembershipRequest,
@@ -16,19 +16,15 @@ import {
   usePostOrganisationPharmaciesIdInvitations,
   usePostOrganisationPharmaciesIdInvitationsMembershipIdRenew,
 } from '@/api/generated';
-import { ApiError } from '@/api/baseApi';
 import { t } from '@/i18n';
 import { notify } from '@/lib/notify';
-import { type TeamAction, type TeamFailure, teamFailureKey, teamFailureText } from './teamErrors';
+import { refusesMembership, type TeamAction, type TeamFailure, teamFailureKey, teamFailureText } from './teamErrors';
 
 /** A section of the page, whose heading a refusal of revoke or end shows under. */
 export type TeamSection = 'members' | 'invitations';
 
 /** Where the user goes once their own membership has ended: the start page. */
 const startPage = '/';
-
-/** Refusals after which the membership itself may be gone: the memberships are read again, and the shell follows. */
-const membershipCodes = ['organisation.pharmacy-not-found', 'organisation.capability-missing'];
 
 /**
  * The page's five actions on the current pharmacy's members and invitations (#12): each reports what it did, reads
@@ -44,8 +40,20 @@ export function useTeamActions(pharmacy: MaybeRefOrGetter<MyPharmacyDto | undefi
   const changing = usePatchOrganisationPharmaciesIdMembersMembershipId();
   const ending = useDeleteOrganisationPharmaciesIdMembersMembershipId();
 
-  /** The last refused revoke or end, under its section's heading until the next action. */
-  const refusal = ref<{ section: TeamSection; text: string }>();
+  /**
+   * The last refused revoke or end, under its section's heading until the next action or another pharmacy. It keeps
+   * the failure, not its words, so the page says it in the language of the moment.
+   */
+  const refusal = ref<{ section: TeamSection; failure: TeamFailure }>();
+  watch(
+    () => toValue(pharmacy)?.id,
+    () => {
+      refusal.value = undefined;
+    },
+  );
+
+  /** Whether the page still shows the pharmacy an action was taken in: a refusal answered after a switch is not its. */
+  const stillShown = (takenIn: string | undefined) => takenIn !== undefined && toValue(pharmacy)?.id === takenIn;
 
   const current = () => {
     const shown = toValue(pharmacy);
@@ -80,7 +88,7 @@ export function useTeamActions(pharmacy: MaybeRefOrGetter<MyPharmacyDto | undefi
       notify.failure(teamFailureText(failure));
       void readMembers(id);
       void readInvitations(id);
-      if (error instanceof ApiError && error.code !== undefined && membershipCodes.includes(error.code)) {
+      if (refusesMembership(error)) {
         void readMine();
       }
       return failure;
@@ -116,6 +124,7 @@ export function useTeamActions(pharmacy: MaybeRefOrGetter<MyPharmacyDto | undefi
   }
 
   async function revoke(invitation: PharmacyInvitationDto) {
+    const takenIn = toValue(pharmacy)?.id;
     const values = { email: invitation.email };
     const failure = await attempt(
       'revoke',
@@ -126,8 +135,8 @@ export function useTeamActions(pharmacy: MaybeRefOrGetter<MyPharmacyDto | undefi
         await readInvitations(id);
       },
     );
-    if (failure !== undefined) {
-      refusal.value = { section: 'invitations', text: teamFailureText(failure) };
+    if (failure !== undefined && stillShown(takenIn)) {
+      refusal.value = { section: 'invitations', failure };
     }
     return failure;
   }
@@ -147,7 +156,7 @@ export function useTeamActions(pharmacy: MaybeRefOrGetter<MyPharmacyDto | undefi
   }
 
   async function end(member: PharmacyMemberDto) {
-    const { name, membershipId } = current();
+    const { id: takenIn, name, membershipId } = current();
     const own = member.membershipId === membershipId;
     const values = { name: member.name, pharmacy: name };
     const failure = await attempt(
@@ -165,8 +174,8 @@ export function useTeamActions(pharmacy: MaybeRefOrGetter<MyPharmacyDto | undefi
         await readMembers(id);
       },
     );
-    if (failure !== undefined) {
-      refusal.value = { section: 'members', text: teamFailureText(failure) };
+    if (failure !== undefined && stillShown(takenIn)) {
+      refusal.value = { section: 'members', failure };
     }
     return failure;
   }
