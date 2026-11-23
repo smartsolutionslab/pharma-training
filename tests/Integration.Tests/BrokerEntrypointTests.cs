@@ -37,6 +37,8 @@ public class BrokerEntrypointTests
         run.Variables.ShouldNotContain("BROKER_PASSWORD_CATALOG");
         run.Variables.ShouldNotContain("BROKER_USER_CATALOG");
         run.Variables.ShouldNotContain("RABBITMQ_DEFAULT_PASS", "The admin's password stays in the broker's environment after the definitions are written.");
+        run.Files.ShouldContain(file => file.StartsWith("/tmp/rabbitmq-definitions.json regular file root:rabbitmq 640 ", StringComparison.Ordinal), $"The definitions file is not root's, readable by rabbitmq alone: {string.Join("; ", run.Files)}");
+        run.Files.ShouldContain(file => file.StartsWith("/etc/rabbitmq/conf.d/90-definitions.conf regular file root:rabbitmq 640 ", StringComparison.Ordinal), $"The config file is not root's, readable by rabbitmq alone: {string.Join("; ", run.Files)}");
     }
 
     [Theory]
@@ -138,17 +140,36 @@ public class BrokerEntrypointTests
         run.Variables.ShouldNotContain("BROKER_USER_CATALOG-OLD");
     }
 
+    /// <summary>
+    /// A symlink left at either file by an earlier boot of the same container is replaced, never written through. Each link
+    /// has a target of its own, so a failure says which file was followed. The script removes each path right before it
+    /// writes it, so <c>chown -h</c> never meets a link here: it is defence in depth, which this test cannot tell apart.
+    /// </summary>
     [Fact]
     public async Task A_symlink_left_at_either_file_is_replaced_not_followed()
     {
         var environment = Valid();
-        environment["PLANT_LINKS"] = "1";
+        environment["PLANT_LINKS"] = "files";
 
         var run = await RunAsync(environment);
 
         run.ExitCode.ShouldBe(0, run.Error);
         run.Arguments.ShouldBe("rabbitmq-server");
-        run.Planted.ShouldBe("root 7\nplanted", "The entrypoint wrote or handed to rabbitmq the file a symlink at its definitions or config file points to.");
+        run.Files.ShouldContain("/tmp/planted-definitions regular file root:root 644 7", "The entrypoint wrote or handed over the target of a symlink at the definitions file.");
+        run.Files.ShouldContain("/tmp/planted-config regular file root:root 644 7", "The entrypoint wrote or handed over the target of a symlink at the config file.");
+    }
+
+    [Theory]
+    [InlineData("conf.d", "/etc/rabbitmq/conf.d")]
+    [InlineData("etc", "/etc/rabbitmq")]
+    public async Task A_symlinked_config_directory_fails_the_boot_naming_it(string planted, string directory)
+    {
+        var environment = Valid();
+        environment["PLANT_LINKS"] = planted;
+
+        var run = await RunAsync(environment);
+
+        ShouldRefuse(run, directory, environment);
     }
 
     [Theory]
