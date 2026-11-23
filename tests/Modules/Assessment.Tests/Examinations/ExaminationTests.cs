@@ -115,7 +115,7 @@ public class ExaminationTests
 
         examination.Unlock(Now);
         StartAttempt(examination);
-        examination.Attempts.Last().Number.ShouldBe(AttemptNumber.First);
+        examination.Attempts[^1].Number.ShouldBe(AttemptNumber.First);
     }
 
     [Fact]

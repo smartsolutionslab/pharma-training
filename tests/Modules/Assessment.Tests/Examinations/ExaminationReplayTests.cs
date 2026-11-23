@@ -56,7 +56,7 @@ public class ExaminationReplayTests
 
         replayed.Status.ShouldBe(ExaminationStatus.Unlocked);
         replayed.StartAttempt(AttemptId.New(), [Question], Now).IsSuccess.ShouldBeTrue();
-        replayed.Attempts.Last().Number.ShouldBe(AttemptNumber.First);
+        replayed.Attempts[^1].Number.ShouldBe(AttemptNumber.First);
     }
 
     private static Examination Open() =>
