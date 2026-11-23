@@ -21,6 +21,13 @@ internal static class LearningSessions
         return client.GetAsync(new Uri($"/learning/sessions/{id}", UriKind.Relative), cancellationToken);
     }
 
+    /// <summary>Reports how far the learner got in one chapter, as the player's client does: <c>POST /learning/sessions/{id}/progress</c>.</summary>
+    public static Task<HttpResponseMessage> ReportProgressAsync(HttpClient client, Guid sessionId, Guid chapterId, int percent, CancellationToken cancellationToken)
+    {
+        Ensure.That(client).IsNotNull();
+        return client.PostAsJsonAsync(new Uri($"/learning/sessions/{sessionId}/progress", UriKind.Relative), new { chapterId, percent }, cancellationToken);
+    }
+
     public static async Task<SessionBody> BodyOfAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
         Ensure.That(response).IsNotNull();

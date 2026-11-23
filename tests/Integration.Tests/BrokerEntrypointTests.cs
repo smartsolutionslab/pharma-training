@@ -138,6 +138,32 @@ public class BrokerEntrypointTests
         run.Variables.ShouldNotContain("BROKER_USER_CATALOG-OLD");
     }
 
+    [Fact]
+    public async Task A_symlink_left_at_either_file_is_replaced_not_followed()
+    {
+        var environment = Valid();
+        environment["PLANT_LINKS"] = "1";
+
+        var run = await RunAsync(environment);
+
+        run.ExitCode.ShouldBe(0, run.Error);
+        run.Arguments.ShouldBe("rabbitmq-server");
+        run.Planted.ShouldBe("root 7\nplanted", "The entrypoint wrote or handed to rabbitmq the file a symlink at its definitions or config file points to.");
+    }
+
+    [Theory]
+    [InlineData("RABBITMQ_DEFAULT_PASS")]
+    [InlineData("BROKER_USER_CATALOG")]
+    public async Task A_value_ending_in_a_newline_fails_the_boot_naming_its_variable(string variable)
+    {
+        var environment = Valid();
+        environment[variable] += "\n";
+
+        var run = await RunAsync(environment);
+
+        ShouldRefuse(run, variable, environment);
+    }
+
     private static Dictionary<string, string> Valid() => new(StringComparer.Ordinal)
     {
         ["BROKER_DEFINITIONS"] = Document,

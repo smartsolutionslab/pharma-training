@@ -6,7 +6,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Tests.Assignments;
 
 /// <summary>
 /// The start of a learning session, three failed attempts (a lock) and the content worked through again (an unlock), as
-/// the assignment applies them (owner decision on #32, option b; ADR 0018): the test access follows whichever lock or
+/// the assignment applies them (owner decision on #32, option b; ADR 0019): the test access follows whichever lock or
 /// unlock happened last, the lock winning a tie, and nothing that happened before the assignment concerns it. An event
 /// is written as its kind and the day after <c>Monday</c> it happened on: <c>AE2</c> is a lock on day 2, <c>CC3</c> an
 /// unlock on day 3.

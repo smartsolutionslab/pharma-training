@@ -8,7 +8,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application.Consum
 /// <summary>
 /// Puts the learner's open assignments of the course in progress when Learning started a session, in every pharmacy.
 /// It does not deduplicate on <c>Metadata.EventIdentifier</c>: the assignment applies the event by when it happened
-/// (<c>Metadata.OccurredAt</c>, docs/adr/0018), so a second delivery, a replay and a reordering change nothing by
+/// (<c>Metadata.OccurredAt</c>, docs/adr/0019), so a second delivery, a replay and a reordering change nothing by
 /// themselves, which is stronger, since it also absorbs an old event under a new identifier. A save that lost a race
 /// throws, and the retry reloads and applies it again.
 /// </summary>

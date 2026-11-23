@@ -61,7 +61,7 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
 
     public Timestamp? StartedAt { get; private set; }
 
-    /// <summary>When the lock or unlock last applied to the test happened; null until the first (docs/adr/0018).</summary>
+    /// <summary>When the lock or unlock last applied to the test happened; null until the first (docs/adr/0019).</summary>
     public Timestamp? TestAccessChangedAt { get; private set; }
 
     public Timestamp? CompletedAt { get; private set; }
@@ -159,7 +159,7 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
     /// The learner opened the course (LearningSessionStarted): an open assignment goes in progress. The earliest start
     /// wins, so the order the starts arrive in does not matter; a start before the assignment was assigned, or of a
     /// completed or cancelled one, changes nothing. A start no longer unlocks the test: only relearned content does
-    /// (<see cref="Unlock"/>, docs/adr/0018).
+    /// (<see cref="Unlock"/>, docs/adr/0019).
     /// </summary>
     public void MarkStarted(Timestamp at)
     {
@@ -183,7 +183,7 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
 
     /// <summary>
     /// Three failed attempts (AttemptsExhausted) lock the test, unless a lock or unlock that happened later was applied
-    /// already; on the same instant the lock wins (docs/adr/0018). A lock while the assignment is open is kept and shows
+    /// already; on the same instant the lock wins (docs/adr/0019). A lock while the assignment is open is kept and shows
     /// once it is in progress.
     /// </summary>
     public void MarkLocked(Timestamp at)
@@ -201,7 +201,7 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
 
     /// <summary>
     /// The learner worked through the content again (ContentCompleted): the test is available, unless a lock or unlock
-    /// that happened at the same time or later was applied already (docs/adr/0018). It never changes the status.
+    /// that happened at the same time or later was applied already (docs/adr/0019). It never changes the status.
     /// </summary>
     public void Unlock(Timestamp at)
     {

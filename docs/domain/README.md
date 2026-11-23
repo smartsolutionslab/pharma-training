@@ -190,7 +190,7 @@ Status: `Open` → `InProgress` → `Completed`, außerdem `Cancelled`. `Overdue
 | `ChangeDueDate` | Apothekenleiter | Nur wenn aktiv; neue Frist nicht in der Vergangenheit; Eintrag in der Historie |
 | `Cancel` | Apothekenleiter, `MembershipEnded` | Nur wenn aktiv; terminal |
 | `MarkStarted` | `LearningSessionStarted` | Nur aus `Open`; sonst ignorieren; entsperrt nicht; der früheste Start gilt |
-| `MarkLocked` / `Unlock` | `AttemptsExhausted` / `ContentCompleted` | Nur wenn aktiv; das später geschehene Ereignis (`OccurredAt`) gewinnt, bei Gleichstand die Sperre; Ereignisse vor der Zuweisung zählen nicht (ADR 0018) |
+| `MarkLocked` / `Unlock` | `AttemptsExhausted` / `ContentCompleted` | Nur wenn aktiv; das später geschehene Ereignis (`OccurredAt`) gewinnt, bei Gleichstand die Sperre; Ereignisse vor der Zuweisung zählen nicht (ADR 0019) |
 | `Complete` | `CertificateIssued` | Aus `Open` oder `InProgress` (Events können überholen); gleiche CertificateId erneut = No-op; terminal |
 
 Nach `Complete` mit Wiederholung legt ein Handler eine neue Zuweisung an: Frist = Abschlussdatum + Intervall. Eine Bestätigung von vor der Zuweisung erfüllt sie nicht.
@@ -204,7 +204,7 @@ Ein Stream pro Person × Schulungsversion und Durchlauf. Die Kapitelstruktur wir
 | `SessionStarted` | PersonId, CourseId, CourseVersionId, Pflichtkapitel |
 | `ChapterProgressRecorded` | Kapitel, gesehene Abschnitte bzw. Seiten; nur bei echtem Fortschritt |
 | `ChapterCompleted` | Kapitel erfüllt sein Abschlusskriterium |
-| `ContentCompleted` | Alle Pflichtkapitel erfüllt; einmal pro Zyklus |
+| `ContentCompleted` | Alle Pflichtkapitel erfüllt; einmal pro Zyklus. Schaltet nur die Prüfung frei und belegt allein keine Schulung (ADR 0018) |
 | `ProgressReset` | Nach `AttemptsExhausted`; die Kapitel der falsch beantworteten Fragen sind wieder offen |
 | `SessionFinished` | Nach `TestPassed` (Learning konsumiert es zusätzlich zu Certification); danach keine Änderungen |
 
@@ -292,6 +292,7 @@ Alle Pfade beginnen mit dem Modulnamen; der Edge leitet danach weiter. Kein Serv
 | catalog | `GET /catalog/courses` | Leitung | Veröffentlichte Schulungen zum Zuweisen |
 | catalog | `GET /catalog/course-versions/{id}` | Mitglied | Inhalt für den Player (ohne Fragen) |
 | compliance | `POST /compliance/pharmacies/{id}/assignments` | Leitung | Zuweisen an mehrere Mitarbeiter (C1, C2) |
+| compliance | `GET /compliance/pharmacies/{id}/members?jobFunction=` | Leitung | Aktive Mitglieder für den Zuweisungsassistenten, nach Name, filterbar nach Tätigkeit |
 | compliance | `PATCH …/assignments/{aid}`, `DELETE …/assignments/{aid}` | Leitung | Frist ändern, zurückziehen |
 | compliance | `GET /compliance/pharmacies/{id}/matrix` | Leitung | Matrix Mitarbeiter × Schulung mit Status und Quote (C3) |
 | compliance | `GET /compliance/me/assignments` | Mitglied | Mein Dashboard, Überfällige zuerst (C4) |

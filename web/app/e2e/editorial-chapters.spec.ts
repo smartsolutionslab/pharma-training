@@ -169,3 +169,42 @@ test('an editor drags the first chapter by its handle onto the last; a reload ke
   await page.reload();
   await titlesShown(page, ['Zweites', 'Drittes', 'Erstes']);
 });
+
+test('leaving while a move is being saved asks first; once it is saved, a reload keeps it', async ({ page }) => {
+  await startCourse(page, `E2E Verlassen ${Date.now()}`);
+  for (const title of ['Erstes', 'Zweites', 'Drittes']) {
+    await addTextChapter(page, title, `# ${title}`);
+  }
+  await titlesShown(page, ['Erstes', 'Zweites', 'Drittes']);
+
+  // The order's save is held until the test lets it go; every dialog is recorded and dismissed, which stays on the page.
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route('**/chapters/order', async (route) => {
+    await held;
+    await route.continue();
+  });
+  const dialogs: string[] = [];
+  page.on('dialog', (dialog) => {
+    dialogs.push(dialog.type());
+    void dialog.dismiss();
+  });
+
+  const saved = hostHasOrder(page, ['Erstes', 'Drittes', 'Zweites']);
+  // Handled here so that a check failing before it is awaited reports that failure, not the page closing under it.
+  saved.catch(() => undefined);
+  await page.getByRole('button', { name: /^„Drittes. nach oben verschieben$/ }).click();
+  await titlesShown(page, ['Erstes', 'Drittes', 'Zweites']);
+
+  await page.close({ runBeforeUnload: true });
+  await expect.poll(() => dialogs).toEqual(['beforeunload']);
+  expect(page.isClosed()).toBe(false);
+
+  release();
+  await saved;
+  await page.reload();
+  await titlesShown(page, ['Erstes', 'Drittes', 'Zweites']);
+  expect(dialogs).toEqual(['beforeunload']);
+});

@@ -11,7 +11,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Tests.Assignments;
 /// <summary>
 /// A learner's progress reaching Compliance (#32): a started session, three failed attempts and the content worked through
 /// again apply to every active assignment of the person and course, in every pharmacy, and the latest lock or unlock
-/// wins whatever order they arrive in (ADR 0018). Each event happens some hours after the assignments were assigned.
+/// wins whatever order they arrive in (ADR 0019). Each event happens some hours after the assignments were assigned.
 /// </summary>
 public class LearningProgressConsumerTests
 {
