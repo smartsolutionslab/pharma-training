@@ -44,16 +44,24 @@ export const textOfPage = (pageNumber: number) => `Text der Seite ${pageNumber}`
 export interface FakeDocumentOptions {
   /** Whether a page's drawing waits until the test calls draw(pageNumber); by default it ends at once. */
   holdDrawing?: boolean;
+  /** Whether a page's text content waits until the test calls giveText(pageNumber); by default it comes at once. */
+  holdText?: boolean;
 }
 
 /** A document of the given number of pages, each recording that it was asked for and rendered. */
-export function fakeDocument(numPages: number, { holdDrawing = false }: FakeDocumentOptions = {}) {
+export function fakeDocument(numPages: number, { holdDrawing = false, holdText = false }: FakeDocumentOptions = {}) {
   const rendered: number[] = [];
   const held = new Map<number, () => void>();
+  const heldText = new Map<number, () => void>();
   const getPage = vi.fn(async (pageNumber: number): Promise<FakePage> => ({
     pageNumber,
     getViewport: ({ scale }) => ({ width: 595 * scale, height: 842 * scale, scale }),
-    getTextContent: async () => ({ items: [{ str: textOfPage(pageNumber) }], styles: {} }),
+    getTextContent: async () => {
+      if (holdText) {
+        await new Promise<void>((resolve) => heldText.set(pageNumber, resolve));
+      }
+      return { items: [{ str: textOfPage(pageNumber) }], styles: {} };
+    },
     render: () => {
       rendered.push(pageNumber);
       if (!holdDrawing) {
@@ -66,7 +74,11 @@ export function fakeDocument(numPages: number, { holdDrawing = false }: FakeDocu
   const document: FakeDocument = { numPages, getPage, destroy: async () => undefined };
   /** Ends the held drawing of the page. */
   const draw = (pageNumber: number) => held.get(pageNumber)?.();
-  return { document, getPage, rendered, draw };
+  /** Whether the page's text content has been asked for and is held. */
+  const textAsked = (pageNumber: number) => heldText.has(pageNumber);
+  /** Gives the held text content of the page. */
+  const giveText = (pageNumber: number) => heldText.get(pageNumber)?.();
+  return { document, getPage, rendered, draw, textAsked, giveText };
 }
 
 /** pdf.js's TextLayer as far as PdfChapter uses it: render() puts a span per text item into the container. */

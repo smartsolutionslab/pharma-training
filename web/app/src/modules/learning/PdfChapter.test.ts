@@ -136,6 +136,33 @@ test("the page's text lies over the canvas, so screen readers read it and it can
   expect(within(region).queryByText(textOfPage(1))).toBeNull();
 });
 
+// A page turned while the previous page's text was still on its way: that text must not be laid over the new page, and
+// the new page's own text must be, whichever text arrives first.
+test.each([
+  ['after', [2, 1]],
+  ['before', [1, 2]],
+] as const)(
+  "the previous page's text arriving %s the next page's is never laid over the next page",
+  async (_, order) => {
+    const { document, textAsked, giveText } = fakeDocument(3, { holdText: true });
+    serving(document);
+    renderChapter();
+    const region = await screen.findByLabelText(`PDF: ${handout.title}`);
+    await waitFor(() => expect(textAsked(1)).toBe(true));
+
+    await userEvent.click(next());
+    await screen.findByText('Seite 2 von 3');
+    await waitFor(() => expect(textAsked(2)).toBe(true));
+    for (const pageNumber of order) {
+      giveText(pageNumber);
+    }
+
+    expect(await within(region).findByText(textOfPage(2))).toBeInTheDocument();
+    await waitFor(() => expect(within(region).queryByText(textOfPage(1))).toBeNull());
+    expect(within(region).getAllByText(textOfPage(2))).toHaveLength(1);
+  },
+);
+
 test('the page indicator is a polite live region, so a page turned is heard', async () => {
   serving(fakeDocument(2).document);
   renderChapter();
