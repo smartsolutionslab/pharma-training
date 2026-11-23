@@ -275,11 +275,15 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
     /// same time, so a backend counts only when its wait leads back to the gate's own backend: a second request that
     /// waits for a row behind the first is blocked by the first, not by the gate.
     /// </summary>
-    public async Task WaitUntilBlockedAsync(PharmacyLock gate, int expected, CancellationToken cancellationToken)
+    public Task WaitUntilBlockedAsync(PharmacyLock gate, int expected, CancellationToken cancellationToken) =>
+        WaitUntilBlockedAsync(gate, expected, TimeSpan.FromSeconds(30), cancellationToken);
+
+    /// <summary>As above, failing the test when they do not within <paramref name="within"/>.</summary>
+    public async Task WaitUntilBlockedAsync(PharmacyLock gate, int expected, TimeSpan within, CancellationToken cancellationToken)
     {
         Ensure.That(gate).IsNotNull();
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+        timeout.CancelAfter(within);
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand(
             """
@@ -415,6 +419,21 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         command.Parameters.AddWithValue("type", MailRequestType);
         command.Parameters.AddWithValue("membership", membership.ToString());
         return (string?)await command.ExecuteScalarAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Hands a stored envelope of the durable inbox back to Wolverine as one no node has taken yet (<c>Incoming</c>,
+    /// owner 0, no attempts), as a node that died while handling it leaves it; the durability agent recovers it and
+    /// delivers it again. Used on a handled mail request, it delivers that request a second time.
+    /// </summary>
+    public async Task RedeliverAsync(Guid envelope, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            "UPDATE wolverine.wolverine_incoming_envelopes SET status = 'Incoming', owner_id = 0, attempts = 0, keep_until = NULL WHERE id = @id",
+            connection);
+        command.Parameters.AddWithValue("id", envelope);
+        (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1, $"There is no stored envelope {envelope}.");
     }
 
     /// <summary>Marks the dead letter replayable, so Wolverine delivers it again.</summary>
