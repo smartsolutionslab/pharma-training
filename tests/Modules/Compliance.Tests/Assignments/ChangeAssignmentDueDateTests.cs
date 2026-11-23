@@ -22,6 +22,7 @@ public class ChangeAssignmentDueDateTests
     private static readonly CourseId Hygiene = CourseId.From(Guid.CreateVersion7());
     private static readonly PersonId Manager = PersonId.From(Guid.CreateVersion7());
     private static readonly PersonId Anna = PersonId.From(Guid.CreateVersion7());
+    private static readonly PersonId Bea = PersonId.From(Guid.CreateVersion7());
     private static readonly DueDate EndOfMarch = DueDate.From(new DateOnly(2027, 3, 31));
     private static readonly DueDate EndOfApril = DueDate.From(new DateOnly(2027, 4, 30));
 
@@ -97,6 +98,39 @@ public class ChangeAssignmentDueDateTests
         assignment.DueDate.ShouldBe(EndOfMarch);
         assignment.History.ShouldBeEmpty();
         assignments.Commits.ShouldBe(0);
+    }
+
+    /// <summary>
+    /// Nobody manages their own assignment (orchestrator's default on #269, the owner may overrule it): another manager of
+    /// the pharmacy must move or withdraw it.
+    /// </summary>
+    [Fact]
+    public async Task A_manager_may_not_move_the_due_date_of_their_own_assignment()
+    {
+        await SeedAsync();
+        var own = Own();
+
+        var result = await ChangeAsync(own.Id, EndOfApril, reason: null);
+
+        result.Error.Code.ShouldBe("compliance.own-assignment");
+        result.Error.Status.ShouldBe(HttpStatusCode.Forbidden);
+        own.DueDate.ShouldBe(EndOfMarch);
+        own.History.ShouldBeEmpty();
+        assignments.Commits.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task Another_manager_of_the_pharmacy_moves_a_managers_own_assignment()
+    {
+        await SeedAsync();
+        await ComplianceMembers.StartAsync(members, Bea, Pharmacy, MembershipRole.Manager);
+        var own = Own();
+
+        var result = await ChangeAsync(own.Id, EndOfApril, reason: null, by: Bea);
+
+        result.IsSuccess.ShouldBeTrue();
+        own.DueDate.ShouldBe(EndOfApril);
+        own.History.ShouldHaveSingleItem().ChangedBy.ShouldBe(Bea);
     }
 
     [Fact]
@@ -227,6 +261,14 @@ public class ChangeAssignmentDueDateTests
     }
 
     /// <summary>The manager and Anna as members of the pharmacy, and an open assignment of Anna's there, due at the end of March.</summary>
+    /// <summary>An open assignment of the manager's own in the pharmacy, assigned by the manager.</summary>
+    private Assignment Own()
+    {
+        var own = Assignment.Assign(AssignmentId.New(), Manager, Pharmacy, Hygiene, EndOfMarch, null, Manager, Timestamp.From(Monday)).Value;
+        assignments.Stored.Add(own);
+        return own;
+    }
+
     private async Task<Assignment> SeedAsync()
     {
         await ComplianceMembers.StartAsync(members, Manager, Pharmacy, MembershipRole.Manager);

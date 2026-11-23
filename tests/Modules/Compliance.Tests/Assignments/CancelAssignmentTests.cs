@@ -21,6 +21,7 @@ public class CancelAssignmentTests
     private static readonly CourseId Hygiene = CourseId.From(Guid.CreateVersion7());
     private static readonly PersonId Manager = PersonId.From(Guid.CreateVersion7());
     private static readonly PersonId Anna = PersonId.From(Guid.CreateVersion7());
+    private static readonly PersonId Bea = PersonId.From(Guid.CreateVersion7());
     private static readonly DueDate EndOfMarch = DueDate.From(new DateOnly(2027, 3, 31));
 
     private readonly FakeTimeProvider time = new(Monday);
@@ -96,6 +97,39 @@ public class CancelAssignmentTests
         assignments.Commits.ShouldBe(0);
     }
 
+    /// <summary>
+    /// Nobody manages their own assignment (orchestrator's default on #269, the owner may overrule it): another manager of
+    /// the pharmacy must move or withdraw it.
+    /// </summary>
+    [Fact]
+    public async Task A_manager_may_not_withdraw_their_own_assignment()
+    {
+        await SeedAsync();
+        var own = Own();
+
+        var result = await CancelAsync(own.Id);
+
+        result.Error.Code.ShouldBe("compliance.own-assignment");
+        result.Error.Status.ShouldBe(HttpStatusCode.Forbidden);
+        own.Status.ShouldBe(AssignmentStatus.Open);
+        own.History.ShouldBeEmpty();
+        assignments.Commits.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task Another_manager_of_the_pharmacy_withdraws_a_managers_own_assignment()
+    {
+        await SeedAsync();
+        await ComplianceMembers.StartAsync(members, Bea, Pharmacy, MembershipRole.Manager);
+        var own = Own();
+
+        var result = await CancelAsync(own.Id, by: Bea);
+
+        result.IsSuccess.ShouldBeTrue();
+        own.Status.ShouldBe(AssignmentStatus.Cancelled);
+        own.History.ShouldHaveSingleItem().ChangedBy.ShouldBe(Bea);
+    }
+
     [Fact]
     public async Task A_stranger_is_told_the_pharmacy_does_not_exist()
     {
@@ -155,6 +189,14 @@ public class CancelAssignmentTests
 
     private static Assignment Assigned(PharmacyId pharmacy) =>
         Assignment.Assign(AssignmentId.New(), Anna, pharmacy, Hygiene, EndOfMarch, null, Manager, Timestamp.From(Monday)).Value;
+
+    /// <summary>An open assignment of the manager's own in the pharmacy, assigned by the manager.</summary>
+    private Assignment Own()
+    {
+        var own = Assignment.Assign(AssignmentId.New(), Manager, Pharmacy, Hygiene, EndOfMarch, null, Manager, Timestamp.From(Monday)).Value;
+        assignments.Stored.Add(own);
+        return own;
+    }
 
     /// <summary>The manager and Anna as members of the pharmacy, and an open assignment of Anna's there.</summary>
     private async Task<Assignment> SeedAsync()

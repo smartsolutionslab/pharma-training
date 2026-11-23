@@ -103,6 +103,29 @@ public class AssignmentValueObjectTests
         Should.Throw<GuardException>(() => ChangeReason.From(value!));
     }
 
+    /// <summary>A reason is free text kept in the assignment's jsonb history: PostgreSQL refuses U+0000 there (22P05).</summary>
+    [Theory]
+    [InlineData("Urlaub\u0000")]
+    [InlineData("Ur\u0007laub")]
+    [InlineData("Ur\u200Blaub")]
+    [InlineData("Ur\u202Elaub")]
+    public void A_change_reason_with_a_control_or_format_character_is_refused(string reason)
+    {
+        Should.Throw<GuardException>(() => ChangeReason.From(reason));
+        ChangeReason.TryFrom(reason, out var refused).ShouldBeFalse();
+        refused.ShouldBeNull();
+    }
+
+    [Fact]
+    public void A_change_reason_may_hold_line_breaks_and_tabs()
+    {
+        ChangeReason.From("Urlaub\r\nbis\tMai").Value.ShouldBe("Urlaub\r\nbis\tMai");
+        ChangeReason.TryFrom("Urlaub", out var reason).ShouldBeTrue();
+        reason.ShouldBe(ChangeReason.From("Urlaub"));
+        ChangeReason.TryFrom(null, out var none).ShouldBeFalse();
+        none.ShouldBeNull();
+    }
+
     [Fact]
     public void A_change_reason_of_the_longest_length_is_kept()
     {

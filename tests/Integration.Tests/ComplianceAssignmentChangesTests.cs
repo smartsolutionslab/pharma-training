@@ -118,6 +118,61 @@ public class ComplianceAssignmentChangesTests(AspireFixture aspire)
         (await StatusAsync(assignment, cancellationToken)).ShouldBe("Open");
     }
 
+    /// <summary>PostgreSQL refuses U+0000 in the jsonb history (22P05); the reason is refused before it gets there.</summary>
+    [Fact]
+    public async Task A_reason_with_a_control_character_is_refused_and_changes_nothing()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var setting = await PharmacyAsync(cancellationToken);
+        var course = await CourseAsync(cancellationToken);
+        using var manager = await aspire.CreateHostClientAsync("developer");
+        var assignment = await AssignAsync(manager, setting.Pharmacy, course, setting.EmployeeA, cancellationToken);
+
+        using (var refused = await ChangeAsync(manager, setting.Pharmacy, assignment, InTwoMonths(), "Urlaub\u0000", cancellationToken))
+        {
+            await ShouldBeRefusedAsync(refused, HttpStatusCode.BadRequest, "compliance.invalid-change-reason", cancellationToken);
+        }
+
+        (await DueDateAsync(assignment, cancellationToken)).ShouldBe(InAMonth());
+        (await HistoryLengthAsync(assignment, cancellationToken)).ShouldBe(0);
+    }
+
+    /// <summary>
+    /// Nobody manages their own assignment (orchestrator's default on #269, the owner may overrule it): another manager of
+    /// the pharmacy must move or withdraw it. The local user owner stands in as the second manager.
+    /// </summary>
+    [Fact]
+    public async Task A_manager_may_not_move_or_withdraw_their_own_assignment_but_another_manager_may()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var setting = await PharmacyAsync(cancellationToken);
+        var colleague = await organisation.SubjectOfAsync("owner");
+        await DeliverAsync(StartedType, Started(Guid.CreateVersion7(), colleague, setting.Pharmacy, await organisation.NameOfAsync("owner"), "Pharmacist", "Manager"), cancellationToken);
+        var course = await CourseAsync(cancellationToken);
+        using var manager = await aspire.CreateHostClientAsync("developer");
+        var own = await AssignAsync(manager, setting.Pharmacy, course, setting.Manager, cancellationToken);
+
+        using (var moved = await ChangeAsync(manager, setting.Pharmacy, own, InTwoMonths(), null, cancellationToken))
+        {
+            await ShouldBeRefusedAsync(moved, HttpStatusCode.Forbidden, "compliance.own-assignment", cancellationToken);
+        }
+
+        using (var withdrawn = await manager.DeleteAsync(AssignmentUri(setting.Pharmacy, own), cancellationToken))
+        {
+            await ShouldBeRefusedAsync(withdrawn, HttpStatusCode.Forbidden, "compliance.own-assignment", cancellationToken);
+        }
+
+        (await HistoryLengthAsync(own, cancellationToken)).ShouldBe(0);
+
+        using var other = await aspire.CreateHostClientAsync("owner");
+        using (var movedByColleague = await ChangeAsync(other, setting.Pharmacy, own, InTwoMonths(), null, cancellationToken))
+        {
+            movedByColleague.StatusCode.ShouldBe(HttpStatusCode.OK);
+        }
+
+        (await DueDateAsync(own, cancellationToken)).ShouldBe(InTwoMonths());
+    }
+
     [Theory]
     [InlineData("GET")]
     [InlineData("PATCH")]
