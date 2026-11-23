@@ -88,6 +88,9 @@ public partial class BrokerBindingsTests(AspireFixture aspire)
             var hash = await database.TokenHashesAsync(membership, cancellationToken);
             hash.ShouldNotBeEmpty("the invitation's own mail issued no link");
 
+            // Unmarked, a forged request that reached the consumer would mail and issue a link again, instead of being
+            // skipped as already mailed, so the wait below sees it.
+            await database.ClearInvitationMailedAsync(membership, cancellationToken);
             await PublishForgedMailRequestAsync(channel, queue, membership, pharmacy, cancellationToken);
 
             var (hashAfter, mails) = await WaitForAForgedRunAsync(membership, hash, address, cancellationToken);

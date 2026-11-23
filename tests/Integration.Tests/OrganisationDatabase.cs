@@ -109,6 +109,18 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         return membership;
     }
 
+    /// <summary>
+    /// Clears the membership's mailed mark, as if its version had never been mailed, so a mail request that reaches the
+    /// consumer afterwards issues a link and mails it instead of being skipped as already mailed.
+    /// </summary>
+    public async Task ClearInvitationMailedAsync(Guid membership, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("UPDATE organisation.memberships SET invitation_mailed_for = NULL WHERE id = @id", connection);
+        command.Parameters.AddWithValue("id", membership);
+        (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1, $"There is no membership {membership}.");
+    }
+
     /// <summary>The token hashes of the membership's stored links, in hash order; empty when it keeps none.</summary>
     public async Task<List<string>> TokenHashesAsync(Guid membership, CancellationToken cancellationToken)
     {
