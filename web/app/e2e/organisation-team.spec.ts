@@ -2,10 +2,11 @@ import { expect, type Locator, type Page, test } from '@playwright/test';
 import { acceptOn, invitationLink, mailText, recordAcceptances, signInAs, unique } from './invitations';
 
 // The members and invitations page (#12) against the AppHost, with no route mocked. The developer registers a pharmacy
-// of their own through the UI and works in it: invites an address, is refused inviting it twice, resends and revokes
-// the invitation, is refused ending or demoting themself as its last manager, then invites employee-a, who accepts
-// through the mail in Mailpit, and changes and ends her membership. Each run registers a pharmacy and invites an
-// address of its own, so what earlier runs left (the developer may belong to many pharmacies) changes nothing.
+// of their own through the UI and works in it: invites an address, is refused inviting it twice and resending it at
+// once (the cooldown of #158), revokes the invitation, is refused ending or demoting themself as its last manager, then
+// invites employee-a, who accepts through the mail in Mailpit, and changes and ends her membership. Each run registers
+// a pharmacy and invites an address of its own, so what earlier runs left (the developer may belong to many
+// pharmacies) changes nothing.
 
 /** The developer's and employee-a's names, as the realm's local users have them. */
 const developer = 'Local Developer';
@@ -59,6 +60,9 @@ async function choose(page: Page, pharmacy: string) {
 /** A toast that is a status message with the text. */
 const toast = (page: Page, text: string) => page.getByRole('status').filter({ hasText: text });
 
+/** A toast that is an alert with the text: how the page reports a refused action (notify.failure). */
+const alertToast = (page: Page, text: string) => page.getByRole('alert').filter({ hasText: text });
+
 /** The row of a section's table holding the text. */
 const row = (section: Locator, text: string) => section.getByRole('row').filter({ hasText: text });
 
@@ -109,8 +113,14 @@ test('a manager invites, resends and revokes, cannot leave as the last manager, 
   await again.getByRole('button', { name: 'Abbrechen' }).click();
   await expect(again).toBeHidden();
 
+  // Resending right after inviting is refused by the cooldown (#158: 10 minutes after the invitation's latest mail),
+  // and the invitation stays listed as open. A renewal that succeeds needs the cooldown to have passed, which only the
+  // backend's integration tests can reach with time travel (OrganisationInvitationLimitsTests).
   await invitations.getByRole('button', { name: `Einladung an ${invited} neu senden` }).click();
-  await expect(toast(page, `Die Einladung an ${invited} wurde neu gesendet und gilt wieder 14 Tage.`)).toBeVisible();
+  await expect(
+    alertToast(page, 'Diese Einladung wurde gerade erst gesendet. Sie können sie in einigen Minuten erneut senden.'),
+  ).toBeVisible();
+  await expect(invitation).toContainText('Offen');
 
   await invitations.getByRole('button', { name: `Einladung an ${invited} zurückziehen` }).click();
   const revoke = page.getByRole('dialog', { name: `Einladung an ${invited} zurückziehen?` });
