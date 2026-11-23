@@ -32,6 +32,13 @@ internal sealed class InMemorySamples : ILearningAggregateStore, ISampleSummarie
         return Task.FromResult(Option<TAggregate>.Some(aggregate));
     }
 
+    /// <summary>Saves like <see cref="SaveAsync"/>; a sample's stream never loses a race here, so it answers true.</summary>
+    public async Task<bool> TrySaveAsync(IEventSourced aggregate, CancellationToken cancellationToken)
+    {
+        await SaveAsync(aggregate, cancellationToken);
+        return true;
+    }
+
     public Task SaveAsync(IEventSourced aggregate, CancellationToken cancellationToken)
     {
         var history = streams.GetValueOrDefault(aggregate.Id.Value) ?? [];

@@ -75,7 +75,7 @@ public class LearningSessionTests
         var session = Start();
 
         session.RecordProgress(ChapterId.From(Guid.CreateVersion7()), ProgressPercent.Complete, Now)
-            .Error.ShouldBeOfType<ChapterNotInCourse>();
+            .Error.Value.ShouldBeOfType<ChapterNotInCourse>();
     }
 
     [Fact]
@@ -123,7 +123,7 @@ public class LearningSessionTests
         CompleteAll(session);
         session.Finish(Now);
 
-        session.RecordProgress(Intro, ProgressPercent.Complete, Now).Error.ShouldBeOfType<SessionFinishedAlready>();
+        session.RecordProgress(Intro, ProgressPercent.Complete, Now).Error.Value.ShouldBeOfType<SessionFinishedAlready>();
         session.ReopenChapters([Intro], Now).IsSuccess.ShouldBeTrue();
         session.Status.ShouldBe(SessionStatus.Finished);
     }

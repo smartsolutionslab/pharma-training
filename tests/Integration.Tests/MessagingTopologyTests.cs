@@ -12,6 +12,8 @@ public class MessagingTopologyTests
 {
     private const string Contracts = "SmartSolutionsLab.PharmaTraining.Contracts.";
 
+    private const string ChapterFilesReleased = Contracts + "Editorial.ChapterFilesReleasedV1";
+
     private const string CourseVersionPublished = Contracts + "Editorial.CourseVersionPublishedV1";
 
     private const string CourseVersionRetired = Contracts + "Editorial.CourseVersionRetiredV1";
@@ -43,12 +45,21 @@ public class MessagingTopologyTests
     }
 
     [Fact]
-    public void Editorial_publishes_the_test_definition_beside_the_course_versions()
+    public void Editorial_publishes_the_test_definition_and_the_released_files_beside_the_course_versions()
     {
         var (consumed, published) = MessagingTopology.Of("editorial");
 
         consumed.ShouldBeEmpty();
-        published.ShouldBe([CourseVersionPublished, CourseVersionRetired, TestDefinitionPublished], ignoreOrder: false);
+        published.ShouldBe([ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired, TestDefinitionPublished], ignoreOrder: false);
+    }
+
+    /// <summary>#41: Learning copies the files Editorial releases, so its queue is bound to their exchange too.</summary>
+    [Fact]
+    public void Learning_consumes_the_course_versions_and_the_released_files()
+    {
+        var (consumed, _) = MessagingTopology.Of("learning");
+
+        consumed.ShouldBe([ChapterFilesReleased, CourseVersionPublished], ignoreOrder: false);
     }
 
     [Fact]
@@ -85,6 +96,57 @@ public class MessagingTopologyTests
 
         failure.Message.ShouldContain("nowhere");
         failure.Message.ShouldContain("*.Application");
+    }
+
+    [Fact]
+    public void A_consumer_that_takes_a_service_of_another_assembly_beside_its_event_is_read_by_its_event_alone()
+    {
+        // AGENTS.md lets a consumer take dependencies as extra Handle parameters (IDispatcher, ILogger<T>,
+        // Wolverine.IMessageContext); their assemblies are not among those the AppHost reads.
+        using var probe = ConsumerProbe.Compile("Probe", """
+            using Probe.Dependency;
+            using SmartSolutionsLab.PharmaTraining.Contracts.Editorial;
+
+            namespace SmartSolutionsLab.PharmaTraining.Modules.Probe.Application;
+
+            public sealed class CourseVersionPublishedConsumer
+            {
+                public void Handle(CourseVersionPublishedV1 message, IMessageContext context)
+                {
+                }
+            }
+            """);
+
+        var (consumed, published) = MessagingTopology.Of("probe", [probe.Application, probe.Contracts]);
+
+        consumed.ShouldBe([CourseVersionPublished], ignoreOrder: false);
+        published.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void A_handler_method_whose_message_is_no_contract_grants_no_exchange()
+    {
+        // A helper named like a handler, or a typo in one, must not widen what the service's broker user may read.
+        using var probe = ConsumerProbe.Compile("Probe", """
+            using SmartSolutionsLab.PharmaTraining.Contracts.Editorial;
+
+            namespace SmartSolutionsLab.PharmaTraining.Modules.Probe.Application;
+
+            public sealed class CourseVersionPublishedConsumer
+            {
+                public void Handle(CourseVersionPublishedV1 message)
+                {
+                }
+
+                public static void Handle(string note)
+                {
+                }
+            }
+            """);
+
+        var (consumed, _) = MessagingTopology.Of("probe", [probe.Application, probe.Contracts]);
+
+        consumed.ShouldBe([CourseVersionPublished], ignoreOrder: false);
     }
 
     [Fact]

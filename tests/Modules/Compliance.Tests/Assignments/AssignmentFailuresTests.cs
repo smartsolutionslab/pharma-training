@@ -40,6 +40,15 @@ public class AssignmentFailuresTests
         mapped.Message.ShouldBe(error.Message);
     }
 
+    [Fact]
+    public void A_job_function_the_enum_does_not_have_is_the_callers_mistake()
+    {
+        var error = AssignmentFailures.InvalidJobFunction();
+
+        error.Code.ShouldBe("compliance.invalid-job-function");
+        error.Status.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
     private static AssignmentError Case(string name) => name switch
     {
         "DueDateInThePast" => AssignmentErrors.DueDateInThePast(DueDate.From(new DateOnly(2027, 2, 28))),

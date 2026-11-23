@@ -1,5 +1,5 @@
 import { ApiError } from '@/api/baseApi';
-import type { MessageKey } from '@/i18n';
+import { type MessageKey, t } from '@/i18n';
 
 /** A step of a course version's workflow (#26). */
 export type WorkflowAction = 'submit' | 'publish' | 'return' | 'retire';
@@ -32,21 +32,38 @@ const failed: Record<WorkflowAction, MessageKey> = {
   retire: 'editorial.workflow.errors.retireFailed',
 };
 
+/** What the page says about a refused or failed step: a catalog key, or a module's own words (ADR 0007). */
+export type WorkflowFailure = { key: MessageKey } | { serverMessage: string };
+
+/** Whether the refusal names a module's code the page has words of its own for. */
+export function isKnownRefusal(error: unknown): boolean {
+  return error instanceof ApiError && error.code !== undefined && byCode[error.code] !== undefined;
+}
+
 /**
- * What the course version page says when a step of the workflow is refused or fails, as a catalog key: never the
- * host's words. A module's code says what it says, a policy's 403 without one that the editor may not take the step;
- * anything else, a network failure included, that the step failed.
+ * What the course version page says when a step of the workflow is refused or fails. A module's code the page knows
+ * says the catalog's text; a module's refusal with a code it does not know says the host's words
+ * (ApiError.serverMessage, ADR 0007, until #147 translates them); a policy's 403 without a code that the editor may not
+ * take the step; anything else, a network failure included, that the step failed.
  */
-export function workflowFailureKey(action: WorkflowAction, error: unknown): MessageKey {
+export function workflowFailure(action: WorkflowAction, error: unknown): WorkflowFailure {
   if (!(error instanceof ApiError)) {
-    return failed[action];
+    return { key: failed[action] };
   }
   const known = error.code === undefined ? undefined : byCode[error.code];
   if (known !== undefined) {
-    return known;
+    return { key: known };
+  }
+  if (error.serverMessage !== undefined) {
+    return { serverMessage: error.serverMessage };
   }
   if (error.status === 403 && error.failureCode === undefined) {
-    return 'editorial.workflow.errors.forbidden';
+    return { key: 'editorial.workflow.errors.forbidden' };
   }
-  return failed[action];
+  return { key: failed[action] };
+}
+
+/** The failure's text in the language of the moment; a module's words as the host sent them. */
+export function workflowFailureText(failure: WorkflowFailure): string {
+  return 'key' in failure ? t(failure.key) : failure.serverMessage;
 }

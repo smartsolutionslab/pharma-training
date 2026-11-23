@@ -48,6 +48,17 @@ internal sealed class InMemoryMemberStore : IMemberStore, IComplianceUnitOfWork
         return Task.FromResult(active);
     }
 
+    public Task<IReadOnlyList<CurrentMembership>> ActiveMembershipsInPharmacyAsync(PharmacyId pharmacy, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<CurrentMembership> active =
+        [
+            .. Members
+                .Where(member => member.Pharmacy == pharmacy && !Endings.Any(ending => ending.Id == member.Id))
+                .Select(member => CurrentMembership.Of(member, [.. Changes.Where(change => change.Membership == member.Id)])),
+        ];
+        return Task.FromResult(active);
+    }
+
     public Task<IReadOnlySet<PersonId>> ActiveMembersAsync(PharmacyId pharmacy, IReadOnlyCollection<PersonId> persons, CancellationToken cancellationToken)
     {
         IReadOnlySet<PersonId> active = Members

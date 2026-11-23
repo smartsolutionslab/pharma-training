@@ -21,7 +21,7 @@ function inOrder(version: EditorialCourseVersionDto, order: string[]): Editorial
  * move made while one is on its way waits for it, and only the latest of such moves is sent, so the host cannot save
  * an older order over a newer one. A refusal puts back the last order the host accepted, drops a move still waiting
  * and says so, in the host's words where a module sent some. Once nothing more is to be sent, the version is read
- * again.
+ * again. While an order is not yet settled, leaving or reloading the page asks first.
  */
 export function useReorderChapters(versionId: MaybeRefOrGetter<string>) {
   const queryClient = useQueryClient();
@@ -31,6 +31,15 @@ export function useReorderChapters(versionId: MaybeRefOrGetter<string>) {
   let sending: Promise<void> | undefined;
   /** The latest order made while another was on its way, sent once it has settled. */
   let waiting: string[] | undefined;
+
+  /**
+   * Until every order has settled, leaving or reloading the page asks the browser's confirmation first: the list already
+   * shows the order, so leaving would drop it without a word. It stays while the list is gone (another page of the app),
+   * since the order is still on its way, and goes once nothing more is to be sent.
+   */
+  function askBeforeLeaving(event: BeforeUnloadEvent) {
+    event.preventDefault();
+  }
 
   /** Sends the order, then any waiting one; on a refusal restores `accepted`, the version as the host last took it. */
   async function send(id: string, order: string[], accepted: EditorialCourseVersionDto | undefined): Promise<void> {
@@ -57,6 +66,7 @@ export function useReorderChapters(versionId: MaybeRefOrGetter<string>) {
       }
     } finally {
       sending = undefined;
+      window.removeEventListener('beforeunload', askBeforeLeaving);
       await queryClient.invalidateQueries({ queryKey });
     }
   }
@@ -74,6 +84,7 @@ export function useReorderChapters(versionId: MaybeRefOrGetter<string>) {
       waiting = order;
       return sending;
     }
+    window.addEventListener('beforeunload', askBeforeLeaving);
     sending = send(id, order, previous);
     return sending;
   };
