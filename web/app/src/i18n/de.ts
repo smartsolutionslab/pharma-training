@@ -1,4 +1,5 @@
 import type {
+  ComplianceJobFunction,
   EditorialChapterKind,
   EditorialCourseVersionStatus,
   EditorialQuestionProvenance,
@@ -7,6 +8,7 @@ import type {
   OrganisationJobFunction,
   OrganisationMembershipRole,
 } from '@/api/generated';
+import type { CellStatus } from '@/modules/compliance/cellStatus';
 
 // The German catalog, which defines the keys (MessageSchema). German follows docs/domain/README.md's glossary and
 // addresses the user as "Sie". vue-i18n reads @ { } | $ as syntax: write a literal one as {'@'}.
@@ -114,9 +116,62 @@ export const de = {
       loadFailed: 'Die Team-Matrix konnte nicht geladen werden.',
       retry: 'Erneut versuchen',
       table: {
+        title: 'Team',
         label: 'Team-Matrix: Mitglieder nach Schulungen',
+        legend: 'Legende',
+        member: 'Mitglied',
+        courseRate: 'Quote {rate}',
+        notAssigned: 'Nicht zugewiesen',
+        due: 'fällig {date}',
+        validUntil: 'gültig bis {date}',
+        openPerson: '{name}, Schulungsstand anzeigen',
+      },
+      filters: {
+        label: 'Filter',
+        course: 'Schulung',
+        allCourses: 'Alle Schulungen',
+        jobFunction: 'Tätigkeit',
+        allJobFunctions: 'Alle Tätigkeiten',
+        reset: 'Filter zurücksetzen',
+      },
+      rate: {
+        title: 'Compliance-Quote',
+        noValue: '–',
+        none: 'Noch keine Zuweisungen, daher keine Quote.',
+        summary: 'Fristgerecht: {compliant} von {assignments}',
+        overdue: 'Keine ist überfällig. | Eine ist überfällig. | {count} sind überfällig.',
+        scope: 'Bezogen auf: {course}; {jobFunction}',
+        explanation: 'Fristgerecht ist eine Zuweisung, solange sie nicht überfällig ist und ihr Abschluss noch gilt.',
+      },
+      jobFunctionShort: {
+        Pharmacist: 'Apotheker',
+        Pta: 'PTA',
+        Pka: 'PKA',
+        Trainee: 'Azubi',
+        Other: 'Sonstige',
+      } satisfies Record<ComplianceJobFunction, string>,
+      empty: {
+        noCourses: 'In dieser Apotheke ist noch keine Schulung zugewiesen.',
+        noMembers: 'Niemand in dieser Apotheke hat die Tätigkeit {jobFunction}.',
+      },
+      person: {
+        count: 'Keine Schulung zugewiesen | Eine Schulung zugewiesen | {count} Schulungen zugewiesen',
+        due: 'Fällig am',
+        lastCompleted: 'Zuletzt abgeschlossen',
+        validUntil: 'Gültig bis',
+        never: 'Noch nie',
+        none: 'Diesem Mitglied ist hier keine Schulung zugewiesen.',
       },
     },
+    status: {
+      Open: 'Offen',
+      InProgress: 'In Bearbeitung',
+      Locked: 'Gesperrt',
+      Overdue: 'Überfällig',
+      Completed: 'Abgeschlossen',
+      CompletedLate: 'Verspätet abgeschlossen',
+      Expired: 'Abgelaufen',
+    } satisfies Record<CellStatus, string>,
     assign: {
       notAllowed: 'Sie dürfen in dieser Apotheke keine Schulungen zuweisen.',
       steps: {
