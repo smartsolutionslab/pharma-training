@@ -7,7 +7,6 @@ using Npgsql;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Persistence;
 using Wolverine;
 using Wolverine.Persistence.Durability;
-using Wolverine.Postgresql;
 using Wolverine.Runtime;
 
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
@@ -31,6 +30,12 @@ public sealed class ModuleDatabaseRoleTests(AspireFixture aspire) : IAsyncDispos
     private const string RunnerModule = "catalog";
 
     private const string Wolverine = "wolverine";
+
+    // The schema a role made while an earlier design granted it CREATE on its database.
+    private const string Rogue = "rogue";
+
+    // A column of Wolverine's dead letters the migration has to add back.
+    private const string DroppedColumn = "exception_message";
 
     private readonly List<string> databases = [];
 
@@ -160,6 +165,122 @@ public sealed class ModuleDatabaseRoleTests(AspireFixture aspire) : IAsyncDispos
 
         (await ScalarAsync<bool>(administrator, $"SELECT has_database_privilege('{Username(application)}', current_database(), 'CREATE')"))
             .ShouldBeFalse($"{Username(application)} keeps the CREATE on its database an earlier run granted.");
+    }
+
+    /// <summary>
+    /// A role that owns anything in its database could attach code to it that runs as whoever touches it, the administrator
+    /// included, should a later migration adopt its schema (review of #231's head 6e8725a, optional 1). What a role made while
+    /// an earlier design granted it CREATE survives the revoke, so the run fails, naming the object and its owner, rather than
+    /// grant from it or leave it. Large objects and the role's own default privileges reach no other session and are left out.
+    /// </summary>
+    [Fact]
+    public async Task A_run_fails_when_the_role_owns_an_object_in_its_database()
+    {
+        var administrator = await ManagedAdministratorAsync();
+        var application = Application(administrator);
+        await ModuleDatabaseRole.EnsureAsync(administrator, application, TestContext.Current.CancellationToken);
+        await PlantWhileTheRoleCouldCreateAsync(administrator, application);
+
+        var refused = await Should.ThrowAsync<Exception>(
+            () => ModuleDatabaseRole.EnsureAsync(administrator, application, TestContext.Current.CancellationToken),
+            $"The run succeeded although {Username(application)} owns the schema {Rogue}, a table in it and a trigger function on that table.");
+
+        refused.Message.ShouldContain(Rogue, Case.Sensitive, $"The failure does not name the object {Username(application)} owns: {refused.Message}");
+        refused.Message.ShouldContain(Username(application), Case.Sensitive, $"The failure does not name the owner {Username(application)}: {refused.Message}");
+    }
+
+    /// <summary>The MigrationRunner, which ensures the role after the migrations, fails the init container the same way.</summary>
+    [Fact]
+    public async Task The_migration_runner_fails_when_the_role_owns_an_object_in_its_database()
+    {
+        var administrator = await ManagedAdministratorAsync();
+        var application = Application(administrator);
+        await RunTheMigrationRunnerAsync(administrator, application);
+        await PlantWhileTheRoleCouldCreateAsync(administrator, application);
+
+        var (exitCode, output) = await MigrationRunnerProcess.RunAsync(RunnerModule, administrator, application, TestContext.Current.CancellationToken);
+
+        exitCode.ShouldNotBe(0, $"The MigrationRunner succeeded although {Username(application)} owns the schema {Rogue} and what is in it:\n{output}");
+        output.ShouldContain(Rogue, Case.Sensitive, $"The MigrationRunner's failure does not name the object {Username(application)} owns:\n{output}");
+        output.ShouldContain(Username(application), Case.Sensitive, $"The MigrationRunner's failure does not name the owner {Username(application)}:\n{output}");
+    }
+
+    /// <summary>
+    /// The role creates nothing, in no schema: a CREATE on a schema the administrator granted it by hand, on the module's
+    /// schema or on <c>public</c>, is taken back by the next run (review of #231's head 6e8725a, optional 6).
+    /// </summary>
+    [Theory]
+    [InlineData(Schema)]
+    [InlineData("public")]
+    public async Task After_a_run_the_role_holds_create_on_no_schema(string granted)
+    {
+        var administrator = await ManagedAdministratorAsync();
+        var application = Application(administrator);
+        await ExecuteAsync(administrator, $"CREATE SCHEMA {Schema}; CREATE TABLE {Schema}.items (id bigserial PRIMARY KEY, name text NOT NULL)");
+        await ModuleDatabaseRole.EnsureAsync(administrator, application, TestContext.Current.CancellationToken);
+        await ExecuteAsync(administrator, $"GRANT CREATE ON SCHEMA {granted} TO {Username(application)}");
+        (await SchemasTheRoleMayCreateInAsync(administrator, Username(application))).ShouldContain(granted, $"GRANT CREATE ON SCHEMA {granted} granted nothing; the test proves nothing.");
+
+        await ModuleDatabaseRole.EnsureAsync(administrator, application, TestContext.Current.CancellationToken);
+
+        (await SchemasTheRoleMayCreateInAsync(administrator, Username(application))).ShouldBeEmpty(
+            $"{Username(application)} still holds CREATE on these schemas after the run, so it may own what it makes there.");
+    }
+
+    /// <summary>
+    /// Code the administrator, or an operator who reassigned a role-made schema instead of dropping it, attached to Wolverine's
+    /// storage runs as whoever touches it: a trigger, a rule, a policy or a SECURITY DEFINER function Wolverine does not create
+    /// fails the build, naming it, even though the administrator owns it (review of #231's head 6e8725a, optional 1).
+    /// </summary>
+    [Theory]
+    [InlineData("CREATE TRIGGER planted BEFORE UPDATE ON wolverine.wolverine_dead_letters FOR EACH ROW EXECUTE FUNCTION pg_catalog.suppress_redundant_updates_trigger()")]
+    [InlineData("CREATE RULE planted AS ON UPDATE TO wolverine.wolverine_dead_letters DO ALSO NOTIFY planted")]
+    [InlineData("CREATE POLICY planted ON wolverine.wolverine_dead_letters USING (true)")]
+    [InlineData("CREATE FUNCTION wolverine.planted() RETURNS integer LANGUAGE sql SECURITY DEFINER AS 'SELECT 1'")]
+    public async Task Building_wolverines_storage_refuses_code_wolverine_does_not_create(string planted)
+    {
+        var administrator = await ManagedAdministratorAsync();
+        await ModuleMessageStorage.BuildAsync(administrator, TestContext.Current.CancellationToken);
+        await ExecuteAsync(administrator, planted);
+
+        var refused = await Should.ThrowAsync<Exception>(
+            () => ModuleMessageStorage.BuildAsync(administrator, TestContext.Current.CancellationToken),
+            $"Building Wolverine's storage succeeded although the schema {Wolverine} holds what '{planted}' made.");
+
+        refused.Message.ShouldContain("planted", Case.Sensitive, $"The failure does not name what '{planted}' made: {refused.Message}");
+    }
+
+    /// <summary>
+    /// Building Wolverine's storage stops when it is cancelled, also while the migration waits on the database (review of
+    /// #231's head 6e8725a, optional 7): an init container that is stopped must not keep migrating. The migration has a
+    /// column to add back to the dead letters, and another session holds a lock on that table, so it waits until cancelled.
+    /// An already-cancelled token proves nothing here: the ownership check before the migration already stops on it.
+    /// </summary>
+    [Fact]
+    public async Task Building_wolverines_storage_stops_when_cancelled_while_it_migrates()
+    {
+        var administrator = await ManagedAdministratorAsync();
+        await ModuleMessageStorage.BuildAsync(administrator, TestContext.Current.CancellationToken);
+        await ExecuteAsync(administrator, $"ALTER TABLE {Wolverine}.wolverine_dead_letters DROP COLUMN {DroppedColumn}");
+        await using var holder = new NpgsqlConnection(administrator);
+        await holder.OpenAsync(TestContext.Current.CancellationToken);
+        await using var holding = await holder.BeginTransactionAsync(TestContext.Current.CancellationToken);
+        await using (var hold = new NpgsqlCommand($"LOCK TABLE {Wolverine}.wolverine_dead_letters IN ACCESS SHARE MODE", holder, holding))
+        {
+            await hold.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
+        }
+
+        using var cancellation = new CancellationTokenSource();
+        var build = ModuleMessageStorage.BuildAsync(administrator, cancellation.Token);
+        (await WaitsOnTheDeadLettersAsync(administrator, build)).ShouldBeTrue(
+            $"Building the storage never waited on the lock on {Wolverine}.wolverine_dead_letters ({build.Status}: {build.Exception?.GetBaseException().Message}); the test proves nothing.");
+
+        await cancellation.CancelAsync();
+        var finished = await Task.WhenAny(build, Task.Delay(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+        await holding.RollbackAsync(TestContext.Current.CancellationToken);
+
+        finished.ShouldBeSameAs(build, "Building the storage kept waiting on the database for 10 seconds after it was cancelled: the token never reaches the migration.");
+        await Should.ThrowAsync<OperationCanceledException>(() => build, "Building the storage ended without a cancellation after it was cancelled.");
     }
 
     /// <summary>
@@ -356,9 +477,15 @@ public sealed class ModuleDatabaseRoleTests(AspireFixture aspire) : IAsyncDispos
         await ModuleDatabaseRole.EnsureAsync(administrator, application, TestContext.Current.CancellationToken);
         var trap = await PlantOnTheAdministratorsSearchPathAsync(administrator, application);
 
-        await Should.NotThrowAsync(
-            () => ModuleDatabaseRole.EnsureAsync(administrator, application, TestContext.Current.CancellationToken),
-            "Ensuring the role again failed once the role had planted functions in a schema named after the administrator.");
+        // The role owns what it planted, so the run fails on it (A_run_fails_when_the_role_owns_an_object_in_its_database);
+        // whether it fails or not, nothing it planted may run as the administrator meanwhile.
+        try
+        {
+            await ModuleDatabaseRole.EnsureAsync(administrator, application, TestContext.Current.CancellationToken);
+        }
+        catch (PostgresException)
+        {
+        }
 
         (await TrapCallsAsync(administrator, trap)).ShouldBe(
             0,
@@ -582,7 +709,11 @@ public sealed class ModuleDatabaseRoleTests(AspireFixture aspire) : IAsyncDispos
         }
     }
 
-    /// <summary>Wolverine as src/Host/Wiring/Messaging.cs configures its storage: the schema wolverine, checked at start-up as Wolverine's default.</summary>
+    /// <summary>
+    /// Wolverine as src/Host/Wiring/Messaging.cs configures its storage, through the same <c>PersistModuleMessages</c> the
+    /// runner builds it with, so a drift between the two fails the tests: the schema wolverine, checked at start-up as
+    /// Wolverine's default.
+    /// </summary>
     private static IHost WolverineHost(string connectionString)
     {
         var builder = Host.CreateApplicationBuilder();
@@ -591,9 +722,68 @@ public sealed class ModuleDatabaseRoleTests(AspireFixture aspire) : IAsyncDispos
             options.ApplicationAssembly = typeof(ModuleDatabaseRoleTests).Assembly;
             options.UseRuntimeCompilation();
             options.Discovery.DisableConventionalDiscovery();
-            options.PersistMessagesWithPostgresql(connectionString, Wolverine);
+            options.PersistModuleMessages(connectionString);
         });
         return builder.Build();
+    }
+
+    /// <summary>
+    /// What a role made while an earlier design granted it CREATE on its database (b68901a9 on #231): a schema of its own, a
+    /// table in it and a trigger on that table running a function it owns. The administrator grants CREATE, the role makes
+    /// them, and the administrator revokes CREATE again, as the next run of that design's successor would.
+    /// </summary>
+    private static async Task PlantWhileTheRoleCouldCreateAsync(string administrator, string application)
+    {
+        await ExecuteAsync(administrator, $"GRANT CREATE ON DATABASE {Database(administrator)} TO {Username(application)}");
+        await ExecuteAsync(
+            application,
+            $"""
+            CREATE SCHEMA {Rogue};
+            CREATE TABLE {Rogue}.planted (id integer);
+            CREATE FUNCTION {Rogue}.plant() RETURNS trigger LANGUAGE plpgsql AS $plant$ BEGIN RETURN NEW; END $plant$;
+            CREATE TRIGGER plant BEFORE INSERT OR UPDATE ON {Rogue}.planted FOR EACH ROW EXECUTE FUNCTION {Rogue}.plant();
+            """);
+        await ExecuteAsync(administrator, $"REVOKE CREATE ON DATABASE {Database(administrator)} FROM {Username(application)}");
+    }
+
+    /// <summary>Every schema of the database the role may create objects in, by name.</summary>
+    private static async Task<List<string>> SchemasTheRoleMayCreateInAsync(string administrator, string role)
+    {
+        await using var connection = new NpgsqlConnection(administrator);
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
+        await using var command = new NpgsqlCommand("SELECT nspname::text FROM pg_namespace WHERE has_schema_privilege(@role, oid, 'CREATE') ORDER BY 1", connection);
+        command.Parameters.AddWithValue("role", role);
+        await using var reader = await command.ExecuteReaderAsync(TestContext.Current.CancellationToken);
+        List<string> schemas = [];
+        while (await reader.ReadAsync(TestContext.Current.CancellationToken))
+        {
+            schemas.Add(reader.GetString(0));
+        }
+
+        return schemas;
+    }
+
+    /// <summary>
+    /// Whether some session waits for a lock on Wolverine's dead letters while <paramref name="build"/> runs, asked for up to
+    /// 30 seconds; false once the build has ended or the time is up.
+    /// </summary>
+    private static async Task<bool> WaitsOnTheDeadLettersAsync(string administrator, Task build)
+    {
+        var until = TimeProvider.System.GetUtcNow().AddSeconds(30);
+        while (!build.IsCompleted && TimeProvider.System.GetUtcNow() < until)
+        {
+            var waiting = await ScalarAsync<long>(
+                administrator,
+                $"SELECT count(*) FROM pg_locks WHERE NOT granted AND relation = to_regclass('{Wolverine}.wolverine_dead_letters')");
+            if (waiting > 0)
+            {
+                return true;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(100), TestContext.Current.CancellationToken);
+        }
+
+        return false;
     }
 
     private static Envelope ProbeEnvelope(EnvelopeStatus status) => new()

@@ -129,6 +129,24 @@ public class AppHostPublishParametersTests
     }
 
     /// <summary>
+    /// The 32-character minimum holds however the key reaches Azure, at a prompt or from the deployment's own parameters
+    /// too, not only from <c>Parameters__database-roles-key</c> at publish: main.bicep and the postgres module both declare
+    /// <c>@minLength(32)</c> on it, a floor Azure enforces (review of #231's head 6e8725a, optional 3).
+    /// </summary>
+    [Fact]
+    public async Task The_bicep_declares_a_minimum_length_of_32_on_the_database_roles_key()
+    {
+        var bicep = await PublishedAppHost.PublishAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
+
+        foreach (var (file, content) in new[] { ("main.bicep", bicep.Files["main.bicep"]), ("postgres/postgres.bicep", bicep.Module("postgres")) })
+        {
+            var declaration = Regex.Match(content, @"(?m)((?:^[ \t]*@[^\r\n]*\r?\n)*)^[ \t]*param\s+database_roles_key\s+string\b", RegexOptions.None, TimeSpan.FromSeconds(1));
+            declaration.Success.ShouldBeTrue($"{file} declares no parameter database_roles_key.");
+            declaration.Groups[1].Value.ShouldContain("@minLength(32)", Case.Sensitive, $"{file} declares database_roles_key without @minLength(32): {declaration.Value}");
+        }
+    }
+
+    /// <summary>
     /// Every module role's password is <c>guid(database_roles_key, '&lt;module&gt;')</c>, so the key is all that stands
     /// between a guess and every role: publishing (and so deploying) refuses one under 32 characters, naming the parameter,
     /// rather than leave it to a Bicep <c>@minLength</c> that only fires once Azure deploys.
@@ -155,6 +173,12 @@ public class AppHostPublishParametersTests
     [InlineData("https://app.example?tenant=a")]
     [InlineData("https://*.example")]
     [InlineData("app.example")]
+    // Parsed as an origin, but not the canonical, lower-case one a browser sends (review of #231's head 6e8725a, optional 4):
+    // frontend-url must be new Uri(value).GetLeftPart(UriPartial.Authority) exactly.
+    [InlineData("HTTPS://Good.Example")]
+    [InlineData("https://a:443")]
+    [InlineData("https://a/.")]
+    [InlineData("https://a.")]
     public async Task Publishing_refuses_a_frontend_url_that_is_no_https_origin(string frontendUrl)
     {
         var refused = await Should.ThrowAsync<Exception>(

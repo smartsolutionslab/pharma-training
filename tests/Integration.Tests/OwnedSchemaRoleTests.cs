@@ -22,6 +22,9 @@ public sealed class OwnedSchemaRoleTests(AspireFixture aspire) : IAsyncDisposabl
 
     private const string Schema = "keycloak";
 
+    // A schema the role made outside its own while it held a CREATE granted by hand.
+    private const string Rogue = "rogue";
+
     private readonly List<string> databases = [];
 
     private readonly List<string> roles = [];
@@ -152,6 +155,59 @@ public sealed class OwnedSchemaRoleTests(AspireFixture aspire) : IAsyncDisposabl
         await OwnedSchemaRole.EnsureAsync(administrator, application, Schema, TestContext.Current.CancellationToken);
 
         (await WorkAsync(application)).ShouldBe(Username(application), $"{Username(application)} is still locked out by {alteration} after the run.");
+    }
+
+    /// <summary>
+    /// Keycloak's role owns its schema and everything in it, and nothing else: what it owns outside its schema (made while it
+    /// held a CREATE someone granted it by hand) fails the run, naming the object and its owner, as it does for a module's
+    /// role (review of #231's head 6e8725a, optional 1). What it owns in its own schema is left alone
+    /// (<see cref="Running_it_again_changes_nothing"/>).
+    /// </summary>
+    [Fact]
+    public async Task A_run_fails_when_the_role_owns_an_object_outside_its_schema()
+    {
+        var administrator = await ManagedAdministratorAsync();
+        var application = Application(administrator);
+        var database = new NpgsqlConnectionStringBuilder(administrator).Database!;
+        await OwnedSchemaRole.EnsureAsync(administrator, application, Schema, TestContext.Current.CancellationToken);
+        await ExecuteAsync(administrator, $"GRANT CREATE ON DATABASE {database} TO {Username(application)}");
+        await ExecuteAsync(
+            application,
+            $"""
+            CREATE SCHEMA {Rogue};
+            CREATE TABLE {Rogue}.planted (id integer);
+            CREATE FUNCTION {Rogue}.plant() RETURNS trigger LANGUAGE plpgsql AS $plant$ BEGIN RETURN NEW; END $plant$;
+            CREATE TRIGGER plant BEFORE INSERT OR UPDATE ON {Rogue}.planted FOR EACH ROW EXECUTE FUNCTION {Rogue}.plant();
+            """);
+        await ExecuteAsync(administrator, $"REVOKE CREATE ON DATABASE {database} FROM {Username(application)}");
+
+        var refused = await Should.ThrowAsync<Exception>(
+            () => OwnedSchemaRole.EnsureAsync(administrator, application, Schema, TestContext.Current.CancellationToken),
+            $"The run succeeded although {Username(application)} owns the schema {Rogue}, outside its own schema {Schema}, and what is in it.");
+
+        refused.Message.ShouldContain(Rogue, Case.Sensitive, $"The failure does not name the object {Username(application)} owns: {refused.Message}");
+        refused.Message.ShouldContain(Username(application), Case.Sensitive, $"The failure does not name the owner {Username(application)}: {refused.Message}");
+    }
+
+    /// <summary>
+    /// Keycloak's role creates in its own schema alone: a CREATE on <c>public</c> the administrator granted it by hand is taken
+    /// back by the next run (review of #231's head 6e8725a, optional 6).
+    /// </summary>
+    [Fact]
+    public async Task After_a_run_the_role_holds_create_on_no_schema_but_its_own()
+    {
+        var administrator = await ManagedAdministratorAsync();
+        var application = Application(administrator);
+        await OwnedSchemaRole.EnsureAsync(administrator, application, Schema, TestContext.Current.CancellationToken);
+        await ExecuteAsync(administrator, $"GRANT CREATE ON SCHEMA public TO {Username(application)}");
+        (await SchemasTheRoleMayCreateInAsync(administrator, Username(application))).ShouldContain("public", "GRANT CREATE ON SCHEMA public granted nothing; the test proves nothing.");
+
+        await OwnedSchemaRole.EnsureAsync(administrator, application, Schema, TestContext.Current.CancellationToken);
+
+        List<string> ownSchemaAlone = [Schema];
+        (await SchemasTheRoleMayCreateInAsync(administrator, Username(application))).ShouldBe(
+            ownSchemaAlone,
+            $"{Username(application)} should hold CREATE on its own schema {Schema} alone after the run.");
     }
 
     /// <summary>
@@ -336,6 +392,23 @@ public sealed class OwnedSchemaRoleTests(AspireFixture aspire) : IAsyncDisposabl
         await using var command = new NpgsqlCommand("SELECT pg_get_userbyid(nspowner)::text FROM pg_namespace WHERE nspname = @schema", connection);
         command.Parameters.AddWithValue("schema", schema);
         return await command.ExecuteScalarAsync(TestContext.Current.CancellationToken) as string;
+    }
+
+    /// <summary>Every schema of the database the role may create objects in, by name.</summary>
+    private static async Task<List<string>> SchemasTheRoleMayCreateInAsync(string administrator, string role)
+    {
+        await using var connection = new NpgsqlConnection(administrator);
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
+        await using var command = new NpgsqlCommand("SELECT nspname::text FROM pg_namespace WHERE has_schema_privilege(@role, oid, 'CREATE') ORDER BY 1", connection);
+        command.Parameters.AddWithValue("role", role);
+        await using var reader = await command.ExecuteReaderAsync(TestContext.Current.CancellationToken);
+        List<string> schemas = [];
+        while (await reader.ReadAsync(TestContext.Current.CancellationToken))
+        {
+            schemas.Add(reader.GetString(0));
+        }
+
+        return schemas;
     }
 
     private static async Task<DatabaseRoleAttributes?> RoleAsync(string administrator, string role)
