@@ -169,6 +169,8 @@ public sealed record ChangeReason : IValueObject<string>
     }
 
     public static ChangeReason MembershipEnded => new("Mitgliedschaft beendet");
+
+    public static ChangeReason Withdrawn => new("Von der Leitung zurückgezogen");
 }
 
 // ───────────────────────────── State ─────────────────────────────
