@@ -1,6 +1,9 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.EventSourcing;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
+using SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.IntegrationEvents;
 using SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.ReadModels;
 using SmartSolutionsLab.PharmaTraining.Modules.Learning.Domain.LearningSessions;
+using SmartSolutionsLab.PharmaTraining.Modules.Learning.Domain.LearningSessions.Events;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.Commands.StartLearningSession;
 
@@ -8,11 +11,14 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.Commands
 /// At most one unfinished session per learner and course version: a run not finished yet is resumed, and otherwise
 /// the next run starts with the chapters of Learning's copy of the version. The new run's id is derived from learner,
 /// version and run, so of two concurrent first starts the second stream is refused by the store (409 already-exists).
+/// A created session is announced as LearningSessionStartedV1 once its stream is stored; a resume announces nothing,
+/// and the losing concurrent start is refused before it publishes.
 /// </summary>
 public sealed class StartLearningSessionHandler(
     ICourseVersionCopies versions,
     ILearningSessions sessions,
     ILearningAggregateStore store,
+    ILearningUnitOfWork unitOfWork,
     TimeProvider time)
     : ICommandHandler<StartLearningSession, Result<LearningSessionStart, ApiError>>
 {
@@ -37,7 +43,10 @@ public sealed class StartLearningSessionHandler(
         }
 
         var session = Start(command, copy.Value, SessionRun.From(runs.Count + 1));
+        var started = ((IEventSourced)session).PendingEvents.OfType<SessionStarted>().Single();
         await store.SaveAsync(session, cancellationToken);
+        await unitOfWork.PublishAsync(started.ToIntegrationEvent());
+        await unitOfWork.CommitAsync(cancellationToken);
         return Success(new LearningSessionStart(session.Id.Value, Created: true));
     }
 
