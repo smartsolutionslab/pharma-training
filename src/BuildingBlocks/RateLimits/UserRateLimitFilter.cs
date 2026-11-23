@@ -46,6 +46,6 @@ internal sealed partial class UserRateLimitFilter : IEndpointFilter
             extensions: new Dictionary<string, object?> { ["code"] = limit.Refusal.Code });
     }
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "The caller {Subject} reached the limit {Limit}; refused for {RetryAfter}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "The caller {Subject} reached the limit {Limit}; refused for {RetryAfter}")]
     private partial void LogRefused(string subject, string limit, TimeSpan retryAfter);
 }
