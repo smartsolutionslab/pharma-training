@@ -23,6 +23,6 @@
 ## Consequences
 
 - Certification may consume `MembershipChangedV1` later the same way, once it needs a member's current name or role.
-- A member's name now lives in a second Compliance table, `membership_changes.display_name`. The erasure of #115 must erase it there too.
+- A member's name now lives in a second Compliance table, `membership_changes.display_name`. The erasure of #115 must erase it there too. Besides that table, the name in `MembershipChangedV1` also sits in Organisation's outbox, in Compliance's incoming envelopes until they are cleaned, and in `wolverine.wolverine_dead_letters` when a change is dead-lettered: places #115 must reach, as for `MembershipStartedV1`.
 - Reading a membership joins its changes; every read is by membership, the key's prefix, so no further index is needed. The rows of a membership are few: one per change of job function or role.
 - `0012` and `0014` were held by open branches when this was written. If `0015` is taken by the time #29 merges, this file and every reference to it (`ChangeMembershipHandler`'s doc, `MembershipChangedV1Consumer`'s doc, `CurrentMembership`'s doc, `IMemberStore`'s doc, the domain README and reference) are renumbered.
