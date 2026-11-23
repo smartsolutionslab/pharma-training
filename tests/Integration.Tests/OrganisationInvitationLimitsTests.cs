@@ -90,6 +90,52 @@ public class OrganisationInvitationLimitsTests(AspireFixture aspire)
         (await mailpit.CountToAsync(refusedAddress, cancellationToken)).ShouldBe(0, "the refused invitation sent a mail");
     }
 
+    /// <summary>
+    /// The cap needs no lock (docs/adr/0004): two invites at 49 mails both load the tally below the cap, and the
+    /// pharmacy's row version lets only the first commit count the fiftieth; the other is told the pharmacy changed.
+    /// </summary>
+    [Fact]
+    public async Task Of_two_invitations_at_once_at_forty_nine_mails_today_one_is_stored_and_the_other_is_told_the_pharmacy_changed()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var owner = await aspire.CreateHostClientAsync("owner");
+        var pharmacy = await RegisterAsync(owner, cancellationToken);
+        await database.SetInvitationMailsTodayAsync(pharmacy, 49, cancellationToken);
+
+        HttpResponseMessage[] responses;
+        await using (var gate = await database.LockPharmacyAsync(pharmacy, cancellationToken))
+        {
+            var first = owner.PostAsJsonAsync(InvitationsUri(pharmacy), Invitation(Invitee()), cancellationToken);
+            var second = owner.PostAsJsonAsync(InvitationsUri(pharmacy), Invitation(Invitee()), cancellationToken);
+            await database.WaitUntilBlockedAsync(gate, 2, cancellationToken);
+            await gate.CommitAsync(cancellationToken);
+            responses = await Task.WhenAll(first, second);
+        }
+
+        try
+        {
+            List<string> answers = [];
+            foreach (var response in responses)
+            {
+                answers.Add($"{(int)response.StatusCode} {await response.Content.ReadAsStringAsync(cancellationToken)}");
+            }
+
+            var described = string.Join(" | ", answers);
+            responses.Select(response => response.StatusCode).ShouldBe([HttpStatusCode.Created, HttpStatusCode.Conflict], ignoreOrder: true, described);
+            var lost = responses.Single(response => response.StatusCode == HttpStatusCode.Conflict);
+            using var problem = JsonDocument.Parse(await lost.Content.ReadAsStringAsync(cancellationToken));
+            problem.RootElement.GetProperty("code").GetString().ShouldBe("organisation.pharmacy-changed", described);
+            (await database.InvitationMailsThatDayAsync(pharmacy, cancellationToken)).ShouldBe(50, described);
+        }
+        finally
+        {
+            foreach (var response in responses)
+            {
+                response.Dispose();
+            }
+        }
+    }
+
     private static object Invitation(string address) => new { email = address, jobFunction = "Pta", role = "Employee" };
 
     private static string Invitee() => $"invitee-{Guid.CreateVersion7()}@example.com";
