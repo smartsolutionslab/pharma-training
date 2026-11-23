@@ -12,19 +12,22 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Http.Json;
+using Microsoft.AspNetCore.OpenApi;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.Net.Http.Headers;
+using Microsoft.OpenApi;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Api.Endpoints;
 
 /// <summary>
 /// The editorial workflow: an editor submits a draft for review, returns it to draft, publishes it and retires it.
 /// Each step is a POST on the version, taken by an editor whose token names a person, and records the caller. Submit,
-/// publish and retire take no body; a return takes its reason (<see cref="ReturnEditorialCourseVersionRequest"/>): a
-/// reason that is missing, unreadable or invalid answers 400 <c>editorial.invalid-return-reason</c>, and a body larger
-/// than <see cref="ReturnRequestLimit"/> is refused (413). The empty Guid is no version.
+/// publish and retire take no body; a return takes its reason (<see cref="ReturnEditorialCourseVersionRequest"/>), read
+/// after authorization and the caller's person, whatever its content type: a reason that is missing or invalid, and a
+/// body that cannot be read (not JSON, not UTF-8), answer 400 <c>editorial.invalid-return-reason</c> with one message,
+/// and a body larger than <see cref="ReturnRequestLimit"/> is refused (413). The empty Guid is no version.
 /// </summary>
 public sealed class WorkflowEndpoints : IEndpoint
 {
@@ -43,11 +46,12 @@ public sealed class WorkflowEndpoints : IEndpoint
             .RequireAuthorization(EditorialPolicyNames.Edit);
 
         // The body is read here rather than bound, so that a missing or unreadable reason is refused with the module's
-        // code like a blank one, and only after the caller's person is known. The document describes it as
-        // ReturnEditorialCourseVersionRequest.
+        // code like a blank one, and only after authorization and the caller's person. Accepts metadata would make
+        // routing answer 415 to another content type before either, so the document's required body comes from an
+        // operation transformer instead.
         endpoints.MapPost("/course-versions/{id:guid}/return", (Guid id, HttpRequest http, ClaimsPrincipal user, IDispatcher dispatcher, CancellationToken cancellationToken) =>
             ByEditorAsync(id, user, editor => ReturnAsync(id, http, editor, dispatcher, cancellationToken)))
-            .Accepts<ReturnEditorialCourseVersionRequest>("application/json")
+            .AddOpenApiOperationTransformer(DescribeReturnBodyAsync)
             .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(ReturnRequestLimit))
             .RequireAuthorization(EditorialPolicyNames.Edit);
 
@@ -66,10 +70,26 @@ public sealed class WorkflowEndpoints : IEndpoint
         var request = await ReadAsync(http, cancellationToken);
         if (!ReturnReason.TryFrom(request?.Reason, out var reason))
         {
-            return Result<Unit, ApiError>.Failure(CourseVersionFailures.InvalidReturnReason());
+            return Failure(CourseVersionFailures.InvalidReturnReason());
         }
 
         return await dispatcher.SendAsync(new ReturnToDraft(CourseVersionId.From(id), editor, reason), cancellationToken);
+    }
+
+    /// <summary>The return's required JSON body, <see cref="ReturnEditorialCourseVersionRequest"/>, as a component of the document.</summary>
+    private static async Task DescribeReturnBodyAsync(OpenApiOperation operation, OpenApiOperationTransformerContext context, CancellationToken cancellationToken)
+    {
+        var name = nameof(ReturnEditorialCourseVersionRequest);
+        var schema = await context.GetOrCreateSchemaAsync(typeof(ReturnEditorialCourseVersionRequest), null, cancellationToken);
+        context.Document?.AddComponent(name, schema);
+        operation.RequestBody = new OpenApiRequestBody
+        {
+            Required = true,
+            Content = new Dictionary<string, IOpenApiMediaType>
+            {
+                ["application/json"] = new OpenApiMediaType { Schema = new OpenApiSchemaReference(name, context.Document) },
+            },
+        };
     }
 
     /// <summary>

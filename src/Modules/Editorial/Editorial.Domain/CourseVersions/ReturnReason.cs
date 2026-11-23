@@ -7,8 +7,8 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersio
 /// <summary>
 /// Why an editor returned a version to draft, trimmed: 1 to <see cref="MaxLength"/> characters after trimming, not blank,
 /// and plain text that holds no control character but a line break or a tab and no format character (bidi overrides,
-/// zero-width characters), line or paragraph separator, private-use or unassigned code point. Markup is kept as written:
-/// it is the editor's own text, answered as a string. <see cref="From"/> guards a value the code already trusts;
+/// zero-width characters), line or paragraph separator, private-use or unassigned code point, or unpaired surrogate.
+/// Markup is kept as written: it is the editor's own text, answered as a string. <see cref="From"/> guards a value the code already trusts;
 /// <see cref="TryFrom"/> checks a caller's and succeeds exactly when <see cref="From"/> would.
 /// </summary>
 public sealed record ReturnReason : IValueObject<string>
@@ -39,7 +39,25 @@ public sealed record ReturnReason : IValueObject<string>
     private static bool IsValid(string value)
     {
         var text = value.Trim();
-        return text.Length is > 0 and <= MaxLength && text.EnumerateRunes().All(IsShowable);
+        return text.Length is > 0 and <= MaxLength && !HasUnpairedSurrogate(text) && text.EnumerateRunes().All(IsShowable);
+    }
+
+    /// <summary>A lone high or low surrogate, which <see cref="string.EnumerateRunes"/> would read as U+FFFD and let through.</summary>
+    private static bool HasUnpairedSurrogate(string text)
+    {
+        for (var index = 0; index < text.Length; index++)
+        {
+            if (char.IsSurrogatePair(text, index))
+            {
+                index++;
+            }
+            else if (char.IsSurrogate(text[index]))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool IsShowable(Rune character) =>
