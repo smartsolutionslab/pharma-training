@@ -45,7 +45,7 @@ public class AttemptsExhaustedV1ConsumerTests
         var session = await sessions.CompletedAsync();
         var exhausted = sessions.Exhausted(session, sessions.Handbook);
         await HandleAsync(exhausted);
-        await sessions.ChangeAsync(session, reopened => reopened.RecordProgress(sessions.Handbook, ProgressPercent.Complete, sessions.Now()));
+        await sessions.ChangeAsync(session, reopened => reopened.RecordProgress(sessions.Handbook, ProgressPercent.Complete, Option<VideoDuration>.None, sessions.Now()));
         var stored = sessions.Stream(session).Count;
         var saves = sessions.Store.Saves;
 
@@ -62,7 +62,7 @@ public class AttemptsExhaustedV1ConsumerTests
     {
         var session = await sessions.CompletedAsync();
         await HandleAsync(sessions.Exhausted(session, sessions.Handbook));
-        await sessions.ChangeAsync(session, reopened => reopened.RecordProgress(sessions.Handbook, ProgressPercent.Complete, sessions.Now()));
+        await sessions.ChangeAsync(session, reopened => reopened.RecordProgress(sessions.Handbook, ProgressPercent.Complete, Option<VideoDuration>.None, sessions.Now()));
 
         await HandleAsync(sessions.Exhausted(session, sessions.Handbook));
 

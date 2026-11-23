@@ -10,7 +10,8 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Api.Endpoints;
 
 /// <summary>
 /// The AI content review of a course version (ADR 0009): hints per text chapter on gaps, contradictions and
-/// readability. A POST because every call asks the model anew; it changes nothing.
+/// readability. A POST because every call asks the model anew; it changes nothing. Each editor may ask a limited number
+/// of times a minute and a day (docs/adr/0020); over it, 429 editorial.model-limit-reached and the model is not asked.
 /// </summary>
 public sealed class ContentReviewEndpoints : IEndpoint
 {
@@ -20,6 +21,7 @@ public sealed class ContentReviewEndpoints : IEndpoint
 
         endpoints.MapPost("/course-versions/{id:guid}/content-review", async (Guid id, IDispatcher dispatcher, CancellationToken cancellationToken) =>
             (await dispatcher.QueryAsync(new ReviewContent(id), cancellationToken)).ToHttpResult())
-            .RequireAuthorization(EditorialPolicyNames.Edit);
+            .RequireAuthorization(EditorialPolicyNames.Edit)
+            .RequireUserRateLimit(EditorialModelLimits.ContentReview);
     }
 }

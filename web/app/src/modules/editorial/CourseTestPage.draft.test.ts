@@ -499,6 +499,13 @@ describe('a refused or failed draft', () => {
       () => new Response(JSON.stringify({ title: 'Too Many Requests', status: 429 }), { status: 429 }),
       'Sie haben in kurzer Zeit zu viele KI-Entwürfe angefordert. Versuchen Sie es später erneut.',
     ],
+    // The per-editor limit (#174) is told from any other 429 by its code; the host's title is never shown.
+    [
+      '429 model-limit-reached',
+      () =>
+        refusal(429, 'editorial.model-limit-reached', 'You have reached your limit of AI requests; try again later.'),
+      'Sie haben Ihr Limit für KI-Entwürfe erreicht. Versuchen Sie es später erneut.',
+    ],
     [
       '502 ai-draft-malformed',
       () => refusal(502, 'editorial.ai-draft-malformed', 'The answer could not be read.'),
@@ -638,6 +645,24 @@ describe('a refused or failed draft', () => {
         "No language model is set up for AI drafts. Contact the platform's operators.",
       ),
     );
+  });
+
+  test('a model limit is reported in English when switched', async () => {
+    const user = userEvent.setup();
+    drafting = async () =>
+      refusal(429, 'editorial.model-limit-reached', 'You have reached your limit of AI requests; try again later.');
+    await renderPage();
+
+    setLanguage('en-GB', { remember: false });
+    await screen.findByRole('button', { name: 'Draft with AI' });
+    await user.click(startButton());
+    await waitFor(() => expect(confirmation()).not.toBeNull());
+    await user.click(within(confirmation() ?? document.body).getByRole('button', { name: 'Draft' }));
+
+    await waitFor(() =>
+      expect(notify.failure).toHaveBeenCalledWith('You have reached your limit for AI drafts. Try again later.'),
+    );
+    expect(notify.failure).not.toHaveBeenCalledWith('You have reached your limit of AI requests; try again later.');
   });
 });
 

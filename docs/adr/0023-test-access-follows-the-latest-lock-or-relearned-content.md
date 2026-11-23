@@ -1,4 +1,4 @@
-# 0019: Test access follows the latest lock or relearned content
+# 0023: Test access follows the latest lock or relearned content
 
 **Status:** Accepted (#32). The owner decided on 2026-11-23, on #32, that an assignment locked after three failed attempts stays locked until the learner has worked through the content again (`ContentCompleted`), not until a new session starts (decision (b)). This overrides the domain README where they differed.
 
@@ -24,7 +24,8 @@
 
 ## Consequences
 
+- An event stamped later than Compliance's own clock when it arrives counts as having happened when it was received. A publisher's clock running ahead could otherwise hold off every later lock or unlock for as long as it is ahead (review follow-up to #32).
 - Clock skew between Learning and Assessment larger than the human-scale gap between a completion and the lock that follows it would misorder them. Should that ever be possible, the fix is the owner's decision on V2 events with a cycle number, not a change in Compliance.
 - A session started before the assignment was assigned puts it in progress at once (D3), so a learner who began early is not shown as not started. A lock or unlock from before the assignment belongs to an earlier cycle and is still ignored.
 - No integration event goes out: none is announced for a start, a lock or an unlock.
-- `0012`, `0016`, `0017` and `0019` were held by open branches when this was written. `0018` was taken by #244 before #32 merged, so this is `0019`; if `0019` is taken by the time #32 merges, this file and every reference to it (`Assignment`'s and the three consumers' docs, the domain README and reference) are renumbered.
+- Numbering: written as `0018`, renumbered to `0019` when #244 took `0018` first, and to `0023` when #243 also merged an ADR `0019` after #32 did.

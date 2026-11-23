@@ -32,6 +32,17 @@ public class LearningSessionFailuresTests
     }
 
     [Fact]
+    public void A_report_faster_than_the_video_is_422_progress_too_fast()
+    {
+        var refused = LearningSessionErrors.ProgressTooFast(Session, ChapterId.From(Guid.CreateVersion7()));
+
+        var mapped = LearningSessionFailures.From(refused);
+
+        mapped.Code.ShouldBe("learning.progress-too-fast");
+        mapped.Status.ShouldBe(HttpStatusCode.UnprocessableEntity);
+    }
+
+    [Fact]
     public void A_lost_race_answers_409_session_changed()
     {
         var mapped = LearningSessionFailures.Changed(Session.Value);

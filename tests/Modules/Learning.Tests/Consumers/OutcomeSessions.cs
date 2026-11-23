@@ -33,6 +33,9 @@ internal sealed class OutcomeSessions
 
     public ChapterId Film { get; } = ChapterId.From(Guid.CreateVersion7());
 
+    /// <summary>How long the film runs.</summary>
+    public VideoDuration FilmDuration { get; } = VideoDuration.From(60);
+
     public static AttemptsExhaustedV1 Redelivered(AttemptsExhaustedV1 exhausted) => exhausted with { };
 
     public static TestPassedV1 Redelivered(TestPassedV1 passed) => passed with { };
@@ -54,9 +57,10 @@ internal sealed class OutcomeSessions
         var id = await StartedAsync();
         await ChangeAsync(id, session =>
         {
-            session.RecordProgress(Intro, ProgressPercent.Complete, Now());
-            session.RecordProgress(Handbook, ProgressPercent.Complete, Now());
-            session.RecordProgress(Film, ProgressPercent.Complete, Now());
+            session.RecordProgress(Intro, ProgressPercent.Complete, Option<VideoDuration>.None, Now()).IsSuccess.ShouldBeTrue();
+            session.RecordProgress(Handbook, ProgressPercent.Complete, Option<VideoDuration>.None, Now()).IsSuccess.ShouldBeTrue();
+            // The film was watched to the end since the session started (ADR 0024).
+            session.RecordProgress(Film, ProgressPercent.Complete, Option<VideoDuration>.Some(FilmDuration), Timestamp.From(Time.GetUtcNow().AddSeconds(FilmDuration.Value))).IsSuccess.ShouldBeTrue();
         });
         (await LoadAsync(id)).Status.ShouldBe(SessionStatus.ContentCompleted);
         return id;

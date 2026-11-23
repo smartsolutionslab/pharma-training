@@ -8,6 +8,11 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Tests.LearningSessio
 public class LearningSessionViewProjectionTests
 {
     private static readonly Timestamp Now = Timestamp.From(new DateTimeOffset(2027, 3, 1, 9, 0, 0, TimeSpan.Zero));
+
+    // The film's whole length after the start, and again after that: any gain on it is watched at a plausible pace by then (ADR 0024).
+    private static readonly Timestamp Later = Timestamp.From(Now.Value.AddSeconds(420));
+    private static readonly Timestamp Rewatched = Timestamp.From(Later.Value.AddSeconds(420));
+    private static readonly Option<VideoDuration> FilmDuration = Option<VideoDuration>.Some(VideoDuration.From(420));
     private static readonly ChapterId Intro = ChapterId.From(Guid.CreateVersion7());
     private static readonly ChapterId Handbook = ChapterId.From(Guid.CreateVersion7());
     private static readonly ChapterId Film = ChapterId.From(Guid.CreateVersion7());
@@ -48,11 +53,11 @@ public class LearningSessionViewProjectionTests
         CompleteAll(session);
         ShouldMatch(LearningSessionViews.Project(Pending(session)), session, (Intro, 100), (Handbook, 100), (Film, 100));
 
-        session.ReopenChapters(ExhaustionNotice.From(Guid.CreateVersion7()), [Film], Now);
+        session.ReopenChapters(ExhaustionNotice.From(Guid.CreateVersion7()), [Film], Later);
         ShouldMatch(LearningSessionViews.Project(Pending(session)), session, (Intro, 100), (Handbook, 100), (Film, 0));
 
-        session.RecordProgress(Film, ProgressPercent.Complete, Now);
-        session.Finish(Now);
+        session.RecordProgress(Film, ProgressPercent.Complete, FilmDuration, Rewatched);
+        session.Finish(Rewatched);
         ShouldMatch(LearningSessionViews.Project(Pending(session)), session, (Intro, 100), (Handbook, 100), (Film, 100));
     }
 
@@ -94,9 +99,9 @@ public class LearningSessionViewProjectionTests
 
     private static void CompleteAll(LearningSession session)
     {
-        session.RecordProgress(Intro, ProgressPercent.Complete, Now);
-        session.RecordProgress(Handbook, ProgressPercent.Complete, Now);
-        session.RecordProgress(Film, ProgressPercent.Complete, Now);
+        session.RecordProgress(Intro, ProgressPercent.Complete, Option<VideoDuration>.None, Now);
+        session.RecordProgress(Handbook, ProgressPercent.Complete, Option<VideoDuration>.None, Now);
+        session.RecordProgress(Film, ProgressPercent.Complete, FilmDuration, Later);
     }
 
     private static IReadOnlyList<IDomainEvent> Pending(LearningSession session) => ((IEventSourced)session).PendingEvents;

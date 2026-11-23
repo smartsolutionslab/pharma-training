@@ -151,13 +151,14 @@ public class LearningTestOutcomesTests(AspireFixture aspire)
     /// <summary>A session of a newly published version that the learner worked through: text and PDF to the end, the video to 95 %.</summary>
     private async Task<CompletedSession> CompletedSessionAsync(HttpClient client, CancellationToken cancellationToken)
     {
-        var published = Published(Guid.CreateVersion7());
+        var published = Published(Guid.CreateVersion7(), ShortVideoSeconds);
         await DeliverAsync(aspire, published, cancellationToken);
         using var started = await StartAsync(client, published.CourseVersionId, cancellationToken);
         started.StatusCode.ShouldBe(HttpStatusCode.Created, await started.Content.ReadAsStringAsync(cancellationToken));
         var session = await BodyOfAsync(started, cancellationToken);
         await ReportOkAsync(client, session.Id, ChapterOf(published, "Text"), 100, cancellationToken);
         await ReportOkAsync(client, session.Id, ChapterOf(published, "Pdf"), 100, cancellationToken);
+        await Task.Delay(ShortVideoWatched, cancellationToken);
         await ReportOkAsync(client, session.Id, ChapterOf(published, "Video"), 95, cancellationToken);
         (await ReadAsync(client, session.Id, cancellationToken)).Status.ShouldBe("ContentCompleted");
         return new CompletedSession(session.Id, published);

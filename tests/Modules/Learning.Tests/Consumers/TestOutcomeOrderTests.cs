@@ -53,7 +53,7 @@ public class TestOutcomeOrderTests
         await PassAsync(session);
         var stored = sessions.Stream(session).Count;
 
-        var reported = await new ReportProgressHandler(sessions.Store, sessions.Store, sessions.Time).HandleAsync(
+        var reported = await new ReportProgressHandler(sessions.Store, sessions.Store, new InMemoryCourseVersionCopies(), sessions.Time).HandleAsync(
             new ReportProgress(session, sessions.Learner, sessions.Film, ProgressPercent.Complete),
             TestContext.Current.CancellationToken);
 

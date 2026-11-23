@@ -14,6 +14,9 @@ public sealed class LearningSession : EventSourcedAggregate<LearningSessionId>
     private readonly HashSet<ChapterId> completed = [];
     private readonly HashSet<ExhaustionNotice> notices = [];
 
+    // The session's clock for the video pace (ADR 0024): its last recorded activity, moved only by what is stored.
+    private Timestamp lastRecordedAt = null!;
+
     // Only loading creates an empty session, which its first event fills.
     private LearningSession()
     {
@@ -59,9 +62,11 @@ public sealed class LearningSession : EventSourcedAggregate<LearningSessionId>
 
     /// <summary>
     /// The client reports progress in batches (on pause, at the end of a chapter, at most every 30 s).
-    /// Only real progress is stored, so a replayed or older report changes nothing.
+    /// Only real progress is stored, so a replayed or older report changes nothing. A video's gain is refused with
+    /// <see cref="ProgressTooFast"/> when watching it at 1.25 times speed does not fit into the time since the session's
+    /// last recorded progress in any chapter (ADR 0024); the duration comes from the caller, none for text and PDF.
     /// </summary>
-    public Result<Unit, RecordProgressError> RecordProgress(ChapterId chapter, ProgressPercent reported, Timestamp now)
+    public Result<Unit, RecordProgressError> RecordProgress(ChapterId chapter, ProgressPercent reported, Option<VideoDuration> duration, Timestamp now)
     {
         Ensure.That(chapter).IsNotNull();
         Ensure.That(reported).IsNotNull();
@@ -80,6 +85,20 @@ public sealed class LearningSession : EventSourcedAggregate<LearningSessionId>
         if (reported <= progress[chapter])
         {
             return Success(Unit.Value);
+        }
+
+        if (kind == ChapterKind.Video)
+        {
+            // Learning's copy refuses a video chapter without a duration, so its absence here is broken data.
+            if (!duration.HasValue)
+            {
+                throw new InvalidOperationException($"Session {Id.Value} has no duration for its video chapter {chapter.Value}.");
+            }
+
+            if (!VideoPace.Allows(progress[chapter], reported, duration.Value, lastRecordedAt, now))
+            {
+                return Failure(LearningSessionErrors.ProgressTooFast(Id, chapter));
+            }
         }
 
         Raise(new ChapterProgressRecorded(Id, chapter, reported, now));
@@ -158,6 +177,7 @@ public sealed class LearningSession : EventSourcedAggregate<LearningSessionId>
         Course = started.Course;
         CourseVersion = started.CourseVersion;
         Status = SessionStatus.InProgress;
+        lastRecordedAt = started.StartedAt;
 
         foreach (var chapter in started.TextChapters)
         {
@@ -180,7 +200,11 @@ public sealed class LearningSession : EventSourcedAggregate<LearningSessionId>
         }
     }
 
-    private void Apply(ChapterProgressRecorded recorded) => progress[recorded.Chapter] = recorded.Progress;
+    private void Apply(ChapterProgressRecorded recorded)
+    {
+        progress[recorded.Chapter] = recorded.Progress;
+        lastRecordedAt = recorded.RecordedAt;
+    }
 
     private void Apply(ChapterCompleted chapterCompleted) => completed.Add(chapterCompleted.Chapter);
 
@@ -195,6 +219,7 @@ public sealed class LearningSession : EventSourcedAggregate<LearningSessionId>
         }
 
         Status = SessionStatus.InProgress;
+        lastRecordedAt = reopened.ReopenedAt;
     }
 
     private void Apply(SessionFinished finished) => Status = SessionStatus.Finished;
