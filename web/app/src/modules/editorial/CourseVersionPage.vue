@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { BookOpen } from '@lucide/vue';
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, ref, useTemplateRef, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { z } from 'zod';
@@ -23,6 +23,7 @@ import { inboxStatuses } from './inboxQuery';
 import { publishChecklist, type PublishRefusal } from './publishChecklist';
 import PublishChecklist from './PublishChecklist.vue';
 import RemoveChapterDialog from './RemoveChapterDialog.vue';
+import ReturnHistory from './ReturnHistory.vue';
 import ReturnVersionDialog from './ReturnVersionDialog.vue';
 import { useChapterMutations } from './useChapterMutations';
 import { useCourseVersionWorkflow, type WorkflowResult } from './useCourseVersionWorkflow';
@@ -42,6 +43,8 @@ const { add, replace, remove, isSaving } = useChapterMutations(id);
 const { reorder } = useReorderChapters(id);
 const { draftNext } = useDraftNextVersion(id);
 const workflow = useCourseVersionWorkflow(id);
+/** The version's return history: a return taken shows on its first page. */
+const returnHistory = useTemplateRef<InstanceType<typeof ReturnHistory>>('returnHistory');
 const { t } = useI18n();
 
 /** The chapter form while it is open: with the chapter it replaces, or none to add one. */
@@ -244,6 +247,9 @@ async function take(
     closeDialogs();
     focusWhenReady.value = [headingId];
     notify.success(translate(takenKeys[action], { number: before.number }));
+    if (action === 'return') {
+      returnHistory.value?.showFirstPage();
+    }
     return 'done';
   }
   const failure = workflowFailure(action, result.error);
@@ -395,6 +401,7 @@ async function confirmRemove(chapter: EditorialChapterDto) {
           </Button>
         </div>
       </section>
+      <ReturnHistory ref="returnHistory" :version-id="id" />
       <section aria-labelledby="course-version-chapters" class="flex flex-col gap-4">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <h2 id="course-version-chapters">{{ t('editorial.chapters.title') }}</h2>
