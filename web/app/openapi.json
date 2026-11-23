@@ -1669,6 +1669,36 @@
         }
       }
     },
+    "/learning/media/{chapterId}": {
+      "get": {
+        "tags": [
+          "LearningMediaEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "chapterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningMediaUrlDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/learning/sessions": {
       "post": {
         "tags": [
@@ -3586,6 +3616,31 @@
           "Video"
         ]
       },
+      "LearningMediaUrlDto": {
+        "required": [
+          "url",
+          "expiresAt",
+          "contentType",
+          "kind"
+        ],
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "contentType": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/LearningChapterKind"
+          }
+        }
+      },
       "LearningSampleDto": {
         "required": [
           "id",
@@ -4394,6 +4449,9 @@
     },
     {
       "name": "MemberEndpoints"
+    },
+    {
+      "name": "LearningMediaEndpoints"
     },
     {
       "name": "LearningSessionEndpoints"

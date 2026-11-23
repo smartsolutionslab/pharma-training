@@ -1,4 +1,5 @@
 using System.Text.Json;
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Storage;
 using SmartSolutionsLab.PharmaTraining.Contracts;
 using SmartSolutionsLab.PharmaTraining.Contracts.Editorial;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.IntegrationEvents;
@@ -98,6 +99,59 @@ public class IntegrationEventMappingsTests
         multiple.Select(option => option.AnswerOptionId).ShouldBe([.. stored[1].Options.Select(option => option.Id.Value)]);
         multiple.Select(option => option.Text).ShouldBe(["Lieferung", "Lagerung", "Verkaufsraum"]);
         multiple.Select(option => option.IsCorrect).ShouldBe([true, true, false]);
+    }
+
+    /// <summary>
+    /// #41: Learning signs only for its own container, so Editorial releases each PDF and video chapter's file with a read
+    /// URL it signed on its own blob, which Learning copies from; in chapter order, each with the URL's expiry.
+    /// </summary>
+    [Fact]
+    public void ChapterFilesReleasedV1_lists_each_pdf_and_video_chapter_with_its_read_url_and_expiry()
+    {
+        var version = PublishedWithEveryKind(out _, out var pdf, out var video);
+        var pdfUrl = new BlobUrl(new Uri("https://blobs.example/editorial-blobs/courses/kuehlkette/merkblatt.pdf?sp=r&sig=pdf"), new DateTimeOffset(2027, 3, 1, 9, 15, 0, TimeSpan.Zero));
+        var videoUrl = new BlobUrl(new Uri("https://blobs.example/editorial-blobs/courses/kuehlkette/praxis.mp4?sp=r&sig=video"), new DateTimeOffset(2027, 3, 1, 9, 14, 59, TimeSpan.Zero));
+        Dictionary<ChapterId, BlobUrl> readUrls = new() { [video] = videoUrl, [pdf] = pdfUrl };
+
+        var released = version.ToChapterFilesReleasedV1(readUrls);
+
+        released.CourseVersionId.ShouldBe(version.Id.Value);
+        released.Files.ShouldBe(
+        [
+            new ReleasedChapterFileV1(pdf.Value, ChapterKindV1.Pdf, pdfUrl.Url, pdfUrl.ExpiresAt),
+            new ReleasedChapterFileV1(video.Value, ChapterKindV1.Video, videoUrl.Url, videoUrl.ExpiresAt),
+        ]);
+    }
+
+    [Fact]
+    public void ChapterFilesReleasedV1_leaves_out_text_chapters()
+    {
+        var version = PublishedWithEveryKind(out var text, out var pdf, out var video);
+        var expiresAt = new DateTimeOffset(2027, 3, 1, 9, 15, 0, TimeSpan.Zero);
+        Dictionary<ChapterId, BlobUrl> readUrls = new()
+        {
+            [pdf] = new BlobUrl(new Uri("https://blobs.example/editorial-blobs/merkblatt.pdf?sig=pdf"), expiresAt),
+            [video] = new BlobUrl(new Uri("https://blobs.example/editorial-blobs/praxis.mp4?sig=video"), expiresAt),
+        };
+
+        var released = version.ToChapterFilesReleasedV1(readUrls);
+
+        released.Files.Select(file => file.ChapterId).ShouldBe([pdf.Value, video.Value]);
+        released.Files.ShouldNotContain(file => file.ChapterId == text.Value);
+        released.Files.Select(file => file.Kind).ShouldNotContain(ChapterKindV1.Text);
+    }
+
+    /// <summary>A released file Learning could not copy is a bug of the publish, not a message to send without it.</summary>
+    [Fact]
+    public void A_file_chapter_without_a_signed_url_is_refused()
+    {
+        var version = PublishedWithEveryKind(out _, out var pdf, out _);
+        Dictionary<ChapterId, BlobUrl> onlyThePdf = new()
+        {
+            [pdf] = new BlobUrl(new Uri("https://blobs.example/editorial-blobs/merkblatt.pdf?sig=pdf"), new DateTimeOffset(2027, 3, 1, 9, 15, 0, TimeSpan.Zero)),
+        };
+
+        Should.Throw<GuardException>(() => version.ToChapterFilesReleasedV1(onlyThePdf));
     }
 
     /// <summary>docs/domain/README.md: "höchstens 3 Versuche", later perhaps configurable; fixed for MVP 1.</summary>
