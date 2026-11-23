@@ -22,6 +22,7 @@
 ## Consequences
 
 - Of any reports racing on one session, one append lands, so each chapter completes and the content completes at most once per cycle, and only the winner publishes `ContentCompletedV1`.
+- The announcement (`ContentCompletedV1`, and `LearningSessionStartedV1` for a new session) is committed to the outbox in a second transaction after the append, and the request's cancellation no longer reaches it: a caller who goes away after the save does not lose it. A process crash between the append and the outbox commit still loses it, as the fabric ADR accepts.
 - A learner's client sees an occasional `409 learning.session-changed` when two of its reports overlap; it reports again.
 - Assessment's event-sourced use cases keep `500` for a lost append until they opt in the same way.
 - A Marten upgrade may rename the refusal's exception; the integration test above fails with a `500` if it does.
