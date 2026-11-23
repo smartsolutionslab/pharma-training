@@ -128,6 +128,42 @@ public class AppHostPublishParametersTests
         PublishedBicep.SecureParameters(bicep.Module("postgres")).ShouldContain("database_roles_key", "postgres/postgres.bicep does not receive database_roles_key as a @secure() parameter.");
     }
 
+    /// <summary>
+    /// Every module role's password is <c>guid(database_roles_key, '&lt;module&gt;')</c>, so the key is all that stands
+    /// between a guess and every role: publishing (and so deploying) refuses one under 32 characters, naming the parameter,
+    /// rather than leave it to a Bicep <c>@minLength</c> that only fires once Azure deploys.
+    /// </summary>
+    [Fact]
+    public async Task Publishing_refuses_a_database_roles_key_under_32_characters()
+    {
+        var refused = await Should.ThrowAsync<Exception>(
+            () => PublishedAppHost.PublishAsync(PublishedAppHost.Staging, new Dictionary<string, string>(StringComparer.Ordinal) { ["database-roles-key"] = new string('k', 31) }, TestContext.Current.CancellationToken),
+            "Publishing succeeded with a database-roles-key of 31 characters.");
+
+        refused.ToString().ShouldContain("database-roles-key", Case.Sensitive, $"The failure does not name database-roles-key: {refused}");
+    }
+
+    /// <summary>
+    /// frontend-url is the web app's public origin, which the storage account's CORS rule allows and mail links lead to: an
+    /// https origin, scheme and host alone, no path, no trailing slash, no query and no wildcard. Anything else fails the
+    /// publish, naming the parameter.
+    /// </summary>
+    [Theory]
+    [InlineData("http://app.example")]
+    [InlineData("https://app.example/")]
+    [InlineData("https://app.example/app")]
+    [InlineData("https://app.example?tenant=a")]
+    [InlineData("https://*.example")]
+    [InlineData("app.example")]
+    public async Task Publishing_refuses_a_frontend_url_that_is_no_https_origin(string frontendUrl)
+    {
+        var refused = await Should.ThrowAsync<Exception>(
+            () => PublishedAppHost.PublishAsync(PublishedAppHost.Staging, new Dictionary<string, string>(StringComparer.Ordinal) { ["frontend-url"] = frontendUrl }, TestContext.Current.CancellationToken),
+            $"Publishing succeeded with the frontend-url '{frontendUrl}'.");
+
+        refused.ToString().ShouldContain("frontend-url", Case.Sensitive, $"The failure does not name frontend-url: {refused}");
+    }
+
     [Fact]
     public async Task No_container_app_receives_a_secret_as_a_plain_value()
     {
