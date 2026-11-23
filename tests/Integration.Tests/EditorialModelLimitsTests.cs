@@ -6,15 +6,14 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// <summary>
 /// An editor over the limit on an endpoint that calls the model (#174) gets 429 through the edge, with
 /// <c>Retry-After</c> and the module's code <c>editorial.model-limit-reached</c>, while another editor is still served
-/// and a caller without a token or the policy is refused as before, never counted. The run lowers both day limits to 5
-/// (AspireFixture); each test uses <c>editor-b</c> on its own endpoint. This run has no model (ADR 0001), so each
-/// counted call answers 503 model-not-configured until the limit takes its place.
+/// and a caller without a token or the policy is refused as before, never counted. The run sets every limit to
+/// <see cref="AspireFixture.EditorialModelLimit"/>; each test spends it as <c>editor-b</c>, whom no other test calls the
+/// model as, on its own endpoint, so neither depends on how often other tests call it as <c>editor</c>. This run has no
+/// model (ADR 0001), so each counted call answers 503 model-not-configured until the limit takes its place.
 /// </summary>
 [Collection(EditorialDrafts.Name)]
 public class EditorialModelLimitsTests(AspireFixture aspire)
 {
-    private const int DayLimitOfThisRun = 5;
-
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
 
     [Fact]
@@ -30,10 +29,10 @@ public class EditorialModelLimitsTests(AspireFixture aspire)
         var cancellationToken = TestContext.Current.CancellationToken;
         using var editorB = await aspire.CreateHostClientAsync("editor-b");
 
-        for (var call = 1; call <= DayLimitOfThisRun; call++)
+        for (var call = 1; call <= AspireFixture.EditorialModelLimit; call++)
         {
             using var counted = await editorB.PostAsync(route(Guid.CreateVersion7()), null, cancellationToken);
-            counted.StatusCode.ShouldNotBe(HttpStatusCode.TooManyRequests, $"call {call} of {DayLimitOfThisRun} is within the limit");
+            counted.StatusCode.ShouldNotBe(HttpStatusCode.TooManyRequests, $"call {call} of {AspireFixture.EditorialModelLimit} is within the limit");
         }
 
         using var refused = await editorB.PostAsync(route(Guid.CreateVersion7()), null, cancellationToken);

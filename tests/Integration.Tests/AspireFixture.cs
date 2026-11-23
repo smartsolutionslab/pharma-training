@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
@@ -14,6 +15,9 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// <summary>The whole application, started once per test run on empty containers.</summary>
 public sealed partial class AspireFixture : IAsyncLifetime
 {
+    /// <summary>Every editorial model limit of this run, per minute and per day, for content review and test draft alike.</summary>
+    public const int EditorialModelLimit = 50;
+
     // Twice the largest start-up of the green CI runs listed in #134 (204 s), rounded up to the minute. Before #126 the
     // edge and every service host were rebuilt at each start, which took 3.5 to over 5 minutes; now every project starts
     // from the AppHost's build. The fixture logs each run's start-up beside this limit.
@@ -47,12 +51,15 @@ public sealed partial class AspireFixture : IAsyncLifetime
         builder.Configuration["Parameters:azure-openai-endpoint"] = string.Empty;
         builder.Configuration["Parameters:azure-openai-api-key"] = string.Empty;
 
-        // The run lowers the editorial day limits on the model's endpoints (docs/adr/0020) so EditorialModelLimitsTests
-        // reaches them with editor-b. The editor calls each model endpoint at most 4 times in the whole run (2 + 1 content
-        // reviews, 3 + 1 test drafts): keep it under 5 when adding tests.
-        builder.CreateResourceBuilder(builder.Resources.OfType<ProjectResource>().Single(resource => resource.Name == "editorial"))
-            .WithEnvironment("Editorial__ModelLimits__ContentReview__PerDay", "5")
-            .WithEnvironment("Editorial__ModelLimits__TestDraft__PerDay", "5");
+        // The run sets every editorial model limit (docs/adr/0020) to EditorialModelLimit, a minute and a day alike, so
+        // EditorialModelLimitsTests reaches it with editor-b, a user only they call the model as. Every other test shares
+        // the editor's budget, which this leaves far above what they use (a handful of calls per endpoint in the whole run),
+        // and above the default 10 a minute, so no test is refused for another's calls.
+        var editorial = builder.CreateResourceBuilder(builder.Resources.OfType<ProjectResource>().Single(resource => resource.Name == "editorial"));
+        foreach (var setting in new[] { "ContentReview__PerMinute", "ContentReview__PerDay", "TestDraft__PerMinute", "TestDraft__PerDay" })
+        {
+            editorial.WithEnvironment($"Editorial__ModelLimits__{setting}", EditorialModelLimit.ToString(CultureInfo.InvariantCulture));
+        }
 
         app = await builder.BuildAsync(timeout.Token);
         await app.StartAsync(timeout.Token);
