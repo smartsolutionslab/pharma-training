@@ -73,6 +73,7 @@ Keycloak imports these from `src/AppHost/realms/realm.json`, development only. E
 - `visitor`: no role.
 - `editor`: the realm role `editor`, the platform's editors (the Redaktion), which `editorial.edit` requires.
 - `owner`, `employee-a`, `employee-b`: no realm role; their pharmacy roles (owner, employee) come from the Organisation module, not from Keycloak.
+- `former-employee`: no realm role; the integration tests make her a member of a pharmacy in Learning and end it, so she is always a former member there (#194).
 
 The development realm allows self-registration: Keycloak's login page has a Register link, and an account created there (or through the admin API) must verify its address before it can sign in. Keycloak mails the verification link to Mailpit (http://localhost:8025). The imported users are not asked to verify, `unverified` (whose address Keycloak has not verified) included. The published realm (#114) keeps registration closed (`registrationAllowed: false`) until #158 (limits on invitation mail) is merged, brute-force detection and bot protection on the registration form are on, and account enumeration on register has been considered ([ADR 0014](docs/adr/0014-the-invitation-links-token-crosses-the-sign-in-in-session-storage.md)).
 

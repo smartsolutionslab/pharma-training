@@ -12,7 +12,8 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// A running session across the life of its course version, with Editorial's real publish, supersede and retire
 /// (README: "Begonnene Durchläufe bleiben auf der alten Version, nicht begonnene wechseln auf die neue"; Retire:
 /// "laufende Durchläufe bleiben gültig"). Learning changes nothing when its version is superseded or retired: resuming
-/// answers the same session on its own version, and the newer version starts a session of its own.
+/// answers the same session on its own version, and the newer version starts a session of its own. The learner is made
+/// a member of a pharmacy first, since only an active member may learn (#194).
 /// </summary>
 [Collection(EditorialDrafts.Name)]
 public class LearningCourseVersionLifecycleTests(AspireFixture aspire)
@@ -26,6 +27,7 @@ public class LearningCourseVersionLifecycleTests(AspireFixture aspire)
         var cancellationToken = TestContext.Current.CancellationToken;
         using var editor = await aspire.CreateHostClientAsync("editor");
         using var learner = await aspire.CreateHostClientAsync("employee-a");
+        await MemberAsync(aspire, SubjectOf(learner), cancellationToken);
         var v1 = await PublishedAsync(editor, cancellationToken);
         await WaitUntilHeldAsync(aspire, v1.Id, cancellationToken);
         using var started = await StartAsync(learner, v1.Id, cancellationToken);
@@ -62,6 +64,7 @@ public class LearningCourseVersionLifecycleTests(AspireFixture aspire)
         var cancellationToken = TestContext.Current.CancellationToken;
         using var editor = await aspire.CreateHostClientAsync("editor");
         using var learner = await aspire.CreateHostClientAsync("employee-a");
+        await MemberAsync(aspire, SubjectOf(learner), cancellationToken);
         var v1 = await PublishedAsync(editor, cancellationToken);
         await WaitUntilHeldAsync(aspire, v1.Id, cancellationToken);
         using var started = await StartAsync(learner, v1.Id, cancellationToken);
