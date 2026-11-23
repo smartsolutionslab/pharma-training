@@ -2,7 +2,7 @@ import { expect, test } from 'vitest';
 import { type MessageKey, setLanguage, t } from '@/i18n';
 
 // The chapter player's texts (#44), each a key in both catalogs (ADR 0007), German with Sie. The video's keys came with
-// T4 and the PDF's with T5 (its page buttons beyond the spec's table); next/previous come with T6.
+// T4 and the PDF's with T5 (its page buttons beyond the spec's table); next/previous with T6.
 const texts: Record<string, { de: string; en: string }> = {
   'modules.learning.details.player.title': { de: 'Schulung', en: 'Course' },
   'learning.player.loadFailed': {
@@ -23,6 +23,8 @@ const texts: Record<string, { de: string; en: string }> = {
   'learning.player.state.done': { de: 'Erledigt', en: 'Done' },
   'learning.player.state.progress': { de: '{percent} bearbeitet', en: '{percent} done' },
   'learning.player.state.open': { de: 'Offen', en: 'Not started' },
+  'learning.player.next': { de: 'Nächstes Kapitel', en: 'Next chapter' },
+  'learning.player.previous': { de: 'Vorheriges Kapitel', en: 'Previous chapter' },
   'learning.player.chapterDone': { de: 'Kapitel „{title}“ erledigt.', en: 'Chapter “{title}” done.' },
   'learning.player.contentCompleted': {
     de: 'Sie haben alle Kapitel bearbeitet. Der Test ist jetzt freigeschaltet.',
