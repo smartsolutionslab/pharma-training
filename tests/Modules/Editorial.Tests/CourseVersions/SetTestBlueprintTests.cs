@@ -55,6 +55,7 @@ public class SetTestBlueprintTests
         reset.Id.ShouldBe(question);
         reset.Review.ShouldBe(ReviewState.Unreviewed);
         reset.ReviewedBy.ShouldBeNull();
+        reset.ReviewedByName.ShouldBeNull();
         await unitOfWork.Received(1).TryCommitAsync(Arg.Any<CancellationToken>());
     }
 

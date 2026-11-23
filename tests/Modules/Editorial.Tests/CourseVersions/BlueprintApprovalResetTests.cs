@@ -161,6 +161,7 @@ public class BlueprintApprovalResetTests
             question.Review.ShouldBe(ReviewState.Unreviewed, $"question {question.Id} kept its approval");
             question.ReviewedBy.ShouldBeNull();
             question.ReviewedAt.ShouldBeNull();
+            question.ReviewedByName.ShouldBeNull();
         }
     }
 
