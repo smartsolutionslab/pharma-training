@@ -44,6 +44,10 @@ internal static class AssessmentDatabase
     public static SentCompletion Completed(Guid courseVersionId) =>
         new(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), courseVersionId, NewMetadata());
 
+    /// <summary>The person completed the content of a new session of a course version: their examination opens.</summary>
+    public static SentCompletion Completed(Guid courseVersionId, Guid personId) =>
+        new(Guid.CreateVersion7(), personId, Guid.CreateVersion7(), courseVersionId, NewMetadata());
+
     /// <summary>Sends the event under a new envelope id and waits until Assessment's inbox has handled it.</summary>
     public static async Task DeliverAsync<T>(AspireFixture aspire, string type, T message, CancellationToken cancellationToken)
     {
