@@ -8,10 +8,13 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// <summary>
 /// Starting or resuming a learning session through the edge (story L1): a learner's first start creates the session
 /// on the version Learning holds, every later one answers the same session until it is finished, and a session is
-/// read only by its learner. Each test sends its own version's announcement and waits until Learning handled it.
+/// read only by its learner, who alone reports progress on it (story L2). Each test sends its own version's
+/// announcement and waits until Learning handled it.
 /// </summary>
 public class LearningSessionsTests(AspireFixture aspire)
 {
+    private const int ConcurrentReports = 20;
+
     [Fact]
     public async Task Starting_a_session_answers_201_with_its_location_and_every_chapter_open()
     {
@@ -156,6 +159,232 @@ public class LearningSessionsTests(AspireFixture aspire)
 
         started.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
         read.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task Without_a_token_reporting_answers_401()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = aspire.CreateHostClient();
+
+        using var reported = await ReportProgressAsync(client, Guid.CreateVersion7(), Guid.CreateVersion7(), 50, cancellationToken);
+
+        reported.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task Reporting_progress_answers_200_with_the_chapter_at_its_new_percent()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var published = await PublishedToLearningAsync(cancellationToken);
+        using var client = await aspire.CreateHostClientAsync("employee-a");
+        var session = await StartedAsync(client, published, cancellationToken);
+        var film = ChapterOf(published, "Video");
+
+        using var reported = await ReportProgressAsync(client, session.Id, film, 60, cancellationToken);
+
+        reported.StatusCode.ShouldBe(HttpStatusCode.OK, await reported.Content.ReadAsStringAsync(cancellationToken));
+        var body = await BodyOfAsync(reported, cancellationToken);
+        body.Id.ShouldBe(session.Id);
+        body.Status.ShouldBe("InProgress");
+        var chapter = body.Chapters.Single(chapter => chapter.ChapterId == film);
+        chapter.ProgressPercent.ShouldBe(60);
+        chapter.Completed.ShouldBeFalse();
+        body.Chapters.Where(other => other.ChapterId != film).ShouldAllBe(other => other.ProgressPercent == 0 && !other.Completed);
+
+        using var read = await ReadSessionAsync(client, session.Id, cancellationToken);
+        ShouldDescribeTheSame(await BodyOfAsync(read, cancellationToken), body);
+    }
+
+    [Fact]
+    public async Task An_older_or_repeated_report_answers_200_and_stores_no_event()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var published = await PublishedToLearningAsync(cancellationToken);
+        using var client = await aspire.CreateHostClientAsync("employee-a");
+        var session = await StartedAsync(client, published, cancellationToken);
+        var film = ChapterOf(published, "Video");
+        using (var first = await ReportProgressAsync(client, session.Id, film, 60, cancellationToken))
+        {
+            first.StatusCode.ShouldBe(HttpStatusCode.OK, await first.Content.ReadAsStringAsync(cancellationToken));
+        }
+
+        var stored = await EventsInAsync(session.Id, cancellationToken);
+
+        using var older = await ReportProgressAsync(client, session.Id, film, 40, cancellationToken);
+        using var repeated = await ReportProgressAsync(client, session.Id, film, 60, cancellationToken);
+
+        older.StatusCode.ShouldBe(HttpStatusCode.OK, await older.Content.ReadAsStringAsync(cancellationToken));
+        repeated.StatusCode.ShouldBe(HttpStatusCode.OK, await repeated.Content.ReadAsStringAsync(cancellationToken));
+        (await BodyOfAsync(older, cancellationToken)).Chapters.Single(chapter => chapter.ChapterId == film).ProgressPercent.ShouldBe(60);
+        (await BodyOfAsync(repeated, cancellationToken)).Chapters.Single(chapter => chapter.ChapterId == film).ProgressPercent.ShouldBe(60);
+        (await EventsInAsync(session.Id, cancellationToken)).ShouldBe(stored);
+    }
+
+    [Fact]
+    public async Task Text_and_pdf_complete_at_100_and_video_at_95()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var published = await PublishedToLearningAsync(cancellationToken);
+        using var client = await aspire.CreateHostClientAsync("employee-a");
+        var session = await StartedAsync(client, published, cancellationToken);
+
+        foreach (var (kind, below, threshold) in new[] { ("Text", 99, 100), ("Pdf", 99, 100), ("Video", 94, 95) })
+        {
+            var chapter = ChapterOf(published, kind);
+
+            using var belowThreshold = await ReportProgressAsync(client, session.Id, chapter, below, cancellationToken);
+            belowThreshold.StatusCode.ShouldBe(HttpStatusCode.OK, await belowThreshold.Content.ReadAsStringAsync(cancellationToken));
+            (await BodyOfAsync(belowThreshold, cancellationToken)).Chapters.Single(answered => answered.ChapterId == chapter).Completed.ShouldBeFalse($"{kind} at {below} %");
+
+            using var reached = await ReportProgressAsync(client, session.Id, chapter, threshold, cancellationToken);
+            reached.StatusCode.ShouldBe(HttpStatusCode.OK, await reached.Content.ReadAsStringAsync(cancellationToken));
+            (await BodyOfAsync(reached, cancellationToken)).Chapters.Single(answered => answered.ChapterId == chapter).Completed.ShouldBeTrue($"{kind} at {threshold} %");
+        }
+
+        using var read = await ReadSessionAsync(client, session.Id, cancellationToken);
+        (await BodyOfAsync(read, cancellationToken)).Status.ShouldBe("ContentCompleted");
+    }
+
+    [Fact]
+    public async Task Reporting_on_another_persons_session_answers_404()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var published = await PublishedToLearningAsync(cancellationToken);
+        using var employeeA = await aspire.CreateHostClientAsync("employee-a");
+        using var employeeB = await aspire.CreateHostClientAsync("employee-b");
+        var session = await StartedAsync(employeeA, published, cancellationToken);
+        var stored = await EventsInAsync(session.Id, cancellationToken);
+
+        using var reported = await ReportProgressAsync(employeeB, session.Id, ChapterOf(published, "Text"), 100, cancellationToken);
+
+        reported.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        (await CodeOfAsync(reported, cancellationToken)).ShouldBe("learning.session-not-found");
+        (await EventsInAsync(session.Id, cancellationToken)).ShouldBe(stored);
+    }
+
+    [Fact]
+    public async Task Reporting_on_an_unknown_or_empty_session_answers_404()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("employee-a");
+
+        using var unknown = await ReportProgressAsync(client, Guid.CreateVersion7(), Guid.CreateVersion7(), 50, cancellationToken);
+        using var empty = await ReportProgressAsync(client, Guid.Empty, Guid.CreateVersion7(), 50, cancellationToken);
+
+        unknown.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        (await CodeOfAsync(unknown, cancellationToken)).ShouldBe("learning.session-not-found");
+        empty.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        (await CodeOfAsync(empty, cancellationToken)).ShouldBe("learning.session-not-found");
+    }
+
+    [Fact]
+    public async Task A_chapter_of_another_version_answers_422()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var published = await PublishedToLearningAsync(cancellationToken);
+        var other = await PublishedToLearningAsync(cancellationToken);
+        using var client = await aspire.CreateHostClientAsync("employee-a");
+        var session = await StartedAsync(client, published, cancellationToken);
+        var stored = await EventsInAsync(session.Id, cancellationToken);
+
+        using var reported = await ReportProgressAsync(client, session.Id, ChapterOf(other, "Text"), 100, cancellationToken);
+
+        reported.StatusCode.ShouldBe(HttpStatusCode.UnprocessableEntity, await reported.Content.ReadAsStringAsync(cancellationToken));
+        (await CodeOfAsync(reported, cancellationToken)).ShouldBe("learning.chapter-not-in-course");
+        (await EventsInAsync(session.Id, cancellationToken)).ShouldBe(stored);
+    }
+
+    [Fact]
+    public async Task A_percent_outside_0_to_100_answers_400_invalid_argument()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var published = await PublishedToLearningAsync(cancellationToken);
+        using var client = await aspire.CreateHostClientAsync("employee-a");
+        var session = await StartedAsync(client, published, cancellationToken);
+        var text = ChapterOf(published, "Text");
+
+        using var above = await ReportProgressAsync(client, session.Id, text, 101, cancellationToken);
+        using var below = await ReportProgressAsync(client, session.Id, text, -1, cancellationToken);
+        using var noChapter = await ReportProgressAsync(client, session.Id, Guid.Empty, 50, cancellationToken);
+
+        above.StatusCode.ShouldBe(HttpStatusCode.BadRequest, await above.Content.ReadAsStringAsync(cancellationToken));
+        (await CodeOfAsync(above, cancellationToken)).ShouldBe("invalid-argument");
+        below.StatusCode.ShouldBe(HttpStatusCode.BadRequest, await below.Content.ReadAsStringAsync(cancellationToken));
+        (await CodeOfAsync(below, cancellationToken)).ShouldBe("invalid-argument");
+        noChapter.StatusCode.ShouldBe(HttpStatusCode.BadRequest, await noChapter.Content.ReadAsStringAsync(cancellationToken));
+        (await CodeOfAsync(noChapter, cancellationToken)).ShouldBe("invalid-argument");
+    }
+
+    /// <summary>
+    /// Reports racing on one session load the same version of its stream; only one append lands, and every other one is
+    /// told the session changed. Each chapter completes, and the content, at most once whatever the interleaving.
+    /// </summary>
+    [Fact]
+    public async Task Concurrent_reports_on_one_session_answer_200_or_409_and_never_500()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var published = await PublishedToLearningAsync(cancellationToken);
+        using var client = await aspire.CreateHostClientAsync("employee-a");
+        var session = await StartedAsync(client, published, cancellationToken);
+        var chapters = published.Chapters.OrderBy(chapter => chapter.Position).Select(chapter => chapter.ChapterId).ToList();
+
+        var responses = await Task.WhenAll(Enumerable.Range(0, ConcurrentReports)
+            .Select(report => ReportProgressAsync(client, session.Id, chapters[report % chapters.Count], Math.Min(100, 10 + (5 * report)), cancellationToken)));
+        try
+        {
+            foreach (var response in responses)
+            {
+                var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                response.StatusCode.ShouldBeOneOf([HttpStatusCode.OK, HttpStatusCode.Conflict], body);
+                if (response.StatusCode == HttpStatusCode.Conflict)
+                {
+                    (await CodeOfAsync(response, cancellationToken)).ShouldBe("learning.session-changed");
+                }
+            }
+        }
+        finally
+        {
+            foreach (var response in responses)
+            {
+                response.Dispose();
+            }
+        }
+
+        (await CountAsync(aspire, "select count(*) from learning.mt_events where stream_id = @id and type = 'content_completed'", session.Id, cancellationToken))
+            .ShouldBeLessThanOrEqualTo(1);
+        var completedChapters = await CountAsync(aspire, "select count(*) from learning.mt_events where stream_id = @id and type = 'chapter_completed'", session.Id, cancellationToken);
+        completedChapters.ShouldBeLessThanOrEqualTo(chapters.Count);
+        foreach (var chapter in chapters)
+        {
+            (await ChapterCompletionsAsync(session.Id, chapter, cancellationToken)).ShouldBeLessThanOrEqualTo(1, $"chapter {chapter}");
+        }
+
+        using var read = await ReadSessionAsync(client, session.Id, cancellationToken);
+        (await BodyOfAsync(read, cancellationToken)).Chapters.Count(chapter => chapter.Completed).ShouldBe((int)completedChapters);
+    }
+
+    private static Guid ChapterOf(PublishedEvent published, string kind) => published.Chapters.Single(chapter => chapter.Kind == kind).ChapterId;
+
+    private static async Task<SessionBody> StartedAsync(HttpClient client, PublishedEvent published, CancellationToken cancellationToken)
+    {
+        using var started = await StartAsync(client, published.CourseVersionId, cancellationToken);
+        started.StatusCode.ShouldBe(HttpStatusCode.Created, await started.Content.ReadAsStringAsync(cancellationToken));
+        return await BodyOfAsync(started, cancellationToken);
+    }
+
+    private Task<long> EventsInAsync(Guid session, CancellationToken cancellationToken) =>
+        CountAsync(aspire, "select count(*) from learning.mt_events where stream_id = @id", session, cancellationToken);
+
+    private async Task<long> ChapterCompletionsAsync(Guid session, Guid chapter, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(aspire, cancellationToken);
+        await using var command = new Npgsql.NpgsqlCommand(
+            "select count(*) from learning.mt_events where stream_id = @id and type = 'chapter_completed' and data->>'Chapter' = @chapter",
+            connection);
+        command.Parameters.AddWithValue("id", session);
+        command.Parameters.AddWithValue("chapter", chapter.ToString());
+        return (long)(await command.ExecuteScalarAsync(cancellationToken))!;
     }
 
     private async Task<PublishedEvent> PublishedToLearningAsync(CancellationToken cancellationToken)
