@@ -69,7 +69,12 @@ export const en: MessageSchema = {
     },
   },
   modules: {
-    learning: { title: 'My courses' },
+    learning: {
+      title: 'My courses',
+      details: {
+        player: { title: 'Course' },
+      },
+    },
     assessment: { title: 'Tests' },
     certification: { title: 'Certificates' },
     compliance: {
@@ -544,6 +549,31 @@ export const en: MessageSchema = {
         publishFailed: 'The version could not be published. Please try again.',
         returnFailed: 'The version could not be returned. Please try again.',
         retireFailed: 'The version could not be retired. Please try again.',
+      },
+    },
+  },
+  learning: {
+    player: {
+      loadFailed: 'The course could not be loaded.',
+      notFound: 'This course does not exist.',
+      notReady: 'The course is being made available. Please try again in a moment.',
+      noIdentity: 'Your account is incomplete. Please sign in again.',
+      empty: 'This course has no chapters.',
+      chapters: 'Chapters',
+      state: {
+        done: 'Done',
+        progress: '{percent} done',
+        open: 'Not started',
+      },
+      chapterDone: 'Chapter “{title}” done.',
+      contentCompleted: 'You have worked through all chapters. The test is now unlocked.',
+      text: {
+        hint: 'Scroll to the end to complete the chapter.',
+      },
+      progress: {
+        failed: 'Your progress could not be saved. It will be sent again.',
+        saveNow: 'Save now',
+        finished: 'This learning session is already finished. Further progress is not saved.',
       },
     },
   },
