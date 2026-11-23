@@ -169,6 +169,86 @@ public class ExaminationTests
         examination.Submit(Definition, Now).Value.ShouldBe(AttemptOutcome.Passed);
     }
 
+    [Fact]
+    public void An_open_attempt_is_the_current_attempt_and_none_after_submit()
+    {
+        var examination = Open();
+        examination.CurrentAttempt.HasValue.ShouldBeFalse();
+        var attempt = AttemptId.New();
+
+        examination.StartAttempt(attempt, [Q2, Q1], Now).IsSuccess.ShouldBeTrue();
+
+        examination.CurrentAttempt.HasValue.ShouldBeTrue();
+        examination.CurrentAttempt.Value.Id.ShouldBe(attempt);
+        examination.CurrentAttempt.Value.Questions.ShouldBe([Q2, Q1]);
+
+        examination.Answer(Q1, [A], Now);
+        examination.Answer(Q2, [B, C], Now);
+        examination.Submit(Definition, Now).IsSuccess.ShouldBeTrue();
+
+        examination.CurrentAttempt.HasValue.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void The_current_attempt_shows_the_last_answer_to_each_question()
+    {
+        var examination = Open();
+        StartAttempt(examination);
+
+        examination.Answer(Q1, [D], Now).IsSuccess.ShouldBeTrue();
+        examination.Answer(Q1, [A], Now).IsSuccess.ShouldBeTrue();
+
+        var answers = examination.CurrentAttempt.Value.Answers;
+        answers[Q1].ShouldBe([A]);
+        answers.ContainsKey(Q2).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void A_failed_attempt_keeps_its_failed_chapters()
+    {
+        var examination = Open();
+
+        Fail(examination, wrong: Q1);
+
+        examination.AttemptsSinceUnlock.ShouldHaveSingleItem().FailedChapters.ShouldBe([Hygiene]);
+    }
+
+    [Fact]
+    public void The_attempts_since_unlock_restart_after_an_unlock()
+    {
+        var examination = Open();
+        Fail(examination, wrong: Q1);
+        Fail(examination, wrong: Q2);
+        Fail(examination, wrong: Q1);
+        examination.AttemptsSinceUnlock.Select(attempt => attempt.FailedChapters.ShouldHaveSingleItem()).ShouldBe([Hygiene, Gloves, Hygiene]);
+
+        examination.Unlock(Now);
+
+        examination.AttemptsSinceUnlock.ShouldBeEmpty();
+        StartAttempt(examination);
+        examination.AttemptsSinceUnlock.ShouldHaveSingleItem().Number.ShouldBe(AttemptNumber.First);
+        examination.Attempts.Count.ShouldBe(4);
+    }
+
+    [Fact]
+    public void An_exhausted_examination_names_every_chapter_to_relearn_until_it_is_unlocked()
+    {
+        var examination = Open();
+        examination.ChaptersToRelearn.ShouldBeEmpty();
+
+        Fail(examination, wrong: Q1);
+        Fail(examination, wrong: Q2);
+        examination.ChaptersToRelearn.ShouldBeEmpty();
+        Fail(examination, wrong: Q1);
+
+        examination.Status.ShouldBe(ExaminationStatus.Exhausted);
+        examination.ChaptersToRelearn.ShouldBe([Hygiene, Gloves], ignoreOrder: true);
+
+        examination.Unlock(Now);
+
+        examination.ChaptersToRelearn.ShouldBeEmpty();
+    }
+
     private static Examination Open() =>
         Examination.Open(
             ExaminationId.New(),
