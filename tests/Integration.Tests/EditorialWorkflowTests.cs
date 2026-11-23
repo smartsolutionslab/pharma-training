@@ -89,6 +89,70 @@ public class EditorialWorkflowTests(AspireFixture aspire)
         (await ReadAsync(client, draft.Id, cancellationToken)).Status.ShouldBe("InReview");
     }
 
+    /// <summary>
+    /// A return's body that is no JSON is refused with the module's code like a blank reason, not by routing (#181, S1,
+    /// ADR 0011): a reason sent as text/plain answers 400, and the version stays in review.
+    /// </summary>
+    [Fact]
+    public async Task A_return_sent_as_plain_text_is_refused_as_an_invalid_reason()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var draft = await ReadyToSubmitAsync(client, cancellationToken);
+        await SubmitAsync(client, draft.Id, cancellationToken);
+        using var body = new StringContent("""{"reason":"x"}""", Encoding.UTF8, "text/plain");
+
+        using var refused = await client.PostAsync(new Uri($"/editorial/course-versions/{draft.Id}/return", UriKind.Relative), body, cancellationToken);
+
+        refused.StatusCode.ShouldBe(HttpStatusCode.BadRequest, await refused.Content.ReadAsStringAsync(cancellationToken));
+        (await CodeOfAsync(refused, cancellationToken)).ShouldBe("editorial.invalid-return-reason");
+        (await ReadAsync(client, draft.Id, cancellationToken)).Status.ShouldBe("InReview");
+    }
+
+    /// <summary>A return's JSON body without a content type is refused with the module's code too.</summary>
+    [Fact]
+    public async Task A_return_without_a_content_type_is_refused_as_an_invalid_reason()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var draft = await ReadyToSubmitAsync(client, cancellationToken);
+        await SubmitAsync(client, draft.Id, cancellationToken);
+        using var body = new ByteArrayContent(Encoding.UTF8.GetBytes("""{"reason":"Kapitel 2 braucht eine Quelle."}"""));
+        body.Headers.ContentType.ShouldBeNull();
+
+        using var refused = await client.PostAsync(new Uri($"/editorial/course-versions/{draft.Id}/return", UriKind.Relative), body, cancellationToken);
+
+        refused.StatusCode.ShouldBe(HttpStatusCode.BadRequest, await refused.Content.ReadAsStringAsync(cancellationToken));
+        (await CodeOfAsync(refused, cancellationToken)).ShouldBe("editorial.invalid-return-reason");
+        (await ReadAsync(client, draft.Id, cancellationToken)).Status.ShouldBe("InReview");
+    }
+
+    /// <summary>Authorization comes before the body: a caller without a token sending text/plain is unauthorized.</summary>
+    [Fact]
+    public async Task An_anonymous_return_sent_as_plain_text_is_unauthorized()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = aspire.CreateHostClient();
+        using var body = new StringContent("""{"reason":"x"}""", Encoding.UTF8, "text/plain");
+
+        using var response = await client.PostAsync(new Uri($"/editorial/course-versions/{Guid.CreateVersion7()}/return", UriKind.Relative), body, cancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized, await response.Content.ReadAsStringAsync(cancellationToken));
+    }
+
+    /// <summary>Authorization comes before the body: a pharmacy owner, no editor, sending text/plain is forbidden.</summary>
+    [Fact]
+    public async Task A_pharmacy_owners_return_sent_as_plain_text_is_forbidden()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("owner");
+        using var body = new StringContent("""{"reason":"x"}""", Encoding.UTF8, "text/plain");
+
+        using var response = await client.PostAsync(new Uri($"/editorial/course-versions/{Guid.CreateVersion7()}/return", UriKind.Relative), body, cancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Forbidden, await response.Content.ReadAsStringAsync(cancellationToken));
+    }
+
     /// <summary>The return's body is capped at 16 384 bytes, well above any valid reason: one byte more is refused as too large.</summary>
     [Fact]
     public async Task A_return_body_larger_than_the_limit_is_refused_as_too_large()
