@@ -80,7 +80,7 @@ public class FourEyesApprovalTests
         var next = NextOf(PublishedApprovedBy(Approver));
         var copied = next.Questions.ShouldHaveSingleItem();
         next.SetBlueprint(new TestBlueprint(QuestionCount.From(1), ScorePercent.From(81), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
-        next.ApproveQuestion(copied.Id, Author, Now).IsSuccess.ShouldBeTrue();
+        next.ApproveQuestion(copied.Id, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
         next.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
 
         var published = next.Publish(Approver, ReviewPolicy.FourEyes, Now);

@@ -34,7 +34,7 @@ public class BlueprintApprovalResetTests
     {
         var version = DraftWithApprovedQuestion(out var chapter, out var human);
         var drafted = version.ApplyAiTestDraft([MultipleChoice(chapter)], QuestionId.New, AnswerOptionId.New).Value.ShouldHaveSingleItem();
-        Approve(version, drafted, Approver);
+        Approve(version, drafted, Approver, ApproversName);
         var unreviewed = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
         var before = Contents(version);
         version.Questions.Single(question => question.Id == drafted).Provenance.ShouldBe(Provenance.AiDrafted);
@@ -91,7 +91,7 @@ public class BlueprintApprovalResetTests
         refused.IsFailure.ShouldBeTrue("a version whose settings changed after its questions were approved was published unreviewed");
         refused.Error.Value.ShouldBeOfType<QuestionNotApproved>().Code.ShouldBe("editorial.question-not-approved");
         version.Status.ShouldBe(CourseVersionStatus.InReview);
-        Approve(version, question, Reviewer);
+        Approve(version, question, Reviewer, ReviewersName);
         version.Publish(Reviewer, ReviewPolicy.SingleEditor, Now).IsSuccess.ShouldBeTrue();
         version.Status.ShouldBe(CourseVersionStatus.Published);
     }
@@ -169,13 +169,13 @@ public class BlueprintApprovalResetTests
     {
         var version = DraftWithApprovedQuestion(out var chapter, out _);
         var second = version.AddQuestion(QuestionId.New(), MultipleChoice(chapter), AnswerOptionId.New).Value;
-        Approve(version, second, Approver);
+        Approve(version, second, Approver, ApproversName);
         return version;
     }
 
     /// <summary>The one place this class approves directly, where no builder gives the approver it needs.</summary>
-    private static void Approve(CourseVersion version, QuestionId question, PersonId editor) =>
-        version.ApproveQuestion(question, editor, Now).IsSuccess.ShouldBeTrue();
+    private static void Approve(CourseVersion version, QuestionId question, PersonId editor, ReviewerName name) =>
+        version.ApproveQuestion(question, editor, name, Now).IsSuccess.ShouldBeTrue();
 
     private static IReadOnlyList<string> Contents(CourseVersion version) =>
         [.. version.Questions.Select(question =>
