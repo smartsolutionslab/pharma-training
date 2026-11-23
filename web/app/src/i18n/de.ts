@@ -80,7 +80,12 @@ export const de = {
     },
   },
   modules: {
-    learning: { title: 'Meine Schulungen' },
+    learning: {
+      title: 'Meine Schulungen',
+      details: {
+        player: { title: 'Schulung' },
+      },
+    },
     assessment: { title: 'Tests' },
     certification: { title: 'Teilnahmebestätigungen' },
     compliance: {
@@ -721,6 +726,51 @@ export const de = {
         publishFailed: 'Die Version konnte nicht veröffentlicht werden. Versuchen Sie es erneut.',
         returnFailed: 'Die Version konnte nicht zurückgegeben werden. Versuchen Sie es erneut.',
         retireFailed: 'Die Version konnte nicht zurückgezogen werden. Versuchen Sie es erneut.',
+      },
+    },
+  },
+  learning: {
+    player: {
+      loadFailed: 'Die Schulung konnte nicht geladen werden.',
+      notFound: 'Diese Schulung gibt es nicht.',
+      notReady: 'Die Schulung wird gerade bereitgestellt. Versuchen Sie es in einem Moment erneut.',
+      noIdentity: 'Ihr Konto ist unvollständig. Bitte melden Sie sich erneut an.',
+      empty: 'Diese Schulung hat keine Kapitel.',
+      chapters: 'Kapitel',
+      state: {
+        done: 'Erledigt',
+        progress: '{percent} bearbeitet',
+        open: 'Offen',
+      },
+      next: 'Nächstes Kapitel',
+      previous: 'Vorheriges Kapitel',
+      chapterDone: 'Kapitel „{title}“ erledigt.',
+      contentCompleted: 'Sie haben alle Kapitel bearbeitet. Der Test ist jetzt freigeschaltet.',
+      text: {
+        hint: 'Scrollen Sie bis zum Ende, um das Kapitel abzuschließen.',
+      },
+      video: {
+        label: 'Video: {title}',
+        seekHint: 'Sie können nur bis zur bereits gesehenen Stelle vorspulen.',
+        seekRefused: 'Vorspulen ist nur bis {position} möglich.',
+        resumed: 'Fortgesetzt bei {position}.',
+        failed: 'Das Video konnte nicht abgespielt werden.',
+      },
+      media: {
+        notReady: 'Die Datei wird noch bereitgestellt. Versuchen Sie es in einem Moment erneut.',
+      },
+      pdf: {
+        label: 'PDF: {title}',
+        page: 'Seite {page} von {pages}',
+        hint: 'Blättern Sie bis zur letzten Seite, um das Kapitel abzuschließen.',
+        next: 'Nächste Seite',
+        previous: 'Vorherige Seite',
+        failed: 'Das PDF konnte nicht angezeigt werden.',
+      },
+      progress: {
+        failed: 'Ihr Fortschritt konnte nicht gespeichert werden. Er wird erneut gesendet.',
+        saveNow: 'Jetzt speichern',
+        finished: 'Dieser Lerndurchlauf ist bereits abgeschlossen. Weiterer Fortschritt wird nicht gespeichert.',
       },
     },
   },
