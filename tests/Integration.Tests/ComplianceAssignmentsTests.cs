@@ -17,6 +17,10 @@ public class ComplianceAssignmentsTests(AspireFixture aspire)
     private const string StartedType = "SmartSolutionsLab.PharmaTraining.Contracts.Organisation.MembershipStartedV1";
     private const string PublishedType = "SmartSolutionsLab.PharmaTraining.Contracts.Editorial.CourseVersionPublishedV1";
     private const string RetiredType = "SmartSolutionsLab.PharmaTraining.Contracts.Editorial.CourseVersionRetiredV1";
+    private const string SessionStartedType = "SmartSolutionsLab.PharmaTraining.Contracts.Learning.LearningSessionStartedV1";
+    private const string ContentCompletedType = "SmartSolutionsLab.PharmaTraining.Contracts.Learning.ContentCompletedV1";
+    private const string AttemptsExhaustedType = "SmartSolutionsLab.PharmaTraining.Contracts.Assessment.AttemptsExhaustedV1";
+    private const string OfLearner = "select count(*) from compliance.assignments where learner_id = @id";
     private const string OpenInPharmacy = "select count(*) from compliance.assignments where pharmacy_id = @id and status = 'Open'";
     private const string ActiveInPharmacy = "select count(*) from compliance.assignments where pharmacy_id = @id and status in ('Open', 'InProgress')";
     private const string WithEmptyHistoryInPharmacy = "select count(*) from compliance.assignments where pharmacy_id = @id and history = '[]'::jsonb";
@@ -424,6 +428,98 @@ public class ComplianceAssignmentsTests(AspireFixture aspire)
         (await AssignmentsAsync(pharmacy, cancellationToken)).Single(row => row.CourseId == otherCourse.CourseId).AssignedBy.ShouldBe(ownerPerson);
     }
 
+    [Fact]
+    public async Task A_started_session_puts_the_learners_assignment_in_progress()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var (setting, assignment, origin) = await AssignedAsync(cancellationToken);
+        var learning = new Learning(setting.EmployeeA, setting.Course);
+
+        await DeliverAsync(SessionStartedType, learning.Event(origin), cancellationToken);
+
+        var progress = await ProgressAsync(assignment, cancellationToken);
+        progress.Status.ShouldBe("InProgress");
+        progress.StartedAt.ShouldBe(origin);
+        progress.TestAccess.ShouldBe("Available");
+        progress.TestAccessChangedAt.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task Exhausted_attempts_lock_the_assignment_and_relearned_content_unlocks_it()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var (setting, assignment, origin) = await AssignedAsync(cancellationToken);
+        var learning = new Learning(setting.EmployeeA, setting.Course);
+        await DeliverAsync(SessionStartedType, learning.Event(origin), cancellationToken);
+
+        await DeliverAsync(AttemptsExhaustedType, learning.Exhausted(origin.AddSeconds(2)), cancellationToken);
+
+        var locked = await ProgressAsync(assignment, cancellationToken);
+        locked.TestAccess.ShouldBe("LockedAfterFailedAttempts");
+        locked.TestAccessChangedAt.ShouldBe(origin.AddSeconds(2));
+
+        await DeliverAsync(ContentCompletedType, learning.Event(origin.AddSeconds(3)), cancellationToken);
+
+        var unlocked = await ProgressAsync(assignment, cancellationToken);
+        unlocked.TestAccess.ShouldBe("Available");
+        unlocked.TestAccessChangedAt.ShouldBe(origin.AddSeconds(3));
+        unlocked.Status.ShouldBe("InProgress");
+    }
+
+    /// <summary>The owner's case on #32: the completion that opened the examination arrives after the lock it led to.</summary>
+    [Fact]
+    public async Task Content_completed_of_the_same_cycle_arriving_after_the_lock_leaves_it_locked()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var (setting, assignment, origin) = await AssignedAsync(cancellationToken);
+        var learning = new Learning(setting.EmployeeA, setting.Course);
+        await DeliverAsync(SessionStartedType, learning.Event(origin), cancellationToken);
+        var completed = learning.Event(origin.AddSeconds(1));
+
+        await DeliverAsync(AttemptsExhaustedType, learning.Exhausted(origin.AddSeconds(2)), cancellationToken);
+        await DeliverAsync(ContentCompletedType, completed, cancellationToken);
+        await DeliverAsync(ContentCompletedType, completed, cancellationToken);
+
+        var progress = await ProgressAsync(assignment, cancellationToken);
+        progress.TestAccess.ShouldBe("LockedAfterFailedAttempts");
+        progress.TestAccessChangedAt.ShouldBe(origin.AddSeconds(2));
+        progress.Status.ShouldBe("InProgress");
+    }
+
+    [Fact]
+    public async Task A_redelivered_lock_after_the_unlock_leaves_it_unlocked()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var (setting, assignment, origin) = await AssignedAsync(cancellationToken);
+        var learning = new Learning(setting.EmployeeA, setting.Course);
+        await DeliverAsync(SessionStartedType, learning.Event(origin), cancellationToken);
+        var exhausted = learning.Exhausted(origin.AddSeconds(2));
+
+        await DeliverAsync(AttemptsExhaustedType, exhausted, cancellationToken);
+        await DeliverAsync(ContentCompletedType, learning.Event(origin.AddSeconds(3)), cancellationToken);
+        await DeliverAsync(AttemptsExhaustedType, exhausted, cancellationToken);
+
+        var progress = await ProgressAsync(assignment, cancellationToken);
+        progress.TestAccess.ShouldBe("Available");
+        progress.TestAccessChangedAt.ShouldBe(origin.AddSeconds(3));
+    }
+
+    [Fact]
+    public async Task Progress_of_a_person_without_an_assignment_is_handled_and_changes_nothing()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var setting = await PharmacyWithCourseAsync(cancellationToken);
+        var stranger = Guid.CreateVersion7();
+        var learning = new Learning(stranger, setting.Course);
+        var origin = WholeSecondAfterNow();
+
+        await DeliverAsync(SessionStartedType, learning.Event(origin), cancellationToken);
+        await DeliverAsync(AttemptsExhaustedType, learning.Exhausted(origin.AddSeconds(2)), cancellationToken);
+        await DeliverAsync(ContentCompletedType, learning.Event(origin.AddSeconds(3)), cancellationToken);
+
+        (await CountAsync(OfLearner, stranger, cancellationToken)).ShouldBe(0);
+    }
+
     private static DateOnly Today() => DateOnly.FromDateTime(TimeProvider.System.GetUtcNow().UtcDateTime);
 
     private static DateOnly InAMonth() => Today().AddDays(30);
@@ -477,6 +573,16 @@ public class ComplianceAssignmentsTests(AspireFixture aspire)
 
     private static EventMetadata NewMetadata() => new(Guid.CreateVersion7(), TimeProvider.System.GetUtcNow());
 
+    /// <summary>
+    /// The next whole second from now: later than an assignment made before it, and exact in a timestamptz column, which
+    /// keeps microseconds only.
+    /// </summary>
+    private static DateTimeOffset WholeSecondAfterNow()
+    {
+        var now = TimeProvider.System.GetUtcNow();
+        return new DateTimeOffset(now.Ticks - (now.Ticks % TimeSpan.TicksPerSecond), TimeSpan.Zero).AddSeconds(1);
+    }
+
     private static async Task WaitUntilAsync(Func<Task<bool>> condition, string what, CancellationToken cancellationToken)
     {
         var started = TimeProvider.System.GetTimestamp();
@@ -518,6 +624,35 @@ public class ComplianceAssignmentsTests(AspireFixture aspire)
 
     private Task<long> CountAsync(string query, Guid id, CancellationToken cancellationToken) =>
         ComplianceDatabase.CountAsync(aspire, query, id, cancellationToken);
+
+    /// <summary>
+    /// The pharmacy and course of <see cref="PharmacyWithCourseAsync"/>, the course assigned to employee-a, and the
+    /// instant the learner's events start from, taken after the assignment was made.
+    /// </summary>
+    private async Task<(Setting Setting, Guid Assignment, DateTimeOffset Origin)> AssignedAsync(CancellationToken cancellationToken)
+    {
+        var setting = await PharmacyWithCourseAsync(cancellationToken);
+        using var manager = await aspire.CreateHostClientAsync("developer");
+        using var response = await AssignAsync(manager, setting.Pharmacy, Request(setting.Course, [setting.EmployeeA]), cancellationToken);
+        var assignment = (await AnswerOfAsync(response, cancellationToken)).Assigned.ShouldHaveSingleItem().AssignmentId;
+        return (setting, assignment, WholeSecondAfterNow());
+    }
+
+    private async Task<Progress> ProgressAsync(Guid assignment, CancellationToken cancellationToken)
+    {
+        await using var connection = await ComplianceDatabase.OpenAsync(aspire, cancellationToken);
+        await using var command = new NpgsqlCommand(
+            "select status, test_access, started_at, test_access_changed_at from compliance.assignments where id = @id",
+            connection);
+        command.Parameters.AddWithValue("id", assignment);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        (await reader.ReadAsync(cancellationToken)).ShouldBeTrue($"no assignment {assignment}");
+        return new Progress(
+            reader.GetString(0),
+            reader.GetString(1),
+            await reader.IsDBNullAsync(2, cancellationToken) ? null : reader.GetFieldValue<DateTimeOffset>(2),
+            await reader.IsDBNullAsync(3, cancellationToken) ? null : reader.GetFieldValue<DateTimeOffset>(3));
+    }
 
     private async Task<List<AssignmentRow>> AssignmentsAsync(Guid pharmacy, CancellationToken cancellationToken)
     {
@@ -563,4 +698,24 @@ public class ComplianceAssignmentsTests(AspireFixture aspire)
     private sealed record PublishedEvent(Guid CourseId, Guid CourseVersionId, int VersionNumber, string Title, int ValidityMonths, IReadOnlyList<SentChapter> Chapters, EventMetadata Metadata);
 
     private sealed record RetiredEvent(Guid CourseId, Guid CourseVersionId, EventMetadata Metadata);
+
+    private sealed record Progress(string Status, string TestAccess, DateTimeOffset? StartedAt, DateTimeOffset? TestAccessChangedAt);
+
+    private sealed record SessionEvent(Guid SessionId, Guid PersonId, Guid CourseId, Guid CourseVersionId, EventMetadata Metadata);
+
+    private sealed record ExhaustedEvent(Guid SessionId, Guid PersonId, Guid CourseId, Guid CourseVersionId, IReadOnlyList<Guid> FailedChapterIds, EventMetadata Metadata);
+
+    /// <summary>One learner's session on a course version: its events, each under a new identifier, happened at the instant given.</summary>
+    private sealed class Learning(Guid personId, Guid courseId)
+    {
+        private readonly Guid sessionId = Guid.CreateVersion7();
+        private readonly Guid courseVersionId = Guid.CreateVersion7();
+
+        /// <summary>A LearningSessionStarted or a ContentCompleted: the two carry the same fields.</summary>
+        public SessionEvent Event(DateTimeOffset occurredAt) =>
+            new(sessionId, personId, courseId, courseVersionId, new EventMetadata(Guid.CreateVersion7(), occurredAt));
+
+        public ExhaustedEvent Exhausted(DateTimeOffset occurredAt) =>
+            new(sessionId, personId, courseId, courseVersionId, [Guid.CreateVersion7()], new EventMetadata(Guid.CreateVersion7(), occurredAt));
+    }
 }

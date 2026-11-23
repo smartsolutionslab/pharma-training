@@ -5,7 +5,6 @@ using SmartSolutionsLab.PharmaTraining.Host.Messaging;
 using Wolverine;
 using Wolverine.EntityFrameworkCore;
 using Wolverine.ErrorHandling;
-using Wolverine.Postgresql;
 using Wolverine.RabbitMQ;
 using Wolverine.RabbitMQ.Internal;
 
@@ -62,7 +61,10 @@ public static class Messaging
         {
             // Handler code is generated at startup. For production, pre-generate it (see docs/adr).
             options.UseRuntimeCompilation();
-            options.PersistMessagesWithPostgresql(database, "wolverine");
+            // The storage the MigrationRunner built as the administrator, with this same configuration (docs/adr/0005).
+            // Published, the service logs in as its module's role, which holds no CREATE on the database: the check at
+            // start-up finds the storage complete and changes nothing, and a missing table fails the start.
+            options.PersistModuleMessages(database);
             options.UseEntityFrameworkCoreTransactions();
             options.Policies.UseDurableOutboxOnAllSendingEndpoints();
             options.Policies.UseDurableInboxOnAllListeners();

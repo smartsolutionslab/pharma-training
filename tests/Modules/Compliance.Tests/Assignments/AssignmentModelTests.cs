@@ -88,6 +88,19 @@ public sealed class AssignmentModelTests : IDisposable
         column.IsNullable.ShouldBe(nullable);
     }
 
+    [Fact]
+    public void The_time_of_the_last_lock_or_unlock_is_a_nullable_column()
+    {
+        var property = AssignmentType().FindProperty(nameof(Assignment.TestAccessChangedAt));
+
+        property.ShouldNotBeNull($"{nameof(Assignment.TestAccessChangedAt)} is not mapped");
+        property.GetColumnName().ShouldBe("test_access_changed_at");
+        var column = Table().FindColumn("test_access_changed_at");
+        column.ShouldNotBeNull("no column test_access_changed_at");
+        column.StoreType.ShouldBe("timestamp with time zone");
+        column.IsNullable.ShouldBeTrue();
+    }
+
     public void Dispose() => context.Dispose();
 
     private IEntityType AssignmentType()
