@@ -35,7 +35,21 @@ public sealed class CourseVersionCopies(LearningDbContext context) : ICourseVers
             : Option<CourseVersionCopy>.None;
     }
 
-    // Stub for #43's red run: no duration is read yet.
-    public Task<Option<VideoDuration>> FindVideoDurationAsync(CourseVersionId version, ChapterId chapter, CancellationToken cancellationToken) =>
-        Task.FromResult(Option<VideoDuration>.None);
+    public async Task<Option<VideoDuration>> FindVideoDurationAsync(CourseVersionId version, ChapterId chapter, CancellationToken cancellationToken)
+    {
+        Ensure.That(version).IsNotNull();
+        Ensure.That(chapter).IsNotNull();
+
+        var seconds = await context.Set<CourseVersionChapterCopy>()
+            .AsNoTracking()
+            .Where(copy => copy.CourseVersionId == version.Value && copy.ChapterId == chapter.Value && copy.Kind == ChapterKind.Video)
+            .Select(copy => copy.VideoDurationSeconds)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (seconds is { } found)
+        {
+            return Option<VideoDuration>.Some(VideoDuration.From(found));
+        }
+
+        return Option<VideoDuration>.None;
+    }
 }

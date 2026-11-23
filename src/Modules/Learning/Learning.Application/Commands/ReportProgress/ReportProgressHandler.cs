@@ -10,7 +10,9 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.Commands
 /// Records the reported progress on the learner's own session; another person's session is not found, like an unknown
 /// one. A report that adds nothing stores nothing. The session is stored before its ContentCompleted, raised once per
 /// cycle, is published as ContentCompletedV1 and committed. A report that lost the append race to another one answers
-/// learning.session-changed and publishes nothing; the server does not retry it.
+/// learning.session-changed and publishes nothing; the server does not retry it. A video report faster than playback,
+/// judged against the duration in Learning's copy of the session's version, answers learning.progress-too-fast and
+/// stores nothing (ADR 0021).
 /// </summary>
 public sealed class ReportProgressHandler(ILearningAggregateStore store, ILearningUnitOfWork unitOfWork, ICourseVersionCopies versions, TimeProvider time)
     : ICommandHandler<ReportProgress, Result<Unit, ApiError>>
