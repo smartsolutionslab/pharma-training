@@ -141,16 +141,17 @@ public class AppHostPublishParametersTests
     }
 
     [Fact]
-    public async Task The_mail_server_reaches_every_service_and_keycloak_as_key_vault_references()
+    public async Task The_mail_server_reaches_the_services_that_send_mail_and_keycloak_as_key_vault_references()
     {
         await using var builder = await PublishedAppHost.ModelAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
-        var services = PublishedAppHost.Services(builder);
+        var senders = PublishedAppHost.Services(builder).Where(SendsMail).ToList();
 
-        services.ShouldNotBeEmpty();
-        foreach (var service in services)
+        senders.ShouldNotBeEmpty("no service host's project says <SendsMail>true</SendsMail>");
+        foreach (var service in senders)
         {
             var environment = await EnvironmentAsync(builder, service);
 
+            environment.ShouldContainKey("ConnectionStrings__mail", $"{service.Name} sends mail but does not read the mail server.");
             var mail = environment["ConnectionStrings__mail"].ShouldBeAssignableTo<IAzureKeyVaultSecretReference>($"{service.Name} reads the mail server as a plain value.");
             mail.ShouldNotBeNull();
             mail.Resource.Name.ShouldBe(KeyVault);
@@ -165,6 +166,32 @@ public class AppHostPublishParametersTests
             secret.Resource.Name.ShouldBe(KeyVault);
         }
     }
+
+    /// <summary>
+    /// Published, a service whose host does not say it sends mail reads neither the mail server (so it is granted no
+    /// access to its Key Vault secret) nor the sender nor the web app's address (docs/adr/0004, docs/adr/0005).
+    /// </summary>
+    [Fact]
+    public async Task A_service_that_sends_no_mail_has_no_mail_connection_string_once_published()
+    {
+        await using var builder = await PublishedAppHost.ModelAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
+        var services = PublishedAppHost.Services(builder);
+        var silent = services.Where(service => !SendsMail(service)).ToList();
+
+        silent.ShouldNotBeEmpty("every service host's project says <SendsMail>true</SendsMail>");
+        foreach (var service in silent)
+        {
+            var environment = await EnvironmentAsync(builder, service);
+
+            environment.ShouldNotContainKey("ConnectionStrings__mail", $"{service.Name} sends no mail but reads the mail server.");
+            environment.ShouldNotContainKey("Mail__From", $"{service.Name} sends no mail but reads Mail:From.");
+            environment.ShouldNotContainKey("Frontend__BaseUrl", $"{service.Name} sends no mail but reads Frontend:BaseUrl.");
+        }
+
+        services.Where(SendsMail).ShouldNotBeEmpty("no service host's project says <SendsMail>true</SendsMail>");
+    }
+
+    private static bool SendsMail(ProjectResource service) => ServiceHostMail.SendsMail(service.GetProjectMetadata().ProjectPath);
 
     private static ParameterResource Parameter(IDistributedApplicationTestingBuilder builder, string name)
     {
