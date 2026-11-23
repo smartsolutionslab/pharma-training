@@ -16,4 +16,7 @@ public interface ICourseVersionCopies
 
     /// <summary>The length of a video chapter in the copy; none for any other chapter, or a version Learning does not hold.</summary>
     Task<Option<VideoDuration>> FindVideoDurationAsync(CourseVersionId version, ChapterId chapter, CancellationToken cancellationToken);
+
+    /// <summary>Every version Learning holds with the chapter, with its number and the chapter's kind there; none when it holds the chapter in no version.</summary>
+    Task<IReadOnlyList<ChapterPlacement>> ListPlacementsAsync(ChapterId chapter, CancellationToken cancellationToken);
 }

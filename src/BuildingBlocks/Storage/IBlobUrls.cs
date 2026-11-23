@@ -16,6 +16,10 @@ public interface IBlobUrls
     /// </summary>
     Task<BlobUrl> CreateUploadUrlAsync(BlobName name, BlobUrlLifetime lifetime, CancellationToken cancellationToken);
 
-    /// <summary>A URL that reads <paramref name="name"/> (GET) and can do nothing else.</summary>
-    Task<BlobUrl> CreateReadUrlAsync(BlobName name, BlobUrlLifetime lifetime, CancellationToken cancellationToken);
+    /// <summary>
+    /// A URL that reads <paramref name="name"/> (GET) and can do nothing else. It is signed with the response headers in
+    /// <paramref name="headers"/> (<c>rsct</c>, <c>rscd</c>), so the storage service serves the blob with the type and
+    /// disposition the module chose, whatever its uploader set, and a URL whose overrides were changed is refused.
+    /// </summary>
+    Task<BlobUrl> CreateReadUrlAsync(BlobName name, BlobUrlLifetime lifetime, BlobReadHeaders headers, CancellationToken cancellationToken);
 }
