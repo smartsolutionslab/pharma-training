@@ -39,6 +39,6 @@ public sealed record ReviewerName : IValueObject<string>
     private static bool IsValid(string value)
     {
         var text = value.Trim();
-        return text.Length is > 0 and <= MaxLength && PlainText.IsPlain(text, allowLineBreaksAndTabs: false);
+        return text.Length is > 0 and <= MaxLength && PlainText.IsPlain(text, allowLineBreaksAndTabs: false, allowJoiners: true);
     }
 }

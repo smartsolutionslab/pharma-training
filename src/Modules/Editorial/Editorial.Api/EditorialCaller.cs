@@ -27,7 +27,8 @@ public static class EditorialCaller
 
     /// <summary>
     /// The caller's display name, to record with an approval (#205). A missing, blank or too long name, or one holding a
-    /// nul character, is no name; there is no fallback to <c>preferred_username</c>.
+    /// character a reader cannot see or that turns the text around (see <see cref="ReviewerName"/>), is no name; there is
+    /// no fallback to <c>preferred_username</c>.
     /// </summary>
     public static Option<ReviewerName> NameOf(ClaimsPrincipal user)
     {
