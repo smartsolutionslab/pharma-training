@@ -37,6 +37,26 @@ internal sealed class InMemoryMemberStore : IMemberStore, IComplianceUnitOfWork
 
     public void Add(MembershipChange change) => addedChanges.Add(change);
 
+    public Task<IReadOnlyList<CurrentMembership>> ActiveMembershipsAsync(PersonId person, PharmacyId pharmacy, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<CurrentMembership> active =
+        [
+            .. Members
+                .Where(member => member.Person == person && member.Pharmacy == pharmacy && !Endings.Any(ending => ending.Id == member.Id))
+                .Select(member => CurrentMembership.Of(member, [.. Changes.Where(change => change.Membership == member.Id)])),
+        ];
+        return Task.FromResult(active);
+    }
+
+    public Task<IReadOnlySet<PersonId>> ActiveMembersAsync(PharmacyId pharmacy, IReadOnlyCollection<PersonId> persons, CancellationToken cancellationToken)
+    {
+        IReadOnlySet<PersonId> active = Members
+            .Where(member => member.Pharmacy == pharmacy && persons.Contains(member.Person) && !Endings.Any(ending => ending.Id == member.Id))
+            .Select(member => member.Person)
+            .ToHashSet();
+        return Task.FromResult(active);
+    }
+
     public Task PublishAsync(IntegrationEvent integrationEvent) => Task.CompletedTask;
 
     public Task CommitAsync(CancellationToken cancellationToken)
