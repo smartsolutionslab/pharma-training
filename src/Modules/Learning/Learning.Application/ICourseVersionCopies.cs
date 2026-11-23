@@ -14,6 +14,9 @@ public interface ICourseVersionCopies
     /// <summary>The copy with its chapters, or none while Learning has not received the version.</summary>
     Task<Option<CourseVersionCopy>> FindAsync(CourseVersionId version, CancellationToken cancellationToken);
 
+    /// <summary>The length of a video chapter in the copy; none for any other chapter, or a version Learning does not hold.</summary>
+    Task<Option<VideoDuration>> FindVideoDurationAsync(CourseVersionId version, ChapterId chapter, CancellationToken cancellationToken);
+
     /// <summary>Whether Editorial retired the version, whether or not Learning holds the version itself yet.</summary>
     Task<bool> IsRetiredAsync(CourseVersionId version, CancellationToken cancellationToken);
 
