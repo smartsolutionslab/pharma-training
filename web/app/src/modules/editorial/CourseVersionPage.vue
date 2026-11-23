@@ -42,9 +42,11 @@ const { data: version, isPending, error } = useGetEditorialCourseVersionsId(id, 
 const { add, replace, remove, isSaving } = useChapterMutations(id);
 const { reorder } = useReorderChapters(id);
 const { draftNext } = useDraftNextVersion(id);
-const workflow = useCourseVersionWorkflow(id);
 /** The version's return history: a return taken shows on its first page. */
 const returnHistory = useTemplateRef<InstanceType<typeof ReturnHistory>>('returnHistory');
+// A return taken turns the history to its first page before the returns are read again, so the page read again is
+// the one the new return is on, and no page shows as it was before.
+const workflow = useCourseVersionWorkflow(id, { onReturned: () => returnHistory.value?.showFirstPage() });
 const { t } = useI18n();
 
 /** The chapter form while it is open: with the chapter it replaces, or none to add one. */
@@ -247,9 +249,6 @@ async function take(
     closeDialogs();
     focusWhenReady.value = [headingId];
     notify.success(translate(takenKeys[action], { number: before.number }));
-    if (action === 'return') {
-      returnHistory.value?.showFirstPage();
-    }
     return 'done';
   }
   const failure = workflowFailure(action, result.error);

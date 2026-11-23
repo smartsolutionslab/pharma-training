@@ -188,8 +188,8 @@ export const en: MessageSchema = {
       },
       empty: 'This version has never been returned to draft.',
       loadFailed: 'The returns of this version could not be loaded.',
-      byYou: 'you',
-      byAnotherEditor: 'another person in the editorial team',
+      byYou: 'You',
+      byAnotherEditor: 'Another person in the editorial team',
     },
     course: {
       new: 'New course',

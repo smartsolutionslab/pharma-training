@@ -136,7 +136,15 @@ test('an editor submits, returns with a reason, submits again, publishes and ret
   await expect(returning.getByRole('textbox', { name: 'Grund' })).toHaveAttribute('aria-invalid', 'true');
   expect(returnPosts).toEqual([]);
 
-  // Then with a reason.
+  // Then with a reason. The return is recorded on the day of the click or, past midnight, the day after: both are
+  // read from the browser's clock before the click, so the check does not race the host.
+  const returnDays = await page.evaluate(() => {
+    const format = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const now = new Date();
+    const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    return [format.format(now), format.format(tomorrow)];
+  });
+  const returnedOnThatDay = new RegExp(returnDays.map((day) => day.replaceAll('.', '\\.')).join('|'));
   await returning.getByRole('textbox', { name: 'Grund' }).fill(`  ${reason}  `);
   await returning.getByRole('button', { name: 'Zurückgeben', exact: true }).click();
   await expect(returning).toHaveCount(0);
@@ -148,16 +156,14 @@ test('an editor submits, returns with a reason, submits again, publishes and ret
   expect(returns.items.map((each) => each.reason)).toEqual([reason]);
   expect(returnPosts).toHaveLength(1);
 
-  // The history shows the return at once: today, by the editor (Ihnen, the realm user's own sub) and why.
-  const today = await page.evaluate(() =>
-    new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date()),
-  );
+  // The history shows the return at once: on the day it was taken, by the editor (Ihnen, the realm user's own sub)
+  // and why.
   /** The history's data rows, the header row left out. */
   const historyRows = history.getByRole('row').filter({ has: page.getByRole('cell') });
   const expectTheReturnListed = async () => {
     await expect(historyRows).toHaveCount(1);
     const cells = historyRows.first().getByRole('cell');
-    await expect(cells.nth(0)).toContainText(today);
+    await expect(cells.nth(0)).toContainText(returnedOnThatDay);
     await expect(cells.nth(1)).toHaveText('Ihnen');
     await expect(cells.nth(2)).toHaveText(reason);
   };

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { History } from '@lucide/vue';
-import { computed, h, ref } from 'vue';
+import { computed, h, nextTick, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useAuth } from '@/auth/useAuth';
 import type { EditorialCourseVersionReturnDto } from '@/api/generated';
@@ -35,10 +35,17 @@ const none: ReturnRow[] = [];
 
 const props = defineProps<{ versionId: string }>();
 
-// The page shown is this component's own, not the address's; it belongs to the version it was turned for, so another
-// version starts at its first page.
-const turned = ref({ versionId: props.versionId, page: 1 });
-const page = computed(() => (turned.value.versionId === props.versionId ? turned.value.page : 1));
+// The page shown is this component's own, not the address's. The route reuses this component for another version,
+// which starts at its first page, as does a version come back to: the page goes back to 1 as soon as the id changes,
+// before anything is asked of the host for it.
+const page = ref(1);
+watch(
+  () => props.versionId,
+  () => {
+    page.value = 1;
+  },
+  { flush: 'sync' },
+);
 const { returns, page: paging, isPending, isError } = useCourseVersionReturns(() => props.versionId, page);
 const { t } = useI18n();
 const { user } = useAuth();
@@ -49,12 +56,16 @@ const rows = computed(() => {
 
 /** Shows another page of the history. */
 function turnTo(next: number) {
-  turned.value = { versionId: props.versionId, page: next };
+  page.value = next;
 }
 
-/** Takes the history back to its first page, where a new return shows. */
-function showFirstPage() {
+/**
+ * Takes the history back to its first page, where a new return shows. Resolves once the history's query is that
+ * page's, so the returns read again after it are the first page's.
+ */
+async function showFirstPage() {
   turnTo(1);
+  await nextTick();
 }
 
 defineExpose({ showFirstPage });
