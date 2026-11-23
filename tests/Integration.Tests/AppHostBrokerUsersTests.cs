@@ -41,9 +41,9 @@ public class AppHostBrokerUsersTests(AspireFixture aspire)
         },
         {
             "compliance",
-            ["compliance", Contracts + "Compliance.AssignmentCompletedV1", Contracts + "Compliance.CourseAssignedV1", CourseVersionPublished, CourseVersionRetired, MembershipChanged, MembershipEnded, MembershipStarted],
+            ["compliance", Contracts + "Assessment.AttemptsExhaustedV1", Contracts + "Compliance.AssignmentCompletedV1", Contracts + "Compliance.CourseAssignedV1", CourseVersionPublished, CourseVersionRetired, Contracts + "Learning.ContentCompletedV1", Contracts + "Learning.LearningSessionStartedV1", MembershipChanged, MembershipEnded, MembershipStarted],
             ["compliance", Contracts + "Compliance.AssignmentCompletedV1", Contracts + "Compliance.CourseAssignedV1"],
-            ["compliance", CourseVersionPublished, CourseVersionRetired, MembershipChanged, MembershipEnded, MembershipStarted]
+            ["compliance", Contracts + "Assessment.AttemptsExhaustedV1", CourseVersionPublished, CourseVersionRetired, Contracts + "Learning.ContentCompletedV1", Contracts + "Learning.LearningSessionStartedV1", MembershipChanged, MembershipEnded, MembershipStarted]
         },
         {
             "editorial",
