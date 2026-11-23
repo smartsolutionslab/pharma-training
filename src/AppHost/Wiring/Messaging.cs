@@ -43,7 +43,8 @@ public static partial class Messaging
     /// connection strings need, and needing no escape in JSON; spelled out, so no locale widens it), when two user
     /// variables name the same user, or when anything that looks like a placeholder is left. No value holds <c>@</c>, so no
     /// value can bring in another placeholder. It writes the document to the container's own layer (never the data
-    /// volume), readable by RabbitMQ's user alone, has RabbitMQ load it at boot, and starts the image's own entrypoint in its
+    /// volume), readable by RabbitMQ's user alone, removing what is at either file's path first and changing a symlink's
+    /// owner rather than its target's, so a symlink left by an earlier boot is never followed, has RabbitMQ load it at boot, and starts the image's own entrypoint in its
     /// place without the admin's password or any <c>BROKER_*</c> variable, as <c>env</c> lists them: bash does not see one
     /// whose name is not a shell identifier, so it could not unset it, yet would hand it on. The image starts as root and
     /// its entrypoint runs RabbitMQ as the user rabbitmq.
@@ -78,8 +79,9 @@ public static partial class Messaging
         rm -f /tmp/rabbitmq-definitions.json
         printf '%s' "$definitions" > /tmp/rabbitmq-definitions.json
         unset definitions
+        rm -f /etc/rabbitmq/conf.d/90-definitions.conf
         printf 'load_definitions = /tmp/rabbitmq-definitions.json\n' > /etc/rabbitmq/conf.d/90-definitions.conf
-        if [ "$(id -u)" = 0 ]; then chown rabbitmq:rabbitmq /tmp/rabbitmq-definitions.json /etc/rabbitmq/conf.d/90-definitions.conf; fi
+        if [ "$(id -u)" = 0 ]; then chown -h rabbitmq:rabbitmq /tmp/rabbitmq-definitions.json /etc/rabbitmq/conf.d/90-definitions.conf; fi
         unset RABBITMQ_DEFAULT_PASS
         drop=()
         while IFS= read -r -d '' entry; do
