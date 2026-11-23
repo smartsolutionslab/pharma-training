@@ -1,6 +1,7 @@
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Azure;
+using Aspire.Hosting.Testing;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
@@ -87,6 +88,40 @@ public class AppHostPostgresTests
         PublishedBicep.Block(postgres, "backup").ShouldMatch($@"backupRetentionDays:\s*{retentionDays}\b");
         PublishedBicep.Block(postgres, "backup").ShouldContain("geoRedundantBackup: 'Disabled'");
         PublishedBicep.Block(postgres, "highAvailability").ShouldContain("mode: 'Disabled'");
+    }
+
+    [Fact]
+    public async Task Run_mode_postgres_allows_the_connections_the_whole_suite_opens()
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromMinutes(1));
+        await using var builder = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AppHost>(timeout.Token);
+        var postgres = builder.Resources.OfType<PostgresServerResource>().ShouldHaveSingleItem();
+
+        var configuration = await ExecutionConfigurationBuilder.Create(postgres)
+            .WithArgumentsConfig()
+            .BuildAsync(builder.ExecutionContext, NullLogger.Instance, timeout.Token);
+        var arguments = configuration.Arguments.Select(argument => argument.Value).ToList();
+
+        arguments.ShouldContain(
+            "max_connections=300",
+            "Run mode's PostgreSQL keeps the default of 100 connections, fewer than every service's pools (EF Core, Marten, Wolverine), Keycloak and the integration tests open at once (53300: too many clients).");
+        arguments[arguments.IndexOf("max_connections=300") - 1].ShouldBe("-c");
+    }
+
+    [Theory]
+    [InlineData(PublishedAppHost.Staging)]
+    [InlineData(PublishedAppHost.Production)]
+    public async Task The_published_server_keeps_azures_connection_limit(string environment)
+    {
+        var bicep = await PublishedAppHost.PublishAsync(environment, TestContext.Current.CancellationToken);
+
+        var postgres = bicep.Module("postgres");
+
+        postgres.ShouldNotContain(
+            "max_connections",
+            Case.Insensitive,
+            "The published Flexible Server keeps the connection limit its size gives it; only run mode's container raises it.");
     }
 
     [Fact]

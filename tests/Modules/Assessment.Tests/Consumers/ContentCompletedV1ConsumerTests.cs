@@ -75,6 +75,53 @@ public class ContentCompletedV1ConsumerTests
     }
 
     [Fact]
+    public async Task A_replay_of_a_completion_older_than_the_exhaustion_does_not_unlock_even_without_its_marker()
+    {
+        var completed = Completed();
+        await HandleAsync(completed);
+        time.Advance(TimeSpan.FromHours(1));
+        await ExhaustAsync(completed);
+
+        // ADR 0012's window: the marker's commit failed on every retry, and the dead letter is replayed later.
+        handled.Forget(completed.Metadata.EventIdentifier);
+        await HandleAsync(completed);
+
+        Stream(completed)[^1].ShouldBeOfType<ExaminationExhausted>();
+        (await LoadAsync(completed)).Status.ShouldBe(ExaminationStatus.Exhausted);
+        handled.Handled.Count(row => row.EventIdentifier == completed.Metadata.EventIdentifier).ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task A_completion_published_at_the_instant_of_the_exhaustion_does_not_unlock()
+    {
+        var completed = Completed();
+        await HandleAsync(completed);
+        time.Advance(TimeSpan.FromHours(1));
+        await ExhaustAsync(completed);
+
+        await HandleAsync(completed with { Metadata = new EventMetadata(Guid.CreateVersion7(), Start.AddHours(1)) });
+
+        Stream(completed)[^1].ShouldBeOfType<ExaminationExhausted>();
+        (await LoadAsync(completed)).Status.ShouldBe(ExaminationStatus.Exhausted);
+    }
+
+    [Fact]
+    public async Task A_completion_published_after_the_exhaustion_unlocks_even_if_it_arrives_late()
+    {
+        var completed = Completed();
+        await HandleAsync(completed);
+        time.Advance(TimeSpan.FromHours(1));
+        await ExhaustAsync(completed);
+        var next = completed with { Metadata = new EventMetadata(Guid.CreateVersion7(), Start.AddHours(1).AddSeconds(1)) };
+        time.Advance(TimeSpan.FromDays(30));
+
+        await HandleAsync(next);
+
+        Stream(completed)[^1].ShouldBeOfType<ExaminationUnlocked>().UnlockedAt.ShouldBe(Timestamp.From(Start.AddHours(1).AddDays(30)));
+        (await LoadAsync(completed)).Status.ShouldBe(ExaminationStatus.Unlocked);
+    }
+
+    [Fact]
     public async Task A_new_completion_after_exhaustion_unlocks_three_new_attempts()
     {
         var completed = Completed();
@@ -142,7 +189,8 @@ public class ContentCompletedV1ConsumerTests
     [InlineData(nameof(ContentCompletedV1.CourseId))]
     [InlineData(nameof(ContentCompletedV1.CourseVersionId))]
     [InlineData(nameof(EventMetadata.EventIdentifier))]
-    public async Task A_completion_with_an_empty_id_is_refused_by_the_field(string field)
+    [InlineData(nameof(EventMetadata.OccurredAt))]
+    public async Task A_completion_with_an_empty_id_or_instant_is_refused_by_the_field(string field)
     {
         var completed = Completed();
         var malformed = field switch
@@ -152,6 +200,7 @@ public class ContentCompletedV1ConsumerTests
             nameof(ContentCompletedV1.CourseId) => completed with { CourseId = Guid.Empty },
             nameof(ContentCompletedV1.CourseVersionId) => completed with { CourseVersionId = Guid.Empty },
             nameof(EventMetadata.EventIdentifier) => completed with { Metadata = new EventMetadata(Guid.Empty, Start) },
+            nameof(EventMetadata.OccurredAt) => completed with { Metadata = new EventMetadata(Guid.CreateVersion7(), default) },
             _ => throw new InvalidOperationException($"{field} is no id of the event."),
         };
 
@@ -183,6 +232,7 @@ public class ContentCompletedV1ConsumerTests
         var completed = Completed();
         await HandleAsync(completed);
         await ExhaustAsync(completed);
+        time.Advance(TimeSpan.FromDays(2));
         var again = Again(completed);
         handled.ThrowOnNextCommit();
 
@@ -205,9 +255,9 @@ public class ContentCompletedV1ConsumerTests
             Metadata = new EventMetadata(Guid.CreateVersion7(), Start),
         };
 
-    /// <summary>Learning completed the same session's content once more: the same session, another event.</summary>
-    private static ContentCompletedV1 Again(ContentCompletedV1 completed) =>
-        completed with { Metadata = new EventMetadata(Guid.CreateVersion7(), Start) };
+    /// <summary>Learning completed the same session's content once more: the same session, another event, published now, by the fake clock.</summary>
+    private ContentCompletedV1 Again(ContentCompletedV1 completed) =>
+        completed with { Metadata = new EventMetadata(Guid.CreateVersion7(), time.GetUtcNow()) };
 
     private static TestDefinition DefinitionFor(ContentCompletedV1 completed) =>
         new(

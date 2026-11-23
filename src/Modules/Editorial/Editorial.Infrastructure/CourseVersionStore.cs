@@ -93,6 +93,15 @@ public sealed class CourseVersionStore(EditorialDbContext context) : ICourseVers
             .Where(version => version.Course == course && version.Status == CourseVersionStatus.Published)
             .ToListAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<CourseVersionId>> ListAnnouncedAsync(CancellationToken cancellationToken) =>
+        await context.Set<CourseVersion>()
+            .AsNoTracking()
+            .Where(version => version.PublishedAt != null || version.RetiredAt != null)
+            .OrderBy(version => version.Course)
+            .ThenBy(version => version.Number)
+            .Select(version => version.Id)
+            .ToListAsync(cancellationToken);
+
     /// <summary>
     /// Runs the version's split queries in one REPEATABLE READ transaction, committed right after the load, so they read
     /// one snapshot: a change committed between them (a chapter added or removed, a question's options replaced) shows
