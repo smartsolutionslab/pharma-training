@@ -150,6 +150,26 @@ public class InvitationMailLimitTests
     }
 
     [Fact]
+    public void A_stored_day_later_than_today_counts_as_today_so_a_clock_behind_does_not_restart_the_count()
+    {
+        var limits = new InvitationMailLimits(RenewCooldown.From(TimeSpan.FromMinutes(10)), DailyMailCap.From(2));
+        var pharmacy = TestPharmacies.Register(Owner);
+        Invite(pharmacy, "anna@example.org", NextMidnight.AddSeconds(30), limits);
+
+        var behind = pharmacy.Invite(MembershipId.New(), EmailAddress.From("ben@example.org"), JobFunction.Pta, MembershipRole.Employee, At(NextMidnight.AddSeconds(-10)), limits);
+        var counted = pharmacy.InvitationMailsThatDay.Value;
+        var day = pharmacy.InvitationMailDay;
+        var third = pharmacy.Invite(MembershipId.New(), EmailAddress.From("cleo@example.org"), JobFunction.Pta, MembershipRole.Employee, At(NextMidnight.AddSeconds(-5)), limits);
+
+        behind.IsSuccess.ShouldBeTrue("the second mail of a day capped at two was refused");
+        counted.ShouldBe(2, "a clock 40 seconds behind restarted the next day's count");
+        day.ShouldBe(UtcDay.Of(At(NextMidnight)), "a clock behind moved the counted day back");
+        third.IsSuccess.ShouldBeFalse("a third mail was requested on a day capped at two from a clock behind");
+        third.Error.ShouldBeOfType<TooManyInvitationsToday>().RetryAt.ShouldBe(At(NextMidnight.AddDays(1)));
+        pharmacy.InvitationMailsThatDay.Value.ShouldBe(2);
+    }
+
+    [Fact]
     public void An_invite_refused_as_already_invited_counts_toward_nothing()
     {
         var limits = new InvitationMailLimits(RenewCooldown.From(TimeSpan.FromMinutes(10)), DailyMailCap.From(2));
