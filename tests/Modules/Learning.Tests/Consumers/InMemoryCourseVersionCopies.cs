@@ -24,6 +24,16 @@ internal sealed class InMemoryCourseVersionCopies : ICourseVersionCopies, ILearn
             ? Option<CourseVersionCopy>.Some(found)
             : Option<CourseVersionCopy>.None);
 
+    /// <summary>Every version Learning holds with the chapter, by its number and the chapter's kind there (#41).</summary>
+    public Task<IReadOnlyList<ChapterPlacement>> ListPlacementsAsync(ChapterId chapter, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<ChapterPlacement> placements = [.. Versions
+            .SelectMany(version => version.Chapters
+                .Where(copied => copied.ChapterId == chapter.Value)
+                .Select(copied => new ChapterPlacement(version.Id, version.VersionNumber, copied.Kind)))];
+        return Task.FromResult(placements);
+    }
+
     /// <summary>Stores a copy as if its event had been handled, for tests that start from a version Learning holds.</summary>
     public void Hold(CourseVersionCopy version) => Versions.Add(version);
 

@@ -83,6 +83,47 @@ public class EditorialEventsTests
         Wire.ShouldSurviveTheWire(new CourseVersionRetiredV1(Guid.CreateVersion7(), Guid.CreateVersion7()));
     }
 
+    [Fact]
+    public void ChapterFilesReleasedV1_survives_the_wire()
+    {
+        var released = new ChapterFilesReleasedV1(
+            Guid.CreateVersion7(),
+            [
+                new ReleasedChapterFileV1(
+                    Guid.CreateVersion7(),
+                    ChapterKindV1.Pdf,
+                    new Uri("https://probeaccount.blob.core.windows.net/editorial/course-versions/handout.pdf?sp=r&rsct=application%2Fpdf&rscd=inline&sig=fake"),
+                    new DateTimeOffset(2026, 11, 21, 9, 45, 0, TimeSpan.FromHours(1))),
+                new ReleasedChapterFileV1(
+                    Guid.CreateVersion7(),
+                    ChapterKindV1.Video,
+                    new Uri("https://probeaccount.blob.core.windows.net/editorial/course-versions/praxis.mp4?sp=r&rsct=video%2Fmp4&rscd=inline&sig=fake"),
+                    new DateTimeOffset(2026, 11, 21, 9, 45, 0, TimeSpan.FromHours(1))),
+            ]);
+
+        var json = Wire.ShouldSurviveTheWire(released);
+
+        json.ShouldContain("rsct=application%2Fpdf", Case.Sensitive);
+    }
+
+    [Fact]
+    public void ReleasedChapterFileV1_carries_the_kind_by_name()
+    {
+        var released = new ChapterFilesReleasedV1(
+            Guid.CreateVersion7(),
+            [
+                new ReleasedChapterFileV1(
+                    Guid.CreateVersion7(),
+                    ChapterKindV1.Video,
+                    new Uri("https://probeaccount.blob.core.windows.net/editorial/course-versions/praxis.mp4?sp=r&sig=fake"),
+                    new DateTimeOffset(2026, 11, 21, 9, 45, 0, TimeSpan.FromHours(1))),
+            ]);
+
+        var json = Wire.ShouldSurviveTheWire(released);
+
+        json.ShouldContain("\"kind\":\"Video\"", Case.Sensitive);
+    }
+
     /// <summary>Every constructor parameter's type and name, through the element types of lists, at every depth.</summary>
     private static void Walk(Type type, List<Type> types, List<string> parameters)
     {

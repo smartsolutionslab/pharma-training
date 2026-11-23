@@ -59,6 +59,24 @@ internal sealed class InMemoryPharmacyStore : IPharmacyStore, IOrganisationUnitO
         return Task.FromResult(new PagedResult<Pharmacy>(items, members.Count, page.Value, pageSize.Value));
     }
 
+    /// <summary>The pharmacy's Active memberships, by name (ordinal), then id, a page at a time, with how many it has.</summary>
+    public Task<PagedResult<Membership>> ListActiveMembershipsAsync(PharmacyId pharmacy, Page page, PageSize pageSize, CancellationToken cancellationToken)
+    {
+        List<Membership> members = [.. MembershipsOf(pharmacy, MembershipStatus.Active)
+            .OrderBy(membership => membership.Name?.Value, StringComparer.Ordinal)
+            .ThenBy(membership => membership.Id.Value)];
+        return Task.FromResult(PageOf(members, page, pageSize));
+    }
+
+    /// <summary>The pharmacy's Invited memberships, open or run out, by expiry, then id, a page at a time, with how many it has.</summary>
+    public Task<PagedResult<Membership>> ListInvitedMembershipsAsync(PharmacyId pharmacy, Page page, PageSize pageSize, CancellationToken cancellationToken)
+    {
+        List<Membership> invited = [.. MembershipsOf(pharmacy, MembershipStatus.Invited)
+            .OrderBy(membership => membership.InvitationExpiresAt)
+            .ThenBy(membership => membership.Id.Value)];
+        return Task.FromResult(PageOf(invited, page, pageSize));
+    }
+
     public Task PublishAsync(IntegrationEvent integrationEvent)
     {
         queued.Add(integrationEvent);
@@ -112,4 +130,13 @@ internal sealed class InMemoryPharmacyStore : IPharmacyStore, IOrganisationUnitO
 
     private Option<Pharmacy> Lookup(PharmacyId id) =>
         Stored.SingleOrDefault(pharmacy => pharmacy.Id == id) is { } pharmacy ? Option<Pharmacy>.Some(pharmacy) : Option<Pharmacy>.None;
+
+    private static PagedResult<Membership> PageOf(List<Membership> all, Page page, PageSize pageSize)
+    {
+        List<Membership> items = [.. all.Skip(page.Skip(pageSize)).Take(pageSize.Value)];
+        return new PagedResult<Membership>(items, all.Count, page.Value, pageSize.Value);
+    }
+
+    private IEnumerable<Membership> MembershipsOf(PharmacyId pharmacy, MembershipStatus status) =>
+        Stored.Where(stored => stored.Id == pharmacy).SelectMany(stored => stored.Memberships).Where(membership => membership.Status == status);
 }
