@@ -188,6 +188,15 @@ export const de = {
         Published: 'Keine veröffentlichten Versionen.',
       },
     },
+    returns: {
+      title: 'Rückgaben',
+      columns: {
+        returnedAt: 'Zurückgegeben am',
+        reason: 'Grund',
+      },
+      empty: 'Diese Version wurde noch nie zur Überarbeitung zurückgegeben.',
+      loadFailed: 'Die Rückgaben dieser Version konnten nicht geladen werden.',
+    },
     course: {
       new: 'Neue Schulung',
       form: {

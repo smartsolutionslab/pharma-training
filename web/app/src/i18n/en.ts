@@ -179,6 +179,15 @@ export const en: MessageSchema = {
         Published: 'No published versions.',
       },
     },
+    returns: {
+      title: 'Returns',
+      columns: {
+        returnedAt: 'Returned on',
+        reason: 'Reason',
+      },
+      empty: 'This version has never been returned to draft.',
+      loadFailed: 'The returns of this version could not be loaded.',
+    },
     course: {
       new: 'New course',
       form: {
