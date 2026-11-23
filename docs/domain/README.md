@@ -149,7 +149,7 @@ Regeln:
 
 - Namen im Perfekt, Version im Typnamen (`CertificateIssuedV1`); eine Änderung, die Konsumenten bricht, wird eine neue Version.
 - Jedes Event trägt `EventId`, `OccurredAt` und die IDs, die Konsumenten zum Zuordnen brauchen (immer `CourseId` und `CourseVersionId`).
-- Keine Personendaten in Events aus event-sourced Services (Learning, Assessment): nur `PersonId`. Namen leben nur in Organisation und Certification, damit Löschung nach DSGVO möglich bleibt.
+- Keine Personendaten in Events aus event-sourced Services (Learning, Assessment): nur `PersonId`. Namen leben nur in Organisation und Certification, damit Löschung nach DSGVO möglich bleibt. Einzige Ausnahme: Editorial hält mit der Freigabe einer Frage den Anzeigenamen der freigebenden Person (`editorial.course_version_questions.reviewed_by_name`, aus dem Claim `name` zum Zeitpunkt der Freigabe; Entscheidung des Owners zu #205); die Löschung (#115) pseudonymisiert ihn.
 - Prüfungsfragen mit Lösungen gehen nur an Assessment, nie an Catalog oder Frontend.
 
 | Event | Publisher | Konsumenten | Wichtige Felder |
