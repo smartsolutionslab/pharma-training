@@ -156,6 +156,24 @@ test('selecting everyone with a job function reads every page of them', async ()
   ]);
 });
 
+// Follow-ups of #37 (#239): more than 100 can never be assigned at once, so reading stops at the page that passes the
+// limit, and the step says so at once rather than at Next.
+test('selecting everyone with a job function stops reading at the page that passes 100, and refuses at once', async () => {
+  const user = userEvent.setup();
+  state.members[markt.id] = [...team, ...staff(250, 'Trainee', 'Azubi')];
+  await renderAssignPage();
+  await toLearners(user);
+
+  await user.click(jobFunctionButton('Trainee'));
+
+  const alert = await screen.findByRole('alert');
+  expect(alert).toHaveTextContent(t('compliance.assign.learners.tooMany', { max: 100 }));
+  expect(membersReads().filter((read) => read.jobFunction === 'Trainee')).toEqual([
+    { page: '1', pageSize: '100', jobFunction: 'Trainee' },
+    { page: '2', pageSize: '100', jobFunction: 'Trainee' },
+  ]);
+});
+
 test('Clear empties the selection', async () => {
   const user = userEvent.setup();
   await renderAssignPage();
