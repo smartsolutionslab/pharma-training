@@ -113,10 +113,17 @@ test('every detail below a module declares its audience and its title by key', (
       titleKey: 'modules.editorial.details.test.title',
       audience: 'editor',
     },
+    {
+      address: '/learning/courses/:courseVersionId',
+      titleKey: 'modules.learning.details.player.title',
+      audience: 'employee',
+    },
   ]);
   expect(t('modules.editorial.details.version.title')).toBe('Schulungsversion');
+  expect(t('modules.learning.details.player.title')).toBe('Schulung');
   setLanguage('en-GB', { remember: false });
   expect(t('modules.editorial.details.version.title')).toBe('Course version');
+  expect(t('modules.learning.details.player.title')).toBe('Course');
 });
 
 // An entry page (its routes.ts's entries) is a page a link from outside the app opens, at an address of its own outside
