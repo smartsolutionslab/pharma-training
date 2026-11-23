@@ -54,7 +54,8 @@ test("every module's title is in the catalogs, in German and in English", () => 
   });
 });
 
-// A page below a module (its routes.ts's pages) declares its own audience: registering a pharmacy needs no pharmacy.
+// A page below a module (its routes.ts's pages) declares its own audience: registering a pharmacy needs no pharmacy,
+// assigning a course (#37) a pharmacy the user may manage.
 test('every page below a module declares the audience it is for, and its title by key', () => {
   expect(
     moduleRoutes.flatMap((route) =>
@@ -66,12 +67,18 @@ test('every page below a module declares the audience it is for, and its title b
     ),
   ).toEqual([
     {
+      address: '/compliance/assign',
+      titleKey: 'modules.compliance.pages.assign.title',
+      audience: 'manager',
+    },
+    {
       address: '/organisation/register',
       titleKey: 'modules.organisation.pages.register.title',
       audience: 'signed-in',
     },
   ]);
   expect(t('modules.organisation.pages.register.title')).toBe('Apotheke registrieren');
+  expect(t('modules.compliance.pages.assign.title')).toBe('Schulung zuweisen');
 });
 
 // The router maps a page at /<module>/<page>, and the audience gate and the breadcrumbs find it by the address's second
