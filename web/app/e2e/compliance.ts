@@ -25,12 +25,13 @@ function suffix() {
  * with a digit, and its number shrinks as time goes on, so the newest run's course is on the first page.
  */
 export function courseTitle(label = 'Zuweisung') {
-  return `0 E2E ${label} ${countdown()}${suffix()}`;
+  // The countdown before the label: by name, the newest course of any spec comes first.
+  return `0 E2E ${countdown()}${suffix()} ${label}`;
 }
 
 /** A pharmacy name no earlier run used, counting down like the course titles. */
 export function pharmacyName(label: string) {
-  return `0 E2E ${label} ${countdown()}${suffix()}`;
+  return `0 E2E ${countdown()}${suffix()} ${label}`;
 }
 
 /** The access token Keycloak issues to a local user, whose password is their name (direct access grants are on). */
