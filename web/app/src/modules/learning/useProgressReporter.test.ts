@@ -1,7 +1,7 @@
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query';
 import { cleanup, render, waitFor } from '@testing-library/vue';
 import { afterEach, beforeEach, expect, onTestFinished, test, vi } from 'vitest';
-import { defineComponent } from 'vue';
+import { defineComponent, nextTick, type Ref, ref } from 'vue';
 import { getGetLearningSessionsIdQueryKey, type LearningSessionDto } from '@/api/generated';
 import { t } from '@/i18n';
 import { handwashing, introduction, refusal, session, sessionId, summary } from './coursePlayerFixtures';
@@ -55,11 +55,11 @@ afterEach(() => {
 afterEach(cleanup);
 
 /** The reporter in a component of its own, with a query client holding the session as it was started. */
-function renderReporter(started: LearningSessionDto = session()) {
+function renderReporter(started: LearningSessionDto = session(), id: Ref<string> = ref(sessionId)) {
   const used: { reporter?: ReturnType<typeof useProgressReporter> } = {};
   const Reporter = defineComponent({
     setup() {
-      used.reporter = useProgressReporter(sessionId, {
+      used.reporter = useProgressReporter(id, {
         titleOf: (chapterId: string) => titles[chapterId] ?? '',
         announce,
       });
@@ -229,6 +229,49 @@ test('hiding the page sends what is pending with keepalive', async () => {
       { url: progressUrl, method: 'POST', body: { chapterId: handwashing.chapterId, percent: 33 }, keepalive: true },
     ]),
   );
+});
+
+test('a report on its way when the page is left is sent again with keepalive, since the page may cut it off', async () => {
+  const first = deferred();
+  host.mockImplementationOnce(() => first.answer);
+  const { reporter } = renderReporter();
+
+  reporter.report(handwashing.chapterId, 40);
+  await waitFor(() => expect(sent()).toHaveLength(1));
+  window.dispatchEvent(new Event('pagehide'));
+
+  await waitFor(() =>
+    expect(sent()).toEqual([
+      { url: progressUrl, method: 'POST', body: { chapterId: handwashing.chapterId, percent: 40 }, keepalive: false },
+      { url: progressUrl, method: 'POST', body: { chapterId: handwashing.chapterId, percent: 40 }, keepalive: true },
+    ]),
+  );
+  first.release(storing({ chapterId: handwashing.chapterId, percent: 40 }));
+});
+
+test('a report the host acknowledged is not sent again when the page is left', async () => {
+  const { reporter } = renderReporter();
+
+  reporter.report(handwashing.chapterId, 40);
+  await waitFor(() => expect(sent()).toHaveLength(1));
+  await reporter.flush();
+  window.dispatchEvent(new Event('pagehide'));
+
+  expect(sent()).toHaveLength(1);
+});
+
+test("what waits for one session is dropped when the session changes (another course version): it is not the new one's", async () => {
+  const id = ref(sessionId);
+  const { reporter, queryClient } = renderReporter(session(), id);
+  const otherSession = '0198c1a0-0000-7000-8000-0000000000b2';
+  queryClient.setQueryData(getGetLearningSessionsIdQueryKey(otherSession), { ...session(), id: otherSession });
+
+  reporter.track(handwashing.chapterId, 33);
+  id.value = otherSession;
+  await nextTick();
+  await reporter.flush();
+
+  expect(sent()).toEqual([]);
 });
 
 test('the page coming back into view sends nothing', async () => {

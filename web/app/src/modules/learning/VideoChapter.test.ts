@@ -22,9 +22,10 @@ import VideoChapter from './VideoChapter.vue';
 // The watched maximum rises on timeupdate only by steps of at most 2 s while not seeking; a seek past it by more than
 // 0.5 s snaps back to it and is announced. The percent is floor(max / videoDurationSeconds × 100); the end reached by
 // playing gives 100. On loadedmetadata it resumes at percent/100 × duration, announced; within 1 s of the end it starts
-// at 0. A done chapter seeks freely. The URL is read again 60 s before it expires, and a new URL keeps the position and
-// whether it played; a media error reads it once more, then shows an alert with Retry; media-not-ready retries 5 times
-// 2 s apart, then shows an alert with Retry.
+// at 0. A done chapter seeks freely. The signed URL is read again when the media fails (as it does once the URL has
+// expired), never by the browser's clock, which may run ahead of the server's; a new URL keeps the position and whether
+// it played. A second error in a row shows an alert with Retry; media-not-ready retries 5 times 2 s apart, then shows
+// an alert with Retry.
 FakeMedia.install();
 const host = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>();
 vi.stubGlobal('fetch', host);
@@ -214,6 +215,22 @@ test('a leap of more than 2 s without a seek does not raise the maximum', async 
   await vi.waitFor(() => expect(media.currentTime).toBe(244));
 });
 
+test('a gap of more than 2 s between two timeupdates (a stalled or throttled tab) does not stop the maximum rising', async () => {
+  const { media, emitted } = await playingFrom240();
+  media.playFor(4);
+
+  // 3.75 s pass without a timeupdate, then playing goes on in its usual steps.
+  media.leapTo(247.75);
+  media.playFor(4);
+  media.pause();
+
+  await vi.waitFor(() => expect(emittedOf(emitted, 'progress')).not.toHaveLength(0));
+  // 251.75 of 600 seconds: 41 %, not the 40 % that the maximum before the gap (244) would be.
+  expect(emittedOf(emitted, 'progress').at(-1)).toBe(41);
+  media.seekTo(251.5);
+  await landedAt(media, 251.5);
+});
+
 test("the percent is the watched maximum over the editor's duration, rounded down, reported at a pause", async () => {
   const { media, emitted } = await playingFrom240();
 
@@ -318,14 +335,33 @@ test("progress made on another device raises the maximum: it is the larger of th
   await vi.waitFor(() => expect(media.currentTime).toBe(360));
 });
 
-test('the URL is read again a minute before it expires; the new one keeps the position and the playing', async () => {
+test('the URL is not read again by the clock: an expired URL is renewed when the media fails', async () => {
+  const { media } = await playingFrom240();
+  media.playFor(10);
+
+  await vi.advanceTimersByTimeAsync(16 * 60_000);
+
+  expect(mediaReads()).toBe(1);
+});
+
+test("a browser clock running ahead of the server's does not read the URL again and again", async () => {
+  // By this browser's clock the URL the host just issued expired five minutes ago: the clock is 20 minutes ahead.
+  issuing = async () =>
+    Response.json({ ...mediaUrl(firstUrl), expiresAt: new Date(Date.now() - 5 * 60_000).toISOString() });
+  const { media } = await playingFrom240();
+  media.playFor(10);
+
+  await vi.advanceTimersByTimeAsync(60_000);
+
+  expect(mediaReads()).toBe(1);
+});
+
+test('a media error reads the URL again; the new one keeps the position and the playing', async () => {
   const { video, media } = await playingFrom240();
   media.playFor(10);
   issuing = async () => Response.json(mediaUrl(secondUrl));
 
-  await vi.advanceTimersByTimeAsync(13 * 60_000 + 59_000);
-  expect(mediaReads()).toBe(1);
-  await vi.advanceTimersByTimeAsync(1_000);
+  media.fail();
   await vi.waitFor(() => expect(sourceOf(video)).toBe(secondUrl));
 
   media.loadMetadata(duration);
@@ -339,7 +375,7 @@ test('a paused video stays paused on the new URL', async () => {
   media.pause();
   issuing = async () => Response.json(mediaUrl(secondUrl));
 
-  await vi.advanceTimersByTimeAsync(14 * 60_000);
+  media.fail();
   await vi.waitFor(() => expect(sourceOf(video)).toBe(secondUrl));
   media.loadMetadata(duration);
 

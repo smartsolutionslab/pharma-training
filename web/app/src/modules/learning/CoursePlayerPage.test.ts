@@ -3,7 +3,12 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/vue';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { createMemoryHistory } from 'vue-router';
-import type { CatalogChapterDto, CatalogCourseVersionDto, LearningSessionDto } from '@/api/generated';
+import {
+  type CatalogChapterDto,
+  type CatalogCourseVersionDto,
+  getGetLearningSessionsIdQueryKey,
+  type LearningSessionDto,
+} from '@/api/generated';
 import { i18n, setLanguage, t } from '@/i18n';
 import { createAppRouter } from '@/router';
 import {
@@ -156,6 +161,77 @@ test('the current chapter is the first one not done, marked as the current step,
   expect(overviewItem(introduction)).not.toHaveAttribute('aria-current');
   expect(screen.getByRole('heading', { level: 2, name: summary.title })).toBeInTheDocument();
   await waitFor(() => expect(router.currentRoute.value.query.chapter).toBe(summary.chapterId));
+});
+
+test('a session answering after the catalog still opens the first chapter not done, and only then names it in ?chapter=', async () => {
+  hostAnswering(courseVersion(), session({ [introduction.chapterId]: { percent: 100, completed: true } }));
+  const answer = starting;
+  // The start answers 50 ms after the catalog: the default must wait for the session's progress.
+  starting = () => new Promise((resolve) => setTimeout(() => resolve(answer()), 50));
+  const { router } = await renderPage();
+  await heading();
+
+  await waitFor(() => expect(overviewItem(handwashing)).toHaveAttribute('aria-current', 'step'));
+  expect(screen.getByRole('heading', { level: 2, name: handwashing.title })).toBeInTheDocument();
+  await waitFor(() => expect(router.currentRoute.value.query.chapter).toBe(handwashing.chapterId));
+  expect(overviewItem(introduction)).not.toHaveAttribute('aria-current');
+});
+
+test("a start answered late for a version left meanwhile is ignored: the page keeps the current version's session", async () => {
+  const otherVersionId = '0198c1a0-0000-7000-8000-0000000000c2';
+  const otherSessionId = '0198c1a0-0000-7000-8000-0000000000b2';
+  const otherVersion: CatalogCourseVersionDto = {
+    ...courseVersion(),
+    courseVersionId: otherVersionId,
+    title: 'Hygiene in der Apotheke II',
+  };
+  const first: LearningSessionDto = session({ [introduction.chapterId]: { percent: 100, completed: true } });
+  const second: LearningSessionDto = {
+    ...session({ [summary.chapterId]: { percent: 100, completed: true } }),
+    id: otherSessionId,
+    courseVersionId: otherVersionId,
+  };
+  let releaseFirst: (response: Response) => void = () => undefined;
+  host.mockImplementation(async (input, init) => {
+    const url = new URL(String(input), 'http://localhost');
+    const method = init?.method ?? 'GET';
+    if (method === 'GET' && url.pathname === `/api/catalog/course-versions/${versionId}`) {
+      return Response.json(courseVersion());
+    }
+    if (method === 'GET' && url.pathname === `/api/catalog/course-versions/${otherVersionId}`) {
+      return Response.json(otherVersion);
+    }
+    if (method === 'POST' && url.pathname === '/api/learning/sessions') {
+      const { courseVersionId } = JSON.parse(String(init?.body)) as { courseVersionId: string };
+      if (courseVersionId === versionId) {
+        return new Promise<Response>((resolve) => {
+          releaseFirst = resolve;
+        });
+      }
+      return Response.json(second, { status: 201 });
+    }
+    if (method === 'GET' && url.pathname === `/api/learning/sessions/${sessionId}`) {
+      return Response.json(first);
+    }
+    if (method === 'GET' && url.pathname === `/api/learning/sessions/${otherSessionId}`) {
+      return Response.json(second);
+    }
+    return new Response('', { status: 404 });
+  });
+  // Both addresses name the chapter, so nothing replaces them while the test moves on.
+  const { router, queryClient } = await renderPage(`/learning/courses/${versionId}?chapter=${introduction.chapterId}`);
+  await waitFor(() => expect(starts()).toHaveLength(1));
+
+  await router.push(`/learning/courses/${otherVersionId}?chapter=${introduction.chapterId}`);
+  await screen.findByRole('heading', { level: 1, name: otherVersion.title });
+  await waitFor(() => expect(overviewItem(summary)).toHaveTextContent(t('learning.player.state.done')));
+  releaseFirst(Response.json(first, { status: 201 }));
+  // The late answer is the first session's true state and may go under its own key; the page does not take it up.
+  await waitFor(() => expect(queryClient.getQueryData(getGetLearningSessionsIdQueryKey(sessionId))).toBeDefined());
+
+  await waitFor(() => expect(overviewItem(summary)).toHaveTextContent(t('learning.player.state.done')));
+  expect(overviewItem(introduction)).toHaveTextContent(t('learning.player.state.open'));
+  expect(screen.getByRole('heading', { level: 1, name: otherVersion.title })).toBeInTheDocument();
 });
 
 test('with every chapter done the current chapter is the first', async () => {

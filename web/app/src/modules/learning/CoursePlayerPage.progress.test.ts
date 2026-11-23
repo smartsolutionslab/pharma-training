@@ -128,13 +128,15 @@ test('the last chapter done shows a lasting panel: the content is completed', as
 
   FakeIntersectionObserver.show();
 
-  await waitFor(() =>
-    expect(
-      screen
-        .getAllByRole('status')
-        .filter((region) => region.textContent?.includes(t('learning.player.contentCompleted'))),
-    ).not.toHaveLength(0),
-  );
+  // Announced once, in the page's one polite status region; the lasting panel says it too, but is no second region.
+  const said = t('learning.player.contentCompleted');
+  await waitFor(() => expect(screen.getAllByText(said)).toHaveLength(2));
+  expect(screen.getAllByRole('status')).toHaveLength(1);
+  const shown = screen.getAllByText(said);
+  expect(shown.filter((element) => element.closest('[role="status"]') !== null)).toHaveLength(1);
+  const panels = shown.filter((element) => element.closest('[role="status"]') === null);
+  expect(panels).toHaveLength(1);
+  expect(panels[0]?.closest('section')).not.toBeNull();
 });
 
 test('a report that failed shows an alert with Save now, which sends it again and clears it', async () => {

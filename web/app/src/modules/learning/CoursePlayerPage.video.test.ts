@@ -154,3 +154,25 @@ test("the video resumes at the session's percent and says so in the polite statu
   await vi.waitFor(() => expect(media.currentTime).toBe(240));
   await politely('Fortgesetzt bei 4:00.');
 });
+
+test('a message stays the same element in the polite status region while newer ones come, so it is not heard again', async () => {
+  const media = await renderVideoChapter();
+  media.play();
+  const refusedAt = async (watched: number, said: string) => {
+    media.playFor(10);
+    media.seekTo(500);
+    await vi.waitFor(() => expect(media.currentTime).toBe(watched));
+    return politely(said);
+  };
+  await refusedAt(10, 'Vorspulen ist nur bis 0:10 möglich.');
+  await refusedAt(20, 'Vorspulen ist nur bis 0:20 möglich.');
+  const region = await refusedAt(30, 'Vorspulen ist nur bis 0:30 möglich.');
+  const second = screen.getByText('Vorspulen ist nur bis 0:20 möglich.');
+
+  await refusedAt(40, 'Vorspulen ist nur bis 0:40 möglich.');
+
+  // The oldest message went; the ones still there are the elements they were, with the words they had.
+  expect(second.isConnected).toBe(true);
+  expect(second).toHaveTextContent('Vorspulen ist nur bis 0:20 möglich.');
+  expect(region).not.toHaveTextContent('Vorspulen ist nur bis 0:10 möglich.');
+});

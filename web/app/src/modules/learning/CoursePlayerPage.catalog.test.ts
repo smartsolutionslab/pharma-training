@@ -56,7 +56,7 @@ const texts: Record<string, { de: string; en: string }> = {
   'learning.player.pdf.page': { de: 'Seite {page} von {pages}', en: 'Page {page} of {pages}' },
   'learning.player.pdf.hint': {
     de: 'Blättern Sie bis zur letzten Seite, um das Kapitel abzuschließen.',
-    en: 'Scroll to the last page to complete the chapter.',
+    en: 'Go to the last page to complete the chapter.',
   },
   'learning.player.pdf.next': { de: 'Nächste Seite', en: 'Next page' },
   'learning.player.pdf.previous': { de: 'Vorherige Seite', en: 'Previous page' },

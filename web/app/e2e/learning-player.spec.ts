@@ -15,8 +15,9 @@ import { memberOfOnePharmacy } from './onePharmacy';
 //     -movflags +faststart e2e/fixtures/clip-20s.mp4
 //
 // The first step probes whether the browser plays it (canPlayType and a load of the clip). Owner's decision on #44: if
-// Playwright's Chromium cannot, this spec runs in Google Chrome (channel: 'chrome') in CI where the runner has it;
-// otherwise only the video's steps are skipped, with an annotation, and the unit tests cover the seek limit and resume.
+// Playwright's Chromium cannot, this spec runs in Google Chrome (channel: 'chrome') in CI. In CI (process.env.CI) a
+// browser that cannot play the clip fails the spec, so the video's steps are never skipped unnoticed there; locally
+// they are skipped with an annotation, and the unit tests cover the seek limit and resume.
 // Keycloak's login is English.
 
 const keycloak = process.env.E2E_KEYCLOAK_URL ?? 'http://localhost:8080';
@@ -155,8 +156,8 @@ async function publishCourse(request: APIRequestContext, title: string, clip: Bu
 }
 
 /**
- * Waits as the developer until Learning knows the version (the start is no longer 404) and the video's file is ready
- * (its media URL is no longer 409).
+ * Waits as the developer until Learning knows the version (the start answers 2xx: 404 until it does, and any other
+ * refusal is no reason to go on) and the files are ready (their media URL answers 200, not 409).
  */
 async function waitUntilLearnable(request: APIRequestContext, course: PublishedCourse) {
   const developer = await accessToken(request, 'developer');
@@ -168,10 +169,10 @@ async function waitUntilLearnable(request: APIRequestContext, course: PublishedC
             headers: { Authorization: developer },
             data: { courseVersionId: course.version },
           })
-        ).status(),
-      { message: 'Learning knows the published version', timeout: 30_000 },
+        ).ok(),
+      { message: 'Learning knows the published version (the start answers 2xx)', timeout: 30_000 },
     )
-    .not.toBe(404);
+    .toBe(true);
   for (const chapter of [course.video, course.pdf]) {
     await expect
       .poll(
@@ -236,6 +237,12 @@ test('a learner works through a text, a video and a PDF chapter; the video keeps
   const clip = await readFile(new URL('./fixtures/clip-20s.mp4', import.meta.url));
 
   const probe = await probeClip(page, clip);
+  if (process.env.CI) {
+    expect(
+      probe.playable,
+      `${test.info().project.name} does not play the AV1/MP4 clip (${probe.why}); in CI this spec runs in a browser that does (#44).`,
+    ).toBe(true);
+  }
   if (!probe.playable) {
     test.info().annotations.push({
       type: 'skipped: video steps',
@@ -277,8 +284,12 @@ test('a learner works through a text, a video and a PDF chapter; the video keeps
     await expect
       .poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime), { timeout: 15_000 })
       .toBeGreaterThan(3);
+    // The pause's own report: the video chapter's, not one the 30 s cadence or the text chapter sent.
     const reported = page.waitForResponse(
-      (response) => response.request().method() === 'POST' && response.url().endsWith('/progress'),
+      (response) =>
+        response.request().method() === 'POST' &&
+        response.url().endsWith('/progress') &&
+        (response.request().postDataJSON() as { chapterId?: string } | null)?.chapterId === course.video,
     );
     await video.evaluate((element: HTMLVideoElement) => element.pause());
     const answer = await reported;
@@ -326,11 +337,9 @@ test('a learner works through a text, a video and a PDF chapter; the video keeps
   await expect(doneBadge(page, pdfTitle)).toBeVisible();
 
   if (probe.playable) {
-    await expect(
-      page
-        .getByRole('status')
-        .filter({ hasText: 'Sie haben alle Kapitel bearbeitet. Der Test ist jetzt freigeschaltet.' })
-        .first(),
-    ).toBeVisible();
+    // Said once in the polite status region, and shown in a lasting panel that is no second status region.
+    const contentCompleted = 'Sie haben alle Kapitel bearbeitet. Der Test ist jetzt freigeschaltet.';
+    await expect(page.getByRole('status').filter({ hasText: contentCompleted })).toHaveCount(1);
+    await expect(page.locator('section').filter({ hasText: contentCompleted })).toBeVisible();
   }
 });

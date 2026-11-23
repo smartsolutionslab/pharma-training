@@ -19,12 +19,15 @@ import { FakeIntersectionObserver } from './fakeIntersectionObserver';
 import { type FakeLoadingTask, fakeDocument } from './fakePdf';
 
 // The page shows a PDF chapter with PdfChapter (#44) and reports it through useProgressReporter: the last page shown
-// reports 100 at once. pdfjs-dist is stubbed at its import.
+// reports 100 at once. pdfjs-dist's legacy build is stubbed at its import.
 const pdfjs = vi.hoisted(() => ({
   getDocument: vi.fn<(parameters: Record<string, unknown>) => FakeLoadingTask>(),
   GlobalWorkerOptions: { workerSrc: '' },
 }));
-vi.mock('pdfjs-dist', () => pdfjs);
+vi.mock('pdfjs-dist/legacy/build/pdf.mjs', async () => ({
+  ...pdfjs,
+  TextLayer: (await import('./fakePdf')).FakeTextLayer,
+}));
 vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(
   () => ({}) as unknown as CanvasRenderingContext2D,
 );
