@@ -6,10 +6,13 @@ namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Persistence;
 /// The database role a module's service logs in as once published, never as the server's administrator (OQ8 c on #114,
 /// docs/adr/0005). The MigrationRunner ensures it after the migrations, logged in as the administrator: the role named by
 /// the <c>application</c> connection string's user, with its password, may log in and nothing more, may connect to its
-/// own database alone, may read and write what the administrator made there (every schema the administrator owns, later
-/// tables too), and may create schemas of its own in that database, where Wolverine builds its message storage at start.
-/// It never changes the module's schema. Every run is idempotent and re-applies everything, so a new password or a new
-/// table is picked up by the next one; runs on one database wait for each other. It may never change EF Core's migration
+/// own database alone and use temporary tables there, and may read and write what the administrator made there (every
+/// schema the administrator owns, later tables too, Wolverine's message storage included, which the MigrationRunner builds
+/// as the administrator: <see cref="ModuleMessageStorage"/>). It holds no CREATE on the database, so it owns nothing: no
+/// schema, no table, nothing it could attach code to that runs as whoever touches it. It never changes the module's schema.
+/// Every run is idempotent and re-applies everything, so a new password or a new table is picked up by the next one, a
+/// CREATE an earlier run granted is taken back, and whatever keeps the role from logging in or working (an expiry, a
+/// connection limit, a setting of its own) is lifted; runs on one database wait for each other, however long that takes. It may never change EF Core's migration
 /// history. The session resolves names in pg_catalog alone (<see cref="AdministratorSession"/>), the role's password
 /// reaches the server only as a SCRAM-SHA-256 verifier (<see cref="ScramSha256Verifier"/>), and a database grant that
 /// grants nothing fails the run.
@@ -26,7 +29,8 @@ public static class ModuleDatabaseRole
     private const string MigrationsHistory = "__EFMigrationsHistory";
 
     // Every function and catalog the statement names is schema-qualified, besides the session's pinned search_path
-    // (AdministratorSession): the role holds CREATE on the database and could otherwise shadow them (CVE-2018-1058).
+    // (AdministratorSession): defence in depth, should the role ever hold CREATE on the database and shadow them
+    // (CVE-2018-1058).
     private const string EnsureRole =
         $$"""
         DO $ensure$
@@ -45,9 +49,13 @@ public static class ModuleDatabaseRole
             BEGIN
                 IF EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = role_name) THEN
                     -- Only a superuser may change SUPERUSER, REPLICATION or BYPASSRLS, which a role this created never has.
-                    EXECUTE pg_catalog.format('ALTER ROLE %I WITH LOGIN NOCREATEDB NOCREATEROLE INHERIT PASSWORD %L', role_name, role_verifier);
+                    -- Whatever an operator, or the role itself, set since the last run to keep it from logging in or working
+                    -- (an expiry, a connection limit, a setting of its own, everywhere or in its database) is lifted.
+                    EXECUTE pg_catalog.format('ALTER ROLE %I WITH LOGIN NOCREATEDB NOCREATEROLE INHERIT CONNECTION LIMIT -1 VALID UNTIL %L PASSWORD %L', role_name, 'infinity', role_verifier);
+                    EXECUTE pg_catalog.format('ALTER ROLE %I RESET ALL', role_name);
+                    EXECUTE pg_catalog.format('ALTER ROLE %I IN DATABASE %I RESET ALL', role_name, database_name);
                 ELSE
-                    EXECUTE pg_catalog.format('CREATE ROLE %I WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS INHERIT PASSWORD %L', role_name, role_verifier);
+                    EXECUTE pg_catalog.format('CREATE ROLE %I WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS INHERIT CONNECTION LIMIT -1 VALID UNTIL %L PASSWORD %L', role_name, 'infinity', role_verifier);
                 END IF;
             EXCEPTION WHEN OTHERS THEN
                 GET STACKED DIAGNOSTICS
@@ -62,19 +70,29 @@ public static class ModuleDatabaseRole
                     HINT = failure_hint;
             END;
 
-            -- No other module's role may connect here; this one may, use temporary tables, and create schemas of its own.
+            -- No other module's role may connect here; this one may and use temporary tables, and never create anything: a
+            -- CREATE an earlier run granted is taken back, so the role owns no schema to attach code to.
             EXECUTE pg_catalog.format('REVOKE CONNECT ON DATABASE %I FROM PUBLIC', database_name);
-            EXECUTE pg_catalog.format('GRANT CONNECT, TEMPORARY, CREATE ON DATABASE %I TO %I', database_name, role_name);
+            EXECUTE pg_catalog.format('GRANT CONNECT, TEMPORARY ON DATABASE %I TO %I', database_name, role_name);
+            EXECUTE pg_catalog.format('REVOKE CREATE ON DATABASE %I FROM %I', database_name, role_name);
 
             -- PostgreSQL only warns when an administrator who neither owns the database nor is a member of its owner revokes
             -- or grants on it, and changes nothing; that must fail the run, not leave PUBLIC connected or the role locked out.
             IF NOT pg_catalog.has_database_privilege(role_name::name, database_name, 'CONNECT')
-               OR NOT pg_catalog.has_database_privilege(role_name::name, database_name, 'CREATE')
                OR NOT pg_catalog.has_database_privilege(role_name::name, database_name, 'TEMPORARY') THEN
                 RAISE EXCEPTION USING
                     ERRCODE = 'insufficient_privilege',
-                    MESSAGE = pg_catalog.format('Granting %I CONNECT, TEMPORARY and CREATE on the database %I granted nothing.', role_name, database_name),
+                    MESSAGE = pg_catalog.format('Granting %I CONNECT and TEMPORARY on the database %I granted nothing.', role_name, database_name),
                     HINT = 'The administrator must own the database or be a member of its owner.';
+            END IF;
+
+            -- Nor may the role keep CREATE some other way (PUBLIC, or a role it was made a member of): the run fails rather
+            -- than leave it able to create a schema of its own.
+            IF pg_catalog.has_database_privilege(role_name::name, database_name, 'CREATE') THEN
+                RAISE EXCEPTION USING
+                    ERRCODE = 'insufficient_privilege',
+                    MESSAGE = pg_catalog.format('The role %I still holds CREATE on the database %I after it was revoked.', role_name, database_name),
+                    HINT = 'PUBLIC, or a role it is a member of, holds CREATE on the database: revoke it there.';
             END IF;
 
             IF EXISTS (
@@ -157,6 +175,8 @@ public static class ModuleDatabaseRole
         // of the role's own, never the MigrationGate's, which the runner holds on another connection meanwhile.
         await using (var gate = new NpgsqlCommand(RoleLock, connection, transaction))
         {
+            // However long the other run takes: the connection's command timeout must not end the wait, cancellation may.
+            gate.CommandTimeout = 0;
             gate.Parameters.AddWithValue("role", role.Username!);
             await gate.ExecuteNonQueryAsync(cancellationToken);
         }
