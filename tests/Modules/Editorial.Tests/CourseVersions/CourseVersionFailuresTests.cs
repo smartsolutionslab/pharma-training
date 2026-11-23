@@ -87,7 +87,7 @@ public class CourseVersionFailuresTests
 
         refused.Code.ShouldBe("editorial.reviewer-name-missing");
         refused.Status.ShouldBe(HttpStatusCode.Forbidden);
-        refused.Message.ShouldBe("The access token names no display name (claim `name`) to record with the approval.");
+        refused.Message.ShouldBe("The access token names no usable display name (claim `name`): it is missing, longer than 100 characters, or holds characters that cannot be shown.");
     }
 
     [Fact]
