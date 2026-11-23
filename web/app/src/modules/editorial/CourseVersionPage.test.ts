@@ -314,10 +314,12 @@ describe.each([
       [],
     );
     expect(screen.queryByTitle(t('editorial.chapters.dragHint'))).not.toBeInTheDocument();
-    // The return history's table (#201) has a column chooser: it changes the table's view, not the version.
+    // The return history's table (#201) has a column chooser, its fieldset's checkboxes: they change the table's view,
+    // not the version. Any other control, in the history or not, would.
     const history = screen.getByRole('region', { name: t('editorial.returns.title') });
+    const columnChoosers = [...history.querySelectorAll('fieldset input[type="checkbox"]')];
     const controls = [...container.querySelectorAll('form, input, textarea, select, [draggable="true"]')];
-    expect(controls.filter((control) => !history.contains(control))).toEqual([]);
+    expect(controls.filter((control) => !columnChoosers.includes(control))).toEqual([]);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 

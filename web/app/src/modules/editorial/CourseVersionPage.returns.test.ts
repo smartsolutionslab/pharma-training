@@ -174,6 +174,34 @@ describe('a return taken on the page', () => {
     expect(historyReads().at(-1)).toBe('1');
   });
 
+  test('from the second page, never shows the first page as it was before the return', async () => {
+    // 21 returns: the history has a second page. The host answers the history slowly, so what the page shows while
+    // the first page is read again is seen.
+    host.returns = Array.from({ length: 21 }, (_, index) => returnRecord(21 - index, `Grund ${21 - index}`));
+    const answer = answering(host);
+    fetch.mockImplementation(async (input, init) => {
+      const url = new URL(String(input), 'http://localhost');
+      if ((init?.method ?? 'GET') === 'GET' && url.pathname.endsWith('/returns')) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      return answer(input, init);
+    });
+    const user = userEvent.setup();
+    const { heading } = await renderPage();
+    await within(await screen.findByRole('region', { name: 'Rückgaben' })).findByText('Grund 21');
+    await user.click(within(history()).getByRole('button', { name: t('dataTable.next') }));
+    await waitFor(() => expect(shownRows()[0]?.[2]).toBe('Grund 1'));
+
+    await returnWith(reason);
+
+    await waitFor(() => expect(heading).toHaveFocus());
+    // Either the new return is the first row, or the table is busy: never the first page's old rows as current.
+    const newReturn = [dateTime(returnedAtNow), 'Ihnen', reason];
+    const busy = within(history()).getByRole('table').getAttribute('aria-busy') === 'true';
+    expect([['busy'], newReturn]).toContainEqual(busy ? ['busy'] : shownRows()[0]);
+    await waitFor(() => expect(shownRows()[0]).toEqual(newReturn));
+  });
+
   test('refused, adds no row and does not read the history again', async () => {
     host.returns = [older];
     host.step = async () => {

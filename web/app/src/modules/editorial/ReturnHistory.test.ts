@@ -63,8 +63,9 @@ const texts = {
     returnedAt: 'Returned on',
     returnedBy: 'Returned by',
     reason: 'Reason',
-    byYou: 'you',
-    byAnotherEditor: 'another person in the editorial team',
+    // Each stands alone in its cell, so it starts with a capital.
+    byYou: 'You',
+    byAnotherEditor: 'Another person in the editorial team',
     empty: 'This version has never been returned to draft.',
     loadFailed: 'The returns of this version could not be loaded.',
   },
@@ -363,6 +364,28 @@ test('another version starts again at its first page', async () => {
   });
 });
 
+test('coming back to a version shows its first page, not the page it was turned to before', async () => {
+  const user = userEvent.setup();
+  total = 45;
+  const { rerender } = renderHistory();
+  await screen.findByText(markup.reason);
+  await user.click(screen.getByRole('button', { name: t('dataTable.next') }));
+  await screen.findByText(onPageTwo.reason);
+  await rerender({ versionId: otherVersionId });
+  await screen.findByText(texts.de.empty);
+
+  await rerender({ versionId });
+
+  await waitFor(() =>
+    expect(asked().at(-1)).toEqual({
+      path: `/api/editorial/course-versions/${versionId}/returns`,
+      query: { page: '1', pageSize: '20' },
+    }),
+  );
+  expect(await screen.findByText(markup.reason)).toBeVisible();
+  expect(screen.queryByText(onPageTwo.reason)).not.toBeInTheDocument();
+});
+
 test('showFirstPage() takes the history back to its first page', async () => {
   const user = userEvent.setup();
   total = 45;
@@ -411,7 +434,7 @@ test('in English, a version never returned and a failure say so in English', asy
   expect(await screen.findByRole('alert')).toHaveTextContent(texts.en.loadFailed);
 });
 
-test('in English, the returns read "you" and "another person in the editorial team"', async () => {
+test('in English, the returns read "You" and "Another person in the editorial team"', async () => {
   setLanguage('en-GB', { remember: false });
   renderHistory();
 
@@ -426,7 +449,7 @@ test('in English, the returns read "you" and "another person in the editorial te
   expect(headers).toEqual([texts.en.returnedAt, texts.en.returnedBy, texts.en.reason]);
 });
 
-test('in English, with no user signed in, every return reads "another person in the editorial team"', async () => {
+test('in English, with no user signed in, every return reads "Another person in the editorial team"', async () => {
   setLanguage('en-GB', { remember: false });
   user = null;
   renderHistory();
