@@ -16,7 +16,7 @@ partial class LearningModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261123001536_AddCourseVersionCopies";
+    public override string LastMigrationId => "20261123133120_AddCourseVersionRetirements";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -76,6 +76,22 @@ partial class LearningModelSnapshot : ModelSnapshot
                     .HasName("pk_course_versions");
 
                 b.ToTable("course_versions", "learning");
+            });
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.ReadModels.CourseVersionRetirement", b =>
+            {
+                b.Property<Guid>("CourseVersionId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("course_version_id");
+
+                b.Property<Guid>("CourseId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("course_id");
+
+                b.HasKey("CourseVersionId")
+                    .HasName("pk_course_version_retirements");
+
+                b.ToTable("course_version_retirements", "learning");
             });
 
         modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.ReadModels.SampleSummary", b =>
