@@ -318,23 +318,38 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
 
     private Membership? Find(MembershipId id) => memberships.SingleOrDefault(m => m.Id == id);
 
-    /// <summary>The start of the next UTC day when today's mails have reached the cap; none while another may be sent.</summary>
+    /// <summary>The start of the day after the counted one when its mails have reached the cap; none while another may be sent.</summary>
     private Timestamp? DailyCapReached(Timestamp now, DailyMailCap cap)
     {
-        var today = UtcDay.Of(now);
-        if (InvitationMailDay == today && InvitationMailsThatDay.Value >= cap.Value)
+        var day = CountingDay(now);
+        if (InvitationMailDay == day && InvitationMailsThatDay.Value >= cap.Value)
         {
-            return today.Next().Start;
+            return day.Next().Start;
         }
 
         return null;
     }
 
-    /// <summary>Counts one invitation mail toward today's tally: the first of a new day starts it afresh.</summary>
+    /// <summary>Counts one invitation mail toward the counted day's tally: the first of a new day starts it afresh.</summary>
     private void CountInvitationMail(Timestamp now)
     {
+        var day = CountingDay(now);
+        InvitationMailsThatDay = InvitationMailDay == day ? InvitationMailsThatDay.Next() : InvitationMailCount.Zero.Next();
+        InvitationMailDay = day;
+    }
+
+    /// <summary>
+    /// The day a mail requested now counts on: today, or the stored day when it is later, so an instance whose clock is
+    /// behind around 00:00 UTC adds to the new day's tally instead of restarting the old day's.
+    /// </summary>
+    private UtcDay CountingDay(Timestamp now)
+    {
         var today = UtcDay.Of(now);
-        InvitationMailsThatDay = InvitationMailDay == today ? InvitationMailsThatDay.Next() : InvitationMailCount.Zero.Next();
-        InvitationMailDay = today;
+        if (InvitationMailDay is { } stored && stored.Value > today.Value)
+        {
+            return stored;
+        }
+
+        return today;
     }
 }
