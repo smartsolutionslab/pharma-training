@@ -23,7 +23,9 @@ const pdfChapter = {
 };
 
 // A draft (GET /editorial/course-versions/{id}) with a text and a PDF chapter, the blueprint's defaults (10 questions,
-// 80 %, 12 months), an approved AI-drafted question, an unreviewed AI-drafted one and an unreviewed hand-written one.
+// 80 %, 12 months), an AI-drafted question approved by a named editor, an unreviewed AI-drafted one, an unreviewed
+// hand-written one and a hand-written one approved before approvals carried a name: both approval lines, with the
+// approver's name and without it, render under axe.
 export const examples: Record<string, unknown> = {
   useGetEditorialCourseVersionsId: {
     id: versionId,
@@ -47,6 +49,8 @@ export const examples: Record<string, unknown> = {
         review: 'Approved',
         reviewedBy: '0198c1a0-0000-7000-8000-0000000000d9',
         reviewedAt: '2026-11-20T09:30:00Z',
+        approvedByName: 'Emma Editor',
+        approvedAt: '2026-11-20T09:30:00Z',
       },
       {
         id: '0198c1a0-0000-7000-8000-0000000000a2',
@@ -63,6 +67,8 @@ export const examples: Record<string, unknown> = {
         review: 'Unreviewed',
         reviewedBy: null,
         reviewedAt: null,
+        approvedByName: null,
+        approvedAt: null,
       },
       {
         id: '0198c1a0-0000-7000-8000-0000000000a3',
@@ -78,6 +84,25 @@ export const examples: Record<string, unknown> = {
         review: 'Unreviewed',
         reviewedBy: null,
         reviewedAt: null,
+        approvedByName: null,
+        approvedAt: null,
+      },
+      {
+        id: '0198c1a0-0000-7000-8000-0000000000a4',
+        position: 4,
+        chapterId: textChapter.id,
+        text: 'Wie oft desinfizieren Sie den HV-Tisch?',
+        type: 'SingleChoice',
+        options: [
+          { id: '0198c1a0-0000-7000-8000-0000000000ba', text: 'Täglich', correct: true },
+          { id: '0198c1a0-0000-7000-8000-0000000000bb', text: 'Einmal im Monat', correct: false },
+        ],
+        provenance: 'Human',
+        review: 'Approved',
+        reviewedBy: '0198c1a0-0000-7000-8000-0000000000d9',
+        reviewedAt: '2026-11-18T14:00:00Z',
+        approvedByName: null,
+        approvedAt: '2026-11-18T14:00:00Z',
       },
     ],
     blueprint: { questions: 10, passingScorePercent: 80, validityMonths: 12 },

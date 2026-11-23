@@ -31,7 +31,7 @@ export const handout: EditorialChapterDto = {
   durationSeconds: null,
 };
 
-/** Approved by another editor; who it was is T8's, pending a decision. */
+/** Approved by another editor, Emma Editor, on 20 November 2026. */
 export const approvedAi: EditorialQuestionDto = {
   id: '0198c1a0-0000-7000-8000-0000000000a1',
   position: 1,
@@ -46,6 +46,8 @@ export const approvedAi: EditorialQuestionDto = {
   review: 'Approved',
   reviewedBy: '0198c1a0-0000-7000-8000-0000000000d9',
   reviewedAt: '2026-11-20T09:30:00Z',
+  approvedByName: 'Emma Editor',
+  approvedAt: '2026-11-20T09:30:00Z',
 };
 
 export const unreviewedAi: EditorialQuestionDto = {
@@ -63,6 +65,8 @@ export const unreviewedAi: EditorialQuestionDto = {
   review: 'Unreviewed',
   reviewedBy: null,
   reviewedAt: null,
+  approvedByName: null,
+  approvedAt: null,
 };
 
 export const handWritten: EditorialQuestionDto = {
@@ -79,6 +83,8 @@ export const handWritten: EditorialQuestionDto = {
   review: 'Unreviewed',
   reviewedBy: null,
   reviewedAt: null,
+  approvedByName: null,
+  approvedAt: null,
 };
 
 /** The version as the host answers it, a draft with both chapters and all three questions unless the test says otherwise. */

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Check, CircleAlert, CircleCheck, Pencil, Trash2 } from '@lucide/vue';
+import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { EditorialChapterDto, EditorialQuestionDto } from '@/api/generated';
 import { Button } from '@/components/ui/button';
@@ -26,7 +27,31 @@ const emit = defineEmits<{
   remove: [question: EditorialQuestionDto];
   approve: [question: EditorialQuestionDto];
 }>();
-const { t } = useI18n();
+const { t, d } = useI18n();
+
+/**
+ * Where the question came from and who approved it when (story E7): "KI-entworfen, geprüft von Emma Editor am
+ * 20.11.2026". An approval stored before names were (or with a blank name) shows its day alone; one without a time
+ * shows the origin alone. The day is the user's, in their time zone. The name is text, never markup.
+ */
+const provenance = computed(() => {
+  const origin = t(`glossary.questionProvenance.${question.provenance}`);
+  if (question.review === 'Unreviewed') {
+    return t('editorial.test.questions.provenance.unreviewed', { origin });
+  }
+  if (question.approvedAt === null) {
+    return origin;
+  }
+  const approvedOn = new Date(question.approvedAt);
+  if (Number.isNaN(approvedOn.getTime())) {
+    return origin;
+  }
+  const date = d(approvedOn, 'date');
+  const name = question.approvedByName?.trim() ?? '';
+  return name === ''
+    ? t('editorial.test.questions.provenance.approvedUnnamed', { origin, date })
+    : t('editorial.test.questions.provenance.approved', { origin, name, date });
+});
 </script>
 
 <template>
@@ -71,14 +96,8 @@ const { t } = useI18n();
         }}</span>
       </li>
     </ul>
-    <p class="text-caption text-muted-foreground">
-      {{
-        question.review === 'Unreviewed'
-          ? t('editorial.test.questions.provenance.unreviewed', {
-              origin: t(`glossary.questionProvenance.${question.provenance}`),
-            })
-          : t(`glossary.questionProvenance.${question.provenance}`)
-      }}
+    <p class="text-caption text-muted-foreground break-words">
+      {{ provenance }}
     </p>
     <div v-if="editable || (approvable && question.review === 'Unreviewed')" class="flex flex-wrap justify-end gap-2">
       <Button

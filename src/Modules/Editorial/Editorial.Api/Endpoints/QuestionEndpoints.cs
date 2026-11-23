@@ -84,7 +84,13 @@ public sealed class QuestionEndpoints : IEndpoint
                 return Result<Unit, ApiError>.Failure(CourseVersionFailures.IdentityIncomplete()).ToHttpResult();
             }
 
-            var command = new ApproveQuestion(CourseVersionId.From(id), QuestionId.From(questionId), approver.Value);
+            var approverName = EditorialCaller.NameOf(user);
+            if (!approverName.HasValue)
+            {
+                return Result<Unit, ApiError>.Failure(CourseVersionFailures.ReviewerNameMissing()).ToHttpResult();
+            }
+
+            var command = new ApproveQuestion(CourseVersionId.From(id), QuestionId.From(questionId), approver.Value, approverName.Value);
             return (await dispatcher.SendAsync(command, cancellationToken)).ToHttpResult();
         }).RequireAuthorization(EditorialPolicyNames.Edit);
     }

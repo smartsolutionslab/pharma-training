@@ -21,12 +21,29 @@ public class ApproveQuestionTests
         var version = DraftWithQuestion(out _, out var id);
         store.Stored.Add(version);
 
-        var approved = await Handler().HandleAsync(new ApproveQuestion(version.Id, id, Reviewer), TestContext.Current.CancellationToken);
+        var approved = await Handler().HandleAsync(new ApproveQuestion(version.Id, id, Reviewer, ReviewersName), TestContext.Current.CancellationToken);
 
         approved.IsSuccess.ShouldBeTrue();
         var question = version.Questions.ShouldHaveSingleItem();
         question.Review.ShouldBe(ReviewState.Approved);
         question.ReviewedBy.ShouldBe(Reviewer);
+        question.ReviewedAt.ShouldBe(Timestamp.From(Start));
+        store.Commits.ShouldBe(1);
+    }
+
+    /// <summary>The name the command carries is the one recorded, in the same save as the approval (#205).</summary>
+    [Fact]
+    public async Task An_approved_question_records_the_reviewers_name_from_the_command_once_committed()
+    {
+        var version = DraftWithQuestion(out _, out var id);
+        store.Stored.Add(version);
+
+        var approved = await Handler().HandleAsync(new ApproveQuestion(version.Id, id, Reviewer, ReviewersName), TestContext.Current.CancellationToken);
+
+        approved.IsSuccess.ShouldBeTrue();
+        var question = version.Questions.ShouldHaveSingleItem();
+        question.ReviewedBy.ShouldBe(Reviewer);
+        question.ReviewedByName.ShouldBe(ReviewersName);
         question.ReviewedAt.ShouldBe(Timestamp.From(Start));
         store.Commits.ShouldBe(1);
     }
@@ -37,10 +54,10 @@ public class ApproveQuestionTests
     {
         var version = DraftWithQuestion(out _, out var id);
         store.Stored.Add(version);
-        (await Handler().HandleAsync(new ApproveQuestion(version.Id, id, Author), TestContext.Current.CancellationToken)).IsSuccess.ShouldBeTrue();
+        (await Handler().HandleAsync(new ApproveQuestion(version.Id, id, Author, AuthorsName), TestContext.Current.CancellationToken)).IsSuccess.ShouldBeTrue();
         time.Advance(TimeSpan.FromHours(3));
 
-        var approved = await Handler().HandleAsync(new ApproveQuestion(version.Id, id, Reviewer), TestContext.Current.CancellationToken);
+        var approved = await Handler().HandleAsync(new ApproveQuestion(version.Id, id, Reviewer, ReviewersName), TestContext.Current.CancellationToken);
 
         approved.IsFailure.ShouldBeTrue("an approved question was approved again");
         approved.Error.Code.ShouldBe("editorial.question-already-approved");
@@ -60,7 +77,7 @@ public class ApproveQuestionTests
         var question = version.Questions.ShouldHaveSingleItem();
         store.Stored.Add(version);
 
-        var approved = await Handler().HandleAsync(new ApproveQuestion(version.Id, question.Id, Reviewer), TestContext.Current.CancellationToken);
+        var approved = await Handler().HandleAsync(new ApproveQuestion(version.Id, question.Id, Reviewer, ReviewersName), TestContext.Current.CancellationToken);
 
         approved.IsSuccess.ShouldBeTrue();
         question.ReviewedBy.ShouldBe(Reviewer);
@@ -73,7 +90,7 @@ public class ApproveQuestionTests
     {
         var (version, id) = DraftHolding(TwoCorrectSingleChoice);
 
-        var approved = await Handler().HandleAsync(new ApproveQuestion(version.Id, id, Reviewer), TestContext.Current.CancellationToken);
+        var approved = await Handler().HandleAsync(new ApproveQuestion(version.Id, id, Reviewer, ReviewersName), TestContext.Current.CancellationToken);
 
         ShouldBeUnprocessable(approved.Error, "editorial.single-choice-one-correct", version);
     }
@@ -83,7 +100,7 @@ public class ApproveQuestionTests
     {
         var (version, id) = DraftHolding(NoCorrectMultipleChoice);
 
-        var approved = await Handler().HandleAsync(new ApproveQuestion(version.Id, id, Reviewer), TestContext.Current.CancellationToken);
+        var approved = await Handler().HandleAsync(new ApproveQuestion(version.Id, id, Reviewer, ReviewersName), TestContext.Current.CancellationToken);
 
         ShouldBeUnprocessable(approved.Error, "editorial.multiple-choice-a-correct", version);
     }
@@ -93,7 +110,7 @@ public class ApproveQuestionTests
     {
         var (version, id) = DraftHolding(OneOption);
 
-        var approved = await Handler().HandleAsync(new ApproveQuestion(version.Id, id, Reviewer), TestContext.Current.CancellationToken);
+        var approved = await Handler().HandleAsync(new ApproveQuestion(version.Id, id, Reviewer, ReviewersName), TestContext.Current.CancellationToken);
 
         ShouldBeUnprocessable(approved.Error, "editorial.too-few-options", version);
     }
@@ -105,7 +122,7 @@ public class ApproveQuestionTests
         var question = version.Questions.ShouldHaveSingleItem();
         store.Stored.Add(version);
 
-        var approved = await Handler().HandleAsync(new ApproveQuestion(version.Id, question.Id, Reviewer), TestContext.Current.CancellationToken);
+        var approved = await Handler().HandleAsync(new ApproveQuestion(version.Id, question.Id, Reviewer, ReviewersName), TestContext.Current.CancellationToken);
 
         approved.Error.Code.ShouldBe("editorial.not-a-draft");
         approved.Error.Status.ShouldBe(HttpStatusCode.Conflict);
@@ -116,7 +133,7 @@ public class ApproveQuestionTests
     [Fact]
     public async Task A_version_that_does_not_exist_is_not_found()
     {
-        var approved = await Handler().HandleAsync(new ApproveQuestion(CourseVersionId.New(), QuestionId.New(), Reviewer), TestContext.Current.CancellationToken);
+        var approved = await Handler().HandleAsync(new ApproveQuestion(CourseVersionId.New(), QuestionId.New(), Reviewer, ReviewersName), TestContext.Current.CancellationToken);
 
         approved.Error.Code.ShouldBe("editorial.course-version-not-found");
         approved.Error.Status.ShouldBe(HttpStatusCode.NotFound);
@@ -129,7 +146,7 @@ public class ApproveQuestionTests
         var version = DraftWithQuestion(out _, out _);
         store.Stored.Add(version);
 
-        var approved = await Handler().HandleAsync(new ApproveQuestion(version.Id, QuestionId.New(), Reviewer), TestContext.Current.CancellationToken);
+        var approved = await Handler().HandleAsync(new ApproveQuestion(version.Id, QuestionId.New(), Reviewer, ReviewersName), TestContext.Current.CancellationToken);
 
         approved.Error.Code.ShouldBe("editorial.question-not-found");
         approved.Error.Status.ShouldBe(HttpStatusCode.NotFound);
