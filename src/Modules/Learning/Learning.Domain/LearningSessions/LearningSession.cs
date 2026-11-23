@@ -12,6 +12,7 @@ public sealed class LearningSession : EventSourcedAggregate<LearningSessionId>
     private readonly Dictionary<ChapterId, ChapterKind> chapters = [];
     private readonly Dictionary<ChapterId, ProgressPercent> progress = [];
     private readonly HashSet<ChapterId> completed = [];
+    private readonly HashSet<ExhaustionNotice> notices = [];
 
     // Only loading creates an empty session, which its first event fills.
     private LearningSession()
@@ -98,7 +99,10 @@ public sealed class LearningSession : EventSourcedAggregate<LearningSessionId>
 
     /// <summary>
     /// Three failed attempts (AttemptsExhausted): the chapters of the wrongly answered questions open again,
-    /// and the test unlocks only once they are worked through anew.
+    /// and the test unlocks only once they are worked through anew. The notice names the announcement, and the session
+    /// notes it in the same append, so the same lock delivered again acts once, even after its chapters were worked
+    /// through again (ADR 0020). A finished session ignores every lock; a lock naming a chapter the session does not have
+    /// is refused and changes nothing.
     /// </summary>
     public Result<Unit, DomainError> ReopenChapters(ExhaustionNotice notice, IReadOnlyList<ChapterId> failedChapters, Timestamp now)
     {
@@ -112,14 +116,26 @@ public sealed class LearningSession : EventSourcedAggregate<LearningSessionId>
             return Success(Unit.Value);
         }
 
-        var toReopen = failedChapters.Where(completed.Contains).Distinct().ToList();
-        if (toReopen.Count == 0)
+        if (notices.Contains(notice))
         {
-            // AttemptsExhausted delivered twice.
+            // This lock was delivered before.
             return Success(Unit.Value);
         }
 
-        Raise(new ChaptersReopened(Id, toReopen, now));
+        var outside = failedChapters.FirstOrDefault(chapter => !chapters.ContainsKey(chapter));
+        if (outside is not null)
+        {
+            return Failure(LearningSessionErrors.FailedChapterNotInCourse(Id, outside));
+        }
+
+        var toReopen = failedChapters.Where(completed.Contains).Distinct().ToList();
+        if (toReopen.Count > 0)
+        {
+            Raise(new ChaptersReopened(Id, toReopen, now));
+        }
+
+        // Noted even when nothing reopens, so a redelivery never reopens what the learner completed meanwhile.
+        Raise(new ExhaustionNoted(Id, notice, now));
         return Success(Unit.Value);
     }
 
@@ -183,6 +199,5 @@ public sealed class LearningSession : EventSourcedAggregate<LearningSessionId>
 
     private void Apply(SessionFinished finished) => Status = SessionStatus.Finished;
 
-    // Stub for #42's red run: nothing raises the note yet.
-    private void Apply(ExhaustionNoted noted) => throw new NotImplementedException();
+    private void Apply(ExhaustionNoted noted) => notices.Add(noted.Notice);
 }
