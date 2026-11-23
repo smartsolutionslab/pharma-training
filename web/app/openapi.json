@@ -1294,6 +1294,25 @@
         }
       }
     },
+    "/editorial/course-versions/republish": {
+      "post": {
+        "tags": [
+          "Host"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorialRepublishedEventsDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/editorial/samples": {
       "post": {
         "tags": [
@@ -3414,6 +3433,40 @@
           "SingleChoice",
           "MultipleChoice"
         ]
+      },
+      "EditorialRepublishedEventsDto": {
+        "required": [
+          "courseVersions",
+          "testDefinitions",
+          "retirements"
+        ],
+        "type": "object",
+        "properties": {
+          "courseVersions": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "testDefinitions": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "retirements": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
       },
       "EditorialSampleDto": {
         "required": [

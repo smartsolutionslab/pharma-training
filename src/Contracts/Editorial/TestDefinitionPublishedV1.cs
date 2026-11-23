@@ -1,4 +1,4 @@
 namespace SmartSolutionsLab.PharmaTraining.Contracts.Editorial;
 
-/// <summary>Editorial published the test of a course version. Carries the solutions; consumed by Assessment only, never by Catalog or the frontend.</summary>
+/// <summary>Editorial published the test of a course version. Carries the solutions; consumed by Assessment only, never by Catalog or the frontend. May be republished under a new event identifier (docs/adr/0019): deduplicate on <c>CourseVersionId</c>.</summary>
 public sealed record TestDefinitionPublishedV1(Guid CourseId, Guid CourseVersionId, int PassingScorePercent, int MaxAttempts, IReadOnlyList<TestQuestionV1> Questions) : IntegrationEvent;
