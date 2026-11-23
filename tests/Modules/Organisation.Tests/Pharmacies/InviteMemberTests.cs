@@ -161,5 +161,30 @@ public class InviteMemberTests
         store.Published.ShouldBeEmpty();
     }
 
+    [Fact]
+    public async Task An_invite_at_the_daily_cap_answers_429_too_many_invitations_today_and_commits_and_publishes_nothing()
+    {
+        var store = new InMemoryPharmacyStore();
+        var capOfOne = new InvitationMailLimits(RenewCooldown.From(TimeSpan.FromMinutes(10)), DailyMailCap.From(1));
+        var pharmacy = TestPharmacies.Register(Owner);
+        pharmacy.Invite(MembershipId.New(), EmailAddress.From("first@example.org"), JobFunction.Pta, MembershipRole.Employee, Timestamp.From(Start), capOfOne)
+            .IsSuccess.ShouldBeTrue();
+        pharmacy.Stored(store);
+        var memberships = pharmacy.Memberships.Count;
+        var time = new FakeTimeProvider(Start);
+        time.Advance(TimeSpan.FromHours(1));
+
+        var refused = await new InviteMemberHandler(store, store, time, capOfOne)
+            .HandleAsync(new InviteMember(pharmacy.Id, Owner, Invitee, JobFunction.Pta, MembershipRole.Employee), TestContext.Current.CancellationToken);
+
+        refused.IsSuccess.ShouldBeFalse("a second invitation mail was requested on a day capped at one");
+        refused.Error.Code.ShouldBe("organisation.too-many-invitations-today");
+        refused.Error.Status.ShouldBe(HttpStatusCode.TooManyRequests);
+        refused.Error.ShouldBeOfType<RetryLaterFailure>().RetryAt.ShouldBe(new DateTimeOffset(2027, 4, 2, 0, 0, 0, TimeSpan.Zero));
+        pharmacy.Memberships.Count.ShouldBe(memberships);
+        store.Commits.ShouldBe(0);
+        store.Published.ShouldBeEmpty();
+    }
+
     private static InviteMemberHandler Handler(InMemoryPharmacyStore store) => new(store, store, new FakeTimeProvider(Start));
 }

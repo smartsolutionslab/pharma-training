@@ -146,6 +146,29 @@ public class RenewInvitationTests
         store.Published.ShouldBeEmpty();
     }
 
+    [Fact]
+    public async Task A_renewal_within_the_cooldown_answers_429_invitation_renewed_too_soon_and_commits_and_publishes_nothing()
+    {
+        var store = new InMemoryPharmacyStore();
+        var pharmacy = TestPharmacies.Register(Owner);
+        var invitation = pharmacy.Invite(MembershipId.New(), Invitee, JobFunction.Pta, MembershipRole.Employee, Timestamp.From(Start), InvitationMailLimits.Default).Value;
+        pharmacy.Stored(store);
+        var expiresAt = pharmacy.Membership(invitation).InvitationExpiresAt;
+        var time = new FakeTimeProvider(Start);
+        time.Advance(TimeSpan.FromMinutes(4));
+
+        var refused = await new RenewInvitationHandler(store, store, time, InvitationMailLimits.Default)
+            .HandleAsync(new RenewInvitation(pharmacy.Id, invitation, Owner), TestContext.Current.CancellationToken);
+
+        refused.IsSuccess.ShouldBeFalse("an invitation was renewed 4 minutes after its invite");
+        refused.Error.Code.ShouldBe("organisation.invitation-renewed-too-soon");
+        refused.Error.Status.ShouldBe(HttpStatusCode.TooManyRequests);
+        refused.Error.ShouldBeOfType<RetryLaterFailure>().RetryAt.ShouldBe(Start.AddMinutes(10));
+        pharmacy.Membership(invitation).InvitationExpiresAt.ShouldBe(expiresAt);
+        store.Commits.ShouldBe(0);
+        store.Published.ShouldBeEmpty();
+    }
+
     private static RenewInvitationHandler Handler(InMemoryPharmacyStore store) => new(store, store, new FakeTimeProvider(Start));
 
     private static InvitationToken Token() => InvitationToken.From(RandomNumberGenerator.GetHexString(64));
