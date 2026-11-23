@@ -183,10 +183,13 @@ export const en: MessageSchema = {
       title: 'Returns',
       columns: {
         returnedAt: 'Returned on',
+        returnedBy: 'Returned by',
         reason: 'Reason',
       },
       empty: 'This version has never been returned to draft.',
       loadFailed: 'The returns of this version could not be loaded.',
+      byYou: 'you',
+      byAnotherEditor: 'another person in the editorial team',
     },
     course: {
       new: 'New course',

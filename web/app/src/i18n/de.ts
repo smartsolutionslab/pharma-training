@@ -192,10 +192,13 @@ export const de = {
       title: 'Rückgaben',
       columns: {
         returnedAt: 'Zurückgegeben am',
+        returnedBy: 'Zurückgegeben von',
         reason: 'Grund',
       },
       empty: 'Diese Version wurde noch nie zur Überarbeitung zurückgegeben.',
       loadFailed: 'Die Rückgaben dieser Version konnten nicht geladen werden.',
+      byYou: 'Ihnen',
+      byAnotherEditor: 'einer anderen Person aus der Redaktion',
     },
     course: {
       new: 'Neue Schulung',
