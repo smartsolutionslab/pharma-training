@@ -22,14 +22,27 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Api.Endpoints;
 /// </summary>
 public sealed class AssignmentEndpoints : IEndpoint
 {
-    /// <summary>The most person ids, repeats included, a body may carry before it is refused unread.</summary>
+    /// <summary>
+    /// The most person ids, repeats included, a body may carry before it is refused without mapping its ids one by one.
+    /// The body has been read and bound by then; <see cref="AssignRequestLimit"/> is what refuses a larger one unread.
+    /// </summary>
     private const int MaximumPersonIds = 10 * AssignCourse.MaximumLearners;
+
+    /// <summary>
+    /// The most bytes the server reads of an assign request's body; a larger one is refused (413) before it is bound. A
+    /// Guid in JSON is about 39 bytes with its quotes and comma, so <see cref="MaximumPersonIds"/> ids need about 39 KB
+    /// and the rest of the body a few bytes more: 64 KB leaves headroom for them, while three thousand ids (about
+    /// 117 KB) do not fit.
+    /// </summary>
+    private const int AssignRequestLimit = 65_536;
 
     public void Map(IEndpointRouteBuilder endpoints)
     {
         Ensure.That(endpoints).IsNotNull();
 
-        endpoints.MapPost("/pharmacies/{id:guid}/assignments", AssignAsync).RequireAuthorization();
+        endpoints.MapPost("/pharmacies/{id:guid}/assignments", AssignAsync)
+            .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(AssignRequestLimit))
+            .RequireAuthorization();
     }
 
     private static async Task<Results<Ok<ComplianceCourseAssignmentDto>, ProblemHttpResult>> AssignAsync(
@@ -45,8 +58,8 @@ public sealed class AssignmentEndpoints : IEndpoint
             return Refused(AssignmentFailures.IdentityIncomplete());
         }
 
-        // A body far beyond the cap is refused before anything else reads it or maps its ids one by one. Repeats count
-        // here, as they are read; the handler's own cap counts distinct people.
+        // A body far beyond the cap is refused before anything maps its ids one by one. Repeats count here, as they
+        // are bound; the handler's own cap counts distinct people.
         if (request.PersonIds is { Count: > MaximumPersonIds })
         {
             return Refused(AssignmentFailures.TooManyLearners(AssignCourse.MaximumLearners));
@@ -58,9 +71,15 @@ public sealed class AssignmentEndpoints : IEndpoint
             return Refused(AssignmentFailures.PharmacyNotFound(id));
         }
 
-        if (request.CourseId == Guid.Empty)
+        // A body without a course is not read as the empty id and told that course does not exist.
+        if (request.CourseId is not { } courseId)
         {
-            return Refused(AssignmentFailures.CourseNotFound(request.CourseId));
+            return Refused(AssignmentFailures.CourseMissing());
+        }
+
+        if (courseId == Guid.Empty)
+        {
+            return Refused(AssignmentFailures.CourseNotFound(courseId));
         }
 
         // What the caller got wrong is refused before it becomes a value object, whose factory would throw on it.
@@ -88,7 +107,7 @@ public sealed class AssignmentEndpoints : IEndpoint
 
         var command = new AssignCourse(
             PharmacyId.From(id),
-            CourseId.From(request.CourseId),
+            CourseId.From(courseId),
             [.. request.PersonIds.Select(PersonId.From)],
             DueDate.From(dueDate),
             recurrence,

@@ -15,4 +15,7 @@ public sealed record AssignCourse(PharmacyId Pharmacy, CourseId Course, IReadOnl
 {
     /// <summary>The most distinct learners one request assigns.</summary>
     public const int MaximumLearners = 100;
+
+    /// <summary>The most years past today in Germany a due date may lie; a later one is the caller's mistake.</summary>
+    public const int MaximumYearsAhead = 10;
 }

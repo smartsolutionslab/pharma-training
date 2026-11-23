@@ -9,9 +9,18 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application.Comman
 
 /// <summary>
 /// Assigns the course to each learner who is an active member of the pharmacy and has no active assignment of it there,
-/// refusing the others by name, and announces each assignment (CourseAssignedV1) in the same commit. A due date in the
-/// past refuses the whole request. A save that lost a race, or deadlocked with another, saves and announces nothing
-/// (docs/adr/0002); one the partial unique index refuses answers 409 already-exists.
+/// refusing the others by name, and announces each assignment (CourseAssignedV1) in the same commit. The due date is the
+/// request's, not a learner's: once the caller may assign, it is checked once against today in Germany, before the
+/// course or anyone in the list is looked up. A day in the past refuses the whole request (422, the same rule as
+/// <see cref="Assignment.Assign"/>, which keeps its own check), and one more than
+/// <see cref="AssignCourse.MaximumYearsAhead"/> years ahead refuses it too (400); either saves nothing. A save that lost a
+/// race, or deadlocked with another, saves and announces nothing (docs/adr/0002); one the partial unique index refuses
+/// answers 409 already-exists.
+/// <para>
+/// The answer lists each learner assigned and each refused with the reason. That is a deliberate exception to
+/// CQRS-logical's "a command returns at most an identifier": #29 asks for the refusals to be reported per person, and
+/// only the command knows them.
+/// </para>
 /// </summary>
 public sealed class AssignCourseHandler(
     IMemberStore members,
@@ -43,6 +52,18 @@ public sealed class AssignCourseHandler(
             return Failure(access.Error);
         }
 
+        var now = Timestamp.From(time.GetUtcNow());
+        var today = now.DayInGermany();
+        if (command.DueDate.AsDate() < today)
+        {
+            return Failure(AssignmentFailures.From(AssignmentErrors.DueDateInThePast(command.DueDate)));
+        }
+
+        if (command.DueDate.Value > today.Value.AddYears(AssignCourse.MaximumYearsAhead))
+        {
+            return Failure(AssignmentFailures.DueDateTooFar(AssignCourse.MaximumYearsAhead));
+        }
+
         var course = await courses.FindCourseAsync(command.Course, cancellationToken);
         if (!course.HasValue)
         {
@@ -54,7 +75,6 @@ public sealed class AssignCourseHandler(
             return Failure(AssignmentFailures.CourseRetired(command.Course.Value));
         }
 
-        var now = Timestamp.From(time.GetUtcNow());
         var activeMembers = await members.ActiveMembersAsync(command.Pharmacy, learners, cancellationToken);
         var alreadyActive = await assignments.ActiveLearnersAsync(command.Pharmacy, command.Course, learners, cancellationToken);
 

@@ -12,6 +12,8 @@ public static class AssignmentFailures
 
     public static ApiError CapabilityMissing() => new CapabilityMissing();
 
+    public static ApiError CourseMissing() => new CourseMissing();
+
     public static ApiError CourseNotFound(Guid id) => new CourseNotFound(id);
 
     public static ApiError CourseRetired(Guid id) => new CourseRetired(id);
@@ -23,6 +25,9 @@ public static class AssignmentFailures
     public static ApiError InvalidPerson() => new InvalidPerson();
 
     public static ApiError DueDateMissing() => new DueDateMissing();
+
+    /// <summary>The due date lies more than the years ahead of today in Germany.</summary>
+    public static ApiError DueDateTooFar(int maximumYears) => new DueDateTooFar(maximumYears);
 
     public static ApiError InvalidRecurrence() => new InvalidRecurrence(RecurrenceInterval.MinimumMonths, RecurrenceInterval.MaximumMonths);
 
