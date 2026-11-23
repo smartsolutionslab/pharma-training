@@ -122,6 +122,30 @@ public class MappingsTests
     }
 
     [Fact]
+    public void MembershipChanged_maps_to_MembershipChangedV1_field_by_field()
+    {
+        var changed = new MembershipChanged(
+            PharmacyId.New(),
+            MembershipId.New(),
+            PersonId.From(Guid.CreateVersion7()),
+            DisplayName.From("Anna Berger"),
+            JobFunction.Pta,
+            MembershipRole.Manager,
+            MembershipVersion.From(3));
+
+        var announced = changed.ToIntegrationEvent();
+
+        announced.ShouldBe(new MembershipChangedV1(
+            changed.Membership.Value,
+            changed.Person.Value,
+            changed.Pharmacy.Value,
+            "Anna Berger",
+            JobFunctionV1.Pta,
+            MembershipRoleV1.Manager,
+            3));
+    }
+
+    [Fact]
     public void An_ended_membership_is_announced_with_every_field()
     {
         var ended = new MembershipEnded(PharmacyId.New(), MembershipId.New(), PersonId.From(Guid.CreateVersion7()), Now);

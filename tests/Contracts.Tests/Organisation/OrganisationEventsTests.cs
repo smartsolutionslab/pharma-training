@@ -29,6 +29,25 @@ public class OrganisationEventsTests
     }
 
     [Fact]
+    public void MembershipChangedV1_survives_the_wire()
+    {
+        var changed = new MembershipChangedV1(
+            Guid.CreateVersion7(),
+            Guid.CreateVersion7(),
+            Guid.CreateVersion7(),
+            "Anna Beispiel",
+            JobFunctionV1.Pka,
+            MembershipRoleV1.Manager,
+            2);
+
+        var json = Wire.ShouldSurviveTheWire(changed);
+
+        json.ShouldContain("\"jobFunction\":\"Pka\"", Case.Sensitive);
+        json.ShouldContain("\"role\":\"Manager\"", Case.Sensitive);
+        json.ShouldContain("\"version\":2", Case.Sensitive);
+    }
+
+    [Fact]
     public void MembershipEndedV1_survives_the_wire()
     {
         Wire.ShouldSurviveTheWire(new MembershipEndedV1(

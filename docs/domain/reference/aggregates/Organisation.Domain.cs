@@ -120,6 +120,24 @@ public sealed record InvitationVersion : IValueObject<int>
     public InvitationVersion Next() => new(Value + 1);
 }
 
+/// <summary>Which state of a membership this is, counted from 1 at its start; each change of job function or role is the next.</summary>
+public sealed record MembershipVersion : IValueObject<int>
+{
+    private MembershipVersion(int value) => Value = value;
+
+    public int Value { get; }
+
+    public static MembershipVersion First => new(1);
+
+    public static MembershipVersion From(int value)
+    {
+        Ensure.That(value).AtLeast(1);
+        return new MembershipVersion(value);
+    }
+
+    public MembershipVersion Next() => new(Value + 1);
+}
+
 /// <summary>One link issued for the open invitation's current version, kept as its token's hash only.</summary>
 public sealed class InvitationLink
 {
@@ -187,6 +205,9 @@ public sealed class Membership : Entity<MembershipId>
     /// <summary>1 at the invite, the next at each renewal; a founder keeps 1 and is never mailed.</summary>
     public InvitationVersion InvitationVersion { get; private set; } = InvitationVersion.First;
 
+    /// <summary>1 from the start, the next at each change of job function or role (docs/adr/0015).</summary>
+    public MembershipVersion Version { get; private set; } = MembershipVersion.First;
+
     /// <summary>The version whose mail was sent; a version that is mailed is not mailed again.</summary>
     public InvitationVersion? InvitationMailedFor { get; private set; }
 
@@ -240,6 +261,7 @@ public sealed class Membership : Entity<MembershipId>
     {
         JobFunction = jobFunction;
         Role = role;
+        Version = Version.Next();
     }
 
     internal bool Holds(InvitationTokenHash tokenHash) => invitationLinks.Any(link => link.Hash == tokenHash);
@@ -473,7 +495,7 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
         }
 
         active.Change(jobFunction, role);
-        Raise(new MembershipChanged(Id, membership, active.Person!, jobFunction, role));
+        Raise(new MembershipChanged(Id, membership, active.Person!, active.Name!, jobFunction, role, active.Version));
         return Success(Unit.Value);
     }
 
@@ -486,7 +508,7 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
 }
 
 // ───────────────────────────── Domain events ─────────────────────────────
-// PharmacyRegistered, MembershipStarted, MembershipEnded → integration events V1 (Compliance, Certification).
+// PharmacyRegistered, MembershipStarted, MembershipChanged, MembershipEnded → integration events V1 (Compliance, Certification).
 // MemberInvited → the command publishes InvitationMailRequestedV1; its own consumer issues the link (IssueInvitationLink) and mails it (docs/adr/0004).
 
 public sealed record PharmacyRegistered(PharmacyId Pharmacy, PharmacyName Name) : IDomainEvent;
@@ -513,8 +535,8 @@ public sealed record InvitationRevoked(PharmacyId Pharmacy, MembershipId Members
 
 public sealed record MembershipEnded(PharmacyId Pharmacy, MembershipId Membership, PersonId Person, Timestamp EndedAt) : IDomainEvent;
 
-[DeliberatelyUnhandled("Job functions drive no rule in MVP 1; rule-based assignments come later.")]
-public sealed record MembershipChanged(PharmacyId Pharmacy, MembershipId Membership, PersonId Person, JobFunction JobFunction, MembershipRole Role) : IDomainEvent;
+[DeliberatelyUnhandled("The command that changes the membership announces it to other modules as MembershipChangedV1; nothing in Organisation reacts.")]
+public sealed record MembershipChanged(PharmacyId Pharmacy, MembershipId Membership, PersonId Person, DisplayName Name, JobFunction JobFunction, MembershipRole Role, MembershipVersion Version) : IDomainEvent;
 
 // ───────────────────────────── Domain errors ─────────────────────────────
 

@@ -93,7 +93,7 @@ public partial class TestDrafterAskTests
         var version = TestDraftVersions.WithTextChapters(3, "Händehygiene", "Flächen");
         var chapter = TestDraftVersions.TextChapterIds(version)[0];
         var question = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
-        version.ApproveQuestion(question, Reviewer, Now).IsSuccess.ShouldBeTrue();
+        version.ApproveQuestion(question, Reviewer, ReviewersName, Now).IsSuccess.ShouldBeTrue();
         using var model = new FakeChatClient(Sound(1, 2));
 
         await AskAsync(model, version);

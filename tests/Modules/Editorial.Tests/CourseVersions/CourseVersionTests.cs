@@ -9,6 +9,7 @@ public class CourseVersionTests
 {
     private static readonly Timestamp Now = Timestamp.From(new DateTimeOffset(2027, 3, 1, 9, 0, 0, TimeSpan.Zero));
     private static readonly PersonId Author = PersonId.From(Guid.CreateVersion7());
+    private static readonly ReviewerName AuthorsName = ReviewerName.From("Erika Editor");
     private static readonly PersonId Reviewer = PersonId.From(Guid.CreateVersion7());
 
     [Fact]
@@ -28,7 +29,7 @@ public class CourseVersionTests
         version.SetBlueprint(Blueprint(questions: 3));
         version.ApplyAiTestDraft([Single(chapter), Single(chapter)], NewQuestion, NewOption);
         var kept = version.Questions[0].Id;
-        version.ApproveQuestion(kept, Author, Now);
+        version.ApproveQuestion(kept, Author, AuthorsName, Now);
 
         version.ApplyAiTestDraft([Single(chapter), Single(chapter)], NewQuestion, NewOption);
 
@@ -42,7 +43,7 @@ public class CourseVersionTests
     {
         var version = DraftWithChapter(out var chapter);
         var question = version.AddQuestion(NewQuestion(), Single(chapter), NewOption).Value;
-        version.ApproveQuestion(question, Author, Now);
+        version.ApproveQuestion(question, Author, AuthorsName, Now);
 
         version.EditQuestion(question, Single(chapter), NewOption);
 
@@ -55,7 +56,7 @@ public class CourseVersionTests
     {
         var version = DraftWithChapter(out var chapter);
         var question = version.AddQuestion(NewQuestion(), Single(chapter), NewOption).Value;
-        version.ApproveQuestion(question, Author, Now);
+        version.ApproveQuestion(question, Author, AuthorsName, Now);
 
         version.ReplaceChapter(Chapter.OfText(chapter, ChapterTitle.From("Händehygiene"), MarkdownText.From("Neu: …")));
 
@@ -84,7 +85,7 @@ public class CourseVersionTests
             [(AnswerText.From("Täglich"), Correctness.Correct), (AnswerText.From("Stündlich"), Correctness.Correct)]);
         var question = version.AddQuestion(NewQuestion(), broken, NewOption).Value;
 
-        version.ApproveQuestion(question, Author, Now).Error.ShouldBeOfType<SingleChoiceNeedsOneCorrect>();
+        version.ApproveQuestion(question, Author, AuthorsName, Now).Error.ShouldBeOfType<SingleChoiceNeedsOneCorrect>();
     }
 
     [Fact]
@@ -216,7 +217,7 @@ public class CourseVersionTests
         var question = version.AddQuestion(NewQuestion(), Single(chapter), NewOption).Value;
         if (approveAll)
         {
-            version.ApproveQuestion(question, Author, Now);
+            version.ApproveQuestion(question, Author, AuthorsName, Now);
         }
 
         version.SubmitForReview(Author).IsSuccess.ShouldBeTrue();

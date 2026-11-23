@@ -37,6 +37,8 @@ beforeEach(() => {
               review: 'Approved' as const,
               reviewedBy: '0198c1a0-0000-7000-8000-0000000000d8',
               reviewedAt: '2026-11-22T10:00:00Z',
+              approvedByName: 'Emma Editor',
+              approvedAt: '2026-11-22T10:00:00Z',
             }
           : question,
       ),

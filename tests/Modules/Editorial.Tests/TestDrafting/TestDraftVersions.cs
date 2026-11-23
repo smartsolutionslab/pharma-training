@@ -80,7 +80,7 @@ internal static class TestDraftVersions
         var version = WithTextChapters(1, "Händehygiene");
         var chapter = TextChapterIds(version)[0];
         var question = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
-        version.ApproveQuestion(question, Author, Now).IsSuccess.ShouldBeTrue();
+        version.ApproveQuestion(question, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
         return version;
     }
 

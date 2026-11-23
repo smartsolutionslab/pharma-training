@@ -355,8 +355,8 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         return Success(Unit.Value);
     }
 
-    /// <summary>An editor signs off a question: recorded with who and when, shown to auditors (story E7).</summary>
-    public Result<Unit, DomainError> ApproveQuestion(QuestionId id, PersonId editor, Timestamp now)
+    /// <summary>An editor signs off a question: recorded with who, under which display name, and when, shown to auditors (story E7, #205).</summary>
+    public Result<Unit, DomainError> ApproveQuestion(QuestionId id, PersonId editor, ReviewerName name, Timestamp now)
     {
         if (Status is not (CourseVersionStatus.Draft or CourseVersionStatus.InReview))
         {
@@ -379,7 +379,7 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
             return Failure(refusal);
         }
 
-        question.Approve(editor, now);
+        question.Approve(editor, name, now);
         return Success(Unit.Value);
     }
 

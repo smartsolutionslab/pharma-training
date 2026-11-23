@@ -79,6 +79,17 @@ public class CourseVersionFailuresTests
         CourseVersionFailures.IdentityIncomplete().Status.ShouldBe(HttpStatusCode.Forbidden);
     }
 
+    /// <summary>The token is incomplete, not the request wrong: forbidden, like a caller without a subject (#205).</summary>
+    [Fact]
+    public void A_caller_whose_token_names_no_reviewer_is_forbidden()
+    {
+        var refused = CourseVersionFailures.ReviewerNameMissing();
+
+        refused.Code.ShouldBe("editorial.reviewer-name-missing");
+        refused.Status.ShouldBe(HttpStatusCode.Forbidden);
+        refused.Message.ShouldBe("The access token names no usable display name (claim `name`): it is missing, longer than 100 characters, or holds characters that cannot be shown.");
+    }
+
     [Fact]
     public void A_version_that_does_not_exist_is_not_found()
     {
