@@ -54,6 +54,39 @@ public class AssessmentExaminationsTests(AspireFixture aspire)
         (await EventTypesAsync(stream, cancellationToken)).ShouldBe(["examination_opened"]);
     }
 
+    [Fact]
+    public async Task A_replay_of_a_completion_older_than_the_exhaustion_leaves_the_examination_exhausted()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var completed = Completed(Guid.CreateVersion7());
+        await DeliverAsync(aspire, CompletedType, completed, cancellationToken);
+        var stream = (await OpenedStreamsAsync(completed.SessionId, cancellationToken)).ShouldHaveSingleItem();
+        await PlantExhaustionAsync(aspire, stream, completed, completed.Metadata.OccurredAt.AddMinutes(1), cancellationToken);
+        await ForgetHandledAsync(aspire, completed.Metadata.EventIdentifier, cancellationToken);
+
+        // A replay of the dead letter: its body, and so its metadata, unchanged; a new envelope id so that the inbox lets it through.
+        await DeliverAsync(aspire, CompletedType, completed, cancellationToken);
+
+        (await EventTypesAsync(stream, cancellationToken)).ShouldBe(["examination_opened", "examination_exhausted"]);
+        (await CountAsync(aspire, "select count(*) from assessment.handled_content_completions where event_identifier = @id", completed.Metadata.EventIdentifier, cancellationToken))
+            .ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task A_completion_published_after_the_exhaustion_unlocks_the_examination()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var completed = Completed(Guid.CreateVersion7());
+        await DeliverAsync(aspire, CompletedType, completed, cancellationToken);
+        var stream = (await OpenedStreamsAsync(completed.SessionId, cancellationToken)).ShouldHaveSingleItem();
+        var exhaustedAt = completed.Metadata.OccurredAt.AddMinutes(1);
+        await PlantExhaustionAsync(aspire, stream, completed, exhaustedAt, cancellationToken);
+
+        await DeliverAsync(aspire, CompletedType, completed with { Metadata = new EventMetadata(Guid.CreateVersion7(), exhaustedAt.AddMinutes(1)) }, cancellationToken);
+
+        (await EventTypesAsync(stream, cancellationToken)).ShouldBe(["examination_opened", "examination_exhausted", "examination_unlocked"]);
+    }
+
     /// <summary>The streams whose <c>ExaminationOpened</c> names the session; Marten writes the event's members as they are named.</summary>
     private async Task<List<Guid>> OpenedStreamsAsync(Guid sessionId, CancellationToken cancellationToken)
     {
