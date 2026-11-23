@@ -1,4 +1,6 @@
+import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query';
 import { cleanup, render, screen } from '@testing-library/vue';
+import { createPinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { createMemoryHistory } from 'vue-router';
@@ -98,8 +100,12 @@ async function renderPage() {
   const router = createAppRouter(createMemoryHistory());
   await router.push('/compliance');
 
+  // The page reads the current pharmacy (a Pinia store over the memberships) and the query client (it reads the
+  // memberships again when the host no longer counts the caller a member).
   const { container } = render(CompliancePage, {
-    global: { plugins: [router, signedInAsDeveloper] },
+    global: {
+      plugins: [router, createPinia(), [VueQueryPlugin, { queryClient: new QueryClient() }], signedInAsDeveloper],
+    },
   });
   // The screen speaks the language of the moment: axe checks what that language's user hears.
   expect(screen.getByRole('heading', { level: 1, name: t(route.titleKey) })).toBeInTheDocument();
