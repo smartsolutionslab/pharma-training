@@ -127,8 +127,9 @@ public class ListPharmacyMembersTests
         var store = new InMemoryMemberStore();
         await ComplianceMembers.StartAsync(store, Manager, Pharmacy, MembershipRole.Manager, "Mara Manager");
         var anna = PersonId.From(Guid.CreateVersion7());
-        var older = MembershipId.From(Guid.CreateVersion7());
-        var newer = MembershipId.From(Guid.CreateVersion7());
+        var ids = InOrder(Guid.CreateVersion7(), Guid.CreateVersion7());
+        var older = MembershipId.From(ids[0]);
+        var newer = MembershipId.From(ids[1]);
         newer.Value.CompareTo(older.Value).ShouldBePositive();
         await ComplianceMembers.StartAsync(store, newer, anna, Pharmacy, MembershipRole.Employee, "Anna Neu", JobFunction.Pharmacist);
         await ComplianceMembers.StartAsync(store, older, anna, Pharmacy, MembershipRole.Employee, "Anna Alt", JobFunction.Pta);
@@ -145,8 +146,9 @@ public class ListPharmacyMembersTests
     {
         var store = new InMemoryMemberStore();
         await ComplianceMembers.StartAsync(store, Manager, Pharmacy, MembershipRole.Manager, "Mara Manager");
-        var first = PersonId.From(Guid.CreateVersion7());
-        var second = PersonId.From(Guid.CreateVersion7());
+        var ids = InOrder(Guid.CreateVersion7(), Guid.CreateVersion7());
+        var first = PersonId.From(ids[0]);
+        var second = PersonId.From(ids[1]);
         first.Value.CompareTo(second.Value).ShouldBeNegative();
         await ComplianceMembers.StartAsync(store, second, Pharmacy, MembershipRole.Employee, "Anna Arndt");
         await ComplianceMembers.StartAsync(store, first, Pharmacy, MembershipRole.Employee, "Anna Arndt");
@@ -274,4 +276,12 @@ public class ListPharmacyMembersTests
 
     private static PageSize PageSizeOf(int value) =>
         PageSize.TryFrom(value, out var pageSize) ? pageSize : throw new InvalidOperationException($"{value} is not a page size.");
+
+    // Guid v7 orders by the millisecond only; two made in the same millisecond come out in random order.
+    private static Guid[] InOrder(Guid one, Guid other)
+    {
+        Guid[] ids = [one, other];
+        Array.Sort(ids);
+        return ids;
+    }
 }
