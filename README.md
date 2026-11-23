@@ -65,6 +65,10 @@ The AppHost runs Azurite, the Azure Storage emulator, as the resource `storage`,
 
 Four eyes (a version is published by an editor other than the one who submitted it) is off by default; `Editorial__FourEyes=true` in the editorial service's environment turns it on (docs/adr/0007).
 
+### Republishing Editorial's events
+
+Run `POST /editorial/course-versions/republish` once, as an editor (`editorial.edit`), after a service that consumes `CourseVersionPublishedV1`, `TestDefinitionPublishedV1` or `CourseVersionRetiredV1` is deployed for the first time: its queue is bound only from its first start, and the broker dropped what Editorial announced before. It sends again the events of every version that was published or retired, and answers how many of each went out (`courseVersions`, `testDefinitions`, `retirements`). Every subscriber receives them again, not only the new one, and drops what it already has by the version id, so it is safe to repeat, and a run cut off part-way is simply run again ([ADR 0019](docs/adr/0019-editorials-course-version-events-may-be-republished.md)).
+
 ### Local users
 
 Keycloak imports these from `src/AppHost/realms/realm.json`, development only. Each one's password is its username.
@@ -95,6 +99,14 @@ dotnet test --project tests/Architecture.Tests/Architecture.Tests.csproj
 dotnet test --project tests/Evals/Evals.csproj
 dotnet tool restore && dotnet aieval report --path TestResults/evals --output TestResults/evals/report.html
 ```
+
+## Deploy (Azure Container Apps)
+
+`aspire publish -e staging` (or `production`) writes the whole application as Bicep from the AppHost; nothing deploys it yet (#114, [ADR 0005](docs/adr/0005-deploy-to-azure-container-apps.md)). A deployment sets every parameter without a default as `Parameters__<name>` from its secret store, never in a commit. The secrets are `postgres-password`, `database-roles-key`, `keycloak-admin-password`, `messaging-password`, each service's `messaging-<module>-password`, `azure-openai-api-key`, `smtp-username` and `smtp-password`; beside them `postgres-username`, `messaging-username`, `smtp-host`, `smtp-from` and `frontend-url` have no default. ADR 0005 lists them all and the characters each may hold.
+
+`database-roles-key` is the key every module's database role password is derived from (`guid(database-roles-key, '<module>')`): each service logs in to its own database as `<module>_app`, never as the server's administrator. Give each environment a random key of its own, at least 32 characters long (publishing refuses a shorter one); changing it rotates every role's password at the next deploy. `frontend-url` must be an https origin, `https://host` or `https://host:port`, with no path, query or trailing slash; publishing refuses anything else.
+
+Each service's init container, the MigrationRunner, builds the module's database as the administrator: its migrations, its event store and Wolverine's message storage (schema `wolverine`). The module's role owns nothing there and may only read and write. To replay a dead letter (`UPDATE wolverine.wolverine_dead_letters SET replayable = true`), connect as the module's role, with its connection string from the Key Vault secret `connectionstrings--<module>-database-app`, never as the administrator ([ADR 0005](docs/adr/0005-deploy-to-azure-container-apps.md)).
 
 ## Frontend
 

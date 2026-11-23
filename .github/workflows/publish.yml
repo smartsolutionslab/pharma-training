@@ -31,6 +31,7 @@ jobs:
     env:
       Parameters__postgres-username: placeholder
       Parameters__postgres-password: placeholder
+      Parameters__database-roles-key: placeholder-database-roles-key-32-characters
       Parameters__messaging-username: placeholder
       Parameters__messaging-password: placeholder
       Parameters__keycloak-admin-password: placeholder

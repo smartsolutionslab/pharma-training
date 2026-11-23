@@ -1,4 +1,7 @@
-import { cleanup, render, screen } from '@testing-library/vue';
+import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query';
+import { cleanup, render, screen, within } from '@testing-library/vue';
+import userEvent from '@testing-library/user-event';
+import { createPinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { createMemoryHistory } from 'vue-router';
@@ -98,8 +101,12 @@ async function renderPage() {
   const router = createAppRouter(createMemoryHistory());
   await router.push('/organisation');
 
+  // The page reads the current pharmacy (a Pinia store over the memberships) and the query client (its actions
+  // invalidate the lists they change).
   const { container } = render(OrganisationPage, {
-    global: { plugins: [router, signedInAsDeveloper] },
+    global: {
+      plugins: [router, createPinia(), [VueQueryPlugin, { queryClient: new QueryClient() }], signedInAsDeveloper],
+    },
   });
   // The screen speaks the language of the moment: axe checks what that language's user hears.
   expect(screen.getByRole('heading', { level: 1, name: t(route.titleKey) })).toBeInTheDocument();
@@ -166,6 +173,60 @@ describe.each(languages)('in %s', (language) => {
       const container = await renderPage();
 
       expect(await axe(container)).toHaveNoViolations();
+    },
+  );
+
+  // The dialogs, with the example data: they render outside the page's container, so axe checks the whole document.
+  const lightAndDark = [{ name: 'light', switchOn: () => undefined }, ...themes];
+
+  test.each(lightAndDark)(
+    'the Organisation page passes axe with the invite dialog refusing an empty form, in the $name theme',
+    async ({ switchOn }) => {
+      shown.examples = examples;
+      switchOn();
+      const user = userEvent.setup();
+      await renderPage();
+
+      await user.click(screen.getByRole('button', { name: t('organisation.team.invite.open') }));
+      const dialog = await screen.findByRole('dialog', { name: t('organisation.team.invite.title') });
+      await user.click(within(dialog).getByRole('button', { name: t('organisation.team.invite.submit') }));
+      await within(dialog).findAllByRole('alert');
+
+      expect(await axe(document.body)).toHaveNoViolations();
+    },
+  );
+
+  test.each(lightAndDark)(
+    'the Organisation page passes axe with the change dialog open, in the $name theme',
+    async ({ switchOn }) => {
+      shown.examples = examples;
+      switchOn();
+      const user = userEvent.setup();
+      await renderPage();
+
+      await user.click(
+        screen.getByRole('button', { name: t('organisation.team.members.changeOf', { name: 'Anna Albers' }) }),
+      );
+      await screen.findByRole('dialog', { name: t('organisation.team.change.title') });
+
+      expect(await axe(document.body)).toHaveNoViolations();
+    },
+  );
+
+  test.each(lightAndDark)(
+    'the Organisation page passes axe with the confirmation to end a membership open, in the $name theme',
+    async ({ switchOn }) => {
+      shown.examples = examples;
+      switchOn();
+      const user = userEvent.setup();
+      await renderPage();
+
+      await user.click(
+        screen.getByRole('button', { name: t('organisation.team.members.endOf', { name: 'Anna Albers' }) }),
+      );
+      await screen.findByRole('dialog', { name: t('organisation.team.end.title', { name: 'Anna Albers' }) });
+
+      expect(await axe(document.body)).toHaveNoViolations();
     },
   );
 });

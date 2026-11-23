@@ -1,5 +1,13 @@
 import { expect, type Page, test } from '@playwright/test';
-import { invitationLink, inviteToNewPharmacy, mailText, signInAs, unique } from './invitations';
+import {
+  acceptOn,
+  invitationLink,
+  inviteToNewPharmacy,
+  mailText,
+  recordAcceptances,
+  signInAs,
+  unique,
+} from './invitations';
 
 // No route is mocked: the developer registers a pharmacy and invites an address through the host's API, the invitation
 // mail is read from Mailpit, and the invitee opens its link in a browser. Each run registers a pharmacy of its own, so
@@ -16,35 +24,6 @@ function recordRequests(page: Page) {
 
 /** The token of an invitation link: what follows `#token=`. */
 const tokenOf = (link: string) => link.slice(link.indexOf('#token=') + '#token='.length);
-
-/** Every POST that accepts an invitation, from the moment the test starts recording. */
-function recordAcceptances(page: Page) {
-  const accepted: string[] = [];
-  page.on('request', (request) => {
-    if (request.method() === 'POST' && request.url().endsWith('/organisation/invitations/accept')) {
-      accepted.push(request.url());
-    }
-  });
-  return accepted;
-}
-
-/**
- * The page is ready to accept: "Einladung annehmen", naming no pharmacy, with the token out of the address and storage
- * and nothing posted yet; pressing its button accepts the invitation (the owner's decision on #13, 2026-11-23).
- */
-async function acceptOn(page: Page, pharmacy: string, token: string, accepted: string[]) {
-  const button = page.getByRole('button', { name: 'Einladung annehmen' });
-  // From the link through Keycloak's sign-in back to the page: longer than one page after a cold start.
-  await expect(button).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByRole('heading', { name: 'Einladung annehmen', level: 1 })).toBeVisible();
-  await expect(page.getByRole('main')).not.toContainText(pharmacy);
-  await expect(page).toHaveURL(/\/invitations\/accept$/);
-  expect(page.url()).not.toContain(token);
-  expect(await page.evaluate(() => sessionStorage.getItem('invitation-token'))).toBeNull();
-  expect(accepted).toEqual([]);
-  await button.click();
-  await expect.poll(() => accepted.length).toBe(1);
-}
 
 /** The app has accepted the invitation: "Meine Schulungen", in the pharmacy, with nothing of the link kept. */
 async function expectMemberOn(page: Page, pharmacy: string, token: string) {
