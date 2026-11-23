@@ -13,12 +13,16 @@ public static class BlobStorage
 {
     private const string Name = "storage";
 
+    // Put Blob From URL, which a module's server-side copy uses (IBlobCopies), arrived in Azurite 3.38.0; the image Aspire
+    // pins by default (3.35.0) answers it 501 APINotImplemented (docs/adr/0002).
+    private const string AzuriteTag = "3.38.0";
+
     public static IResourceBuilder<AzureStorageResource> AddBlobStorage(this IDistributedApplicationBuilder builder)
     {
         ArgumentNullException.ThrowIfNull(builder);
 
         var storage = builder.AddAzureStorage(Name)
-            .RunAsEmulator(emulator => emulator.WithDataVolume());
+            .RunAsEmulator(emulator => emulator.WithDataVolume().WithImageTag(AzuriteTag));
         return builder.ExecutionContext.IsPublishMode ? storage.ClearDefaultRoleAssignments() : storage;
     }
 }

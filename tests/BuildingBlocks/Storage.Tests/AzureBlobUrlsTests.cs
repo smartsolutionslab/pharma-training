@@ -21,6 +21,8 @@ public class AzureBlobUrlsTests
 
     private static readonly BlobUrlLifetime FiveMinutes = BlobUrlLifetime.From(TimeSpan.FromMinutes(5));
 
+    private static readonly BlobReadHeaders InlinePdf = BlobReadHeaders.Inline("application/pdf");
+
     [Fact]
     public async Task An_upload_url_creates_only_its_blob_until_the_lifetime_ends()
     {
@@ -43,7 +45,7 @@ public class AzureBlobUrlsTests
     {
         var urls = new AzureBlobUrls(Configuration(ConnectionString()), new FakeTimeProvider(Noon));
 
-        var read = await urls.CreateReadUrlAsync(BlobName.From("courses/2026/handout.pdf"), FiveMinutes, TestContext.Current.CancellationToken);
+        var read = await urls.CreateReadUrlAsync(BlobName.From("courses/2026/handout.pdf"), FiveMinutes, InlinePdf, TestContext.Current.CancellationToken);
 
         read.Url.AbsolutePath.ShouldBe($"/{Account}/{Container}/courses/2026/handout.pdf");
         var query = HttpUtility.ParseQueryString(read.Url.Query);
@@ -53,6 +55,48 @@ public class AzureBlobUrlsTests
         query["sig"].ShouldNotBeNullOrWhiteSpace();
         Expiry(query).ShouldBe(Noon.AddMinutes(5));
         read.ExpiresAt.ShouldBe(Noon.AddMinutes(5));
+    }
+
+    [Fact]
+    public async Task A_read_url_carries_the_content_type_and_inline_disposition_it_was_signed_with()
+    {
+        var urls = new AzureBlobUrls(Configuration(ConnectionString()), new FakeTimeProvider(Noon));
+
+        var read = await urls.CreateReadUrlAsync(BlobName.From("courses/2026/handout.pdf"), FiveMinutes, BlobReadHeaders.Inline("application/pdf"), TestContext.Current.CancellationToken);
+
+        var query = HttpUtility.ParseQueryString(read.Url.Query);
+        query["rsct"].ShouldBe("application/pdf");
+        query["rscd"].ShouldBe("inline");
+        query["sp"].ShouldBe("r");
+    }
+
+    [Fact]
+    public async Task An_attachment_read_url_carries_rscd_attachment()
+    {
+        var urls = new AzureBlobUrls(Configuration(ConnectionString()), new FakeTimeProvider(Noon));
+
+        var read = await urls.CreateReadUrlAsync(BlobName.From("exports/report.csv"), FiveMinutes, BlobReadHeaders.Attachment("text/csv"), TestContext.Current.CancellationToken);
+
+        var query = HttpUtility.ParseQueryString(read.Url.Query);
+        query["rsct"].ShouldBe("text/csv");
+        query["rscd"].ShouldBe("attachment");
+        query["sp"].ShouldBe("r");
+    }
+
+    [Fact]
+    public async Task The_overrides_are_part_of_the_signature()
+    {
+        // One key, one instant, one name: the URLs differ only in the content type they were signed with.
+        var urls = new AzureBlobUrls(Configuration(ConnectionString()), new FakeTimeProvider(Noon));
+        var name = BlobName.From("courses/2026/handout.pdf");
+
+        var asPdf = await urls.CreateReadUrlAsync(name, FiveMinutes, BlobReadHeaders.Inline("application/pdf"), TestContext.Current.CancellationToken);
+        var asVideo = await urls.CreateReadUrlAsync(name, FiveMinutes, BlobReadHeaders.Inline("video/mp4"), TestContext.Current.CancellationToken);
+
+        var pdfQuery = HttpUtility.ParseQueryString(asPdf.Url.Query);
+        var videoQuery = HttpUtility.ParseQueryString(asVideo.Url.Query);
+        pdfQuery["se"].ShouldBe(videoQuery["se"]);
+        pdfQuery["sig"].ShouldNotBe(videoQuery["sig"], "a URL whose rsct was changed must not carry a valid signature");
     }
 
     [Fact]
@@ -86,7 +130,7 @@ public class AzureBlobUrlsTests
         var https = $"BlobEndpoint=https://{Account}.blob.core.windows.net;AccountName={Account};AccountKey={Key()};ContainerName={Container}";
         var urls = new AzureBlobUrls(Configuration(https), new FakeTimeProvider(Noon));
 
-        var read = await urls.CreateReadUrlAsync(BlobName.From("handout.pdf"), FiveMinutes, TestContext.Current.CancellationToken);
+        var read = await urls.CreateReadUrlAsync(BlobName.From("handout.pdf"), FiveMinutes, InlinePdf, TestContext.Current.CancellationToken);
 
         read.Url.Scheme.ShouldBe(Uri.UriSchemeHttps);
         HttpUtility.ParseQueryString(read.Url.Query)["spr"].ShouldBe("https", "a signature for an https endpoint must not work over plain http");
@@ -108,7 +152,7 @@ public class AzureBlobUrlsTests
     {
         var urls = new AzureBlobUrls(Configuration(ConnectionString()), new FakeTimeProvider(Noon));
 
-        var read = await urls.CreateReadUrlAsync(BlobName.From("courses/hand out.pdf"), FiveMinutes, TestContext.Current.CancellationToken);
+        var read = await urls.CreateReadUrlAsync(BlobName.From("courses/hand out.pdf"), FiveMinutes, InlinePdf, TestContext.Current.CancellationToken);
 
         read.Url.AbsoluteUri.ShouldNotContain(" ");
         read.Url.AbsolutePath.ShouldBe($"/{Account}/{Container}/courses/hand%20out.pdf");
@@ -132,7 +176,7 @@ public class AzureBlobUrlsTests
         var urls = new AzureBlobUrls(Configuration(withoutContainer), new FakeTimeProvider(Noon));
 
         var failure = await Should.ThrowAsync<InvalidOperationException>(() =>
-            urls.CreateReadUrlAsync(BlobName.From("handout.pdf"), FiveMinutes, TestContext.Current.CancellationToken));
+            urls.CreateReadUrlAsync(BlobName.From("handout.pdf"), FiveMinutes, InlinePdf, TestContext.Current.CancellationToken));
 
         failure.Message.ShouldContain("ContainerName");
     }
