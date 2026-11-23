@@ -16,7 +16,7 @@ partial class ComplianceModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261121204810_BoundMemberNamesAndCourseTitles";
+    public override string LastMigrationId => "20261123081042_AddMembershipChanges";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -123,6 +123,48 @@ partial class ComplianceModelSnapshot : ModelSnapshot
                     .HasDatabaseName("ix_members_pharmacy_id");
 
                 b.ToTable("members", "compliance");
+            });
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Members.MembershipChange", b =>
+            {
+                b.Property<Guid>("Membership")
+                    .HasColumnType("uuid")
+                    .HasColumnName("membership_id");
+
+                b.Property<int>("Version")
+                    .HasColumnType("integer")
+                    .HasColumnName("version");
+
+                b.Property<string>("JobFunction")
+                    .IsRequired()
+                    .HasMaxLength(16)
+                    .HasColumnType("character varying(16)")
+                    .HasColumnName("job_function");
+
+                b.Property<string>("Name")
+                    .IsRequired()
+                    .HasMaxLength(100)
+                    .HasColumnType("character varying(100)")
+                    .HasColumnName("display_name");
+
+                b.Property<Guid>("Person")
+                    .HasColumnType("uuid")
+                    .HasColumnName("person_id");
+
+                b.Property<Guid>("Pharmacy")
+                    .HasColumnType("uuid")
+                    .HasColumnName("pharmacy_id");
+
+                b.Property<string>("Role")
+                    .IsRequired()
+                    .HasMaxLength(16)
+                    .HasColumnType("character varying(16)")
+                    .HasColumnName("role");
+
+                b.HasKey("Membership", "Version")
+                    .HasName("pk_membership_changes");
+
+                b.ToTable("membership_changes", "compliance");
             });
 
         modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Members.MembershipEnding", b =>
