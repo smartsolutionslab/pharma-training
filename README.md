@@ -65,6 +65,10 @@ The AppHost runs Azurite, the Azure Storage emulator, as the resource `storage`,
 
 Four eyes (a version is published by an editor other than the one who submitted it) is off by default; `Editorial__FourEyes=true` in the editorial service's environment turns it on (docs/adr/0007).
 
+### Republishing Editorial's events
+
+Run `POST /editorial/course-versions/republish` once, as an editor (`editorial.edit`), after a service that consumes `CourseVersionPublishedV1`, `TestDefinitionPublishedV1` or `CourseVersionRetiredV1` is deployed for the first time: its queue is bound only from its first start, and the broker dropped what Editorial announced before. It sends again the events of every version that was published or retired, and answers how many of each went out (`courseVersions`, `testDefinitions`, `retirements`). Every subscriber receives them again, not only the new one, and drops what it already has by the version id, so it is safe to repeat, and a run cut off part-way is simply run again ([ADR 0019](docs/adr/0019-editorials-course-version-events-may-be-republished.md)).
+
 ### Local users
 
 Keycloak imports these from `src/AppHost/realms/realm.json`, development only. Each one's password is its username.
