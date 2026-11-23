@@ -2,7 +2,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Catalog.Domain.CourseVersions
 
 /// <summary>
 /// A course version Editorial published, as Catalog keeps it: stored once, never changed. A course's current version is
-/// its highest version number while that version is not retired.
+/// its highest version number while that version is not retired; every older version reads as superseded.
 /// </summary>
 public sealed class CourseVersion
 {

@@ -150,7 +150,7 @@ Regeln:
 
 - Namen im Perfekt, Version im Typnamen (`CertificateIssuedV1`); eine Änderung, die Konsumenten bricht, wird eine neue Version.
 - Jedes Event trägt `EventId`, `OccurredAt` und die IDs, die Konsumenten zum Zuordnen brauchen (immer `CourseId` und `CourseVersionId`).
-- Keine Personendaten in Events aus event-sourced Services (Learning, Assessment): nur `PersonId`, damit Löschung nach DSGVO möglich bleibt. Namen liegen außerhalb von Events nur hier: in Organisation, in Certification, in Compliance (Namen der Mitglieder, `MemberName`) und in Editorial (Anzeigename der Person, die eine Frage freigegeben hat, `editorial.course_version_questions.reviewed_by_name`, aus dem Claim `name` zum Zeitpunkt der Freigabe und in jede Folgeversion übernommen; Entscheidung des Owners zu #205). Die Löschung (#115) muss jede dieser Stellen erreichen.
+- Keine Personendaten in Events aus event-sourced Services (Learning, Assessment): nur `PersonId`, damit Löschung nach DSGVO möglich bleibt. Namen liegen außerhalb von Events nur hier: in Organisation, in Certification, in Compliance (Namen der Mitglieder, `MemberName`) und in Editorial (Anzeigename der Person, die eine Frage freigegeben hat, `editorial.course_version_questions.reviewed_by_name`, aus dem Claim `name` zum Zeitpunkt der Freigabe und in jede Folgeversion übernommen; Entscheidung des Owners zu #205; und Anzeigename der Person, die eine Kursversion zurückgegeben hat, `editorial.course_version_returns.returned_by_name`, aus dem Claim `name` zum Zeitpunkt der Rückgabe; dieselbe Entscheidung, für Rückgaben angewandt in #220). Die Löschung (#115) muss jede dieser Stellen erreichen.
 - Prüfungsfragen mit Lösungen gehen nur an Assessment, nie an Catalog oder Frontend.
 
 | Event | Publisher | Konsumenten | Wichtige Felder |
@@ -165,13 +165,13 @@ Regeln:
 | `CourseAssigned` | Compliance | (keiner in MVP 1, später Benachrichtigung) | AssignmentId, PersonId, PharmacyId, CourseId, DueDate |
 | `AssignmentCompleted` | Compliance | (keiner in MVP 1) | AssignmentId, CertificateId, CompletedAt, Late |
 | `LearningSessionStarted` | Learning | Compliance | SessionId, PersonId, CourseId, CourseVersionId |
-| `ContentCompleted` | Learning | Assessment | SessionId, PersonId, CourseId, CourseVersionId |
+| `ContentCompleted` | Learning | Assessment, Compliance | SessionId, PersonId, CourseId, CourseVersionId |
 | `TestPassed` | Assessment | Certification | AttemptId, SessionId, PersonId, CourseId, CourseVersionId, ScorePercent |
 | `TestFailed` | Assessment | (keiner in MVP 1) | AttemptId, SessionId, PersonId, AttemptNumber |
-| `AttemptsExhausted` | Assessment | Learning, Compliance | SessionId, PersonId, CourseVersionId |
+| `AttemptsExhausted` | Assessment | Learning, Compliance | SessionId, PersonId, CourseId, CourseVersionId, FailedChapterIds |
 | `CertificateIssued` | Certification | Compliance | CertificateId, PersonId, CourseId, CourseVersionId, IssuedAt, ValidUntil |
 
-Ablauf: `CourseAssigned` → `LearningSessionStarted` (Status in Bearbeitung) → `ContentCompleted` (Test frei) → `TestPassed` → `CertificateIssued` → Compliance schließt alle offenen Zuweisungen der Person für diese `CourseId` und legt bei Wiederholung die nächste an. Bei `AttemptsExhausted` setzt Learning den Fortschritt zurück und Compliance zeigt „gesperrt“.
+Ablauf: `CourseAssigned` → `LearningSessionStarted` (Status in Bearbeitung) → `ContentCompleted` (Test frei) → `TestPassed` → `CertificateIssued` → Compliance schließt alle offenen Zuweisungen der Person für diese `CourseId` und legt bei Wiederholung die nächste an. Bei `AttemptsExhausted` setzt Learning den Fortschritt zurück und Compliance zeigt „gesperrt“, bis `ContentCompleted` derselben Person und `CourseId` meldet, dass der Inhalt erneut durchgearbeitet ist (Entscheidung des Owners zu #32, Option b).
 
 Nachträge aus Runde 16 und 17: Compliance konsumiert zusätzlich `MembershipStarted` (Namen) und `CourseVersionPublished` (Titel, aktuelle Version); Certification konsumiert zusätzlich `MembershipEnded`. `CourseVersionPublished` trägt pro Videokapitel die Dauer (Plausibilitätsprüfung in Learning) und die Gültigkeit aus den Testvorgaben.
 
@@ -183,15 +183,15 @@ Drei Aggregate tragen MVP 1: `Assignment` (Compliance, DDD), `LearningSession` (
 
 Value Objects: `AssignmentId`, `PersonId`, `PharmacyId`, `CourseId`, `DueDate`, `RecurrenceInterval` (Monate, 1 bis 60), `AssignmentChange` (Historie).
 
-Status: `Open` → `InProgress` → `Completed`, außerdem `Cancelled`. `Overdue` und `Late` werden berechnet, nicht gespeichert. `Locked` ist ein Flag in `InProgress`.
+Status: `Open` → `InProgress` → `Completed`, außerdem `Cancelled`. `Overdue` und `Late` werden berechnet, nicht gespeichert. `Locked` ist ein Flag, angezeigt in `InProgress`; eine Sperre, die vor dem Start ankommt, wird gemerkt.
 
 | Command | Auslöser | Invarianten |
 | --- | --- | --- |
 | `Assign` | Apothekenleiter | Frist nicht in der Vergangenheit; höchstens eine aktive Zuweisung pro Person × Apotheke × Schulung (Unique Index) |
 | `ChangeDueDate` | Apothekenleiter | Nur wenn aktiv; neue Frist nicht in der Vergangenheit; Eintrag in der Historie |
 | `Cancel` | Apothekenleiter, `MembershipEnded` | Nur wenn aktiv; terminal |
-| `MarkStarted` | `LearningSessionStarted` | Nur aus `Open`; sonst ignorieren |
-| `MarkLocked` / `Unlock` | `AttemptsExhausted` / `LearningSessionStarted` | Nur in `InProgress` |
+| `MarkStarted` | `LearningSessionStarted` | Nur aus `Open`; sonst ignorieren; entsperrt nicht; der früheste Start gilt, auch einer von vor der Zuweisung |
+| `MarkLocked` / `Unlock` | `AttemptsExhausted` / `ContentCompleted` | Nur wenn aktiv; das später geschehene Ereignis (`OccurredAt`) gewinnt, bei Gleichstand die Sperre; Ereignisse vor der Zuweisung zählen nicht (ADR 0019) |
 | `Complete` | `CertificateIssued` | Aus `Open` oder `InProgress` (Events können überholen); gleiche CertificateId erneut = No-op; terminal |
 
 Nach `Complete` mit Wiederholung legt ein Handler eine neue Zuweisung an: Frist = Abschlussdatum + Intervall. Eine Bestätigung von vor der Zuweisung erfüllt sie nicht.
@@ -255,7 +255,7 @@ Status: `Draft` → `InReview` → `Published` → `Superseded` bzw. `Retired`.
 | Command | Invarianten |
 | --- | --- |
 | `AddChapter` / `ReorderChapters` / `EditChapter` | Nur im Entwurf; Kapitel ist Text (Markdown), PDF oder Video (Blob + Dauer) |
-| `SetTestBlueprint` | Anzahl Fragen (Standard 10), Bestehensgrenze (Standard 80 %), Gültigkeit in Monaten |
+| `SetTestBlueprint` | Anzahl Fragen (Standard 10), Bestehensgrenze (Standard 80 %), Gültigkeit in Monaten; nur im Entwurf; eine Änderung einer der drei Vorgaben setzt die Freigabe aller Fragen zurück, auch kopierter; dieselben Werte ändern nichts |
 | `ApplyAiTestDraft` | Ersetzt nur ungeprüfte Fragen; jede Frage trägt Herkunft `AiDrafted` |
 | `EditQuestion` / `ApproveQuestion` | Freigabe vermerkt Redakteur und Zeitpunkt |
 | `SubmitForReview` | Mindestens ein Kapitel; Test vollständig laut Vorgaben |

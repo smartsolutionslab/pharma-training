@@ -15,6 +15,9 @@
     <PackageReference Include="Aspire.Hosting.Azure.PostgreSQL" />
     <PackageReference Include="Npgsql" />
     <PackageReference Include="RabbitMQ.Client" />
+    <!-- A Wolverine host builds its message storage under a module's database role (ModuleDatabaseRoleTests). -->
+    <PackageReference Include="WolverineFx.Postgresql" />
+    <PackageReference Include="WolverineFx.RuntimeCompilation" />
     <!-- Compiles the probe consumers MessagingTopologyTests reads as a module's Application (ConsumerProbe). -->
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
     <!-- Serializes the Wolverine envelope a forged scheduled-envelope wrapper carries (BrokerPublisherIntegrityTests). -->

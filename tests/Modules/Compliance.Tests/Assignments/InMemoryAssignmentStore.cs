@@ -36,6 +36,16 @@ internal sealed class InMemoryAssignmentStore : IAssignmentStore, IComplianceUni
         return Task.FromResult(active);
     }
 
+    public Task<IReadOnlyList<Assignment>> ActiveOfLearnerAsync(PersonId learner, CourseId course, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<Assignment> active = Stored
+            .Where(assignment => assignment.Learner == learner
+                && assignment.Course == course
+                && assignment.Status is AssignmentStatus.Open or AssignmentStatus.InProgress)
+            .ToList();
+        return Task.FromResult(active);
+    }
+
     public void Add(Assignment assignment) => added.Add(assignment);
 
     /// <summary>The stored instance itself, so what the caller changes is "tracked" and stays changed.</summary>

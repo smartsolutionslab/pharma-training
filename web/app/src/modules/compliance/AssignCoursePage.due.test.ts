@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { setLanguage, t } from '@/i18n';
 import {
   anna,
+  backButton,
   ben,
   dueDateField,
   type Fetch,
@@ -12,10 +13,12 @@ import {
   hygiene,
   nextButton,
   now,
+  postsOf,
   renderAssignPage,
   repeatYearly,
   setDueDate,
   stepHeading,
+  submitButton,
   today,
   toDueDate,
   toReview,
@@ -35,6 +38,8 @@ beforeEach(() => {
   vi.setSystemTime(now);
   localStorage.clear();
   host.mockImplementation(hostFrom(hostState()));
+  notify.success.mockReset();
+  notify.failure.mockReset();
 });
 afterEach(() => {
   vi.useRealTimers();
@@ -103,6 +108,52 @@ describe('the due date step', () => {
     await user.click(nextButton());
 
     expect(await stepHeading('compliance.assign.review.title')).toBeInTheDocument();
+  });
+});
+
+// Follow-ups of #37 (#239): the clock moves on while the wizard is open.
+describe('the due date as the clock moves on', () => {
+  test("the date field's earliest day follows the clock, read again when the step shows again", async () => {
+    const user = userEvent.setup();
+    await renderAssignPage();
+    await toDueDate(user);
+    expect(dueDateField()).toHaveAttribute('min', today);
+
+    await user.click(backButton());
+    await stepHeading('compliance.assign.learners.title');
+    // Past midnight: the next day, in Germany and in the browser's zone alike.
+    vi.setSystemTime(new Date('2026-11-24T11:00:00Z'));
+    await user.click(nextButton());
+    await stepHeading('compliance.assign.due.title');
+
+    expect(dueDateField()).toHaveAttribute('min', '2026-11-24');
+  });
+
+  test('the date field ends ten years from today, as the host takes it', async () => {
+    const user = userEvent.setup();
+    await renderAssignPage();
+
+    await toDueDate(user);
+
+    expect(dueDateField()).toHaveAttribute('max', '2036-11-23');
+  });
+
+  test('a review left open past midnight checks the due date again at submit: nothing is sent, and the step says so', async () => {
+    const user = userEvent.setup();
+    await renderAssignPage();
+    await toReview(user, { due: today });
+
+    // Past midnight: the due date chosen as today is now yesterday.
+    vi.setSystemTime(new Date('2026-11-24T11:00:00Z'));
+    await user.click(submitButton());
+
+    await stepHeading('compliance.assign.due.title');
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(t('compliance.assign.due.inThePast'));
+    expect(dueDateField()).toHaveAttribute('aria-invalid', 'true');
+    await waitFor(() => expect(alert).toHaveFocus());
+    expect(postsOf(host)).toEqual([]);
+    expect(notify.success).not.toHaveBeenCalled();
   });
 });
 

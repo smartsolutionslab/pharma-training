@@ -20,6 +20,8 @@ public sealed class CourseVersionReturnConfiguration : IEntityTypeConfiguration<
         builder.Property(record => record.Id).HasColumnName("id").ValueGeneratedNever();
         builder.Property(record => record.Version).HasColumnName("course_version_id").IsRequired();
         builder.Property(record => record.ReturnedBy).HasColumnName("returned_by").IsRequired();
+        // Nullable: returns stored before #220 have no name.
+        builder.Property(record => record.ReturnedByName).HasColumnName("returned_by_name").HasMaxLength(ReviewerName.MaxLength);
         builder.Property(record => record.ReturnedAt).HasColumnName("returned_at").IsRequired();
         builder.Property(record => record.Reason).HasColumnName("reason").HasMaxLength(ReturnReason.MaxLength).IsRequired();
 

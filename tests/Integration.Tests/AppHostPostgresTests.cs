@@ -67,7 +67,9 @@ public class AppHostPostgresTests
 
             database.ShouldNotBeNull($"{service.Name} has no database on the Flexible Server.").DatabaseName.ShouldBe(service.Name);
             environment.ShouldContainKey(ConnectionString);
-            environment[ConnectionString].ShouldBe($"{{{service.Name}-database.connectionString}}");
+            environment[ConnectionString].ShouldBe(
+                $"{{secrets.secrets.connectionstrings--{service.Name}-database-app}}",
+                $"{service.Name} should log in to its own database as its module's role, never with the administrator's connection string (ADR 0005).");
         }
     }
 

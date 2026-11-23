@@ -77,6 +77,7 @@ public class TestDefinitionPublishedV1ConsumerTests
     [InlineData("a duplicate question id", nameof(TestQuestionV1.QuestionId))]
     [InlineData("an empty chapter id", nameof(TestQuestionV1.ChapterId))]
     [InlineData("a blank question text", nameof(TestQuestionV1.Text))]
+    [InlineData("an unknown question type", nameof(TestQuestionV1.Type))]
     [InlineData("a question without options", nameof(TestQuestionV1.Options))]
     [InlineData("a duplicate option id", nameof(AnswerOptionV1.AnswerOptionId))]
     [InlineData("an option without text", nameof(AnswerOptionV1.Text))]
@@ -110,6 +111,7 @@ public class TestDefinitionPublishedV1ConsumerTests
             "a duplicate question id" => wellFormed with { Questions = [single, multiple with { QuestionId = single.QuestionId }] },
             "an empty chapter id" => wellFormed with { Questions = [single, multiple with { ChapterId = Guid.Empty }] },
             "a blank question text" => wellFormed with { Questions = [single, multiple with { Text = "  " }] },
+            "an unknown question type" => wellFormed with { Questions = [single, multiple with { Type = (QuestionTypeV1)7 }] },
             "a question without options" => wellFormed with { Questions = [single, multiple with { Options = [] }] },
             "a duplicate option id" => wellFormed with { Questions = [single, multiple with { Options = [multiple.Options[0], multiple.Options[1] with { AnswerOptionId = multiple.Options[0].AnswerOptionId }] }] },
             "an option without text" => wellFormed with { Questions = [single, multiple with { Options = [multiple.Options[0], multiple.Options[1] with { Text = null! }, multiple.Options[2]] }] },

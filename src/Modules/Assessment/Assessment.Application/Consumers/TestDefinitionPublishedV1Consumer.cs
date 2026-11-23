@@ -79,6 +79,8 @@ public sealed class TestDefinitionPublishedV1Consumer(ITestDefinitionCopies defi
         Ensure.That(question.QuestionId.ToString(), nameof(question.QuestionId)).Satisfies(_ => questionIds.Add(question.QuestionId), "A question id may appear once in a test definition.");
         Ensure.That(question.ChapterId, nameof(question.ChapterId)).IsNotEmpty();
         Ensure.That(question.Text, nameof(question.Text)).IsNotNullOrWhiteSpace();
+        // A number the converter accepts but the enum does not name would pass the count below as multiple choice.
+        Ensure.That(question.Type.ToString(), nameof(question.Type)).Satisfies(_ => Enum.IsDefined(question.Type), "A question type is SingleChoice or MultipleChoice.");
         Ensure.That(question.Options, nameof(question.Options)).IsNotNull();
         Ensure.That(question.Options.Count, nameof(question.Options)).AtLeast(1);
 
@@ -106,6 +108,6 @@ public sealed class TestDefinitionPublishedV1Consumer(ITestDefinitionCopies defi
     {
         QuestionTypeV1.SingleChoice => TestQuestionType.SingleChoice,
         QuestionTypeV1.MultipleChoice => TestQuestionType.MultipleChoice,
-        _ => throw new InvalidOperationException($"Question type {type} has no counterpart in Assessment."),
+        _ => throw new InvalidOperationException($"Question type {type} has no counterpart in Assessment; Refuse lets only defined values through."),
     };
 }
