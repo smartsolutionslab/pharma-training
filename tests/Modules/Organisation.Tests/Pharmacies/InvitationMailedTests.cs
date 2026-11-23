@@ -107,6 +107,31 @@ public class InvitationMailedTests
         warning.Message.ShouldContain(membership.Value.ToString(), Case.Sensitive);
     }
 
+    /// <summary>
+    /// Once the send has returned the mail is out: a record commit that throws (a dropped database) is logged and
+    /// swallowed, since a throw would make Wolverine mail the version a second time (review O1).
+    /// </summary>
+    [Fact]
+    public async Task A_sent_mail_whose_mark_commit_throws_is_logged_and_not_thrown()
+    {
+        var pharmacy = TestPharmacies.Register(Owner, "Apotheke am Markt");
+        var membership = TestPharmacies.Invite(pharmacy, Anna.Value);
+        pharmacy.Stored(store);
+        mails.SendAsync(Arg.Any<OutgoingMail>(), Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            // The link's commit is done; the database goes away before the mark's commit.
+            store.FailNextCommit(new IOException("The connection to the database was dropped."));
+            return Task.CompletedTask;
+        });
+
+        // Awaited directly: a throw here would make Wolverine mail the version a second time.
+        await Consumer().HandleAsync(new InvitationMailRequestedV1(membership.Value, pharmacy.Id.Value), TestContext.Current.CancellationToken);
+
+        await mails.Received(1).SendAsync(Arg.Any<OutgoingMail>(), Arg.Any<CancellationToken>());
+        var warning = logger.Collector.GetSnapshot().Where(record => record.Level == LogLevel.Warning).ShouldHaveSingleItem();
+        warning.Message.ShouldContain(membership.Value.ToString(), Case.Sensitive);
+    }
+
     [Fact]
     public async Task A_sent_mail_whose_invitation_was_renewed_before_its_mark_is_logged_and_not_thrown()
     {

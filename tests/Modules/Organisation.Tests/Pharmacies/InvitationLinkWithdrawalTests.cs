@@ -73,6 +73,58 @@ public class InvitationLinkWithdrawalTests
         logger.Collector.GetSnapshot().ShouldNotContain(record => record.Message.Contains("invitation-link-limit-reached", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// The server refusing MAIL FROM, RCPT TO or DATA does not hold the mail, although the send had started, so the real
+    /// sender says so and every attempt withdraws its link: the cap is never reached, every attempt throws, and the
+    /// message dead-letters (review B1, rules a and c).
+    /// </summary>
+    [Theory]
+    [InlineData("MAIL")]
+    [InlineData("RCPT")]
+    [InlineData("DATA")]
+    public async Task Server_refusals_never_reach_the_cap_so_every_attempt_throws(string refused)
+    {
+        var (pharmacy, membership) = Invited();
+        await using var server = new RefusingSmtpServer(refused);
+        var sender = new SmtpMailSender(
+            new ConfigurationBuilder()
+                .AddInMemoryCollection([
+                    new KeyValuePair<string, string?>("ConnectionStrings:mail", server.ConnectionString),
+                    new KeyValuePair<string, string?>("Mail:From", "noreply@example.com"),
+                ])
+                .Build(),
+            time);
+        var consumer = new InvitationMailRequestedV1Consumer(store, store, sender, Links(), time, logger);
+
+        for (var attempt = 1; attempt <= AttemptsBeforeDeadLetter + Pharmacy.MaxInvitationLinksPerVersion; attempt++)
+        {
+            await Should.ThrowAsync<MailNotSentException>(
+                () => consumer.HandleAsync(Request(pharmacy, membership), TestContext.Current.CancellationToken),
+                $"attempt {attempt} against a server refusing {refused} did not fail, so the message would not be dead-lettered");
+        }
+
+        server.Taken.ShouldBe(0);
+        Stored(pharmacy, membership).InvitationLinks.ShouldBeEmpty($"a link whose mail the server refused at {refused} was left behind");
+        logger.Collector.GetSnapshot().ShouldNotContain(record => record.Message.Contains("invitation-link-limit-reached", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Any failure of the send other than one that says the mail may be out takes the link back, and still throws
+    /// (review B1, rule c).
+    /// </summary>
+    [Fact]
+    public async Task An_invalid_operation_from_the_sender_withdraws_the_link_and_still_throws()
+    {
+        var (pharmacy, membership) = Invited();
+        var failure = new InvalidOperationException("The sender address is missing or unusable: set Mail:From to an e-mail address.");
+        mails.SendAsync(Arg.Any<OutgoingMail>(), Arg.Any<CancellationToken>()).Returns(Task.FromException(failure));
+
+        var thrown = await Should.ThrowAsync<InvalidOperationException>(() => Consumer().HandleAsync(Request(pharmacy, membership), TestContext.Current.CancellationToken));
+
+        thrown.ShouldBeSameAs(failure);
+        Stored(pharmacy, membership).InvitationLinks.ShouldBeEmpty("a link whose mail failed with a plain exception was left behind");
+    }
+
     [Fact]
     public async Task A_send_that_may_have_reached_the_server_keeps_its_link_and_still_throws()
     {

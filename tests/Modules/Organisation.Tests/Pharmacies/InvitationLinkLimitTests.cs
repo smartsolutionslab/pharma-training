@@ -1,6 +1,5 @@
 using System.Security.Cryptography;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Extensions.Time.Testing;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Mail;
@@ -12,8 +11,8 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Tests.Pharmacies
 
 /// <summary>
 /// One invitation version holds at most five links, so a retry loop cannot mint links without limit. A sixth is refused
-/// and the set stays as it was; the consumer at the cap mails nothing, logs a warning and returns, so nothing retries
-/// it: the invitee already holds the earlier links, and a renewal clears the set.
+/// and the set stays as it was; the consumer at the cap mails nothing, issues no link and throws, so the message
+/// dead-letters and stays visible: the invitee already holds the earlier links, and a renewal clears the set.
 /// </summary>
 public class InvitationLinkLimitTests
 {
@@ -54,8 +53,12 @@ public class InvitationLinkLimitTests
         Accepts(pharmacy, issued[0]).ShouldBeTrue("the first link stopped working when the sixth was refused");
     }
 
+    /// <summary>
+    /// At the cap the consumer mails nothing and issues no link, and throws, so the message dead-letters and stays
+    /// visible instead of returning quietly (review B1, rule d). The exception names no personal data.
+    /// </summary>
     [Fact]
-    public async Task At_the_cap_the_consumer_sends_nothing_throws_nothing_and_logs_a_warning()
+    public async Task At_the_cap_the_consumer_sends_nothing_issues_no_link_and_throws()
     {
         var pharmacy = TestPharmacies.Register(Owner, "Apotheke am Markt");
         var membership = TestPharmacies.Invite(pharmacy, Anna.Value);
@@ -66,14 +69,17 @@ public class InvitationLinkLimitTests
 
         pharmacy.Stored(store);
 
-        // Awaited directly: a throw here would make Wolverine retry a message that can never mail.
-        await Consumer().HandleAsync(new InvitationMailRequestedV1(membership.Value, pharmacy.Id.Value), TestContext.Current.CancellationToken);
+        var thrown = await Should.ThrowAsync<Exception>(
+            () => Consumer().HandleAsync(new InvitationMailRequestedV1(membership.Value, pharmacy.Id.Value), TestContext.Current.CancellationToken),
+            "the consumer returned quietly at the cap, so the message is neither retried nor dead-lettered");
 
         await mails.DidNotReceive().SendAsync(Arg.Any<OutgoingMail>(), Arg.Any<CancellationToken>());
         store.Commits.ShouldBe(0);
-        var warning = logger.Collector.GetSnapshot().Where(record => record.Level == LogLevel.Warning).ShouldHaveSingleItem();
-        warning.Message.ShouldContain(LimitReached, Case.Sensitive);
-        warning.Message.ShouldContain(membership.Value.ToString(), Case.Sensitive);
+        pharmacy.Membership(membership).InvitationLinks.Count.ShouldBe(Cap, "a link was issued at the cap");
+        thrown.ShouldNotBeOfType<GuardException>();
+        thrown.Message.ShouldNotContain(Anna.Value, Case.Insensitive);
+        thrown.Message.ShouldNotContain("Apotheke am Markt", Case.Insensitive);
+        thrown.InnerException.ShouldBeNull();
     }
 
     private static InvitationToken Token() => InvitationToken.From(RandomNumberGenerator.GetHexString(64));
