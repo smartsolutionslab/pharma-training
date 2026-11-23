@@ -43,7 +43,10 @@ public static class Databases
 
         if (!secrets.IsPublishing)
         {
-            return builder.AddPostgres(Name).WithDataVolume();
+            // PostgreSQL's default of 100 connections is fewer than every service's pools (EF Core, Marten, Wolverine), Keycloak
+            // and the integration tests open at once (53300: too many clients). Run mode only: the published Flexible Server
+            // keeps the limit its size gives it.
+            return builder.AddPostgres(Name).WithDataVolume().WithArgs("-c", "max_connections=300");
         }
 
         var size = DatabaseServerSize.For(builder.Environment.EnvironmentName);
