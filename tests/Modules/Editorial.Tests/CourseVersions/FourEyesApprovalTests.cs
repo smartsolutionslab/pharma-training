@@ -8,7 +8,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersion
 /// <summary>
 /// Which approvals count for four eyes (ADR 0007, the owner's decision of 2026-11-22): a question copied by
 /// <see cref="CourseVersion.DraftNext"/> keeps its approver, who then cannot publish the next version; an approval an
-/// edit took away no longer bars the editor who gave it. Refusals are read through <see cref="CourseVersionFailures.From(DomainError)"/>
+/// edit or a change of the test's settings took away no longer bars the editor who gave it. Refusals are read through <see cref="CourseVersionFailures.From(DomainError)"/>
 /// so the tests hold whichever error type the workflow returns.
 /// </summary>
 public class FourEyesApprovalTests
@@ -65,6 +65,21 @@ public class FourEyesApprovalTests
         var next = NextOf(PublishedApprovedBy(Approver));
         var copied = next.Questions.ShouldHaveSingleItem();
         next.EditQuestion(copied.Id, MultipleChoice(copied.Chapter), AnswerOptionId.New).IsSuccess.ShouldBeTrue();
+        next.ApproveQuestion(copied.Id, Author, Now).IsSuccess.ShouldBeTrue();
+        next.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
+
+        var published = next.Publish(Approver, ReviewPolicy.FourEyes, Now);
+
+        published.IsSuccess.ShouldBeTrue();
+        next.PublishedBy.ShouldBe(Approver);
+    }
+
+    [Fact]
+    public void With_four_eyes_on_the_approver_of_a_copied_question_whose_approval_a_blueprint_change_took_away_publishes_the_next_version()
+    {
+        var next = NextOf(PublishedApprovedBy(Approver));
+        var copied = next.Questions.ShouldHaveSingleItem();
+        next.SetBlueprint(new TestBlueprint(QuestionCount.From(1), ScorePercent.From(81), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
         next.ApproveQuestion(copied.Id, Author, Now).IsSuccess.ShouldBeTrue();
         next.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
 

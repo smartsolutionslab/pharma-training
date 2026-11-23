@@ -8,8 +8,9 @@ using static SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVers
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersions;
 
 /// <summary>
-/// An editor sets the test blueprint of a draft: it replaces the whole blueprint, touches no question, and is refused
-/// for a version that is no draft or was changed by another save since it was loaded.
+/// An editor sets the test blueprint of a draft: it replaces the whole blueprint, removes no question but takes every
+/// question's approval away when a setting changes (#199), and is refused for a version that is no draft or was changed
+/// by another save since it was loaded.
 /// </summary>
 public class SetTestBlueprintTests
 {
@@ -36,21 +37,25 @@ public class SetTestBlueprintTests
         await unitOfWork.DidNotReceive().CommitAsync(Arg.Any<CancellationToken>());
     }
 
-    [Fact]
-    public async Task Approved_questions_stay_approved_when_the_blueprint_changes()
+    [Theory]
+    [InlineData(11, 80, 12)]
+    [InlineData(10, 81, 12)]
+    [InlineData(10, 80, 13)]
+    public async Task Approved_questions_lose_their_approval_when_one_setting_changes(int questions, int passingScore, int validityMonths)
     {
         var version = DraftWithApprovedQuestion(out _, out var question);
         store.Stored.Add(version);
-        var blueprint = Blueprint(3, 80, 12);
+        var blueprint = Blueprint(questions, passingScore, validityMonths);
 
         var set = await SetAsync(version.Id, blueprint);
 
         set.IsSuccess.ShouldBeTrue();
         version.Blueprint.ShouldBe(blueprint);
-        var kept = version.Questions.ShouldHaveSingleItem();
-        kept.Id.ShouldBe(question);
-        kept.Review.ShouldBe(ReviewState.Approved);
-        kept.ReviewedBy.ShouldBe(Author);
+        var reset = version.Questions.ShouldHaveSingleItem();
+        reset.Id.ShouldBe(question);
+        reset.Review.ShouldBe(ReviewState.Unreviewed);
+        reset.ReviewedBy.ShouldBeNull();
+        await unitOfWork.Received(1).TryCommitAsync(Arg.Any<CancellationToken>());
     }
 
     [Fact]
