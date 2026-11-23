@@ -156,7 +156,7 @@ Regeln:
 | --- | --- | --- | --- |
 | `CourseVersionPublished` | Editorial | Catalog, Learning, Certification | CourseId, CourseVersionId, Title, Chapters (Id, Typ, Pflichtlänge), ValidityMonths |
 | `TestDefinitionPublished` | Editorial | Assessment | CourseVersionId, Questions inkl. richtiger Antworten, PassingScorePercent, MaxAttempts |
-| `CourseVersionRetired` | Editorial | Catalog, Compliance | CourseId, CourseVersionId |
+| `CourseVersionRetired` | Editorial | Catalog, Compliance, Learning | CourseId, CourseVersionId |
 | `PharmacyRegistered` | Organisation | Compliance, Certification | PharmacyId, Name |
 | `MembershipStarted` | Organisation | Compliance, Certification | MembershipId, PersonId, PharmacyId, DisplayName, JobFunction, Role |
 | `MembershipEnded` | Organisation | Compliance | MembershipId, PersonId, PharmacyId, EndedAt |
@@ -195,6 +195,8 @@ Status: `Open` → `InProgress` → `Completed`, außerdem `Cancelled`. `Overdue
 
 Nach `Complete` mit Wiederholung legt ein Handler eine neue Zuweisung an: Frist = Abschlussdatum + Intervall. Eine Bestätigung von vor der Zuweisung erfüllt sie nicht.
 
+`CertificateIssued` schließt jede aktive Zuweisung der Person für die `CourseId` in jeder Apotheke ab, jede Version zählt; eine Bestätigung, die vor der Zuweisung ausgestellt wurde, lässt sie offen. Verspätet (`Late` in `AssignmentCompletedV1`, `CompletedLate` im Dashboard) heißt: der Ausstellungstag in deutscher Zeit liegt nach der Frist; maßgeblich ist `IssuedAt`, nicht die Verarbeitung. Dieselbe Bestätigung erneut findet keine aktive Zuweisung mehr und ändert nichts.
+
 ### LearningSession (Learning, event-sourced)
 
 Ein Stream pro Person × Schulungsversion und Durchlauf. Die Kapitelstruktur wird beim Start aus der lokalen Kopie von `CourseVersionPublished` übernommen.
@@ -210,6 +212,8 @@ Ein Stream pro Person × Schulungsversion und Durchlauf. Die Kapitelstruktur wir
 | `SessionFinished` | Nach `TestPassed` (Learning konsumiert es zusätzlich zu Certification); danach keine Änderungen; eine Sperre danach ändert nichts |
 
 Invarianten: Fortschritt pro Kapitel wächst nur; `ContentCompleted` erst, wenn jedes Pflichtkapitel erfüllt ist; höchstens eine nicht beendete Session pro Person × Version. Der Client meldet Fortschritt gebündelt (beim Pausieren, am Kapitelende, spätestens alle 30 s), damit der Stream klein bleibt.
+
+Auf einer zurückgezogenen Version (`CourseVersionRetired`) beginnt kein neuer Durchlauf (409 `learning.course-version-retired`); ein nicht beendeter wird weiter fortgesetzt, gelesen und fortgeschrieben. Eine nur abgelöste Version bleibt startbar.
 
 ### Examination (Assessment, event-sourced)
 

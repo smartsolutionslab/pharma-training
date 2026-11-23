@@ -58,4 +58,16 @@ public static class Ensure
         decimal value,
         [CallerArgumentExpression(nameof(value))] string parameterName = "") =>
         new(value, parameterName);
+
+    /// <summary>
+    /// Begins a guard chain for a <see cref="DateTimeOffset"/> argument, an
+    /// instant another module sent or a caller passed. A dedicated overload is
+    /// needed for the same reason the <see cref="int"/> one is: value types do
+    /// not bind to the reference-type <c>That&lt;T&gt;</c> above. Pair with
+    /// <see cref="EnsuredValue{T}.Satisfies"/>, e.g. to refuse <c>default</c>.
+    /// </summary>
+    public static EnsuredValue<DateTimeOffset> That(
+        DateTimeOffset value,
+        [CallerArgumentExpression(nameof(value))] string parameterName = "") =>
+        new(value, parameterName);
 }

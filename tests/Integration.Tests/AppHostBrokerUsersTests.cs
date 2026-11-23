@@ -51,9 +51,9 @@ public class AppHostBrokerUsersTests(AspireFixture aspire)
         },
         {
             "compliance",
-            ["compliance", Contracts + "Assessment.AttemptsExhaustedV1", Contracts + "Compliance.AssignmentCompletedV1", Contracts + "Compliance.CourseAssignedV1", CourseVersionPublished, CourseVersionRetired, Contracts + "Learning.ContentCompletedV1", Contracts + "Learning.LearningSessionStartedV1", MembershipChanged, MembershipEnded, MembershipStarted],
+            ["compliance", Contracts + "Assessment.AttemptsExhaustedV1", Contracts + "Certification.CertificateIssuedV1", Contracts + "Compliance.AssignmentCompletedV1", Contracts + "Compliance.CourseAssignedV1", CourseVersionPublished, CourseVersionRetired, Contracts + "Learning.ContentCompletedV1", Contracts + "Learning.LearningSessionStartedV1", MembershipChanged, MembershipEnded, MembershipStarted],
             ["compliance", Contracts + "Compliance.AssignmentCompletedV1", Contracts + "Compliance.CourseAssignedV1"],
-            ["compliance", Contracts + "Assessment.AttemptsExhaustedV1", CourseVersionPublished, CourseVersionRetired, Contracts + "Learning.ContentCompletedV1", Contracts + "Learning.LearningSessionStartedV1", MembershipChanged, MembershipEnded, MembershipStarted]
+            ["compliance", Contracts + "Assessment.AttemptsExhaustedV1", Contracts + "Certification.CertificateIssuedV1", CourseVersionPublished, CourseVersionRetired, Contracts + "Learning.ContentCompletedV1", Contracts + "Learning.LearningSessionStartedV1", MembershipChanged, MembershipEnded, MembershipStarted]
         },
         {
             "editorial",
@@ -63,9 +63,9 @@ public class AppHostBrokerUsersTests(AspireFixture aspire)
         },
         {
             "learning",
-            ["learning", ContentCompleted, LearningSessionStarted, AttemptsExhausted, TestPassed, ChapterFilesReleased, CourseVersionPublished],
+            ["learning", ContentCompleted, LearningSessionStarted, AttemptsExhausted, TestPassed, ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired],
             ["learning", ContentCompleted, LearningSessionStarted],
-            ["learning", AttemptsExhausted, TestPassed, ChapterFilesReleased, CourseVersionPublished]
+            ["learning", AttemptsExhausted, TestPassed, ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired]
         },
         {
             "organisation",
