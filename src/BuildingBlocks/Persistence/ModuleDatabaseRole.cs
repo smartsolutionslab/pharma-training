@@ -10,8 +10,11 @@ namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Persistence;
 /// the <c>application</c> connection string's user, with its password, may log in and nothing more, may connect to its
 /// own database alone and use temporary tables there, and may read and write what the administrator made there (every
 /// schema the administrator owns, later tables too, Wolverine's message storage included, which the MigrationRunner builds
-/// as the administrator: <see cref="ModuleMessageStorage"/>). It holds no CREATE on the database, so it owns nothing: no
-/// schema, no table, nothing it could attach code to that runs as whoever touches it. It never changes the module's schema.
+/// as the administrator: <see cref="ModuleMessageStorage"/>). It holds no CREATE on the database or on any schema there,
+/// so it owns nothing: no schema, no table, nothing it could attach code to that runs as whoever touches it. A CREATE on a
+/// schema someone granted it by hand, <c>public</c> included, is taken back on every run, and the run fails if the role
+/// still holds one, or owns anything in the database (but large objects, its own default privileges and its temporary
+/// objects, which reach no other session), naming what and the role. It never changes the module's schema.
 /// Every run is idempotent and re-applies everything, so a new password or a new table is picked up by the next one, a
 /// CREATE an earlier run granted is taken back, and whatever keeps the role from logging in or working (an expiry, a
 /// connection limit, a setting of its own) is lifted; runs on one database wait for each other, however long that takes. It may never change EF Core's migration
@@ -42,6 +45,8 @@ public static class ModuleDatabaseRole
             role_verifier text := pg_catalog.current_setting('{{VerifierSetting}}');
             database_name text := pg_catalog.current_database();
             schema_name name;
+            owned_objects text;
+            creatable_schemas text;
             failure_state text;
             failure_message text;
             failure_detail text;
@@ -72,6 +77,26 @@ public static class ModuleDatabaseRole
                     DETAIL = failure_detail,
                     HINT = failure_hint;
             END;
+
+            -- The role owns nothing in its database: what it made while an earlier design granted it CREATE (a schema, a table,
+            -- a trigger function) survives the revoke below, and code on it would run as whoever touches it, the administrator
+            -- too, should a migration adopt its schema. Large objects, the role's own default privileges and its temporary
+            -- objects reach no other session.
+            SELECT pg_catalog.string_agg(pg_catalog.pg_describe_object(d.classid, d.objid, d.objsubid), ', ' ORDER BY pg_catalog.pg_describe_object(d.classid, d.objid, d.objsubid))
+              INTO owned_objects
+              FROM pg_catalog.pg_shdepend AS d
+             WHERE d.deptype = 'o'
+               AND d.dbid = (SELECT oid FROM pg_catalog.pg_database WHERE datname = database_name)
+               AND d.refclassid = 'pg_catalog.pg_authid'::pg_catalog.regclass
+               AND d.refobjid = (SELECT oid FROM pg_catalog.pg_roles WHERE rolname = role_name)
+               AND d.classid NOT IN ('pg_catalog.pg_largeobject'::pg_catalog.regclass, 'pg_catalog.pg_largeobject_metadata'::pg_catalog.regclass, 'pg_catalog.pg_default_acl'::pg_catalog.regclass)
+               AND COALESCE((pg_catalog.pg_identify_object(d.classid, d.objid, d.objsubid)).schema, '') !~ '^pg_(toast_)?temp';
+            IF owned_objects IS NOT NULL THEN
+                RAISE EXCEPTION USING
+                    ERRCODE = 'insufficient_privilege',
+                    MESSAGE = pg_catalog.format('The role %I owns objects in the database %I, and must own nothing there: %s.', role_name, database_name, owned_objects),
+                    HINT = 'It made them while it held CREATE. Inspect them, then drop them, or remove what it attached (triggers, rules, policies, functions) and REASSIGN OWNED BY the role TO the administrator, and run the migrations again (docs/adr/0005).';
+            END IF;
 
             -- No other module's role may connect here; this one may and use temporary tables, and never create anything: a
             -- CREATE an earlier run granted is taken back, so the role owns no schema to attach code to.
@@ -106,6 +131,32 @@ public static class ModuleDatabaseRole
                     ERRCODE = 'insufficient_privilege',
                     MESSAGE = pg_catalog.format('Revoking CONNECT on the database %I from PUBLIC revoked nothing.', database_name),
                     HINT = 'The administrator must own the database or be a member of its owner.';
+            END IF;
+
+            -- Nor may it create in any schema: a CREATE someone granted it by hand is taken back, on public too, which
+            -- pg_database_owner owns and the grants below skip, and PUBLIC's (PostgreSQL before 15 grants it on public).
+            FOR schema_name IN
+                SELECT nspname FROM pg_catalog.pg_namespace
+                 WHERE nspname !~ '^pg_' AND nspname <> 'information_schema'
+                 ORDER BY nspname
+            LOOP
+                EXECUTE pg_catalog.format('REVOKE CREATE ON SCHEMA %I FROM %I', schema_name, role_name);
+                IF EXISTS (
+                    SELECT FROM pg_catalog.pg_namespace AS n
+                     CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(n.nspacl, pg_catalog.acldefault('n', n.nspowner))) AS acl
+                     WHERE n.nspname = schema_name AND acl.grantee = 0 AND acl.privilege_type = 'CREATE') THEN
+                    EXECUTE pg_catalog.format('REVOKE CREATE ON SCHEMA %I FROM PUBLIC', schema_name);
+                END IF;
+            END LOOP;
+
+            SELECT pg_catalog.string_agg(pg_catalog.quote_ident(nspname), ', ' ORDER BY nspname) INTO creatable_schemas
+              FROM pg_catalog.pg_namespace
+             WHERE pg_catalog.has_schema_privilege(role_name::name, oid, 'CREATE');
+            IF creatable_schemas IS NOT NULL THEN
+                RAISE EXCEPTION USING
+                    ERRCODE = 'insufficient_privilege',
+                    MESSAGE = pg_catalog.format('The role %I still holds CREATE on these schemas after it was revoked: %s.', role_name, creatable_schemas),
+                    HINT = 'A role it is a member of, or a grantor the administrator does not act for, holds it: revoke it there.';
             END IF;
 
             -- What the migrations made: every schema the administrator owns, whatever a module declares, but the one named
