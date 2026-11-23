@@ -15,7 +15,9 @@ namespace Aspire.Hosting;
 /// container <c>migrations</c> instead, on every new replica, before the service's own container. The init container reads
 /// the module's administrator connection string as a Key Vault reference resolved by a second identity of the app's,
 /// <c>&lt;module&gt;-migrations-identity</c>, whose lifecycle is <c>None</c>: no container, init or main, may get a token for
-/// it, and the service's own identity (lifecycle <c>Main</c>) is never granted that secret for it. Nothing here is listed
+/// it, and the service's own identity (lifecycle <c>Main</c>) is never granted that secret for it. It reads the connection
+/// string the service logs in with too, the module role's (<see cref="Databases.RoleConnectionString"/>), as
+/// <c>ConnectionStrings__application</c>, and creates or updates that role after the migrations. Nothing here is listed
 /// per module: the AppHost's loop over the services calls <see cref="RunsMigrationsFirst"/> for each.
 /// </summary>
 public static class Migrations
@@ -25,6 +27,9 @@ public static class Migrations
     private const string ModuleVariable = "Migrations__Module";
 
     private const string AdministratorVariable = "ConnectionStrings__database";
+
+    // The connection string the service logs in with, whose role the runner creates and grants.
+    private const string ApplicationVariable = "ConnectionStrings__application";
 
     /// <summary>Published, the <c>migrations</c> job that carries the MigrationRunner's image; nothing in run mode.</summary>
     public static IResourceBuilder<ProjectResource>? AddMigrations(this IDistributedApplicationBuilder builder)
@@ -89,6 +94,7 @@ public static class Migrations
             {
                 [ModuleVariable] = module,
                 [AdministratorVariable] = AdministratorSecret(database.Resource),
+                [ApplicationVariable] = Databases.RoleConnectionString(database, secrets),
             });
         // Container Apps ignores waits; the publish pipeline orders the service's deployment after the job's image is pushed.
         return service.WithAnnotation(init)

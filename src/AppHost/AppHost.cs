@@ -101,7 +101,8 @@ foreach (var (module, project) in builder.ServiceHosts())
         // The module's migrations, in its database alone, before the service starts: a project of its own in run mode,
         // the service's init container once published (Wiring/Migrations.cs).
         .RunsMigrationsFirst(module, database, migrations, secrets)
-        .WithReference(database, "database")
+        // Its own database, as its module's role once published (Wiring/Databases.cs).
+        .WithModuleDatabase(database, secrets)
         .WaitFor(database)
         .WithReference(keycloak.GetEndpoint("http"))
         .WaitFor(keycloak)
