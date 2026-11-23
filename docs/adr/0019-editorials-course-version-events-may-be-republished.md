@@ -17,12 +17,12 @@
 - **One commit per version.** Each version is loaded, its two or three events published, and that version committed, so a transaction holds one version's content and a version's events stay together. Nothing tracked changes, so the commit cannot lose a race (ADR 0002); a commit that fails answers 500, and what was committed before it stays sent.
 - **`200` with counts.** The answer is `EditorialRepublishedEventsDto(CourseVersions, TestDefinitions, Retirements)`: the events are in Editorial's durable outbox when it answers, and the counts tell an operator whether anything went out. An empty catalogue answers `200` with three zeros.
 - **`editorial.edit`.** The policy of publishing and retiring, whose announcements it repeats. It creates no fact and reveals nothing an editor cannot read already; its worst misuse is load that every consumer drops after one key lookup. `editorial.manage` is the module's sample policy and grants nothing editorial.
-- **The rule for consumers.** A consumer of `CourseVersionPublishedV1`, `TestDefinitionPublishedV1` or `CourseVersionRetiredV1` deduplicates on `CourseVersionId`, against an insert-only copy whose key is that id, and reads nothing from `Metadata`. Catalog, Compliance and Learning already do; Assessment's consumer (#45) does too.
+- **The rule for consumers.** A consumer of `CourseVersionPublishedV1`, `TestDefinitionPublishedV1` or `CourseVersionRetiredV1` deduplicates on `CourseVersionId`, against an insert-only copy whose key is that id, and reads nothing from `Metadata`. Catalog, Compliance, Learning and Certification already do; Assessment's consumer (#45) does too.
 
 ## Consequences
 
 - The republished payload follows the current mappings: if a mapping or `EditorialIntegrationEventMappings.MaxAttempts` changes after a version was published, its republished events carry the new shape. Every consumer keeps the copy that arrived first, so nothing already stored changes.
 - Every subscriber receives a run, not only the one that was missing the events, and drops what it already has by version id.
 - A run cut off part-way is simply run again.
-- Certification's future consumers of these events are bound by the rule above.
+- A consumer of these events added later, in Certification or any other module, is bound by the rule above.
 - `0016` was held by #206, and `0017` or `0018` might be taken by #194, when this was written. If `0019` is taken by the time #189 merges, this file and every reference to it (`RepublishCourseVersions`, its handler and endpoint, the three contracts' docs and the README) are renumbered.
