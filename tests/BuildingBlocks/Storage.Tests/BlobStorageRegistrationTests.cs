@@ -35,4 +35,19 @@ public class BlobStorageRegistrationTests
         using var provider = services.BuildServiceProvider();
         provider.GetRequiredService<IStoredBlobs>().ShouldBeOfType<AzureStoredBlobs>();
     }
+
+    [Fact]
+    public void Blob_copies_are_registered_once_per_host()
+    {
+        var configuration = new ConfigurationBuilder().Build();
+        var services = new ServiceCollection();
+        services.AddSingleton<TimeProvider>(new FakeTimeProvider());
+
+        services.AddModuleBlobStorage(configuration);
+        services.AddModuleBlobStorage(configuration);
+
+        services.Count(service => service.ServiceType == typeof(IBlobCopies)).ShouldBe(1);
+        using var provider = services.BuildServiceProvider();
+        provider.GetRequiredService<IBlobCopies>().ShouldBeOfType<AzureBlobCopies>();
+    }
 }
