@@ -167,6 +167,47 @@ public class SecurityHeadersTests
             $"Without Edge:BlobEndpoint, connect-src should allow the edge and the identity provider alone; Content-Security-Policy: {policy}");
     }
 
+    /// <summary>
+    /// The chapter player (#262) plays a video from blob storage's signed read URL, so <c>media-src</c> allows blob storage's
+    /// origin, by itself and without a path, when the edge is given one.
+    /// </summary>
+    [Fact]
+    public async Task The_page_may_play_video_from_blob_storage_when_the_edge_is_given_one()
+    {
+        var settings = new Dictionary<string, string>(StringComparer.Ordinal) { ["Edge:BlobEndpoint"] = BlobEndpoint };
+        await using var edge = await EdgeHost.ServingTheAppAsync(Environments.Production, settings);
+        using var client = edge.CreateClient();
+
+        using var response = await client.SendAsync(Requests.Navigation("/"), TestContext.Current.CancellationToken);
+
+        await response.ShouldBeTheAppAsync("A page load of /");
+        var policy = string.Join(", ", Values(response, "Content-Security-Policy"));
+        var media = Directives(policy).GetValueOrDefault("media-src") ?? [];
+        media.ShouldBe(
+            ["'self'", "blob:", BlobOrigin],
+            ignoreOrder: true,
+            $"With Edge:BlobEndpoint {BlobEndpoint}, media-src should allow the edge, blob: and blob storage's origin {BlobOrigin} (no path) alone, or the chapter player cannot play a video from its signed URL; Content-Security-Policy: {policy}");
+    }
+
+    /// <summary>
+    /// The chapter player (#262) renders a PDF with pdf.js, which compiles WebAssembly: <c>'wasm-unsafe-eval'</c> allows that,
+    /// and nothing else <c>'unsafe-eval'</c> would (no <c>eval</c>, no <c>new Function</c>).
+    /// </summary>
+    [Fact]
+    public async Task The_page_may_compile_webassembly_but_never_evaluate_script()
+    {
+        await using var edge = await EdgeHost.ServingTheAppAsync(Environments.Production);
+        using var client = edge.CreateClient();
+
+        using var response = await client.SendAsync(Requests.Navigation("/"), TestContext.Current.CancellationToken);
+
+        await response.ShouldBeTheAppAsync("A page load of /");
+        var policy = string.Join(", ", Values(response, "Content-Security-Policy"));
+        var scripts = Directives(policy).GetValueOrDefault("script-src") ?? [];
+        scripts.ShouldContain("'wasm-unsafe-eval'", $"script-src should allow 'wasm-unsafe-eval', or pdf.js cannot compile its WebAssembly and the chapter player shows no PDF; Content-Security-Policy: {policy}");
+        scripts.ShouldNotContain("'unsafe-eval'", $"script-src must never allow 'unsafe-eval'; Content-Security-Policy: {policy}");
+    }
+
     /// <summary>The editorial module reads an upload's duration by playing the file from a <c>blob:</c> object URL.</summary>
     [Fact]
     public async Task The_page_may_play_video_from_its_own_blob_urls_alone()
