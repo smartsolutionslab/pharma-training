@@ -658,6 +658,17 @@ const retryable = [
     state: 'tooMany',
   },
   {
+    // #158: the per-user accept limit answers 429 with its own code; the page shows it like any other 429.
+    answer: 'a 429 accept-limit-reached',
+    refusal: async () =>
+      problem(
+        429,
+        'organisation.accept-limit-reached',
+        'You have tried to accept invitations too often; try again later.',
+      ),
+    state: 'tooMany',
+  },
+  {
     answer: 'a 409 pharmacy-changed',
     refusal: async () => problem(409, 'organisation.pharmacy-changed', 'Die Apotheke wurde gerade geändert.'),
     state: 'failed',
