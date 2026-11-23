@@ -140,6 +140,23 @@ public class EditorialNextVersionTests(AspireFixture aspire)
         (await EditorialDatabase.CountVersionsNumberedAsync(connectionString, first.CourseId, 2, cancellationToken)).ShouldBe(1L);
     }
 
+    [Fact]
+    public async Task The_copied_questions_keep_who_approved_them_and_when()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var first = await PublishedAsync(client, cancellationToken);
+
+        var id = await DraftNextAsync(client, first.Id, cancellationToken);
+
+        var previous = await ReadContentAsync(client, first.Id, cancellationToken);
+        var next = await ReadContentAsync(client, id, cancellationToken);
+        previous.Questions.ShouldNotBeEmpty();
+        previous.Questions.ShouldAllBe(question => question.Review == "Approved" && question.ReviewedBy != null && question.ReviewedAt != null);
+        next.Questions.Select(question => (question.Review, question.ReviewedBy, question.ReviewedAt))
+            .ShouldBe(previous.Questions.Select(question => (question.Review, question.ReviewedBy, question.ReviewedAt)));
+    }
+
     private static Uri NextOf(Guid id) => new($"/editorial/course-versions/{id}/next", UriKind.Relative);
 
     private static async Task<Guid> CreateAsync(HttpClient client, CancellationToken cancellationToken)
@@ -184,5 +201,5 @@ public class EditorialNextVersionTests(AspireFixture aspire)
 
     private sealed record ChapterContent(Guid Id, string Title, string? Text);
 
-    private sealed record QuestionContent(Guid Id, Guid ChapterId, string Review);
+    private sealed record QuestionContent(Guid Id, Guid ChapterId, string Review, Guid? ReviewedBy, DateTimeOffset? ReviewedAt);
 }

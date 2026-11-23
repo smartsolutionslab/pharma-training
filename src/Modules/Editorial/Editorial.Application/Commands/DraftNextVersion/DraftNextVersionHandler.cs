@@ -39,6 +39,14 @@ public sealed class DraftNextVersionHandler(ICourseVersionStore versions, IEdito
         versions.Add(next);
         if (!await unitOfWork.TryCommitAsync(cancellationToken))
         {
+            // The commit lost (a deadlock or a serialization failure). If another editor drafted this number meanwhile,
+            // say so; a unique violation never reaches here, it answers 409 already-exists.
+            var concurrent = await versions.FindByNumberAsync(next.Course, next.Number, cancellationToken);
+            if (concurrent.HasValue)
+            {
+                return Failure(CourseVersionFailures.NextVersionExists(source.Id.Value, concurrent.Value.Value, next.Number.Value));
+            }
+
             return Failure(CourseVersionFailures.Changed(command.Version.Value));
         }
 
