@@ -208,6 +208,22 @@ public class SecurityHeadersTests
         scripts.ShouldNotContain("'unsafe-eval'", $"script-src must never allow 'unsafe-eval'; Content-Security-Policy: {policy}");
     }
 
+    /// <summary>pdf.js in the chapter player (#262) runs its parser in a module worker from the edge's own assets.</summary>
+    [Fact]
+    public async Task The_page_may_start_workers_from_its_own_origin_alone()
+    {
+        await using var edge = await EdgeHost.ServingTheAppAsync(Environments.Production);
+        using var client = edge.CreateClient();
+
+        using var response = await client.SendAsync(Requests.Navigation("/"), TestContext.Current.CancellationToken);
+
+        await response.ShouldBeTheAppAsync("A page load of /");
+        var policy = string.Join(", ", Values(response, "Content-Security-Policy"));
+        List<string> problems = [];
+        Expect(Directives(policy), "worker-src", ["'self'"], policy, problems);
+        problems.ShouldBeEmpty($"worker-src should be 'self' alone: pdf.js starts its worker from the edge's assets, and nothing may start one from blob: or another origin; Content-Security-Policy: {policy}");
+    }
+
     /// <summary>The editorial module reads an upload's duration by playing the file from a <c>blob:</c> object URL.</summary>
     [Fact]
     public async Task The_page_may_play_video_from_its_own_blob_urls_alone()
