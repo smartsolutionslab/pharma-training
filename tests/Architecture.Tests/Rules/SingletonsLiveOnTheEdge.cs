@@ -78,6 +78,7 @@ public sealed class SingletonsLiveOnTheEdge : IArchitectureRule
             builder.UseSetting("ConnectionStrings:database", "Host=localhost;Database=unused");
             builder.UseSetting("ConnectionStrings:messaging", "amqp://localhost");
             builder.UseSetting("Messaging:Queue", "unused");
+            builder.UseSetting("Messaging:Publishers:unused", "unused");
             builder.UseSetting("Authentication:Authority", "http://localhost/realms/unused");
             builder.UseSetting("ConnectionStrings:mail", "smtp://localhost");
             builder.UseSetting("Mail:From", "noreply@example.com");

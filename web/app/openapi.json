@@ -508,6 +508,63 @@
         }
       }
     },
+    "/compliance/pharmacies/{id}/members": {
+      "get": {
+        "tags": [
+          "MemberEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "maximum": 21474837,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "jobFunction",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/ComplianceJobFunction"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedResultOfComplianceMemberDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/compliance/samples": {
       "post": {
         "tags": [
@@ -1555,36 +1612,6 @@
         }
       }
     },
-    "/learning/media/{chapterId}": {
-      "get": {
-        "tags": [
-          "LearningMediaEndpoints"
-        ],
-        "parameters": [
-          {
-            "name": "chapterId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LearningMediaUrlDto"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/learning/sessions": {
       "post": {
         "tags": [
@@ -2511,6 +2538,35 @@
           }
         }
       },
+      "ComplianceJobFunction": {
+        "enum": [
+          "Pharmacist",
+          "Pta",
+          "Pka",
+          "Trainee",
+          "Other"
+        ]
+      },
+      "ComplianceMemberDto": {
+        "required": [
+          "personId",
+          "name",
+          "jobFunction"
+        ],
+        "type": "object",
+        "properties": {
+          "personId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "jobFunction": {
+            "$ref": "#/components/schemas/ComplianceJobFunction"
+          }
+        }
+      },
       "ComplianceRefusedLearnerDto": {
         "required": [
           "personId",
@@ -3272,31 +3328,6 @@
           "Video"
         ]
       },
-      "LearningMediaUrlDto": {
-        "required": [
-          "url",
-          "expiresAt",
-          "contentType",
-          "kind"
-        ],
-        "type": "object",
-        "properties": {
-          "url": {
-            "type": "string",
-            "format": "uri"
-          },
-          "expiresAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "contentType": {
-            "type": "string"
-          },
-          "kind": {
-            "$ref": "#/components/schemas/LearningChapterKind"
-          }
-        }
-      },
       "LearningSampleDto": {
         "required": [
           "id",
@@ -3595,6 +3626,47 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/CertificationSampleDto"
+            }
+          },
+          "totalCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "page": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "pageSize": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "PagedResultOfComplianceMemberDto": {
+        "required": [
+          "items",
+          "totalCount",
+          "page",
+          "pageSize"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComplianceMemberDto"
             }
           },
           "totalCount": {
@@ -3997,7 +4069,7 @@
       "name": "AssignmentEndpoints"
     },
     {
-      "name": "LearningMediaEndpoints"
+      "name": "MemberEndpoints"
     },
     {
       "name": "LearningSessionEndpoints"

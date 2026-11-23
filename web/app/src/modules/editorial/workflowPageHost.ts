@@ -58,6 +58,14 @@ export function refused(status: number, code?: string): Response {
   );
 }
 
+/** A refusal as the host sends it, with the problem details given. */
+export function refusedWith(status: number, problem: Record<string, unknown>): Response {
+  return new Response(JSON.stringify({ status, ...problem }), {
+    status,
+    headers: { 'Content-Type': 'application/problem+json' },
+  });
+}
+
 const versionPath = /^\/api\/editorial\/course-versions\/([0-9a-f-]{36})$/;
 const stepPath = /^\/api\/editorial\/course-versions\/([0-9a-f-]{36})\/(submit|publish|return|retire)$/;
 
