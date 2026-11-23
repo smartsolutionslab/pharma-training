@@ -108,9 +108,14 @@ export const de = {
       acceptedUnnamed: 'Sie haben die Einladung angenommen.',
       acceptedNotOpened:
         'Sie haben die Einladung angenommen, die Apotheke konnte aber nicht geöffnet werden. Wählen Sie sie unter „Apotheke“ in der Seitenleiste.',
+      ready: {
+        title: 'Einladung annehmen',
+        text: 'Sie wurden eingeladen, Mitglied einer Apotheke zu werden. Nehmen Sie die Einladung an, um beizutreten.',
+        accept: 'Einladung annehmen',
+      },
       missing: {
         title: 'Kein gültiger Einladungslink',
-        text: 'Öffnen Sie den Link aus Ihrer Einladungs-E-Mail noch einmal, vollständig und in diesem Browser. Da Sie jetzt angemeldet sind, wird die Einladung dann sofort angenommen.',
+        text: 'Öffnen Sie den Link aus Ihrer Einladungs-E-Mail noch einmal, vollständig und in diesem Browser. Da Sie jetzt angemeldet sind, können Sie die Einladung dann sofort annehmen.',
       },
       notFound: {
         title: 'Einladung nicht gefunden',
@@ -145,6 +150,7 @@ export const de = {
         title: 'Einladung nicht angenommen',
         text: 'Die Einladung konnte nicht angenommen werden. Versuchen Sie es erneut.',
       },
+      invitationChanged: 'Die Einladung wurde gerade geändert. Öffnen Sie den Link aus der E-Mail erneut.',
       retryNotFound:
         'Die Einladung ist nicht mehr gültig. Wenn Sie sie eben schon angenommen haben, finden Sie die Apotheke unter „Meine Schulungen“.',
     },

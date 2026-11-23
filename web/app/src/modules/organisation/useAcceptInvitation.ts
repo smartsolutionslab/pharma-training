@@ -24,14 +24,17 @@ export type AcceptRefusal =
   | 'alreadyMember'
   | 'tooMany'
   | 'failed'
+  | 'invitationChanged'
   | 'notFoundAfterRetry';
 
 /**
- * What the page shows: the invitation on its way (or accepted and the page not moved on yet), or why it was not, with
+ * What the page shows: a kept token ready to be accepted when the user presses the button, the invitation on its way (or accepted and the page not moved on yet), or why it was not, with
  * the module's own words for a refusal the page has no text of its own for, and whether trying again can succeed.
  */
 export type AcceptState =
-  { kind: 'accepting' } | { kind: 'refused'; refusal: AcceptRefusal; serverMessage?: string; retryable?: boolean };
+  | { kind: 'ready' }
+  | { kind: 'accepting' }
+  | { kind: 'refused'; refusal: AcceptRefusal; serverMessage?: string; retryable?: boolean };
 
 /** The organisation module's refusals the page knows, by code (POST /organisation/invitations/accept). */
 const refusalsByCode: Record<string, AcceptRefusal> = {
@@ -44,6 +47,8 @@ const refusalsByCode: Record<string, AcceptRefusal> = {
   'organisation.person-already-member': 'alreadyMember',
   // Lost a concurrent save (ADR 0002): worth trying again.
   'organisation.pharmacy-changed': 'failed',
+  // The invitation lost a concurrent save: worth trying again, with words of its own.
+  'organisation.invitation-changed': 'invitationChanged',
 };
 
 /**
@@ -64,8 +69,8 @@ function refusedBy(error: unknown, afterRetry: boolean): AcceptState {
   if (known === 'notFound' && afterRetry) {
     return { kind: 'refused', refusal: 'notFoundAfterRetry' };
   }
-  if (known === 'failed') {
-    return { kind: 'refused', refusal: 'failed', retryable: true };
+  if (known === 'failed' || known === 'invitationChanged') {
+    return { kind: 'refused', refusal: known, retryable: true };
   }
   if (known !== undefined) {
     return { kind: 'refused', refusal: known };
@@ -85,7 +90,8 @@ const startPage = '/';
 /**
  * Accepts the invitation whose token the link's route kept for this tab. The token is taken out of storage once, as
  * the page is set up (and again by start, when a second link was opened while the page is shown), and kept in memory
- * for a retry only; it is posted once. Once accepted, the pharmacy is opened (useOpenPharmacy), the user told where
+ * for the button and a retry only; it is posted once, when the user presses the button (confirm), never as the page
+ * opens. Nothing about the pharmacy is read before that. Once accepted, the pharmacy is opened (useOpenPharmacy), the user told where
  * they now belong and led to Meine Schulungen, the address replaced so Back does not return to the page.
  */
 export function useAcceptInvitation() {
@@ -97,7 +103,7 @@ export function useAcceptInvitation() {
   let token: string | undefined;
   // Each attempt's number: an answer to an attempt a newer one replaced is not shown.
   let attempt = 0;
-  const state = ref<AcceptState>({ kind: 'accepting' });
+  const state = ref<AcceptState>({ kind: 'ready' });
 
   async function accept(afterRetry: boolean) {
     const current = ++attempt;
@@ -120,9 +126,21 @@ export function useAcceptInvitation() {
     }
   }
 
-  /** Takes the kept token out of storage and accepts it: as the page is set up, and for a second link. */
+  /**
+   * Takes the kept token out of storage and shows it ready to accept, or says to open the link again without one: as
+   * the page is set up, and for a second link, whose token replaces the one before and any answer still on its way.
+   */
   function start() {
+    attempt++;
     token = takeInvitationToken();
+    state.value = token === undefined ? { kind: 'refused', refusal: 'missing' } : { kind: 'ready' };
+  }
+
+  /** The button's press: accepts the ready token once, however often it is pressed before the page renders again. */
+  function confirm() {
+    if (state.value.kind !== 'ready') {
+      return;
+    }
     void accept(false);
   }
 
@@ -153,5 +171,5 @@ export function useAcceptInvitation() {
 
   start();
 
-  return { state, retry: () => accept(true), start };
+  return { state, confirm, retry: () => accept(true), start };
 }

@@ -102,9 +102,14 @@ export const en: MessageSchema = {
       acceptedUnnamed: 'You have accepted the invitation.',
       acceptedNotOpened:
         'You have accepted the invitation, but the pharmacy could not be opened. Choose it under “Pharmacy” in the sidebar.',
+      ready: {
+        title: 'Accept the invitation',
+        text: 'You have been invited to become a member of a pharmacy. Accept the invitation to join.',
+        accept: 'Accept the invitation',
+      },
       missing: {
         title: 'No valid invitation link',
-        text: 'Open the link in your invitation e-mail again, in full and in this browser. As you are signed in now, the invitation will then be accepted straight away.',
+        text: 'Open the link in your invitation e-mail again, in full and in this browser. As you are signed in now, you can then accept the invitation straight away.',
       },
       notFound: {
         title: 'Invitation not found',
@@ -139,6 +144,7 @@ export const en: MessageSchema = {
         title: 'Invitation not accepted',
         text: 'The invitation could not be accepted. Try again.',
       },
+      invitationChanged: 'The invitation was changed just now. Open the link from the e-mail again.',
       retryNotFound:
         'The invitation is no longer valid. If you have just accepted it, you will find the pharmacy under “My courses”.',
     },
