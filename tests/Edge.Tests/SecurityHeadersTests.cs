@@ -18,6 +18,11 @@ public class SecurityHeadersTests
     /// <summary>The origin of <see cref="EdgeHost.Authority"/>: where the browser fetches the realm's metadata and tokens.</summary>
     private const string AuthorityOrigin = "https://auth.edge-tests.example";
 
+    /// <summary>Blob storage's endpoint as Aspire gives it, with a trailing slash; the policy names its origin alone.</summary>
+    private const string BlobEndpoint = "https://store.blob.core.windows.net/";
+
+    private const string BlobOrigin = "https://store.blob.core.windows.net";
+
     /// <summary>The policies that send another origin no path: the default, strict-origin-when-cross-origin, or stricter.</summary>
     private static readonly string[] StrictReferrerPolicies = ["no-referrer", "same-origin", "strict-origin", "strict-origin-when-cross-origin"];
 
@@ -119,6 +124,61 @@ public class SecurityHeadersTests
         }
 
         problems.ShouldBeEmpty($"A page load of {path} answered Content-Security-Policy: {policy}");
+    }
+
+    /// <summary>
+    /// Published, the AppHost hands the edge blob storage's endpoint as <c>Edge:BlobEndpoint</c>; the browser uploads a
+    /// chapter's file there with a <c>PUT</c> to a signed URL, which <c>connect-src</c> must allow by the endpoint's origin.
+    /// </summary>
+    [Fact]
+    public async Task The_page_may_call_blob_storages_origin_when_the_edge_is_given_one()
+    {
+        var settings = new Dictionary<string, string>(StringComparer.Ordinal) { ["Edge:BlobEndpoint"] = BlobEndpoint };
+        await using var edge = await EdgeHost.ServingTheAppAsync(Environments.Production, settings);
+        using var client = edge.CreateClient();
+
+        using var response = await client.SendAsync(Requests.Navigation("/"), TestContext.Current.CancellationToken);
+
+        await response.ShouldBeTheAppAsync("A page load of /");
+        var policy = string.Join(", ", Values(response, "Content-Security-Policy"));
+        var connections = Directives(policy).GetValueOrDefault("connect-src") ?? [];
+        connections.ShouldBe(
+            ["'self'", AuthorityOrigin, BlobOrigin],
+            ignoreOrder: true,
+            $"With Edge:BlobEndpoint {BlobEndpoint}, connect-src should allow the edge, the identity provider and blob storage's origin {BlobOrigin} (no path), or the browser refuses to upload a file; Content-Security-Policy: {policy}");
+    }
+
+    [Fact]
+    public async Task The_page_may_call_no_other_origin_when_the_edge_is_given_no_blob_storage()
+    {
+        await using var edge = await EdgeHost.ServingTheAppAsync(Environments.Production);
+        using var client = edge.CreateClient();
+
+        using var response = await client.SendAsync(Requests.Navigation("/"), TestContext.Current.CancellationToken);
+
+        await response.ShouldBeTheAppAsync("A page load of /");
+        var policy = string.Join(", ", Values(response, "Content-Security-Policy"));
+        var connections = Directives(policy).GetValueOrDefault("connect-src") ?? [];
+        connections.ShouldBe(
+            ["'self'", AuthorityOrigin],
+            ignoreOrder: true,
+            $"Without Edge:BlobEndpoint, connect-src should allow the edge and the identity provider alone; Content-Security-Policy: {policy}");
+    }
+
+    /// <summary>The editorial module reads an upload's duration by playing the file from a <c>blob:</c> object URL.</summary>
+    [Fact]
+    public async Task The_page_may_play_video_from_its_own_blob_urls_alone()
+    {
+        await using var edge = await EdgeHost.ServingTheAppAsync(Environments.Production);
+        using var client = edge.CreateClient();
+
+        using var response = await client.SendAsync(Requests.Navigation("/"), TestContext.Current.CancellationToken);
+
+        await response.ShouldBeTheAppAsync("A page load of /");
+        var policy = string.Join(", ", Values(response, "Content-Security-Policy"));
+        List<string> problems = [];
+        Expect(Directives(policy), "media-src", ["'self'", "blob:"], policy, problems);
+        problems.ShouldBeEmpty($"media-src should allow blob:, or reading an upload's duration fails; Content-Security-Policy: {policy}");
     }
 
     [Theory]

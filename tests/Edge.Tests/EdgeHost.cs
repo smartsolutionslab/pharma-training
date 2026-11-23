@@ -26,10 +26,13 @@ public sealed class EdgeHost : IAsyncDisposable
     public ModuleService Service { get; }
 
     /// <summary>The edge with the web app's build in its web root, as published.</summary>
-    public static Task<EdgeHost> ServingTheAppAsync(string environment) => StartAsync(environment, WebRoot.WithTheApp());
+    public static Task<EdgeHost> ServingTheAppAsync(string environment) => StartAsync(environment, WebRoot.WithTheApp(), null);
+
+    /// <summary>The edge with the web app's build in its web root, as published, with these further settings.</summary>
+    public static Task<EdgeHost> ServingTheAppAsync(string environment, IReadOnlyDictionary<string, string> settings) => StartAsync(environment, WebRoot.WithTheApp(), settings);
 
     /// <summary>The edge with an empty web root, as run mode starts it.</summary>
-    public static Task<EdgeHost> WithoutTheAppAsync(string environment) => StartAsync(environment, WebRoot.Empty());
+    public static Task<EdgeHost> WithoutTheAppAsync(string environment) => StartAsync(environment, WebRoot.Empty(), null);
 
     /// <summary>A client of the edge that follows no redirect, so every answer is the edge's own.</summary>
     public HttpClient CreateClient() => edge.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
@@ -41,10 +44,10 @@ public sealed class EdgeHost : IAsyncDisposable
         webRoot.Dispose();
     }
 
-    private static async Task<EdgeHost> StartAsync(string environment, WebRoot webRoot)
+    private static async Task<EdgeHost> StartAsync(string environment, WebRoot webRoot, IReadOnlyDictionary<string, string>? settings)
     {
         var service = await ModuleService.StartAsync(TestContext.Current.CancellationToken);
-        var edge = new EdgeWithWebRoot(environment, webRoot.Path, service.Address);
+        var edge = new EdgeWithWebRoot(environment, webRoot.Path, service.Address, settings);
         var host = new EdgeHost(service, webRoot, edge);
 
         // The answers below are the edge's over this web root, or the test would prove nothing about it.
