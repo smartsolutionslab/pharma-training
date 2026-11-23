@@ -97,6 +97,17 @@ public partial class EnsureTests
     }
 
     [Fact]
+    public void An_instant_is_guarded_like_a_number_naming_the_argument()
+    {
+        var issuedAt = new DateTimeOffset(2027, 3, 31, 12, 0, 0, TimeSpan.Zero);
+
+        Should.NotThrow(() => Ensure.That(issuedAt).Satisfies(at => at != default, "must be set"));
+        var refused = Should.Throw<GuardException>(() => Ensure.That(default(DateTimeOffset), "IssuedAt").Satisfies(at => at != default, "must be set"));
+        refused.ParamName.ShouldBe("IssuedAt");
+        refused.Message.ShouldStartWith("IssuedAt: must be set");
+    }
+
+    [Fact]
     public void A_guard_exception_is_an_argument_exception_that_keeps_what_it_is_given()
     {
         var inner = new InvalidOperationException("inner");
