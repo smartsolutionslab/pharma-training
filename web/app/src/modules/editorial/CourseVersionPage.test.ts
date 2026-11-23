@@ -1229,6 +1229,104 @@ describe('a new version', () => {
     expect(newVersion()).toHaveFocus();
   });
 
+  // The focus may have moved meanwhile (a screen reader's cursor, a click elsewhere): a failure puts it back on the button.
+  test('when the host fails, the focus returns to the button, wherever it went meanwhile', async () => {
+    let answer: (response: Response) => void = () => undefined;
+    changing = () =>
+      new Promise<Response>((resolve) => {
+        answer = resolve;
+      });
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(newVersionButton());
+    await waitFor(() => expect(newVersion()).toBeDisabled());
+    newVersionButton().blur();
+    answer(new Response('', { status: 500 }));
+
+    await waitFor(() => expect(notify.failure).toHaveBeenCalledWith(t('editorial.version.newVersionFailed')));
+    await waitFor(() => expect(newVersion()).toHaveFocus());
+  });
+
+  // A refusal in the module's words keeps the place too: on the button while the version still offers it.
+  test("refused in the module's words, the focus returns to the button while it is still offered", async () => {
+    let answer: (response: Response) => void = () => undefined;
+    changing = () =>
+      new Promise<Response>((resolve) => {
+        answer = resolve;
+      });
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(newVersionButton());
+    await waitFor(() => expect(newVersion()).toBeDisabled());
+    newVersionButton().blur();
+    answer(problem(409, 'editorial.course-version-changed', 'The course version changed in the meantime.'));
+
+    await waitFor(() => expect(notify.failure).toHaveBeenCalledWith('The course version changed in the meantime.'));
+    await waitFor(() => expect(newVersion()).toHaveFocus());
+  });
+
+  // Retired meanwhile, the version offers nothing any more: the focus goes to its heading, not to the page's body.
+  test('refused because the version was retired, the focus goes to the heading once the button is gone', async () => {
+    changing = async () => {
+      version = versionOf('Retired');
+      return problem(409, 'editorial.not-published', 'Die Version ist nicht veröffentlicht.');
+    };
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(newVersionButton());
+
+    await screen.findByText(t('editorial.version.readOnly.Retired'));
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: version.title })).toHaveFocus());
+  });
+
+  // The host has answered, the page has not changed yet (a view transition takes a frame): the button stays shut.
+  test('drafted, stays disabled until the page has moved to the draft, and drafts no second one', async () => {
+    const user = userEvent.setup();
+    const { router } = await renderPage();
+    let proceed: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      proceed = resolve;
+    });
+    let moving = false;
+    router.beforeEach(async (to) => {
+      if (to.path === `/editorial/versions/${nextVersionId}`) {
+        moving = true;
+        await held;
+      }
+    });
+
+    await user.click(newVersionButton());
+    await waitFor(() => expect(moving).toBe(true));
+    await waitFor(() => expect(newVersion()).toBeDisabled());
+    await fireEvent.click(newVersionButton());
+    proceed();
+
+    await waitFor(() => expect(router.currentRoute.value.path).toBe(`/editorial/versions/${nextVersionId}`));
+    expect(drafts()).toHaveLength(1);
+  });
+
+  // The editor left while the host drafted it: they stay where they went, and are told the draft exists.
+  test('when the editor has left before the host answers, stays where they went and still reports the draft', async () => {
+    let answer: (response: Response) => void = () => undefined;
+    changing = () =>
+      new Promise<Response>((resolve) => {
+        answer = resolve;
+      });
+    const user = userEvent.setup();
+    const { router } = await renderPage();
+
+    await user.click(newVersionButton());
+    await waitFor(() => expect(drafts()).toHaveLength(1));
+    await router.push('/editorial');
+    answer(Response.json(nextVersionId, { status: 201 }));
+
+    await waitFor(() => expect(notify.success).toHaveBeenCalledWith('Version 3 wurde als Entwurf angelegt.'));
+    expect(router.currentRoute.value.path).toBe('/editorial');
+  });
+
   test('speaks English when switched', async () => {
     const user = userEvent.setup();
     await renderPage();
