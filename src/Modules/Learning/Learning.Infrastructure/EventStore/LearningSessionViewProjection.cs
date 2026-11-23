@@ -79,6 +79,9 @@ public sealed class LearningSessionViewProjection : SingleStreamProjection<Learn
         view.Status = SessionStatus.Finished;
     }
 
+    // Stub for #42's red run.
+    public void Apply(ExhaustionNoted noted, LearningSessionView view) => throw new NotImplementedException();
+
     private static IEnumerable<LearningSessionChapterView> Chapters(IEnumerable<ChapterId> chapters, ChapterKind kind) =>
         chapters.Select(chapter => new LearningSessionChapterView { ChapterId = chapter.Value, Kind = kind, ProgressPercent = ProgressPercent.None.Value });
 

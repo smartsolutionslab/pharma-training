@@ -195,7 +195,7 @@ public class ReportProgressTests
     public async Task After_chapters_reopen_completing_them_publishes_ContentCompletedV1_again()
     {
         var session = await CompletedAsync();
-        await ChangeAsync(session, completed => completed.ReopenChapters([Intro], Now()));
+        await ChangeAsync(session, completed => completed.ReopenChapters(ExhaustionNotice.From(Guid.CreateVersion7()), [Intro], Now()));
 
         await ReportAsync(session, Intro, 99);
         sessions.Published.Count.ShouldBe(1);

@@ -100,8 +100,9 @@ public sealed class LearningSession : EventSourcedAggregate<LearningSessionId>
     /// Three failed attempts (AttemptsExhausted): the chapters of the wrongly answered questions open again,
     /// and the test unlocks only once they are worked through anew.
     /// </summary>
-    public Result<Unit, DomainError> ReopenChapters(IReadOnlyList<ChapterId> failedChapters, Timestamp now)
+    public Result<Unit, DomainError> ReopenChapters(ExhaustionNotice notice, IReadOnlyList<ChapterId> failedChapters, Timestamp now)
     {
+        Ensure.That(notice).IsNotNull();
         Ensure.That(failedChapters).IsNotNull();
         Ensure.That(now).IsNotNull();
 
@@ -181,4 +182,7 @@ public sealed class LearningSession : EventSourcedAggregate<LearningSessionId>
     }
 
     private void Apply(SessionFinished finished) => Status = SessionStatus.Finished;
+
+    // Stub for #42's red run: nothing raises the note yet.
+    private void Apply(ExhaustionNoted noted) => throw new NotImplementedException();
 }

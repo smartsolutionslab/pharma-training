@@ -47,7 +47,7 @@ public class LearningSessionViewProjectionTests
         CompleteAll(session);
         ShouldMatch(LearningSessionViews.Project(Pending(session)), session, (Intro, 100), (Handbook, 100), (Film, 100));
 
-        session.ReopenChapters([Film], Now);
+        session.ReopenChapters(ExhaustionNotice.From(Guid.CreateVersion7()), [Film], Now);
         ShouldMatch(LearningSessionViews.Project(Pending(session)), session, (Intro, 100), (Handbook, 100), (Film, 0));
 
         session.RecordProgress(Film, ProgressPercent.Complete, Now);

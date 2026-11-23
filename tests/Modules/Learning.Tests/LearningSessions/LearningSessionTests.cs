@@ -84,7 +84,7 @@ public class LearningSessionTests
         var session = Start();
         CompleteAll(session);
 
-        session.ReopenChapters([Handbook], Now);
+        session.ReopenChapters(Notice(), [Handbook], Now);
 
         session.Status.ShouldBe(SessionStatus.InProgress);
         session.CompletedChapters.ShouldBe([Intro, Film], ignoreOrder: true);
@@ -95,7 +95,7 @@ public class LearningSessionTests
     {
         var session = Start();
         CompleteAll(session);
-        session.ReopenChapters([Handbook], Now);
+        session.ReopenChapters(Notice(), [Handbook], Now);
 
         session.RecordProgress(Handbook, ProgressPercent.Complete, Now);
 
@@ -108,10 +108,11 @@ public class LearningSessionTests
     {
         var session = Start();
         CompleteAll(session);
-        session.ReopenChapters([Handbook], Now);
+        var notice = Notice();
+        session.ReopenChapters(notice, [Handbook], Now);
         var stored = Pending(session).Count;
 
-        session.ReopenChapters([Handbook], Now);
+        session.ReopenChapters(notice, [Handbook], Now);
 
         Pending(session).Count.ShouldBe(stored);
     }
@@ -124,7 +125,7 @@ public class LearningSessionTests
         session.Finish(Now);
 
         session.RecordProgress(Intro, ProgressPercent.Complete, Now).Error.Value.ShouldBeOfType<SessionFinishedAlready>();
-        session.ReopenChapters([Intro], Now).IsSuccess.ShouldBeTrue();
+        session.ReopenChapters(Notice(), [Intro], Now).IsSuccess.ShouldBeTrue();
         session.Status.ShouldBe(SessionStatus.Finished);
     }
 
@@ -133,7 +134,7 @@ public class LearningSessionTests
     {
         var original = Start();
         CompleteAll(original);
-        original.ReopenChapters([Film], Now);
+        original.ReopenChapters(Notice(), [Film], Now);
 
         var replayed = Replay(Pending(original));
 
@@ -152,6 +153,8 @@ public class LearningSessionTests
             pdfChapters: [Handbook],
             videoChapters: [Film],
             Now);
+
+    private static ExhaustionNotice Notice() => ExhaustionNotice.From(Guid.CreateVersion7());
 
     private static void CompleteAll(LearningSession session)
     {
