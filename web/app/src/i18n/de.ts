@@ -147,6 +147,17 @@ export const de = {
   },
   learning: {
     myCourses: {
+      intro: 'Ihre Schulungen in {pharmacy}: Überfällige zuerst, dann nach Fälligkeit.',
+      list: { title: 'Zugewiesene Schulungen' },
+      due: 'Fällig am {date}',
+      dueOverdue: 'War fällig am {date}',
+      start: 'Starten',
+      continue: 'Fortsetzen',
+      startCourse: 'Starten: {title}',
+      continueCourse: 'Fortsetzen: {title}',
+      locked: 'Der Test ist gesperrt. Arbeiten Sie die Inhalte erneut durch, um ihn wieder freizuschalten.',
+      notStartable: 'Diese Schulung kann derzeit nicht gestartet werden: ihre Version ist zurückgezogen.',
+      empty: 'Ihnen ist in {pharmacy} derzeit keine Schulung zugewiesen.',
       pharmacyNotFound: 'Sie sind nicht mehr Mitglied dieser Apotheke.',
       identityIncomplete: 'Ihr Konto nennt keinen Namen oder keine gültige E-Mail-Adresse. Ergänzen Sie Ihr Profil.',
       loadFailed: 'Ihre Schulungen konnten nicht geladen werden.',
