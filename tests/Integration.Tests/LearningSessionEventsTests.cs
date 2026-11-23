@@ -94,10 +94,18 @@ public class LearningSessionEventsTests(AspireFixture aspire)
             ReportProgressAsync(client, session.Id, film, 100, cancellationToken));
         try
         {
+            // A racer that loads after the other's report landed sees the session clock at that report (ADR 0021), so its
+            // video gain may be refused as too fast; one of the two still lands, and the content completes once.
             foreach (var response in racing)
             {
-                response.StatusCode.ShouldBeOneOf([HttpStatusCode.OK, HttpStatusCode.Conflict], await response.Content.ReadAsStringAsync(cancellationToken));
+                response.StatusCode.ShouldBeOneOf([HttpStatusCode.OK, HttpStatusCode.Conflict, HttpStatusCode.UnprocessableEntity], await response.Content.ReadAsStringAsync(cancellationToken));
+                if (response.StatusCode == HttpStatusCode.UnprocessableEntity)
+                {
+                    (await EditorialWorkflow.CodeOfAsync(response, cancellationToken)).ShouldBe("learning.progress-too-fast");
+                }
             }
+
+            racing.ShouldContain(response => response.StatusCode == HttpStatusCode.OK);
         }
         finally
         {
