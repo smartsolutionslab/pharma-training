@@ -199,6 +199,9 @@ export const en: MessageSchema = {
       loadFailed: 'The version could not be loaded.',
       notFound: 'This version does not exist.',
       backToInbox: 'Back to the inbox',
+      newVersion: 'Create a new version',
+      newVersionCreated: 'Version {number} has been created as a draft.',
+      newVersionFailed: 'The new version could not be created. Please try again.',
       openTest: 'Test: blueprint and questions',
       readOnly: {
         InReview: 'This version is in review and cannot be edited.',
