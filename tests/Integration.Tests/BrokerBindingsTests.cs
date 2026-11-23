@@ -27,6 +27,12 @@ public partial class BrokerBindingsTests(AspireFixture aspire)
     // is the one a host needs.
     private const string MembershipStarted = "SmartSolutionsLab.PharmaTraining.Contracts.Organisation.MembershipStartedV1";
 
+    private const string LearningQueue = "learning";
+
+    private const string AttemptsExhausted = "SmartSolutionsLab.PharmaTraining.Contracts.Assessment.AttemptsExhaustedV1";
+
+    private const string TestPassed = "SmartSolutionsLab.PharmaTraining.Contracts.Assessment.TestPassedV1";
+
     private static readonly TimeSpan WaitTimeout = TimeSpan.FromSeconds(30);
 
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(250);
@@ -114,6 +120,32 @@ public partial class BrokerBindingsTests(AspireFixture aspire)
 
         (await BindingsAsync(management, cancellationToken))
             .ShouldContain(binding => binding.Source == MembershipStarted && binding.Destination == "compliance" && binding.DestinationType == "queue");
+    }
+
+    /// <summary>Learning reopens the failed chapters when Assessment announces the attempts used up (#42).</summary>
+    [Fact]
+    public async Task Learnings_queue_is_bound_to_the_exhaustion()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var management = await ManagementClientAsync(cancellationToken);
+
+        await WaitForBindingAsync(management, AttemptsExhausted, LearningQueue, cancellationToken);
+
+        (await BindingsAsync(management, cancellationToken))
+            .ShouldContain(binding => binding.Source == AttemptsExhausted && binding.Destination == LearningQueue && binding.DestinationType == "queue");
+    }
+
+    /// <summary>Learning finishes the session when Assessment announces the test passed (#42); Certification's binding to it is its own.</summary>
+    [Fact]
+    public async Task Learnings_queue_is_bound_to_the_passed_test()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var management = await ManagementClientAsync(cancellationToken);
+
+        await WaitForBindingAsync(management, TestPassed, LearningQueue, cancellationToken);
+
+        (await BindingsAsync(management, cancellationToken))
+            .ShouldContain(binding => binding.Source == TestPassed && binding.Destination == LearningQueue && binding.DestinationType == "queue");
     }
 
     /// <summary>
