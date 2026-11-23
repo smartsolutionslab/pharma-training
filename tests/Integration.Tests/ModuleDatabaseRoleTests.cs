@@ -178,6 +178,28 @@ public sealed class ModuleDatabaseRoleTests(AspireFixture aspire) : IAsyncDispos
         (await LoginAsync(intruder)).ShouldBe(Refused(InsufficientPrivilege));
     }
 
+    /// <summary>
+    /// PostgreSQL grants CONNECT on the server's maintenance database, <c>postgres</c>, to PUBLIC, so a module's role could
+    /// connect there and read what any role may read (PR-B's security review). Ensuring a module's role revokes it; the
+    /// administrator still connects there.
+    /// </summary>
+    [Fact]
+    public async Task A_role_cannot_connect_to_the_servers_maintenance_database()
+    {
+        var administrator = await DatabaseAsync();
+        var application = Application(administrator);
+
+        await ModuleDatabaseRole.EnsureAsync(administrator, application, TestContext.Current.CancellationToken);
+
+        var maintenance = new NpgsqlConnectionStringBuilder(application) { Database = "postgres" }.ConnectionString;
+        (await LoginAsync(application)).ShouldBe(Username(application));
+        (await LoginAsync(maintenance)).ShouldBe(
+            Refused(InsufficientPrivilege),
+            $"{Username(application)} connects to the server's maintenance database postgres: CONNECT is still granted to PUBLIC there.");
+        (await LoginAsync(new NpgsqlConnectionStringBuilder(administrator) { Database = "postgres" }.ConnectionString))
+            .ShouldBe(Username(administrator), "The administrator can no longer connect to the maintenance database.");
+    }
+
     [Fact]
     public async Task Two_runs_at_once_both_succeed()
     {

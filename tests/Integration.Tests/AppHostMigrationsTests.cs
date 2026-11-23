@@ -219,8 +219,8 @@ public class AppHostMigrationsTests
     /// administrator (OQ8 c and Q1 on #114, docs/adr/0005). The Flexible Server's own module writes the role's connection
     /// string into the vault as <c>connectionstrings--&lt;module&gt;-database-app</c>, next to Aspire's administrator ones,
     /// with the password <c>guid(database_roles_key, '&lt;module&gt;')</c> derived from the deployment secret
-    /// <c>database-roles-key</c>. Every service host is covered, found as the AppHost finds them; Keycloak's database is not
-    /// a module's and gets no role here.
+    /// <c>database-roles-key</c>. Every service host is covered, found as the AppHost finds them. Keycloak's database gets a
+    /// role's connection string too, for its own init container (Q2 on #114; AppHostKeycloakTests), and no other database does.
     /// </summary>
     [Fact]
     public async Task Every_service_logs_in_with_its_own_role()
@@ -292,11 +292,11 @@ public class AppHostMigrationsTests
             problems.Add("postgres/postgres.bicep declares no @secure() parameter database_roles_key for the roles' passwords.");
         }
 
-        var expected = modules.Select(RoleSecret).Order(StringComparer.Ordinal).ToList();
+        var expected = modules.Append("keycloak").Select(RoleSecret).Order(StringComparer.Ordinal).ToList();
         var written = PublishedBicep.VaultSecretsWritten(server).Where(name => name.EndsWith("-database-app", StringComparison.Ordinal)).ToList();
         if (!written.SequenceEqual(expected, StringComparer.Ordinal))
         {
-            problems.Add($"postgres/postgres.bicep should write a role's connection string for each service's module and no other database, Keycloak's included: {string.Join(", ", expected)}. It writes: {string.Join(", ", written)}");
+            problems.Add($"postgres/postgres.bicep should write a role's connection string for each service's module and for Keycloak, and no other database: {string.Join(", ", expected)}. It writes: {string.Join(", ", written)}");
         }
 
         problems.ShouldBeEmpty();
