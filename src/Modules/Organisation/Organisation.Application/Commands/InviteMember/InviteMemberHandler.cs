@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.IntegrationEvents;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
@@ -10,7 +11,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Comm
 /// local queue; the consumer issues the link and mails it, so nothing after the commit depends on the request. Beyond
 /// the pharmacy's daily cap of invitation mails it answers 429 with the instant it may invite again.
 /// </summary>
-public sealed class InviteMemberHandler(IPharmacyStore pharmacies, IOrganisationUnitOfWork unitOfWork, TimeProvider time, InvitationMailLimits limits)
+public sealed class InviteMemberHandler(IPharmacyStore pharmacies, IOrganisationUnitOfWork unitOfWork, TimeProvider time, InvitationMailLimits limits, ILogger<InviteMemberHandler> logger)
     : ICommandHandler<InviteMember, Result<Guid, ApiError>>
 {
     public async Task<Result<Guid, ApiError>> HandleAsync(InviteMember command, CancellationToken cancellationToken)
@@ -30,12 +31,14 @@ public sealed class InviteMemberHandler(IPharmacyStore pharmacies, IOrganisation
             return Failure(access.Error);
         }
 
+        var now = Timestamp.From(time.GetUtcNow());
+        InvitationMailClock.WarnWhenAhead(logger, pharmacy, now);
         var invited = pharmacy.Invite(
             MembershipId.New(),
             command.Email,
             command.JobFunction,
             command.Role,
-            Timestamp.From(time.GetUtcNow()),
+            now,
             limits);
         if (invited.IsFailure)
         {

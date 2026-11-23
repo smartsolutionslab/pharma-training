@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.IntegrationEvents;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
@@ -6,7 +7,7 @@ using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies.Ev
 namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Commands.RenewInvitation;
 
 /// <summary>Gives the open or expired invitation a fresh token valid for 14 more days, so the old link stops working. In the same commit it requests the new mail (InvitationMailRequestedV1), which the consumer sends. Within the invitation's cooldown or beyond the pharmacy's daily cap of invitation mails it answers 429 with the instant it may renew.</summary>
-public sealed class RenewInvitationHandler(IPharmacyStore pharmacies, IOrganisationUnitOfWork unitOfWork, TimeProvider time, InvitationMailLimits limits)
+public sealed class RenewInvitationHandler(IPharmacyStore pharmacies, IOrganisationUnitOfWork unitOfWork, TimeProvider time, InvitationMailLimits limits, ILogger<RenewInvitationHandler> logger)
     : ICommandHandler<RenewInvitation, Result<Unit, ApiError>>
 {
     public async Task<Result<Unit, ApiError>> HandleAsync(RenewInvitation command, CancellationToken cancellationToken)
@@ -26,7 +27,9 @@ public sealed class RenewInvitationHandler(IPharmacyStore pharmacies, IOrganisat
             return Failure(access.Error);
         }
 
-        var changed = pharmacy.RenewInvitation(command.Membership, Timestamp.From(time.GetUtcNow()), limits);
+        var now = Timestamp.From(time.GetUtcNow());
+        InvitationMailClock.WarnWhenAhead(logger, pharmacy, now);
+        var changed = pharmacy.RenewInvitation(command.Membership, now, limits);
         if (changed.IsFailure)
         {
             return Failure(PharmacyFailures.From(changed.Error));

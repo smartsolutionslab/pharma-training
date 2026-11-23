@@ -624,13 +624,31 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
             ? Option<Membership>.Some(found)
             : Option<Membership>.None;
 
+    /// <summary>
+    /// The stored day of the invitation mail tally when it lies beyond tomorrow (a clock days ahead, a hand-edited row);
+    /// none otherwise. Such a day counts as tomorrow and keeps its tally; the caller reports it, since only a clock fault
+    /// puts it there.
+    /// </summary>
+    public Option<UtcDay> InvitationMailDayBeyondTomorrow(Timestamp now)
+    {
+        Ensure.That(now).IsNotNull();
+
+        var tomorrow = UtcDay.Of(now).Next();
+        if (InvitationMailDay is { } stored && stored.Value > tomorrow.Value)
+        {
+            return Option<UtcDay>.Some(stored);
+        }
+
+        return Option<UtcDay>.None;
+    }
+
     private Membership? Find(MembershipId id) => memberships.SingleOrDefault(m => m.Id == id);
 
     /// <summary>The start of the day after the counted one when its mails have reached the cap; none while another may be sent.</summary>
     private Option<Timestamp> DailyCapReached(Timestamp now, DailyMailCap cap)
     {
         var day = CountingDay(now);
-        if (InvitationMailDay == day && InvitationMailsThatDay.Value >= cap.Value)
+        if (CountedOn(day, now) && InvitationMailsThatDay.Value >= cap.Value)
         {
             return Option<Timestamp>.Some(day.Next().Start);
         }
@@ -642,23 +660,51 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
     private void CountInvitationMail(Timestamp now)
     {
         var day = CountingDay(now);
-        InvitationMailsThatDay = InvitationMailDay == day ? InvitationMailsThatDay.Next() : InvitationMailCount.Zero.Next();
+        InvitationMailsThatDay = CountedOn(day, now) ? InvitationMailsThatDay.Next() : InvitationMailCount.Zero.Next();
         InvitationMailDay = day;
     }
 
+    /// <summary>Whether the stored tally belongs to the counted day.</summary>
+    private bool CountedOn(UtcDay day, Timestamp now)
+    {
+        var stored = StoredDayWithinTomorrow(now);
+        return stored.HasValue && stored.Value == day;
+    }
+
     /// <summary>
-    /// Today, or the stored day when it is tomorrow: a clock behind around 00:00 UTC adds to the new day's tally instead
-    /// of restarting it. A stored day further ahead is not trusted: today counts and the tally restarts.
+    /// The day a mail requested now counts on: today, or the stored day when it is later. A stored day of tomorrow is the
+    /// counted day, so an instance whose clock is behind around 00:00 UTC adds to the new day's tally instead of
+    /// restarting the old day's; a stored day further ahead (a clock days ahead, a hand-edited row) counts as tomorrow
+    /// and keeps its tally, so the cap never restarts from it: at worst it locks invitation mail until the day after
+    /// tomorrow.
     /// </summary>
     private UtcDay CountingDay(Timestamp now)
     {
         var today = UtcDay.Of(now);
-        if (InvitationMailDay is { } stored && stored.Value.DayNumber - today.Value.DayNumber == 1)
+        var stored = StoredDayWithinTomorrow(now);
+        if (stored.HasValue && stored.Value.Value > today.Value)
         {
-            return stored;
+            return stored.Value;
         }
 
         return today;
+    }
+
+    /// <summary>The stored day, with any day beyond tomorrow taken as tomorrow; none before anything was counted.</summary>
+    private Option<UtcDay> StoredDayWithinTomorrow(Timestamp now)
+    {
+        if (InvitationMailDay is not { } stored)
+        {
+            return Option<UtcDay>.None;
+        }
+
+        var tomorrow = UtcDay.Of(now).Next();
+        if (stored.Value > tomorrow.Value)
+        {
+            return Option<UtcDay>.Some(tomorrow);
+        }
+
+        return Option<UtcDay>.Some(stored);
     }
 }
 
