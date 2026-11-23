@@ -128,8 +128,8 @@ public class IntegrationEventMappingsTests
             QuestionId.New(),
             Drafted(video, "Was gehört zur Kühlkette?", QuestionType.MultipleChoice, ("Lieferung", true), ("Lagerung", true), ("Verkaufsraum", false)),
             AnswerOptionId.New).Value;
-        version.ApproveQuestion(temperature, Author, Now).IsSuccess.ShouldBeTrue();
-        version.ApproveQuestion(chain, Author, Now).IsSuccess.ShouldBeTrue();
+        version.ApproveQuestion(temperature, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
+        version.ApproveQuestion(chain, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
         version.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
         version.Publish(Reviewer, ReviewPolicy.FourEyes, Now).IsSuccess.ShouldBeTrue();
         return version;
