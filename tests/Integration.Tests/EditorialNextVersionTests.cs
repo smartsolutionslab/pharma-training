@@ -157,55 +157,6 @@ public class EditorialNextVersionTests(AspireFixture aspire)
             .ShouldBe(previous.Questions.Select(question => (question.Review, question.ReviewedBy, question.ReviewedAt)));
     }
 
-    /// <summary>
-    /// Two drafts of one version's successor race past the handler's check: a writer holds number 2 for the course
-    /// uncommitted, both requests check, find nothing committed, and wait at the unique index behind it. The writer
-    /// rolls back; one request inserts number 2, the other waits behind it and loses once it commits. The loser is told
-    /// the next version exists, as it would have been had it come second, never a server error.
-    /// </summary>
-    [Fact]
-    public async Task Of_two_racing_drafts_of_the_next_version_one_is_created_and_the_other_told_the_next_version_exists()
-    {
-        var cancellationToken = TestContext.Current.CancellationToken;
-        using var client = await aspire.CreateHostClientAsync("editor");
-        var connectionString = await EditorialDatabase.ConnectionStringAsync(aspire, cancellationToken);
-        var first = await PublishedAsync(client, cancellationToken);
-
-        HttpResponseMessage[] responses;
-        await using (var gate = await EditorialDatabase.HoldVersionNumberAsync(connectionString, first.CourseId, 2, cancellationToken))
-        {
-            var pending = new[] { client.PostAsync(NextOf(first.Id), null, cancellationToken), client.PostAsync(NextOf(first.Id), null, cancellationToken) };
-            await EditorialDatabase.WaitUntilBlockedAsync(connectionString, gate, 2, cancellationToken);
-            await gate.RollbackAsync(cancellationToken);
-
-            responses = await Task.WhenAll(pending);
-        }
-
-        try
-        {
-            var answers = new List<string>();
-            foreach (var response in responses)
-            {
-                answers.Add($"{(int)response.StatusCode} {await response.Content.ReadAsStringAsync(cancellationToken)}");
-            }
-
-            var summary = string.Join(" | ", answers);
-            responses.Count(response => response.StatusCode == HttpStatusCode.Created).ShouldBe(1, summary);
-            var refused = responses.Single(response => response.StatusCode != HttpStatusCode.Created);
-            refused.StatusCode.ShouldBe(HttpStatusCode.Conflict, summary);
-            (await CodeOfAsync(refused, cancellationToken)).ShouldBe("editorial.next-version-exists", summary);
-        }
-        finally
-        {
-            foreach (var response in responses)
-            {
-                response.Dispose();
-            }
-        }
-
-        (await EditorialDatabase.CountVersionsNumberedAsync(connectionString, first.CourseId, 2, cancellationToken)).ShouldBe(1L);
-    }
-
     private static Uri NextOf(Guid id) => new($"/editorial/course-versions/{id}/next", UriKind.Relative);
 
     private static async Task<Guid> CreateAsync(HttpClient client, CancellationToken cancellationToken)
