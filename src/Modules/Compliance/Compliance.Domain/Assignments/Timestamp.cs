@@ -3,7 +3,9 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Assignments
 /// <summary>A point in time, always UTC. The domain never reads a clock: callers pass it in.</summary>
 public sealed record Timestamp : IValueObject<DateTimeOffset>, IComparable<Timestamp>
 {
-    private static readonly TimeZoneInfo GermanTime = TimeZoneInfo.FindSystemTimeZoneById("Europe/Berlin");
+    // Resolved on first use, not in a static initialiser: an image without tzdata then fails DayInGermany() alone, not
+    // every use of Timestamp with a TypeInitializationException.
+    private static readonly Lazy<TimeZoneInfo> GermanTime = new(() => TimeZoneInfo.FindSystemTimeZoneById("Europe/Berlin"));
 
     private Timestamp(DateTimeOffset value) => Value = value;
 
@@ -21,7 +23,7 @@ public sealed record Timestamp : IValueObject<DateTimeOffset>, IComparable<Times
 
     /// <summary>The calendar day in German local time; deadlines are days, not instants.</summary>
     public CalendarDate DayInGermany() =>
-        CalendarDate.From(DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(Value, GermanTime).DateTime));
+        CalendarDate.From(DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(Value, GermanTime.Value).DateTime));
 
     public int CompareTo(Timestamp? other) => other is null ? 1 : Value.CompareTo(other.Value);
 
