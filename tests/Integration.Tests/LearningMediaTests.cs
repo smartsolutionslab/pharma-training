@@ -86,8 +86,8 @@ public class LearningMediaTests(AspireFixture aspire)
         answer.Kind.ShouldBe("Pdf");
         answer.ExpiresAt.ShouldBeGreaterThan(TimeProvider.System.GetUtcNow());
         answer.ExpiresAt.ShouldBeLessThanOrEqualTo(TimeProvider.System.GetUtcNow().AddMinutes(15));
-        answer.Url.AbsolutePath.ShouldContain("/learning-blobs/");
-        answer.Url.AbsoluteUri.ShouldNotContain("editorial-blobs");
+        answer.Url.AbsolutePath.ShouldContain("/learning/course-versions/");
+        answer.Url.AbsolutePath.ShouldNotContain("/editorial/");
         using var read = await Storage.GetAsync(answer.Url, cancellationToken);
         read.StatusCode.ShouldBe(HttpStatusCode.OK, await read.Content.ReadAsStringAsync(cancellationToken));
         read.Content.Headers.ContentType.ShouldNotBeNull().MediaType.ShouldBe("application/pdf");

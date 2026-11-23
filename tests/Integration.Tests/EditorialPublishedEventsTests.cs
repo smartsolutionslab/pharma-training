@@ -113,7 +113,7 @@ public class EditorialPublishedEventsTests(AspireFixture aspire)
         file.GetProperty("chapterId").GetGuid().ShouldBe(chapterId);
         file.GetProperty("kind").GetString().ShouldBe("Pdf");
         var readUrl = new Uri(file.GetProperty("readUrl").GetString().ShouldNotBeNull());
-        readUrl.AbsolutePath.ShouldContain("/editorial-blobs/");
+        readUrl.AbsolutePath.ShouldContain("/editorial/course-versions/");
         var query = HttpUtility.ParseQueryString(readUrl.Query);
         query["sp"].ShouldBe("r");
         query["rsct"].ShouldBe("application/pdf");

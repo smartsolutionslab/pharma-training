@@ -200,7 +200,7 @@ public class GetChapterMediaTests
 
     private GetChapterMediaHandler Handler() => new(copies, sessions, stored, urls);
 
-    private BlobUrl UrlFor(BlobName name) =>
+    private static BlobUrl UrlFor(BlobName name) =>
         new(new Uri($"https://blobs.example/learning-blobs/{name.Value}?sp=r&sig=fake"), Now.Add(BlobUrlLifetime.Maximum));
 
     /// <summary>A version Learning holds, numbered as given, with the given chapters in that order.</summary>
