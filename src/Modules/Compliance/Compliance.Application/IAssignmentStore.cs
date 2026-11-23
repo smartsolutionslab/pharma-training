@@ -27,6 +27,13 @@ public interface IAssignmentStore
     /// <summary>The assignment if it belongs to the pharmacy, read without tracking.</summary>
     Task<Option<Assignment>> ReadInPharmacyAsync(PharmacyId pharmacy, AssignmentId assignment, CancellationToken cancellationToken);
 
-    /// <summary>The learner's open or in-progress assignments in the pharmacy, every course, tracked.</summary>
+    /// <summary>
+    /// The learner's open or in-progress assignments in the pharmacy, every course, tracked so a commit saves the changes
+    /// made to them: for a use case that changes them, such as cancelling on leaving. A query reads
+    /// <see cref="ReadActiveOfLearnerInPharmacyAsync"/> instead.
+    /// </summary>
     Task<IReadOnlyList<Assignment>> ActiveOfLearnerInPharmacyAsync(PersonId learner, PharmacyId pharmacy, CancellationToken cancellationToken);
+
+    /// <summary>The learner's open or in-progress assignments in the pharmacy, every course, read without tracking, for a query.</summary>
+    Task<IReadOnlyList<Assignment>> ReadActiveOfLearnerInPharmacyAsync(PersonId learner, PharmacyId pharmacy, CancellationToken cancellationToken);
 }

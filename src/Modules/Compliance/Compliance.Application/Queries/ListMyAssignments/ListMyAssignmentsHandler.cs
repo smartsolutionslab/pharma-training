@@ -31,7 +31,7 @@ public sealed class ListMyAssignmentsHandler(
         }
 
         var today = Timestamp.From(time.GetUtcNow()).DayInGermany();
-        var active = await assignments.ActiveOfLearnerInPharmacyAsync(query.Learner, query.Pharmacy, cancellationToken);
+        var active = await assignments.ReadActiveOfLearnerInPharmacyAsync(query.Learner, query.Pharmacy, cancellationToken);
         List<CourseId> assigned = [.. active.Select(assignment => assignment.Course).Distinct()];
         var published = (await courses.FindCoursesAsync(assigned, cancellationToken)).ToDictionary(course => course.Course);
         var running = (await progress.OfLearnerAsync(query.Learner, assigned, cancellationToken))
