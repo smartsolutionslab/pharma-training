@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
+using Aspire.Hosting.Azure;
 using Aspire.Hosting.Testing;
 
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
@@ -36,6 +37,27 @@ public partial class AppHostEdgeTests
             .Select(copy => $"{copy.Source.Name} -> {copy.DestinationPath}")
             .ToList();
         copies.ShouldBe([$"{Web} -> ./wwwroot"], $"Published ({environment}), the edge's image should carry the web build in ./wwwroot (host.PublishWithContainerFiles(web, \"./wwwroot\")); it copies: [{string.Join(", ", copies)}]");
+    }
+
+    /// <summary>
+    /// The security review of #114 (PR-F): published, index.html's Content-Security-Policy lets the browser upload to blob
+    /// storage by its origin, which the edge reads from <c>Edge:BlobEndpoint</c>; the AppHost hands it the storage account's
+    /// blob endpoint, or every upload is refused in the browser.
+    /// </summary>
+    [Theory]
+    [InlineData(PublishedAppHost.Staging)]
+    [InlineData(PublishedAppHost.Production)]
+    public async Task Published_the_edge_is_given_blob_storages_endpoint(string environment)
+    {
+        await using var builder = await PublishedAppHost.ModelAsync(environment, TestContext.Current.CancellationToken);
+        var storage = builder.Resources.OfType<AzureStorageResource>().ShouldHaveSingleItem("Published, there should be one storage account.");
+        var host = builder.Resources.Single(resource => resource.Name == "host");
+
+        var variables = await EnvironmentAsync(builder, host);
+
+        variables.ShouldContainKey("Edge__BlobEndpoint", $"Published ({environment}), the edge is given no Edge__BlobEndpoint: index.html's Content-Security-Policy would refuse the browser's uploads to blob storage. Its environment: {string.Join(", ", variables.Keys.Order(StringComparer.Ordinal))}");
+        var endpoint = variables["Edge__BlobEndpoint"].ShouldBeAssignableTo<IManifestExpressionProvider>($"Published ({environment}), Edge__BlobEndpoint should be the storage account's blob endpoint, an output Bicep resolves; it is {variables["Edge__BlobEndpoint"]}.");
+        endpoint.ValueExpression.ShouldBe(storage.BlobEndpoint.ValueExpression, $"Published ({environment}), Edge__BlobEndpoint should be {storage.Name}'s blob endpoint.");
     }
 
     [Fact]
@@ -134,6 +156,18 @@ public partial class AppHostEdgeTests
         }
 
         context.EnvironmentVariables.Keys.ShouldNotContain("VITE_OIDC_AUTHORITY", "The web app reads its identity provider from the edge's /config.json at runtime; VITE_OIDC_AUTHORITY should be gone from the AppHost.");
+    }
+
+    /// <summary>The resource's environment as the model sets it, values unresolved.</summary>
+    private static async Task<Dictionary<string, object>> EnvironmentAsync(IDistributedApplicationTestingBuilder builder, IResource resource)
+    {
+        var context = new EnvironmentCallbackContext(builder.ExecutionContext, resource, cancellationToken: TestContext.Current.CancellationToken);
+        foreach (var callback in resource.Annotations.OfType<EnvironmentCallbackAnnotation>())
+        {
+            await callback.Callback(context);
+        }
+
+        return context.EnvironmentVariables;
     }
 
     private static async Task<IDistributedApplicationTestingBuilder> RunModeAsync()
