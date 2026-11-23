@@ -46,6 +46,8 @@ public sealed class ReportProgressHandler(ILearningAggregateStore store, ILearni
             return Failure(LearningSessionFailures.Changed(command.Session.Value));
         }
 
+        // The append has landed: a caller who goes away now must not cancel the announcement, or it is lost for good
+        // (no later report stores anything again), so the outbox commit no longer takes the request's token.
         if (completed.Count > 0)
         {
             foreach (var content in completed)
@@ -53,7 +55,7 @@ public sealed class ReportProgressHandler(ILearningAggregateStore store, ILearni
                 await unitOfWork.PublishAsync(content.ToIntegrationEvent());
             }
 
-            await unitOfWork.CommitAsync(cancellationToken);
+            await unitOfWork.CommitAsync(CancellationToken.None);
         }
 
         return Success(Unit.Value);

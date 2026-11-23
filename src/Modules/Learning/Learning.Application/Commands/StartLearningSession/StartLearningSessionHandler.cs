@@ -45,8 +45,11 @@ public sealed class StartLearningSessionHandler(
         var session = Start(command, copy.Value, SessionRun.From(runs.Count + 1));
         var started = ((IEventSourced)session).PendingEvents.OfType<SessionStarted>().Single();
         await store.SaveAsync(session, cancellationToken);
+
+        // The stream is stored: a caller who goes away now must not cancel the announcement, or it is lost for good
+        // (a resume announces nothing), so the outbox commit no longer takes the request's token.
         await unitOfWork.PublishAsync(started.ToIntegrationEvent());
-        await unitOfWork.CommitAsync(cancellationToken);
+        await unitOfWork.CommitAsync(CancellationToken.None);
         return Success(new LearningSessionStart(session.Id.Value, Created: true));
     }
 
