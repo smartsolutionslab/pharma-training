@@ -12,9 +12,10 @@ using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Tests.Members;
 namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Tests.Queries;
 
 /// <summary>
-/// The team matrix (#34): the pharmacy's active members by the courses assigned there, each cell the state its latest
-/// non-cancelled assignment shows today in German time, and the compliance rate, the share of active assignments that
-/// are not overdue, over every filtered row, in total and per course; only for a caller whose current role there grants
+/// The team matrix (#34): the pharmacy's active members by the courses with a non-cancelled assignment there, each cell
+/// the state its latest non-cancelled assignment shows today in German time and, once completed, the day it stays valid
+/// until, and the compliance rate, the share of cells that are compliant (open, in progress or locked, or completed and
+/// still valid), over every filtered row, in total and per course; only for a caller whose current role there grants
 /// viewing the team's compliance (docs/adr/0003, docs/adr/0015).
 /// </summary>
 public class GetComplianceMatrixTests
@@ -70,7 +71,8 @@ public class GetComplianceMatrixTests
         matrix.Members.Items.Select(row => row.Name).ShouldBe(["Anna Arndt", "Berta Braun", "Mara Manager"]);
         matrix.Members.Items.ShouldAllBe(row => row.Cells.Count == 0);
         matrix.Members.TotalCount.ShouldBe(3);
-        matrix.ActiveAssignments.ShouldBe(0);
+        matrix.Assignments.ShouldBe(0);
+        matrix.CompliantAssignments.ShouldBe(0);
         matrix.OverdueAssignments.ShouldBe(0);
         matrix.ComplianceRate.ShouldBeNull();
     }
@@ -94,18 +96,43 @@ public class GetComplianceMatrixTests
     }
 
     [Fact]
-    public async Task A_course_whose_only_assignment_was_cancelled_is_a_column_without_a_cell()
+    public async Task A_course_whose_assignments_here_are_all_cancelled_is_no_column()
     {
         await TeamAsync();
         var hygiene = Course("Hygiene");
-        var assignment = Assigned(Anna, hygiene, InThreeWeeks);
-        assignment.Cancel(Manager, ChangeReason.From("Versehentlich zugewiesen"), Earlier).IsSuccess.ShouldBeTrue();
+        var anna = Assigned(Anna, hygiene, InThreeWeeks);
+        anna.Cancel(Manager, ChangeReason.From("Versehentlich zugewiesen"), Earlier).IsSuccess.ShouldBeTrue();
+        var berta = Assigned(Berta, hygiene, InThreeWeeks);
+        berta.Cancel(Manager, ChangeReason.From("Versehentlich zugewiesen"), Earlier).IsSuccess.ShouldBeTrue();
 
         var matrix = (await MatrixAsync(Manager)).Value;
 
-        matrix.Courses.ShouldHaveSingleItem().ShouldBe(new ComplianceMatrixCourseDto(hygiene.Value, "Hygiene", 0, 0, null));
+        matrix.Courses.ShouldBeEmpty();
         matrix.Members.Items.ShouldAllBe(row => row.Cells.Count == 0);
-        matrix.ActiveAssignments.ShouldBe(0);
+        matrix.Assignments.ShouldBe(0);
+        matrix.ComplianceRate.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task Only_a_course_with_a_non_cancelled_assignment_here_is_a_column_even_if_its_learner_left()
+    {
+        await ComplianceMembers.StartAsync(members, Manager, Pharmacy, MembershipRole.Manager, "Mara Manager", JobFunction.Pharmacist);
+        await ComplianceMembers.StartAsync(members, Anna, Pharmacy, MembershipRole.Employee, "Anna Arndt", JobFunction.Pta);
+        var membership = await ComplianceMembers.StartAsync(members, Berta, Pharmacy, MembershipRole.Employee, "Berta Braun", JobFunction.Pka);
+        await ComplianceMembers.EndAsync(members, membership, Berta, Pharmacy);
+        var hygiene = Course("Hygiene");
+        var firstAid = Course("Erste Hilfe");
+        Assigned(Anna, hygiene, InThreeWeeks).Cancel(Manager, ChangeReason.From("Versehentlich zugewiesen"), Earlier).IsSuccess.ShouldBeTrue();
+        Assigned(Berta, hygiene, InThreeWeeks).Cancel(Manager, ChangeReason.From("Versehentlich zugewiesen"), Earlier).IsSuccess.ShouldBeTrue();
+        Assigned(Anna, firstAid, InThreeWeeks).Cancel(Manager, ChangeReason.From("Versehentlich zugewiesen"), Earlier).IsSuccess.ShouldBeTrue();
+        Assigned(Berta, firstAid, InThreeWeeks);
+
+        var matrix = (await MatrixAsync(Manager)).Value;
+
+        matrix.Courses.ShouldHaveSingleItem().ShouldBe(new ComplianceMatrixCourseDto(firstAid.Value, "Erste Hilfe", 0, 0, 0, null));
+        matrix.Members.Items.Select(row => row.PersonId).ShouldBe([Anna.Value, Manager.Value]);
+        matrix.Members.Items.ShouldAllBe(row => row.Cells.Count == 0);
+        matrix.Assignments.ShouldBe(0);
         matrix.ComplianceRate.ShouldBeNull();
     }
 
@@ -120,10 +147,10 @@ public class GetComplianceMatrixTests
 
         var matrix = (await MatrixAsync(Manager)).Value;
 
-        matrix.Courses.ShouldHaveSingleItem().ShouldBe(new ComplianceMatrixCourseDto(hygiene.Value, "Hygiene", 0, 0, null));
+        matrix.Courses.ShouldHaveSingleItem().ShouldBe(new ComplianceMatrixCourseDto(hygiene.Value, "Hygiene", 0, 0, 0, null));
         matrix.Members.Items.ShouldHaveSingleItem().PersonId.ShouldBe(Manager.Value);
         matrix.Members.Items[0].Cells.ShouldBeEmpty();
-        matrix.ActiveAssignments.ShouldBe(0);
+        matrix.Assignments.ShouldBe(0);
         matrix.ComplianceRate.ShouldBeNull();
     }
 
@@ -145,11 +172,11 @@ public class GetComplianceMatrixTests
         var cells = RowOf(matrix, Anna).Cells;
         cells.ShouldBe(
         [
-            new ComplianceMatrixCellDto(open.Course.Value, open.Id.Value, ComplianceAssignmentState.Open, InThreeWeeks, null),
-            new ComplianceMatrixCellDto(inProgress.Course.Value, inProgress.Id.Value, ComplianceAssignmentState.InProgress, InThreeWeeks, null),
-            new ComplianceMatrixCellDto(overdue.Course.Value, overdue.Id.Value, ComplianceAssignmentState.Overdue, new DateOnly(2026, 11, 22), null),
-            new ComplianceMatrixCellDto(completed.Course.Value, completed.Id.Value, ComplianceAssignmentState.Completed, InThreeWeeks, new DateOnly(2026, 11, 10)),
-            new ComplianceMatrixCellDto(completedLate.Course.Value, completedLate.Id.Value, ComplianceAssignmentState.CompletedLate, new DateOnly(2026, 11, 1), new DateOnly(2026, 11, 5)),
+            new ComplianceMatrixCellDto(open.Course.Value, open.Id.Value, ComplianceAssignmentState.Open, InThreeWeeks, null, null),
+            new ComplianceMatrixCellDto(inProgress.Course.Value, inProgress.Id.Value, ComplianceAssignmentState.InProgress, InThreeWeeks, null, null),
+            new ComplianceMatrixCellDto(overdue.Course.Value, overdue.Id.Value, ComplianceAssignmentState.Overdue, new DateOnly(2026, 11, 22), null, null),
+            new ComplianceMatrixCellDto(completed.Course.Value, completed.Id.Value, ComplianceAssignmentState.Completed, InThreeWeeks, new DateOnly(2026, 11, 10), new DateOnly(2027, 11, 10)),
+            new ComplianceMatrixCellDto(completedLate.Course.Value, completedLate.Id.Value, ComplianceAssignmentState.CompletedLate, new DateOnly(2026, 11, 1), new DateOnly(2026, 11, 5), new DateOnly(2027, 11, 5)),
         ]);
         matrix.Courses.Select(course => course.CourseId).ShouldBe(cells.Select(cell => cell.CourseId));
     }
@@ -184,8 +211,8 @@ public class GetComplianceMatrixTests
         var matrix = (await MatrixAsync(Manager)).Value;
 
         RowOf(matrix, Anna).Cells.ShouldHaveSingleItem().ShouldBe(
-            new ComplianceMatrixCellDto(hygiene.Value, followUp.Id.Value, ComplianceAssignmentState.Open, new DateOnly(2027, 11, 21), new DateOnly(2026, 11, 21)));
-        matrix.Courses.ShouldHaveSingleItem().ShouldBe(new ComplianceMatrixCourseDto(hygiene.Value, "Hygiene", 1, 0, 1.0));
+            new ComplianceMatrixCellDto(hygiene.Value, followUp.Id.Value, ComplianceAssignmentState.Open, new DateOnly(2027, 11, 21), new DateOnly(2026, 11, 21), null));
+        matrix.Courses.ShouldHaveSingleItem().ShouldBe(new ComplianceMatrixCourseDto(hygiene.Value, "Hygiene", 1, 1, 0, 1.0));
     }
 
     [Fact]
@@ -202,7 +229,7 @@ public class GetComplianceMatrixTests
         var matrix = (await MatrixAsync(Manager)).Value;
 
         RowOf(matrix, Anna).Cells.ShouldHaveSingleItem().ShouldBe(
-            new ComplianceMatrixCellDto(hygiene.Value, completed.Id.Value, ComplianceAssignmentState.Completed, InThreeWeeks, new DateOnly(2026, 11, 10)));
+            new ComplianceMatrixCellDto(hygiene.Value, completed.Id.Value, ComplianceAssignmentState.Completed, InThreeWeeks, new DateOnly(2026, 11, 10), new DateOnly(2027, 11, 10)));
     }
 
     [Fact]
@@ -230,27 +257,95 @@ public class GetComplianceMatrixTests
             (Anna.Value, "Zoe Zander", ComplianceJobFunction.Pharmacist),
         ]);
         matrix.Members.TotalCount.ShouldBe(3);
-        matrix.ActiveAssignments.ShouldBe(1);
+        matrix.Assignments.ShouldBe(1);
+        matrix.CompliantAssignments.ShouldBe(1);
         matrix.OverdueAssignments.ShouldBe(0);
         matrix.ComplianceRate.ShouldBe(1.0);
-        matrix.Courses.ShouldHaveSingleItem().ShouldBe(new ComplianceMatrixCourseDto(hygiene.Value, "Hygiene", 1, 0, 1.0));
+        matrix.Courses.ShouldHaveSingleItem().ShouldBe(new ComplianceMatrixCourseDto(hygiene.Value, "Hygiene", 1, 1, 0, 1.0));
     }
 
     [Fact]
-    public async Task The_rate_is_the_share_of_active_assignments_not_overdue_and_completed_ones_do_not_count()
+    public async Task The_rate_counts_open_and_still_valid_completed_cells_as_compliant_and_overdue_or_expired_ones_not()
     {
         await TeamAsync();
         var hygiene = Course("Hygiene");
+        var firstAid = Course("Erste Hilfe");
         Assigned(Anna, hygiene, InThreeWeeks);
         Assigned(Berta, hygiene, LastFriday);
         var completed = Assigned(Manager, hygiene, InThreeWeeks);
         completed.Complete(CertificateId.From(Guid.CreateVersion7()), Timestamp.From(new DateTimeOffset(2026, 11, 10, 10, 0, 0, TimeSpan.Zero))).IsSuccess.ShouldBeTrue();
+        var expired = Assigned(Anna, firstAid, new DateOnly(2025, 10, 15), at: Timestamp.From(new DateTimeOffset(2025, 9, 1, 8, 0, 0, TimeSpan.Zero)));
+        expired.Complete(CertificateId.From(Guid.CreateVersion7()), Timestamp.From(new DateTimeOffset(2025, 10, 1, 10, 0, 0, TimeSpan.Zero))).IsSuccess.ShouldBeTrue();
 
         var matrix = (await MatrixAsync(Manager)).Value;
 
-        matrix.ActiveAssignments.ShouldBe(2);
+        RowOf(matrix, Anna).Cells.First(cell => cell.CourseId == firstAid.Value).ShouldBe(
+            new ComplianceMatrixCellDto(firstAid.Value, expired.Id.Value, ComplianceAssignmentState.Completed, new DateOnly(2025, 10, 15), new DateOnly(2025, 10, 1), new DateOnly(2026, 10, 1)));
+        matrix.Courses.ShouldBe(
+        [
+            new ComplianceMatrixCourseDto(firstAid.Value, "Erste Hilfe", 1, 0, 0, 0.0),
+            new ComplianceMatrixCourseDto(hygiene.Value, "Hygiene", 3, 2, 1, 2d / 3d),
+        ]);
+        matrix.Assignments.ShouldBe(4);
+        matrix.CompliantAssignments.ShouldBe(2);
         matrix.OverdueAssignments.ShouldBe(1);
         matrix.ComplianceRate.ShouldBe(0.5);
+    }
+
+    [Theory]
+    [InlineData("2025-11-23T22:30:00Z", "2026-11-23T22:59:59Z", "2026-11-23", 1.0)]
+    [InlineData("2025-11-23T22:30:00Z", "2026-11-23T23:00:00Z", "2026-11-23", 0.0)]
+    [InlineData("2025-11-23T23:00:00Z", "2026-11-24T22:59:59Z", "2026-11-24", 1.0)]
+    [InlineData("2025-11-23T23:00:00Z", "2026-11-24T23:00:00Z", "2026-11-24", 0.0)]
+    public async Task A_completion_is_compliant_through_its_last_valid_day_in_german_time(string completedAt, string at, string validUntil, double expectedRate)
+    {
+        var instant = DateTimeOffset.Parse(at, System.Globalization.CultureInfo.InvariantCulture);
+        await TeamAsync();
+        var hygiene = Course("Hygiene");
+        var completed = Assigned(Anna, hygiene, new DateOnly(2025, 12, 31), at: Timestamp.From(new DateTimeOffset(2025, 11, 1, 8, 0, 0, TimeSpan.Zero)));
+        completed.Complete(CertificateId.From(Guid.CreateVersion7()), Timestamp.From(DateTimeOffset.Parse(completedAt, System.Globalization.CultureInfo.InvariantCulture))).IsSuccess.ShouldBeTrue();
+
+        var matrix = (await MatrixAsync(Manager, clock: new FakeTimeProvider(instant))).Value;
+
+        var cell = RowOf(matrix, Anna).Cells.ShouldHaveSingleItem();
+        cell.State.ShouldBe(ComplianceAssignmentState.Completed);
+        cell.ValidUntil.ShouldBe(DateOnly.Parse(validUntil, System.Globalization.CultureInfo.InvariantCulture));
+        matrix.ComplianceRate.ShouldBe(expectedRate);
+        matrix.Courses.ShouldHaveSingleItem().ComplianceRate.ShouldBe(expectedRate);
+    }
+
+    [Fact]
+    public async Task A_completion_is_valid_for_the_months_of_the_course_s_latest_version()
+    {
+        await TeamAsync();
+        var hygiene = Course("Hygiene", 24);
+        courses.Versions.Add(CourseVersion.Published(CourseVersionId.From(Guid.CreateVersion7()), hygiene, VersionNumber.From(2), CourseTitle.From("Hygiene"), ValidityMonths.From(6)));
+        var completed = Assigned(Anna, hygiene, new DateOnly(2026, 4, 30), at: Timestamp.From(new DateTimeOffset(2026, 3, 1, 8, 0, 0, TimeSpan.Zero)));
+        completed.Complete(CertificateId.From(Guid.CreateVersion7()), Timestamp.From(new DateTimeOffset(2026, 4, 1, 10, 0, 0, TimeSpan.Zero))).IsSuccess.ShouldBeTrue();
+
+        var matrix = (await MatrixAsync(Manager)).Value;
+
+        RowOf(matrix, Anna).Cells.ShouldHaveSingleItem().ValidUntil.ShouldBe(new DateOnly(2026, 10, 1));
+        (matrix.Assignments, matrix.CompliantAssignments, matrix.OverdueAssignments, matrix.ComplianceRate).ShouldBe((1, 0, 0, 0.0));
+    }
+
+    [Fact]
+    public async Task A_fully_trained_team_is_entirely_compliant()
+    {
+        await TeamAsync();
+        var hygiene = Course("Hygiene");
+        PersonId[] learners = [Anna, Berta, Manager];
+        foreach (var learner in learners)
+        {
+            Assigned(learner, hygiene, InThreeWeeks)
+                .Complete(CertificateId.From(Guid.CreateVersion7()), Timestamp.From(new DateTimeOffset(2026, 11, 10, 10, 0, 0, TimeSpan.Zero)))
+                .IsSuccess.ShouldBeTrue();
+        }
+
+        var matrix = (await MatrixAsync(Manager)).Value;
+
+        matrix.Courses.ShouldHaveSingleItem().ShouldBe(new ComplianceMatrixCourseDto(hygiene.Value, "Hygiene", 3, 3, 0, 1.0));
+        (matrix.Assignments, matrix.CompliantAssignments, matrix.OverdueAssignments, matrix.ComplianceRate).ShouldBe((3, 3, 0, 1.0));
     }
 
     [Fact]
@@ -270,12 +365,13 @@ public class GetComplianceMatrixTests
 
         matrix.Courses.ShouldBe(
         [
-            new ComplianceMatrixCourseDto(firstAid.Value, "Erste Hilfe", 1, 0, 1.0),
-            new ComplianceMatrixCourseDto(hygiene.Value, "Hygiene", 2, 1, 0.5),
+            new ComplianceMatrixCourseDto(firstAid.Value, "Erste Hilfe", 2, 2, 0, 1.0),
+            new ComplianceMatrixCourseDto(hygiene.Value, "Hygiene", 2, 1, 1, 0.5),
         ]);
-        matrix.ActiveAssignments.ShouldBe(3);
+        matrix.Assignments.ShouldBe(4);
+        matrix.CompliantAssignments.ShouldBe(3);
         matrix.OverdueAssignments.ShouldBe(1);
-        matrix.ComplianceRate.ShouldBe(2d / 3d);
+        matrix.ComplianceRate.ShouldBe(0.75);
     }
 
     [Fact]
@@ -294,10 +390,11 @@ public class GetComplianceMatrixTests
         matrix.Members.TotalCount.ShouldBe(1);
         matrix.Courses.ShouldBe(
         [
-            new ComplianceMatrixCourseDto(firstAid.Value, "Erste Hilfe", 0, 0, null),
-            new ComplianceMatrixCourseDto(hygiene.Value, "Hygiene", 1, 1, 0.0),
+            new ComplianceMatrixCourseDto(firstAid.Value, "Erste Hilfe", 0, 0, 0, null),
+            new ComplianceMatrixCourseDto(hygiene.Value, "Hygiene", 1, 0, 1, 0.0),
         ]);
-        matrix.ActiveAssignments.ShouldBe(1);
+        matrix.Assignments.ShouldBe(1);
+        matrix.CompliantAssignments.ShouldBe(0);
         matrix.OverdueAssignments.ShouldBe(1);
         matrix.ComplianceRate.ShouldBe(0.0);
     }
@@ -323,11 +420,11 @@ public class GetComplianceMatrixTests
         second.Courses.ShouldBe(first.Courses);
         second.Courses.ShouldBe(
         [
-            new ComplianceMatrixCourseDto(firstAid.Value, "Erste Hilfe", 1, 0, 1.0),
-            new ComplianceMatrixCourseDto(hygiene.Value, "Hygiene", 2, 1, 0.5),
+            new ComplianceMatrixCourseDto(firstAid.Value, "Erste Hilfe", 1, 1, 0, 1.0),
+            new ComplianceMatrixCourseDto(hygiene.Value, "Hygiene", 2, 1, 1, 0.5),
         ]);
-        (second.ActiveAssignments, second.OverdueAssignments, second.ComplianceRate).ShouldBe((3, 1, 2d / 3d));
-        (first.ActiveAssignments, first.OverdueAssignments, first.ComplianceRate).ShouldBe((3, 1, 2d / 3d));
+        (second.Assignments, second.CompliantAssignments, second.OverdueAssignments, second.ComplianceRate).ShouldBe((3, 2, 1, 2d / 3d));
+        (first.Assignments, first.CompliantAssignments, first.OverdueAssignments, first.ComplianceRate).ShouldBe((3, 2, 1, 2d / 3d));
     }
 
     [Fact]
@@ -340,9 +437,9 @@ public class GetComplianceMatrixTests
 
         var matrix = (await MatrixAsync(Manager)).Value;
 
-        matrix.Courses.ShouldHaveSingleItem().ShouldBe(new ComplianceMatrixCourseDto(hygiene.Value, "Hygiene", 1, 0, 1.0));
+        matrix.Courses.ShouldHaveSingleItem().ShouldBe(new ComplianceMatrixCourseDto(hygiene.Value, "Hygiene", 1, 1, 0, 1.0));
         RowOf(matrix, Anna).Cells.ShouldHaveSingleItem().CourseId.ShouldBe(hygiene.Value);
-        (matrix.ActiveAssignments, matrix.OverdueAssignments, matrix.ComplianceRate).ShouldBe((1, 0, 1.0));
+        (matrix.Assignments, matrix.CompliantAssignments, matrix.OverdueAssignments, matrix.ComplianceRate).ShouldBe((1, 1, 0, 1.0));
     }
 
     private static ComplianceMatrixRowDto RowOf(ComplianceMatrixDto matrix, PersonId person) =>
@@ -370,11 +467,11 @@ public class GetComplianceMatrixTests
         await ComplianceMembers.StartAsync(members, Berta, Pharmacy, MembershipRole.Employee, "Berta Braun", JobFunction.Pka);
     }
 
-    /// <summary>A course Compliance holds a version of, under the title.</summary>
-    private CourseId Course(string title)
+    /// <summary>A course Compliance holds version 1 of, under the title, valid for the months given (12 unless said).</summary>
+    private CourseId Course(string title, int validityMonths = 12)
     {
         var course = CourseId.From(Guid.CreateVersion7());
-        courses.Versions.Add(CourseVersion.Published(CourseVersionId.From(Guid.CreateVersion7()), course, VersionNumber.From(1), CourseTitle.From(title), ValidityMonths.From(12)));
+        courses.Versions.Add(CourseVersion.Published(CourseVersionId.From(Guid.CreateVersion7()), course, VersionNumber.From(1), CourseTitle.From(title), ValidityMonths.From(validityMonths)));
         return course;
     }
 
