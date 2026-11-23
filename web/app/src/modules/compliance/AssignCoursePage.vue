@@ -42,7 +42,7 @@ const schema = createAssignSchema(clock);
 
 const { t, d, n } = useI18n();
 const { current } = useCurrentPharmacy();
-const { assign, isAssigning } = useAssignCourse();
+const { assign } = useAssignCourse();
 
 const step = ref<Step>('course');
 const course = ref<CatalogCourseDto>();
@@ -372,7 +372,7 @@ function nameOf(personId: string) {
           <Button v-if="step !== 'course'" type="button" variant="outline" @click="back">
             {{ t('compliance.assign.back') }}
           </Button>
-          <Button v-if="step === 'review'" type="button" :disabled="sending || isAssigning" @click="submit">
+          <Button v-if="step === 'review'" type="button" :disabled="sending" @click="submit">
             {{ t('compliance.assign.submit') }}
           </Button>
           <Button v-else type="button" @click="next">{{ t('compliance.assign.next') }}</Button>

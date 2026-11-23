@@ -26,7 +26,8 @@ function courseTitle() {
  */
 function pharmacyName(kind: string) {
   const countdown = String(9_999_999_999_999 - Date.now()).padStart(13, '0');
-  return `0 E2E Zuweisung ${kind} ${countdown}`;
+  // The countdown before the kind: by name, the newest of every kind comes first.
+  return `0 E2E Zuweisung ${countdown} ${kind}`;
 }
 
 /** The access token Keycloak issues to a local user, whose password is their name (direct access grants are on). */
