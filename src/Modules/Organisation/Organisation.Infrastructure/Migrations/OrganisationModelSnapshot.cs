@@ -16,7 +16,7 @@ partial class OrganisationModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261123005950_InvitationLinksPerVersion";
+    public override string LastMigrationId => "20261123080904_AddMembershipVersion";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -92,6 +92,12 @@ partial class OrganisationModelSnapshot : ModelSnapshot
                     .HasMaxLength(20)
                     .HasColumnType("character varying(20)")
                     .HasColumnName("status");
+
+                b.Property<int>("Version")
+                    .ValueGeneratedOnAdd()
+                    .HasColumnType("integer")
+                    .HasDefaultValue(1)
+                    .HasColumnName("version");
 
                 b.HasKey("Id");
 

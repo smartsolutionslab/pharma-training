@@ -15,6 +15,9 @@ internal static class MembershipEvents
     public static MembershipStartedV1 Started(Guid membershipId, Guid personId, Guid pharmacyId, string displayName, JobFunctionV1 jobFunction, MembershipRoleV1 role) =>
         new(membershipId, personId, pharmacyId, displayName, jobFunction, role, StartedAt) { Metadata = NewMetadata() };
 
+    public static MembershipChangedV1 Changed(Guid membershipId, Guid personId, Guid pharmacyId, string displayName, JobFunctionV1 jobFunction, MembershipRoleV1 role, int version) =>
+        new(membershipId, personId, pharmacyId, displayName, jobFunction, role, version) { Metadata = NewMetadata() };
+
     public static MembershipEndedV1 Ended(Guid membershipId, Guid personId, Guid pharmacyId) =>
         new(membershipId, personId, pharmacyId, EndedAt) { Metadata = NewMetadata() };
 

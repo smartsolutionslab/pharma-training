@@ -51,4 +51,35 @@ public class MemberIdentityTests
     [Fact]
     public void An_empty_guid_is_no_pharmacy_id() =>
         Should.Throw<GuardException>(() => PharmacyId.From(Guid.Empty));
+
+    [Fact]
+    public void A_membership_version_comes_back_from_its_value()
+    {
+        var version = MembershipVersion.From(3);
+
+        version.Value.ShouldBe(3);
+        version.ShouldBe(MembershipVersion.From(3));
+        MembershipVersion.From(1).ShouldBe(MembershipVersion.First);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void A_membership_version_below_one_is_refused(int value) =>
+        Should.Throw<GuardException>(() => MembershipVersion.From(value));
+
+    [Fact]
+    public void A_higher_membership_version_compares_greater()
+    {
+        var older = MembershipVersion.From(2);
+        var newer = MembershipVersion.From(3);
+
+        (newer > older).ShouldBeTrue();
+        (older < newer).ShouldBeTrue();
+        (newer >= MembershipVersion.From(3)).ShouldBeTrue();
+        (older <= MembershipVersion.From(2)).ShouldBeTrue();
+        newer.CompareTo(older).ShouldBeGreaterThan(0);
+        older.CompareTo(newer).ShouldBeLessThan(0);
+        MembershipVersion.First.Next().ShouldBe(older);
+    }
 }

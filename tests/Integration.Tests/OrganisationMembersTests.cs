@@ -15,6 +15,8 @@ public class OrganisationMembersTests(AspireFixture aspire)
 {
     private const string MembershipEndedExchange = "SmartSolutionsLab.PharmaTraining.Contracts.Organisation.MembershipEndedV1";
 
+    private const string MembershipChangedExchange = "SmartSolutionsLab.PharmaTraining.Contracts.Organisation.MembershipChangedV1";
+
     private static readonly Uri Pharmacies = new("/organisation/pharmacies", UriKind.Relative);
 
     private readonly OrganisationDatabase database = new(aspire);
@@ -189,6 +191,43 @@ public class OrganisationMembersTests(AspireFixture aspire)
         var stored = await database.MembershipAsync(membership, cancellationToken);
         // The database keeps microseconds; the event carries the instant the domain ended it at.
         (announced.EndedAt - stored.EndedAt!.Value).Duration().ShouldBeLessThan(TimeSpan.FromMilliseconds(1));
+    }
+
+    [Fact]
+    public async Task Changing_a_membership_announces_it_through_the_broker_with_the_next_version()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var owner = await aspire.CreateHostClientAsync("owner");
+        await using var connection = await Broker.ConnectAsync(aspire, cancellationToken);
+
+        // Wolverine declares an event's exchange when it first sends one: change one membership so it exists, then listen.
+        var warmUp = await RegisterAsync(owner, cancellationToken);
+        var warmUpMember = await database.SeedMemberAsync(warmUp, "employee-b", "Employee", "Pta", cancellationToken);
+        using var warmedUp = await owner.PatchAsJsonAsync(MemberUri(warmUp, warmUpMember), new { jobFunction = "Pka", role = "Employee" }, cancellationToken);
+        warmedUp.StatusCode.ShouldBe(HttpStatusCode.OK);
+        await Broker.WaitForExchangeAsync(connection, MembershipChangedExchange, cancellationToken);
+        await using var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
+        var queue = await Broker.BindQueueAsync(channel, MembershipChangedExchange, cancellationToken);
+        var pharmacy = await RegisterAsync(owner, cancellationToken);
+        var membership = await database.SeedMemberAsync(pharmacy, "employee-a", "Employee", "Pta", cancellationToken);
+
+        using var promoted = await owner.PatchAsJsonAsync(MemberUri(pharmacy, membership), new { jobFunction = "Pta", role = "Manager" }, cancellationToken);
+
+        promoted.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var second = await Broker.ReceiveAsync<MembershipChanged>(channel, queue, received => received.MembershipId == membership, cancellationToken);
+        second.PersonId.ShouldBe(await database.SubjectOfAsync("employee-a"));
+        second.PharmacyId.ShouldBe(pharmacy);
+        second.DisplayName.ShouldBe(await database.NameOfAsync("employee-a"));
+        second.JobFunction.ShouldBe("Pta");
+        second.Role.ShouldBe("Manager");
+        second.Version.ShouldBe(2);
+
+        using var demoted = await owner.PatchAsJsonAsync(MemberUri(pharmacy, membership), new { jobFunction = "Pta", role = "Employee" }, cancellationToken);
+
+        demoted.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var third = await Broker.ReceiveAsync<MembershipChanged>(channel, queue, received => received.MembershipId == membership, cancellationToken);
+        third.Role.ShouldBe("Employee");
+        third.Version.ShouldBe(3);
     }
 
     [Fact]
@@ -470,4 +509,6 @@ public class OrganisationMembersTests(AspireFixture aspire)
     private sealed record EndedMembershipListener(string Queue, Guid Pharmacy);
 
     private sealed record MembershipEnded(Guid MembershipId, Guid PersonId, Guid PharmacyId, DateTimeOffset EndedAt);
+
+    private sealed record MembershipChanged(Guid MembershipId, Guid PersonId, Guid PharmacyId, string DisplayName, string JobFunction, string Role, int Version);
 }
