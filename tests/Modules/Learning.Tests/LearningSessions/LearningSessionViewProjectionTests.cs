@@ -1,6 +1,7 @@
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.EventSourcing;
 using SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.ReadModels;
 using SmartSolutionsLab.PharmaTraining.Modules.Learning.Domain.LearningSessions;
+using SmartSolutionsLab.PharmaTraining.Modules.Learning.Domain.LearningSessions.Events;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Tests.LearningSessions;
 
@@ -53,6 +54,22 @@ public class LearningSessionViewProjectionTests
         session.RecordProgress(Film, ProgressPercent.Complete, Now);
         session.Finish(Now);
         ShouldMatch(LearningSessionViews.Project(Pending(session)), session, (Intro, 100), (Handbook, 100), (Film, 100));
+    }
+
+    [Fact]
+    public void A_noted_lock_leaves_the_view_as_the_reopen_left_it()
+    {
+        var session = Start();
+        CompleteAll(session);
+        session.ReopenChapters(ExhaustionNotice.From(Guid.CreateVersion7()), [Film], Now);
+        List<IDomainEvent> reopened = [.. Pending(session).Where(domainEvent => domainEvent is not ExhaustionNoted)];
+        var before = LearningSessionViews.Project(reopened);
+
+        var after = LearningSessionViews.Project([.. reopened, new ExhaustionNoted(session.Id, ExhaustionNotice.From(Guid.CreateVersion7()), Now)]);
+
+        after.Status.ShouldBe(before.Status);
+        after.Chapters.Select(chapter => (chapter.ChapterId, chapter.ProgressPercent, chapter.Completed))
+            .ShouldBe(before.Chapters.Select(chapter => (chapter.ChapterId, chapter.ProgressPercent, chapter.Completed)), ignoreOrder: true);
     }
 
     private static void ShouldMatch(LearningSessionView view, LearningSession session, params (ChapterId Chapter, int Progress)[] progress)
