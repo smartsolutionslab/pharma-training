@@ -4,12 +4,14 @@ using Npgsql;
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 
 /// <summary>
-/// Learning's side of the tests: Editorial's <c>CourseVersionPublishedV1</c> sent as Editorial's Wolverine sends it,
+/// Learning's side of the tests: Editorial's <c>CourseVersionPublishedV1</c> and <c>CourseVersionRetiredV1</c> sent as Editorial's Wolverine sends them,
 /// the barrier that Learning's inbox handled it, and Learning's own tables read directly.
 /// </summary>
 internal static class LearningDatabase
 {
     public const string PublishedType = "SmartSolutionsLab.PharmaTraining.Contracts.Editorial.CourseVersionPublishedV1";
+
+    public const string RetiredType = "SmartSolutionsLab.PharmaTraining.Contracts.Editorial.CourseVersionRetiredV1";
 
     private static readonly TimeSpan WaitTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(250);
@@ -34,6 +36,22 @@ internal static class LearningDatabase
     {
         var messageId = Guid.CreateVersion7();
         await Broker.SendAsync(aspire, PublishedType, published, messageId, cancellationToken);
+        await WaitUntilHandledAsync(aspire, messageId, cancellationToken);
+    }
+
+    /// <summary>The retirement of the published version, under metadata of its own each time it is built.</summary>
+    public static RetiredEvent Retired(PublishedEvent published)
+    {
+        Ensure.That(published).IsNotNull();
+
+        return new(published.CourseId, published.CourseVersionId, new EventMetadata(Guid.CreateVersion7(), TimeProvider.System.GetUtcNow()));
+    }
+
+    /// <summary>Sends the retirement under a new envelope id and waits until Learning's inbox has handled it.</summary>
+    public static async Task DeliverAsync(AspireFixture aspire, RetiredEvent retired, CancellationToken cancellationToken)
+    {
+        var messageId = Guid.CreateVersion7();
+        await Broker.SendAsync(aspire, RetiredType, retired, messageId, cancellationToken);
         await WaitUntilHandledAsync(aspire, messageId, cancellationToken);
     }
 
@@ -75,6 +93,29 @@ internal static class LearningDatabase
         }
     }
 
+    /// <summary>Polls Learning's retirements until it holds the version's, which only its consumer of Editorial's retirement writes.</summary>
+    public static async Task WaitUntilRetiredAsync(AspireFixture aspire, Guid courseVersionId, CancellationToken cancellationToken)
+    {
+        var started = TimeProvider.System.GetTimestamp();
+        while (await CountAsync(aspire, "select count(*) from learning.course_version_retirements where course_version_id = @id", courseVersionId, cancellationToken) == 0)
+        {
+            TimeProvider.System.GetElapsedTime(started).ShouldBeLessThan(WaitTimeout, $"Learning never heard that course version {courseVersionId} was retired.");
+            await Task.Delay(PollInterval, cancellationToken);
+        }
+    }
+
+    /// <summary>How many sessions the learner has on the version, as Learning's session view holds them.</summary>
+    public static async Task<long> CountSessionsAsync(AspireFixture aspire, Guid learner, Guid courseVersionId, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(aspire, cancellationToken);
+        await using var command = new NpgsqlCommand(
+            "select count(*) from learning.mt_doc_learningsessionview where data->>'LearnerId' = @learner and data->>'CourseVersionId' = @version",
+            connection);
+        command.Parameters.AddWithValue("learner", learner.ToString());
+        command.Parameters.AddWithValue("version", courseVersionId.ToString());
+        return (long)(await command.ExecuteScalarAsync(cancellationToken))!;
+    }
+
     public static async Task<long> CountAsync(AspireFixture aspire, string query, Guid id, CancellationToken cancellationToken)
     {
         await using var connection = await OpenAsync(aspire, cancellationToken);
@@ -95,6 +136,8 @@ internal static class LearningDatabase
     public sealed record EventMetadata(Guid EventIdentifier, DateTimeOffset OccurredAt);
 
     public sealed record SentChapter(Guid ChapterId, int Position, string Title, string Kind, int? VideoDurationSeconds, string? Text, string? File);
+
+    public sealed record RetiredEvent(Guid CourseId, Guid CourseVersionId, EventMetadata Metadata);
 
     public sealed record PublishedEvent(Guid CourseId, Guid CourseVersionId, int VersionNumber, string Title, int ValidityMonths, IReadOnlyList<SentChapter> Chapters, EventMetadata Metadata);
 }
