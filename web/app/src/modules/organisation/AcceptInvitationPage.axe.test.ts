@@ -1,5 +1,6 @@
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query';
 import { cleanup, render, screen } from '@testing-library/vue';
+import userEvent from '@testing-library/user-event';
 import { createPinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { axe } from 'vitest-axe';
@@ -12,8 +13,9 @@ import { refusals } from './AcceptInvitationPage.data';
 
 // The screen's axe check. It asks nothing of what the screen shows, only that axe finds no violations in it: what the
 // screen does is its own tests' (AcceptInvitationPage.test.ts). AcceptInvitationPage.data.ts has no example: the page
-// calls no query hook of the generated client. It is checked in each of the states it shows: without a token, while
-// the invitation is accepted, and refused as the data file's refusals say (expired, for another address).
+// calls no query hook of the generated client. It is checked in each of the states it shows: without a token, ready to
+// accept a kept token (nothing posted before the user presses Accept the invitation), while the invitation is accepted,
+// and refused as the data file's refusals say (expired, for another address).
 
 // The invitation mail's link: its route keeps the token for this tab and the page posts it.
 const token = 'k7Yq2_Lm-9XwPz4RtV8sNc1HjD6bFgUe0OiA5yQrTmW';
@@ -78,28 +80,47 @@ async function renderPage(address: string) {
   return container;
 }
 
-// Each state of the page, by the address it is opened at and what shows once it is there.
-const states = [
+/** The ready state's button, pressed: the only way the page posts the token. */
+async function accept() {
+  await userEvent.setup().click(await screen.findByRole('button', { name: t('organisation.accept.ready.accept') }));
+}
+
+// Each state of the page, by the address it is opened at, what the user does there, and what shows once it is there.
+const states: {
+  state: string;
+  address: string;
+  refusal?: { status: number; body: Record<string, unknown> };
+  act?: () => Promise<void>;
+  shown: () => Promise<HTMLElement>;
+}[] = [
   {
     state: 'without a token',
     address: '/invitations/accept',
     shown: () => screen.findByRole('heading', { level: 1, name: t('organisation.accept.missing.title') }),
   },
   {
+    state: 'ready to accept a kept token',
+    address: `/invitations/accept#token=${token}`,
+    shown: () => screen.findByRole('button', { name: t('organisation.accept.ready.accept') }),
+  },
+  {
     state: 'while the invitation is accepted',
     address: `/invitations/accept#token=${token}`,
+    act: accept,
     shown: () => screen.findByText(t('organisation.accept.accepting')),
   },
   {
     state: 'for an expired invitation',
     address: `/invitations/accept#token=${token}`,
     refusal: refusals.expired,
+    act: accept,
     shown: () => screen.findByRole('heading', { level: 1, name: t('organisation.accept.expired.title') }),
   },
   {
     state: 'for an invitation to another address',
     address: `/invitations/accept#token=${token}`,
     refusal: refusals.anotherAddress,
+    act: accept,
     shown: () => screen.findByRole('heading', { level: 1, name: t('organisation.accept.anotherAddress.title') }),
   },
 ];
@@ -113,10 +134,11 @@ describe.each(languages)('in %s', (language) => {
   describe.each(themes)('in the $name theme', ({ switchOn }) => {
     test.each(states)(
       'the Accept an invitation page has no accessibility violations axe can find $state',
-      async ({ address, refusal, shown }) => {
+      async ({ address, refusal, act, shown }) => {
         answered.refusal = refusal;
         switchOn();
         const container = await renderPage(address);
+        await act?.();
 
         expect(await shown()).toBeInTheDocument();
         expect(await axe(container)).toHaveNoViolations();
