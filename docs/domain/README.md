@@ -115,6 +115,7 @@ MVP 1 besteht aus acht Contexts. Der Kernfluss läuft von der Zuweisung über da
 flowchart LR
   subgraph MVP1[MVP 1]
     Organisation -- Mitglieder --> Compliance
+    Organisation -- Mitglieder --> Learning
     Organisation --- Identity
     Editorial -- Freigabe --> Catalog
     Catalog -- "Version + Fragen" --> Assessment
@@ -156,21 +157,21 @@ Regeln:
 | --- | --- | --- | --- |
 | `CourseVersionPublished` | Editorial | Catalog, Learning, Certification | CourseId, CourseVersionId, Title, Chapters (Id, Typ, Pflichtlänge), ValidityMonths |
 | `TestDefinitionPublished` | Editorial | Assessment | CourseVersionId, Questions inkl. richtiger Antworten, PassingScorePercent, MaxAttempts |
-| `CourseVersionRetired` | Editorial | Catalog, Compliance | CourseId, CourseVersionId |
+| `CourseVersionRetired` | Editorial | Catalog, Compliance, Learning | CourseId, CourseVersionId |
 | `PharmacyRegistered` | Organisation | Compliance, Certification | PharmacyId, Name |
-| `MembershipStarted` | Organisation | Compliance, Certification | MembershipId, PersonId, PharmacyId, DisplayName, JobFunction, Role |
-| `MembershipEnded` | Organisation | Compliance | MembershipId, PersonId, PharmacyId, EndedAt |
-| `MembershipChanged` | Organisation | Compliance | MembershipId, PersonId, PharmacyId, DisplayName, JobFunction, Role, Version |
+| `MembershipStarted` | Organisation | Compliance, Certification, Learning | MembershipId, PersonId, PharmacyId, DisplayName, JobFunction, Role |
+| `MembershipEnded` | Organisation | Compliance, Learning | MembershipId, PersonId, PharmacyId, EndedAt |
+| `MembershipChanged` | Organisation | Compliance, Learning | MembershipId, PersonId, PharmacyId, DisplayName, JobFunction, Role, Version |
 | `CourseAssigned` | Compliance | (keiner in MVP 1, später Benachrichtigung) | AssignmentId, PersonId, PharmacyId, CourseId, DueDate |
 | `AssignmentCompleted` | Compliance | (keiner in MVP 1) | AssignmentId, CertificateId, CompletedAt, Late |
 | `LearningSessionStarted` | Learning | Compliance | SessionId, PersonId, CourseId, CourseVersionId |
-| `ContentCompleted` | Learning | Assessment | SessionId, PersonId, CourseId, CourseVersionId |
+| `ContentCompleted` | Learning | Assessment, Compliance | SessionId, PersonId, CourseId, CourseVersionId |
 | `TestPassed` | Assessment | Certification | AttemptId, SessionId, PersonId, CourseId, CourseVersionId, ScorePercent |
 | `TestFailed` | Assessment | (keiner in MVP 1) | AttemptId, SessionId, PersonId, AttemptNumber |
-| `AttemptsExhausted` | Assessment | Learning, Compliance | SessionId, PersonId, CourseVersionId |
+| `AttemptsExhausted` | Assessment | Learning, Compliance | SessionId, PersonId, CourseId, CourseVersionId, FailedChapterIds |
 | `CertificateIssued` | Certification | Compliance | CertificateId, PersonId, CourseId, CourseVersionId, IssuedAt, ValidUntil |
 
-Ablauf: `CourseAssigned` → `LearningSessionStarted` (Status in Bearbeitung) → `ContentCompleted` (Test frei) → `TestPassed` → `CertificateIssued` → Compliance schließt alle offenen Zuweisungen der Person für diese `CourseId` und legt bei Wiederholung die nächste an. Bei `AttemptsExhausted` setzt Learning den Fortschritt zurück und Compliance zeigt „gesperrt“.
+Ablauf: `CourseAssigned` → `LearningSessionStarted` (Status in Bearbeitung) → `ContentCompleted` (Test frei) → `TestPassed` → `CertificateIssued` → Compliance schließt alle offenen Zuweisungen der Person für diese `CourseId` und legt bei Wiederholung die nächste an. Bei `AttemptsExhausted` setzt Learning den Fortschritt zurück und Compliance zeigt „gesperrt“, bis `ContentCompleted` derselben Person und `CourseId` meldet, dass der Inhalt erneut durchgearbeitet ist (Entscheidung des Owners zu #32, Option b).
 
 Nachträge aus Runde 16 und 17: Compliance konsumiert zusätzlich `MembershipStarted` (Namen) und `CourseVersionPublished` (Titel, aktuelle Version); Certification konsumiert zusätzlich `MembershipEnded`. `CourseVersionPublished` trägt pro Videokapitel die Dauer (Plausibilitätsprüfung in Learning) und die Gültigkeit aus den Testvorgaben.
 
@@ -182,18 +183,20 @@ Drei Aggregate tragen MVP 1: `Assignment` (Compliance, DDD), `LearningSession` (
 
 Value Objects: `AssignmentId`, `PersonId`, `PharmacyId`, `CourseId`, `DueDate`, `RecurrenceInterval` (Monate, 1 bis 60), `AssignmentChange` (Historie).
 
-Status: `Open` → `InProgress` → `Completed`, außerdem `Cancelled`. `Overdue` und `Late` werden berechnet, nicht gespeichert. `Locked` ist ein Flag in `InProgress`.
+Status: `Open` → `InProgress` → `Completed`, außerdem `Cancelled`. `Overdue` und `Late` werden berechnet, nicht gespeichert. `Locked` ist ein Flag, angezeigt in `InProgress`; eine Sperre, die vor dem Start ankommt, wird gemerkt.
 
 | Command | Auslöser | Invarianten |
 | --- | --- | --- |
 | `Assign` | Apothekenleiter | Frist nicht in der Vergangenheit; höchstens eine aktive Zuweisung pro Person × Apotheke × Schulung (Unique Index) |
 | `ChangeDueDate` | Apothekenleiter | Nur wenn aktiv; neue Frist nicht in der Vergangenheit; Eintrag in der Historie |
 | `Cancel` | Apothekenleiter, `MembershipEnded` | Nur wenn aktiv; terminal |
-| `MarkStarted` | `LearningSessionStarted` | Nur aus `Open`; sonst ignorieren |
-| `MarkLocked` / `Unlock` | `AttemptsExhausted` / `LearningSessionStarted` | Nur in `InProgress` |
+| `MarkStarted` | `LearningSessionStarted` | Nur aus `Open`; sonst ignorieren; entsperrt nicht; der früheste Start gilt, auch einer von vor der Zuweisung |
+| `MarkLocked` / `Unlock` | `AttemptsExhausted` / `ContentCompleted` | Nur wenn aktiv; das später geschehene Ereignis (`OccurredAt`) gewinnt, bei Gleichstand die Sperre; Ereignisse vor der Zuweisung zählen nicht (ADR 0023) |
 | `Complete` | `CertificateIssued` | Aus `Open` oder `InProgress` (Events können überholen); gleiche CertificateId erneut = No-op; terminal |
 
 Nach `Complete` mit Wiederholung legt ein Handler eine neue Zuweisung an: Frist = Abschlussdatum + Intervall. Eine Bestätigung von vor der Zuweisung erfüllt sie nicht.
+
+`CertificateIssued` schließt jede aktive Zuweisung der Person für die `CourseId` in jeder Apotheke ab, jede Version zählt; eine Bestätigung, die vor der Zuweisung ausgestellt wurde, lässt sie offen. Verspätet (`Late` in `AssignmentCompletedV1`, `CompletedLate` im Dashboard) heißt: der Ausstellungstag in deutscher Zeit liegt nach der Frist; maßgeblich ist `IssuedAt`, nicht die Verarbeitung. Dieselbe Bestätigung erneut findet keine aktive Zuweisung mehr und ändert nichts.
 
 ### LearningSession (Learning, event-sourced)
 
@@ -209,6 +212,8 @@ Ein Stream pro Person × Schulungsversion und Durchlauf. Die Kapitelstruktur wir
 | `SessionFinished` | Nach `TestPassed` (Learning konsumiert es zusätzlich zu Certification); danach keine Änderungen |
 
 Invarianten: Fortschritt pro Kapitel wächst nur; `ContentCompleted` erst, wenn jedes Pflichtkapitel erfüllt ist; höchstens eine nicht beendete Session pro Person × Version. Der Client meldet Fortschritt gebündelt (beim Pausieren, am Kapitelende, spätestens alle 30 s), damit der Stream klein bleibt.
+
+Auf einer zurückgezogenen Version (`CourseVersionRetired`) beginnt kein neuer Durchlauf (409 `learning.course-version-retired`); ein nicht beendeter wird weiter fortgesetzt, gelesen und fortgeschrieben. Eine nur abgelöste Version bleibt startbar.
 
 ### Examination (Assessment, event-sourced)
 
@@ -254,7 +259,7 @@ Status: `Draft` → `InReview` → `Published` → `Superseded` bzw. `Retired`.
 | Command | Invarianten |
 | --- | --- |
 | `AddChapter` / `ReorderChapters` / `EditChapter` | Nur im Entwurf; Kapitel ist Text (Markdown), PDF oder Video (Blob + Dauer) |
-| `SetTestBlueprint` | Anzahl Fragen (Standard 10), Bestehensgrenze (Standard 80 %), Gültigkeit in Monaten |
+| `SetTestBlueprint` | Anzahl Fragen (Standard 10), Bestehensgrenze (Standard 80 %), Gültigkeit in Monaten; nur im Entwurf; eine Änderung einer der drei Vorgaben setzt die Freigabe aller Fragen zurück, auch kopierter; dieselben Werte ändern nichts |
 | `ApplyAiTestDraft` | Ersetzt nur ungeprüfte Fragen; jede Frage trägt Herkunft `AiDrafted` |
 | `EditQuestion` / `ApproveQuestion` | Freigabe vermerkt Redakteur und Zeitpunkt |
 | `SubmitForReview` | Mindestens ein Kapitel; Test vollständig laut Vorgaben |
@@ -295,7 +300,7 @@ Alle Pfade beginnen mit dem Modulnamen; der Edge leitet danach weiter. Kein Serv
 | compliance | `POST /compliance/pharmacies/{id}/assignments` | Leitung | Zuweisen an mehrere Mitarbeiter (C1, C2) |
 | compliance | `GET /compliance/pharmacies/{id}/members?jobFunction=` | Leitung | Aktive Mitglieder für den Zuweisungsassistenten, nach Name, filterbar nach Tätigkeit |
 | compliance | `PATCH …/assignments/{aid}`, `DELETE …/assignments/{aid}` | Leitung | Frist ändern, zurückziehen |
-| compliance | `GET /compliance/pharmacies/{id}/matrix` | Leitung | Matrix Mitarbeiter × Schulung mit Status und Quote (C3) |
+| compliance | `GET /compliance/pharmacies/{id}/matrix?jobFunction=` | Leitung | Matrix Mitarbeiter × Schulung mit Status und Quote (C3); Zeilen = aktive Mitglieder, seitenweise; Spalten = Schulungen mit mindestens einer nicht stornierten Zuweisung in der Apotheke; Quote = konforme unter allen Zellen (je Person und Schulung die neueste nicht stornierte Zuweisung): offen, in Bearbeitung oder gesperrt ist konform, überfällig nicht, abgeschlossen (auch verspätet) bis einschließlich „gültig bis“ = deutscher Abschlusstag + Gültigkeitsmonate der neuesten Version; für alle Zeilen des Filters, je Schulung und gesamt; ohne Zelle keine Quote |
 | compliance | `GET /compliance/me/assignments` | Mitglied | Mein Dashboard, Überfällige zuerst (C4) |
 | learning | `POST /learning/sessions` | Mitglied | Starten oder fortsetzen (idempotent) |
 | learning | `GET /learning/sessions/{id}`, `POST …/{id}/progress` | Mitglied | Fortschritt lesen und melden (L1, L2) |
@@ -311,6 +316,7 @@ Lokale Kopien, die daraus folgen:
 - **Compliance** hält Namen der Mitglieder (`MembershipStarted`) und Titel der Schulungen (`CourseVersionPublished`) für Matrix und Dashboard. Der Status kommt aus der Zuweisung selbst; Learning wird nicht abgefragt.
 - **Certification** hält Mitgliedschaften mit Beginn und Ende, damit der Export nur Bestätigungen aus der Beschäftigungszeit bei dieser Apotheke enthält.
 - **Learning** und **Assessment** halten Kapitelstruktur bzw. Testdefinition der Version.
+- **Learning** hält Mitgliedschaften ohne Namen, Rolle und Tätigkeit (Beginn, Änderungen, Ende), um nur aktive Mitglieder lernen zu lassen; nach dem Ende bleibt die eigene Sitzung lesbar.
 
 ### Vue-Seiten
 

@@ -1,3 +1,4 @@
+using System.Globalization;
 using SmartSolutionsLab.PharmaTraining.Contracts.Learning;
 using SmartSolutionsLab.PharmaTraining.Modules.Assessment.Application.ReadModels;
 using SmartSolutionsLab.PharmaTraining.Modules.Assessment.Domain.Examinations;
@@ -6,10 +7,11 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Assessment.Application.Consum
 
 /// <summary>
 /// A learner completed a session's content: the first time opens the session's one examination, under the id derived
-/// from the session; after three failed attempts, a new completion unlocks three more. Each event is handled once, by
-/// its identifier, so a redelivery or a replay of the dead-lettered event never grants attempts the learner did not
-/// earn. The stream is saved before the identifier is recorded: a crash in between reruns this, which finds the
-/// stream and unlocks nothing (docs/adr/0012). It needs no test definition, so it opens before one arrives.
+/// from the session; after three failed attempts, a completion Learning published after the exhaustion unlocks three
+/// more. Each event is recorded by its identifier, so a redelivery returns before anything is loaded; and since only a
+/// completion that occurred after the last exhaustion unlocks, a replay of an older one grants no attempts even when its
+/// marker was never committed. The stream is saved first, then the identifier: a crash in between reruns this, which
+/// finds the stream and unlocks nothing (docs/adr/0012). It needs no test definition, so it opens before one arrives.
 /// </summary>
 public sealed class ContentCompletedV1Consumer(
     IAssessmentAggregateStore examinations,
@@ -23,6 +25,9 @@ public sealed class ContentCompletedV1Consumer(
         Ensure.That(message).IsNotNull();
         Ensure.That(message.Metadata, nameof(message.Metadata)).IsNotNull();
         Ensure.That(message.Metadata.EventIdentifier, nameof(message.Metadata.EventIdentifier)).IsNotEmpty();
+        Ensure.That(message.Metadata.OccurredAt.ToString("O", CultureInfo.InvariantCulture), nameof(message.Metadata.OccurredAt)).Satisfies(
+            _ => message.Metadata.OccurredAt != default,
+            "A published event carries the instant it occurred.");
         Ensure.That(message.SessionId, nameof(message.SessionId)).IsNotEmpty();
         Ensure.That(message.PersonId, nameof(message.PersonId)).IsNotEmpty();
         Ensure.That(message.CourseId, nameof(message.CourseId)).IsNotEmpty();
@@ -51,7 +56,13 @@ public sealed class ContentCompletedV1Consumer(
             Ensure.That(message.SessionId.ToString(), nameof(message.SessionId)).Satisfies(
                 _ => same,
                 "The session's examination belongs to another learner, course or course version.");
-            examination.Unlock(now);
+
+            // Only a completion Learning published after the last exhaustion earns new attempts: a redelivery or a replay of
+            // an older one, even one whose handled marker was never committed, finds the examination as it is (docs/adr/0012).
+            if (examination.ExhaustedAt is { } exhaustedAt && Timestamp.From(message.Metadata.OccurredAt) > exhaustedAt)
+            {
+                examination.Unlock(now);
+            }
         }
         else
         {
