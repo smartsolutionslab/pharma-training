@@ -1,4 +1,7 @@
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.FileProviders;
+using Microsoft.Net.Http.Headers;
+using SmartSolutionsLab.PharmaTraining.Edge;
 using Yarp.ReverseProxy.Model;
 
 namespace Microsoft.AspNetCore.Builder;
@@ -9,7 +12,9 @@ namespace Microsoft.AspNetCore.Builder;
 /// file, not under /api and none of the edge's own: the app's pages share their paths with the modules' APIs (/catalog),
 /// so it is answered before the module's route, while a call for data goes on to the service. Files are served to anyone,
 /// /assets/* (named by their content) cached for good. Without index.html in the web root, as in run mode where the dev
-/// server serves the app, nothing is added. Placed after UseApiPrefix, which routes the request.
+/// server serves the app, nothing is added. Placed after UseApiPrefix, which routes the request. index.html is answered
+/// with its <see cref="ContentSecurityPolicy"/>, built once from the file as it is read here: its inline scripts' hashes,
+/// and calls to the identity provider's origin (Authentication:Authority) and blob storage's (Edge:BlobEndpoint, published).
 /// </summary>
 public static class SpaHosting
 {
@@ -24,6 +29,9 @@ public static class SpaHosting
     /// <summary>The health probes' paths, never a page of the app even where they are not mapped.</summary>
     private static readonly PathString[] ProbePaths = ["/health", "/alive"];
 
+    /// <summary>The addresses whose origins the page may call besides the edge: the identity provider and, published, blob storage.</summary>
+    private static readonly string[] ConnectAddresses = ["Authentication:Authority", "Edge:BlobEndpoint"];
+
     public static WebApplication UseSpaHosting(this WebApplication app)
     {
         Ensure.That(app).IsNotNull();
@@ -34,6 +42,7 @@ public static class SpaHosting
             return app;
         }
 
+        var policy = PolicyFor(index, app.Configuration);
         app.UseWhen(
             context => !context.Request.PathBase.HasValue,
             files => files.UseStaticFiles(new StaticFileOptions
@@ -59,6 +68,7 @@ public static class SpaHosting
             context.Response.ContentType = "text/html; charset=utf-8";
             context.Response.ContentLength = index.Length;
             context.Response.Headers.CacheControl = "no-cache";
+            context.Response.Headers[HeaderNames.ContentSecurityPolicy] = policy;
             if (HttpMethods.IsGet(context.Request.Method))
             {
                 await context.Response.SendFileAsync(index, context.RequestAborted);
@@ -66,6 +76,18 @@ public static class SpaHosting
         });
 
         return app;
+    }
+
+    private static string PolicyFor(IFileInfo index, IConfiguration configuration)
+    {
+        using var reader = new StreamReader(index.CreateReadStream(), System.Text.Encoding.UTF8);
+        var page = reader.ReadToEnd();
+        var origins = ConnectAddresses
+            .Select(key => configuration[key])
+            .OfType<string>()
+            .Where(address => !string.IsNullOrWhiteSpace(address))
+            .Select(ContentSecurityPolicy.OriginOf);
+        return ContentSecurityPolicy.For(page, origins);
     }
 
     /// <summary>What a browser sends when it loads a page; a fetch for data asks for JSON, a form post is no GET.</summary>
