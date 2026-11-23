@@ -67,6 +67,9 @@ public class LearningSessionEventsTests(AspireFixture aspire)
         ShouldName(completed, session.Id, SubjectOf(client), published);
         using var read = await ReadSessionAsync(client, session.Id, cancellationToken);
         (await BodyOfAsync(read, cancellationToken)).Status.ShouldBe("ContentCompleted");
+        // The marker orders the queue only up to the marker; the stream shows no later duplicate was stored either.
+        (await CountAsync(aspire, "select count(*) from learning.mt_events where stream_id = @id and type = 'content_completed'", session.Id, cancellationToken))
+            .ShouldBe(1);
     }
 
     /// <summary>Two reports that each complete the last open chapter race; only one append lands, so the content completes, and is announced, once.</summary>
