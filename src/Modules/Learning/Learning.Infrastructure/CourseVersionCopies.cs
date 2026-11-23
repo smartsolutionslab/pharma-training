@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Infrastructure;
 
-/// <summary>Learning's local copy of the published course versions, in its own tables; the module's unit of work saves what is added.</summary>
+/// <summary>Learning's local copy of the published course versions and their retirements, in its own tables; the module's unit of work saves what is added.</summary>
 public sealed class CourseVersionCopies(LearningDbContext context) : ICourseVersionCopies
 {
     public Task<bool> ExistsAsync(CourseVersionId version, CancellationToken cancellationToken)
@@ -51,6 +51,20 @@ public sealed class CourseVersionCopies(LearningDbContext context) : ICourseVers
         }
 
         return Option<VideoDuration>.None;
+    }
+
+    public Task<bool> IsRetiredAsync(CourseVersionId version, CancellationToken cancellationToken)
+    {
+        Ensure.That(version).IsNotNull();
+
+        return context.Set<CourseVersionRetirement>().AnyAsync(retirement => retirement.CourseVersionId == version.Value, cancellationToken);
+    }
+
+    public void Add(CourseVersionRetirement retirement)
+    {
+        Ensure.That(retirement).IsNotNull();
+
+        context.Add(retirement);
     }
 
     public async Task<IReadOnlyList<ChapterPlacement>> ListPlacementsAsync(ChapterId chapter, CancellationToken cancellationToken)

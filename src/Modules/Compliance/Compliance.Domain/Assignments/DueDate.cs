@@ -17,5 +17,12 @@ public sealed record DueDate : IValueObject<DateOnly>
 
     public CalendarDate AsDate() => CalendarDate.From(Value);
 
+    /// <summary>Whether a completion at that instant is late: its day in Germany lies after the due date.</summary>
+    public bool IsMissedBy(Timestamp completedAt)
+    {
+        Ensure.That(completedAt).IsNotNull();
+        return completedAt.DayInGermany() > AsDate();
+    }
+
     public override string ToString() => Value.ToString("O", System.Globalization.CultureInfo.InvariantCulture);
 }

@@ -118,6 +118,89 @@ public class StartLearningSessionTests
     }
 
     [Fact]
+    public async Task A_new_session_on_a_retired_version_is_refused_with_409_and_nothing_stored()
+    {
+        Retire(version.Id, version.CourseId);
+
+        var started = await StartAsync(learner);
+
+        started.Error.Code.ShouldBe("learning.course-version-retired");
+        started.Error.Status.ShouldBe(HttpStatusCode.Conflict);
+        sessions.Saves.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task An_unfinished_session_on_a_retired_version_is_resumed_and_nothing_stored()
+    {
+        var first = await StartAsync(learner);
+        Retire(version.Id, version.CourseId);
+        time.Advance(TimeSpan.FromHours(1));
+
+        var again = await StartAsync(learner);
+
+        again.Value.Created.ShouldBeFalse();
+        again.Value.Id.ShouldBe(first.Value.Id);
+        sessions.Saves.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task After_a_finished_session_on_a_retired_version_a_new_run_is_refused()
+    {
+        var now = Timestamp.From(time.GetUtcNow());
+        var finished = LearningSession.Start(
+            LearningSessionId.For(learner, Version, SessionRun.First),
+            learner,
+            CourseId.From(version.CourseId),
+            Version,
+            [ChapterId.From(Intro)],
+            [ChapterId.From(Handbook)],
+            [ChapterId.From(Film)],
+            now);
+        finished.Finish(now);
+        await sessions.SaveAsync(finished, TestContext.Current.CancellationToken);
+        var saves = sessions.Saves;
+        Retire(version.Id, version.CourseId);
+        time.Advance(TimeSpan.FromDays(365));
+
+        var started = await StartAsync(learner);
+
+        started.Error.Code.ShouldBe("learning.course-version-retired");
+        started.Error.Status.ShouldBe(HttpStatusCode.Conflict);
+        sessions.Saves.ShouldBe(saves);
+    }
+
+    [Fact]
+    public async Task A_retirement_held_before_its_version_refuses_the_start_once_the_version_arrives()
+    {
+        var later = CourseVersionCopies.Of(Guid.CreateVersion7(), (Intro, 1, ChapterKind.Text));
+        Retire(later.Id, later.CourseId);
+        copies.Hold(later);
+
+        var started = await Handler().HandleAsync(
+            new StartLearningSession(learner, CourseVersionId.From(later.Id)),
+            TestContext.Current.CancellationToken);
+
+        started.Error.Code.ShouldBe("learning.course-version-retired");
+        started.Error.Status.ShouldBe(HttpStatusCode.Conflict);
+        sessions.Saves.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task A_retired_version_Learning_does_not_hold_is_not_found()
+    {
+        var unknown = Guid.CreateVersion7();
+        Retire(unknown, Guid.CreateVersion7());
+
+        var started = await Handler().HandleAsync(
+            new StartLearningSession(learner, CourseVersionId.From(unknown)),
+            TestContext.Current.CancellationToken);
+
+        started.Error.Code.ShouldBe("learning.course-version-not-found");
+        started.Error.Status.ShouldBe(HttpStatusCode.NotFound);
+        sessions.Saves.ShouldBe(0);
+    }
+
+    [Fact]
     public async Task Starting_a_version_announces_the_session_once_with_its_ids()
     {
         var started = await StartAsync(learner);
@@ -216,6 +299,9 @@ public class StartLearningSessionTests
 
     private Task<Result<LearningSessionStart, ApiError>> StartAsync(PersonId person) =>
         Handler().HandleAsync(new StartLearningSession(person, Version), TestContext.Current.CancellationToken);
+
+    private void Retire(Guid courseVersionId, Guid courseId) =>
+        copies.Retire(new CourseVersionRetirement { CourseVersionId = courseVersionId, CourseId = courseId });
 
     private async Task<LearningSession> LoadAsync(Guid id) =>
         (await sessions.LoadAsync<LearningSession>(LearningSessionId.From(id), TestContext.Current.CancellationToken)).Value;

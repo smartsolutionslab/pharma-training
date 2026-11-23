@@ -13,6 +13,7 @@ import {
   invitationsSection,
   markt,
   never,
+  now,
   problem,
   readsOf,
   renderTeamPage,
@@ -109,6 +110,27 @@ describe('the invitations table', () => {
     const row = await rowOf(ben.email);
     expect(row.getByText(t('organisation.team.invitations.open'))).toBeInTheDocument();
     expect(row.queryByText(t('organisation.team.invitations.expired'))).not.toBeInTheDocument();
+  });
+
+  // The status follows the clock while the page stays open: a minute's tick, not a refetch, turns Offen into Abgelaufen.
+  test('an open invitation turns expired once its expiry passes while the page is open, without reading again', async () => {
+    vi.useRealTimers();
+    vi.useFakeTimers({
+      toFake: ['Date', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'],
+      shouldAdvanceTime: true,
+    });
+    vi.setSystemTime(now);
+    host.invitations = [{ ...ben, expiresAt: new Date(now.getTime() + 30_000).toISOString() }];
+    await renderTeamPage();
+    const open = await rowOf(ben.email);
+    expect(open.getByText('Offen')).toBeInTheDocument();
+    const reads = invitationReads();
+
+    await vi.advanceTimersByTimeAsync(61_000);
+
+    await waitFor(async () => expect((await rowOf(ben.email)).getByText('Abgelaufen')).toBeInTheDocument());
+    expect((await rowOf(ben.email)).queryByText('Offen')).not.toBeInTheDocument();
+    expect(invitationReads()).toBe(reads);
   });
 
   test('says open and expired in English, with the dates as the English write them', async () => {
@@ -299,6 +321,24 @@ describe('revoking an invitation', () => {
     );
     await waitFor(() => expect(invitationReads()).toBeGreaterThan(before));
     expect(notify.success).not.toHaveBeenCalled();
+  });
+
+  // The refusal keeps what it is, not its words: switched to English, it says it in English.
+  test('the refusal under the heading follows a switch of language', async () => {
+    host.revoke = async () => problem(404, 'organisation.no-open-invitation', 'Words of the host, not for the user.');
+    const { user, dialog } = await openRevoke();
+    await user.click(confirm(dialog));
+    expect(await within(invitationsSection()).findByRole('alert')).toHaveTextContent(
+      'Diese Einladung ist nicht mehr offen',
+    );
+
+    setLanguage('en-GB', { remember: false });
+
+    await waitFor(() =>
+      expect(within(invitationsSection()).getByRole('alert')).toHaveTextContent(
+        'This invitation is no longer open: it was accepted or revoked.',
+      ),
+    );
   });
 
   test('failing for another reason says the invitation could not be revoked', async () => {
