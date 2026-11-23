@@ -85,17 +85,35 @@ public partial class OrganisationInvitationMailRaceTests(AspireFixture aspire)
         }
 
         (await database.MailRequestDeadLetterReasonAsync(membership, cancellationToken)).ShouldBeNull("a mail request of the membership was dead-lettered");
-        var failures = log.Lines().Where(IsUnhandled).ToList();
+        var failures = Unhandled(log.Lines());
         failures.ShouldBeEmpty($"the Organisation service logged an unhandled exception:{Environment.NewLine}{string.Join(Environment.NewLine, failures)}");
     }
 
     /// <summary>
-    /// A request the host answered with a 500, or a write PostgreSQL refused for anything other than the row version
-    /// that a lost race moved on: a foreign key, a unique index or a check.
+    /// The lines of a request the host answered with a 500, or of a write PostgreSQL refused for anything other than the
+    /// row version that a lost race moved on: a foreign key, a unique index or a check. The host logs a request it could
+    /// not bind (<c>BadHttpRequestException</c>, answered 400) with the same header; other tests send such requests on
+    /// purpose while this one watches the shared service, so those are not failures.
     /// </summary>
-    private static bool IsUnhandled(string line) =>
-        line.Contains("An unhandled exception has occurred", StringComparison.Ordinal)
-        || line.Contains("PostgresException", StringComparison.Ordinal);
+    private static List<string> Unhandled(List<string> lines)
+    {
+        List<string> failures = [];
+        for (var index = 0; index < lines.Count; index++)
+        {
+            var line = lines[index];
+            if (line.Contains("PostgresException", StringComparison.Ordinal))
+            {
+                failures.Add(line);
+            }
+            else if (line.Contains("An unhandled exception has occurred", StringComparison.Ordinal)
+                && !(index + 1 < lines.Count && lines[index + 1].Contains("BadHttpRequestException", StringComparison.Ordinal)))
+            {
+                failures.Add(line);
+            }
+        }
+
+        return failures;
+    }
 
     /// <summary>
     /// Waits until every link the membership keeps has gone out in a mail to the address, so no run is still between
