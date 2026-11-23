@@ -39,7 +39,7 @@ const provenance = computed(() => {
   if (question.review === 'Unreviewed') {
     return t('editorial.test.questions.provenance.unreviewed', { origin });
   }
-  if (question.approvedAt === null || question.approvedAt === undefined) {
+  if (question.approvedAt === null) {
     return origin;
   }
   const approvedOn = new Date(question.approvedAt);
@@ -96,7 +96,7 @@ const provenance = computed(() => {
         }}</span>
       </li>
     </ul>
-    <p class="text-caption text-muted-foreground">
+    <p class="text-caption text-muted-foreground break-words">
       {{ provenance }}
     </p>
     <div v-if="editable || (approvable && question.review === 'Unreviewed')" class="flex flex-wrap justify-end gap-2">
