@@ -15,6 +15,8 @@ public sealed class CourseVersionChapterCopyConfiguration : IEntityTypeConfigura
         builder.ToTable("course_version_chapters");
         // A chapter's id may repeat in the next version of its course.
         builder.HasKey(chapter => new { chapter.CourseVersionId, chapter.ChapterId }).HasName("pk_course_version_chapters");
+        // A learner's media request names the chapter alone (#41).
+        builder.HasIndex(chapter => chapter.ChapterId).HasDatabaseName("ix_course_version_chapters_chapter_id");
         builder.Property(chapter => chapter.CourseVersionId).HasColumnName("course_version_id").ValueGeneratedNever();
         builder.Property(chapter => chapter.ChapterId).HasColumnName("chapter_id").ValueGeneratedNever();
         builder.Property(chapter => chapter.Position).HasColumnName("position").IsRequired();
