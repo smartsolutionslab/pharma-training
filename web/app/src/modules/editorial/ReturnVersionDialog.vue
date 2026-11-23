@@ -20,10 +20,11 @@ interface ReturnVersionDialogProps {
   /** Whether the return is on its way to the host: the confirmation stays disabled until it has answered. */
   pending: boolean;
   /**
-   * Returns the version with the reason, trimmed. Answers false when the host refused the reason itself: the dialog
-   * stays open with the field's message. Whatever else follows is the page's.
+   * Returns the version with the reason, trimmed. Answers reasonRefused when the host refused the reason itself: the
+   * dialog stays open with the field's message; tryAgain when the page keeps it open for the editor to send the reason
+   * again; done when whatever follows is the page's.
    */
-  onReturn: (reason: string) => Promise<boolean>;
+  onReturn: (reason: string) => Promise<'done' | 'reasonRefused' | 'tryAgain'>;
 }
 
 // Asks for the reason a version in review goes back to draft (ADR 0013), with the hint not to name people.
@@ -53,10 +54,13 @@ watch(
 );
 
 const submit = handleSubmit(async (values) => {
-  if (await onReturn(values.reason)) {
+  const outcome = await onReturn(values.reason);
+  if (outcome === 'done') {
     return;
   }
-  setFieldError('reason', 'editorial.workflow.returnForm.reasonInvalid');
+  if (outcome === 'reasonRefused') {
+    setFieldError('reason', 'editorial.workflow.returnForm.reasonInvalid');
+  }
   await nextTick();
   textarea.value?.focus();
 });

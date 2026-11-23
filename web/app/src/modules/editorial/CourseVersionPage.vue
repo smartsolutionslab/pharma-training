@@ -28,7 +28,7 @@ import { useChapterMutations } from './useChapterMutations';
 import { useCourseVersionWorkflow, type WorkflowResult } from './useCourseVersionWorkflow';
 import { useDraftNextVersion } from './useDraftNextVersion';
 import { useReorderChapters } from './useReorderChapters';
-import { type WorkflowAction, workflowFailureKey } from './workflowErrors';
+import { type WorkflowAction, type WorkflowFailure, workflowFailure, workflowFailureText } from './workflowErrors';
 
 // A course version (/editorial/versions/:id): its title, number and status, the way back to its inbox tab, and its
 // chapters. Only a draft can be changed; any other status says why not and shows its chapters read-only.
@@ -130,7 +130,7 @@ async function save(request: EditorialChapterRequest) {
  */
 async function draftNextVersion() {
   const published = version.value;
-  if (draftingNext.value || published === undefined) {
+  if (draftingNext.value || stepping.value !== undefined || published === undefined) {
     return;
   }
   draftingNext.value = true;
@@ -223,14 +223,19 @@ function closeDialogs() {
 }
 
 /**
- * Takes a step and reports it: the version has been read again by now. Taken, the focus goes to the heading; refused,
- * to the button pressed while the version still offers it, else to the heading. A refused publish by four eyes adds why
- * to the checklist.
+ * Takes a step and reports it: the version has been read again by now where the refusal may have changed it. Taken, the
+ * focus goes to the heading; refused, to the button pressed while the version still offers it, else to the heading. A
+ * refused publish by four eyes adds why to the checklist. A refusal the dialog keeps open for is answered unreported:
+ * the dialog's caller says what follows.
  */
-async function take(action: WorkflowAction, step: () => Promise<WorkflowResult>, keepOpen?: (key: string) => boolean) {
+async function take(
+  action: WorkflowAction,
+  step: () => Promise<WorkflowResult>,
+  keepOpen?: (failure: WorkflowFailure) => boolean,
+): Promise<'done' | WorkflowFailure> {
   const before = version.value;
-  if (stepping.value !== undefined || before === undefined) {
-    return true;
+  if (stepping.value !== undefined || draftingNext.value || before === undefined) {
+    return 'done';
   }
   stepping.value = action;
   const result = await step();
@@ -239,19 +244,20 @@ async function take(action: WorkflowAction, step: () => Promise<WorkflowResult>,
     closeDialogs();
     focusWhenReady.value = [headingId];
     notify.success(translate(takenKeys[action], { number: before.number }));
-    return true;
+    return 'done';
   }
-  const key = workflowFailureKey(action, result.error);
-  if (keepOpen?.(key) === true) {
-    return false;
+  const failure = workflowFailure(action, result.error);
+  if (keepOpen?.(failure) === true) {
+    return failure;
   }
+  const key = 'key' in failure ? failure.key : undefined;
   if (key === 'editorial.workflow.errors.fourEyes' || key === 'editorial.workflow.errors.publisherApprovedQuestions') {
     fourEyesRefusal.value = key === 'editorial.workflow.errors.fourEyes' ? 'fourEyes' : 'publisherApproved';
   }
   closeDialogs();
   focusWhenReady.value = [stepButtonId(action), headingId];
-  notify.failure(translate(key));
-  return true;
+  notify.failure(workflowFailureText(failure));
+  return 'done';
 }
 
 function startStep(action: WorkflowAction) {
@@ -281,13 +287,30 @@ function cancelDialog() {
   }
 }
 
-/** Returns the version with the reason; false when the host refused the reason itself, and the dialog stays open. */
-const returnVersion = (reason: string) =>
-  take(
+const isKey = (failure: WorkflowFailure, key: string) => 'key' in failure && failure.key === key;
+
+/**
+ * Returns the version with the reason. The dialog stays open with the reason when the host refused the reason itself
+ * (the field says why), or when the version changed meanwhile and, read again, is still in review: the toast says so,
+ * and the editor sends the reason again.
+ */
+async function returnVersion(reason: string): Promise<'done' | 'reasonRefused' | 'tryAgain'> {
+  const outcome = await take(
     'return',
     () => workflow.returnToDraft(reason),
-    (key) => key === 'editorial.workflow.returnForm.reasonInvalid',
+    (failure) =>
+      isKey(failure, 'editorial.workflow.returnForm.reasonInvalid') ||
+      (isKey(failure, 'editorial.workflow.errors.changed') && version.value?.status === 'InReview'),
   );
+  if (outcome === 'done') {
+    return 'done';
+  }
+  if (isKey(outcome, 'editorial.workflow.returnForm.reasonInvalid')) {
+    return 'reasonRefused';
+  }
+  notify.failure(workflowFailureText(outcome));
+  return 'tryAgain';
+}
 
 /** Deletes the chapter asked about, and reports how that went. */
 async function confirmRemove(chapter: EditorialChapterDto) {
@@ -365,7 +388,7 @@ async function confirmRemove(chapter: EditorialChapterDto) {
             :key="action"
             type="button"
             :variant="action === 'return' || action === 'retire' ? 'outline' : 'default'"
-            :disabled="stepping !== undefined"
+            :disabled="stepping !== undefined || draftingNext"
             @click="startStep(action)"
           >
             {{ t(`editorial.workflow.${action}`) }}
