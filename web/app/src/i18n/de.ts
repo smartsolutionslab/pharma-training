@@ -366,6 +366,7 @@ export const de = {
           modelNotConfigured:
             'Für KI-Entwürfe ist kein Sprachmodell eingerichtet. Wenden Sie sich an den Betrieb der Plattform.',
           tooManyRequests: 'Sie haben in kurzer Zeit zu viele KI-Entwürfe angefordert. Versuchen Sie es später erneut.',
+          limitReached: 'Sie haben Ihr Limit für KI-Entwürfe erreicht. Versuchen Sie es später erneut.',
           malformed: 'Die Antwort der KI war unbrauchbar; es wurde nichts geändert. Versuchen Sie es erneut.',
           tooMuchContent:
             'Die Textkapitel sind zu lang für einen KI-Entwurf. Kürzen Sie sie oder schreiben Sie die Fragen von Hand.',
