@@ -22,7 +22,11 @@ public sealed class TestAttempt
 
     public ScorePercent? Score { get; private set; }
 
-    internal IReadOnlyDictionary<QuestionVersionId, IReadOnlyList<AnswerOptionId>> Answers => answers;
+    /// <summary>The learner's last answer to each question answered so far.</summary>
+    public IReadOnlyDictionary<QuestionVersionId, IReadOnlyList<AnswerOptionId>> Answers => answers;
+
+    /// <summary>The chapters of the questions this attempt got wrong, once submitted. Stub for the red run of #46: not implemented yet.</summary>
+    public IReadOnlyList<ChapterId> FailedChapters => throw new NotImplementedException();
 
     internal void Answer(QuestionVersionId question, IReadOnlyList<AnswerOptionId> chosen) => answers[question] = chosen;
 

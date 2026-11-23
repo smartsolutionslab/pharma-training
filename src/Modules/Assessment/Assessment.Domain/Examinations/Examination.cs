@@ -30,6 +30,15 @@ public sealed class Examination : EventSourcedAggregate<ExaminationId>
 
     public IReadOnlyList<TestAttempt> Attempts => attempts;
 
+    /// <summary>The open attempt, or none. Stub for the red run of #46: not implemented yet.</summary>
+    public Option<TestAttempt> CurrentAttempt => throw new NotImplementedException();
+
+    /// <summary>The attempts since the examination was opened or last unlocked. Stub for the red run of #46: not implemented yet.</summary>
+    public IReadOnlyList<TestAttempt> AttemptsSinceUnlock => throw new NotImplementedException();
+
+    /// <summary>Every chapter failed since the last unlock, once exhausted. Stub for the red run of #46: not implemented yet.</summary>
+    public IReadOnlyList<ChapterId> ChaptersToRelearn => throw new NotImplementedException();
+
     private TestAttempt? OpenAttempt => attempts.LastOrDefault(attempt => attempt.Outcome is null);
 
     /// <summary>First ContentCompleted of a session: the examination exists and is unlocked.</summary>
