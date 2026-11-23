@@ -100,7 +100,7 @@ public class CourseVersionWorkflowErrorTests
     public void The_workflow_steps_fail_with_the_workflow_union()
     {
         var submitted = Draft().SubmitForReview(Author);
-        var returned = Draft().ReturnToDraft(Reviewer, Now);
+        var returned = Draft().ReturnToDraft(Reviewer, ReturnReason.From("Kapitel 2 braucht eine Quelle."), Now);
         var published = Draft().Publish(Reviewer, ReviewPolicy.SingleEditor, Now);
         var retired = Draft().Retire(Reviewer, Now);
 
@@ -111,7 +111,8 @@ public class CourseVersionWorkflowErrorTests
     }
 
     /// <summary>Compiles only for a step that returns the workflow union: <see cref="Result{TValue, TError}"/> is invariant.</summary>
-    private static CourseVersionWorkflowError WorkflowError(Result<Unit, CourseVersionWorkflowError> result) => result.Error;
+    private static CourseVersionWorkflowError WorkflowError<TValue>(Result<TValue, CourseVersionWorkflowError> result)
+        where TValue : notnull => result.Error;
 
     /// <summary>
     /// Builds the case named <paramref name="name"/> and converts it to the union. With the keyword union each record
