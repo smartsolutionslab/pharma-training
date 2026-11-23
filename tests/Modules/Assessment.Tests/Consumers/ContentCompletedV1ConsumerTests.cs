@@ -141,6 +141,7 @@ public class ContentCompletedV1ConsumerTests
     [InlineData(nameof(ContentCompletedV1.PersonId))]
     [InlineData(nameof(ContentCompletedV1.CourseId))]
     [InlineData(nameof(ContentCompletedV1.CourseVersionId))]
+    [InlineData(nameof(EventMetadata.EventIdentifier))]
     public async Task A_completion_with_an_empty_id_is_refused_by_the_field(string field)
     {
         var completed = Completed();
@@ -150,6 +151,7 @@ public class ContentCompletedV1ConsumerTests
             nameof(ContentCompletedV1.PersonId) => completed with { PersonId = Guid.Empty },
             nameof(ContentCompletedV1.CourseId) => completed with { CourseId = Guid.Empty },
             nameof(ContentCompletedV1.CourseVersionId) => completed with { CourseVersionId = Guid.Empty },
+            nameof(EventMetadata.EventIdentifier) => completed with { Metadata = new EventMetadata(Guid.Empty, Start) },
             _ => throw new InvalidOperationException($"{field} is no id of the event."),
         };
 
@@ -159,6 +161,42 @@ public class ContentCompletedV1ConsumerTests
         examinations.Streams.ShouldBeEmpty();
         handled.Handled.ShouldBeEmpty();
         handled.Commits.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task A_first_completion_with_an_empty_event_identifier_does_not_swallow_a_second_for_another_session()
+    {
+        var first = Completed() with { Metadata = new EventMetadata(Guid.Empty, Start) };
+        var second = Completed() with { Metadata = new EventMetadata(Guid.Empty, Start) };
+        await DeliverIgnoringRefusalAsync(first);
+
+        // Had the first been recorded under the empty identifier, the second would be dropped as already handled.
+        var refused = await Should.ThrowAsync<GuardException>(() => HandleAsync(second));
+
+        refused.ParamName.ShouldBe(nameof(EventMetadata.EventIdentifier));
+        examinations.Streams.ShouldNotContainKey(ExaminationId.For(LearningSessionId.From(second.SessionId)).Value);
+    }
+
+    [Fact]
+    public async Task A_commit_that_fails_after_the_unlock_was_saved_records_nothing_and_its_retry_unlocks_once()
+    {
+        var completed = Completed();
+        await HandleAsync(completed);
+        await ExhaustAsync(completed);
+        var again = Again(completed);
+        handled.ThrowOnNextCommit();
+
+        await Should.ThrowAsync<InvalidOperationException>(() => HandleAsync(again));
+
+        // The stream is saved first: the unlock is stored, but the identifier is not recorded.
+        Stream(completed)[^1].ShouldBeOfType<ExaminationUnlocked>();
+        handled.Handled.ShouldNotContain(row => row.EventIdentifier == again.Metadata.EventIdentifier);
+
+        // Wolverine retries the message: it finds the unlocked stream, unlocks nothing more and records the identifier.
+        await HandleAsync(again);
+
+        Stream(completed).OfType<ExaminationUnlocked>().ShouldHaveSingleItem();
+        handled.Handled.Count(row => row.EventIdentifier == again.Metadata.EventIdentifier).ShouldBe(1);
     }
 
     private static ContentCompletedV1 Completed() =>
@@ -180,6 +218,18 @@ public class ContentCompletedV1ConsumerTests
 
     private Task HandleAsync(ContentCompletedV1 completed) =>
         new ContentCompletedV1Consumer(examinations, handled, handled, time).HandleAsync(completed, TestContext.Current.CancellationToken);
+
+    private async Task DeliverIgnoringRefusalAsync(ContentCompletedV1 completed)
+    {
+        try
+        {
+            await HandleAsync(completed);
+        }
+        catch (GuardException)
+        {
+            // Refused or not, what matters is what the next delivery finds.
+        }
+    }
 
     private List<IDomainEvent> Stream(ContentCompletedV1 completed) =>
         examinations.Streams[ExaminationId.For(LearningSessionId.From(completed.SessionId)).Value];

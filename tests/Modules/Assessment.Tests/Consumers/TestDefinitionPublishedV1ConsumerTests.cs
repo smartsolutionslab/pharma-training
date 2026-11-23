@@ -79,6 +79,8 @@ public class TestDefinitionPublishedV1ConsumerTests
     [InlineData("a blank question text", nameof(TestQuestionV1.Text))]
     [InlineData("a question without options", nameof(TestQuestionV1.Options))]
     [InlineData("a duplicate option id", nameof(AnswerOptionV1.AnswerOptionId))]
+    [InlineData("an option without text", nameof(AnswerOptionV1.Text))]
+    [InlineData("an option with blank text", nameof(AnswerOptionV1.Text))]
     [InlineData("single choice with two correct options", nameof(AnswerOptionV1.IsCorrect))]
     [InlineData("multiple choice with no correct option", nameof(AnswerOptionV1.IsCorrect))]
     public async Task A_definition_breaking_a_rule_is_refused_by_the_field_it_breaks(string malformation, string field)
@@ -110,6 +112,8 @@ public class TestDefinitionPublishedV1ConsumerTests
             "a blank question text" => wellFormed with { Questions = [single, multiple with { Text = "  " }] },
             "a question without options" => wellFormed with { Questions = [single, multiple with { Options = [] }] },
             "a duplicate option id" => wellFormed with { Questions = [single, multiple with { Options = [multiple.Options[0], multiple.Options[1] with { AnswerOptionId = multiple.Options[0].AnswerOptionId }] }] },
+            "an option without text" => wellFormed with { Questions = [single, multiple with { Options = [multiple.Options[0], multiple.Options[1] with { Text = null! }, multiple.Options[2]] }] },
+            "an option with blank text" => wellFormed with { Questions = [single, multiple with { Options = [multiple.Options[0], multiple.Options[1] with { Text = "  " }, multiple.Options[2]] }] },
             "single choice with two correct options" => wellFormed with { Questions = [single with { Options = [single.Options[0], single.Options[1] with { IsCorrect = true }] }, multiple] },
             "multiple choice with no correct option" => wellFormed with { Questions = [single, multiple with { Options = [.. multiple.Options.Select(option => option with { IsCorrect = false })] }] },
             _ => throw new InvalidOperationException($"{malformation} is no malformation this test knows."),

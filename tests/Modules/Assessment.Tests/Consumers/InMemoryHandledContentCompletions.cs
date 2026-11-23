@@ -8,10 +8,14 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Assessment.Tests.Consumers;
 internal sealed class InMemoryHandledContentCompletions : IHandledContentCompletions, IAssessmentUnitOfWork
 {
     private readonly List<HandledContentCompletion> added = [];
+    private bool throwOnNextCommit;
 
     public List<HandledContentCompletion> Handled { get; } = [];
 
     public int Commits { get; private set; }
+
+    /// <summary>The next commit fails, as a crash or a lost connection would, and what was added is lost with its scope.</summary>
+    public void ThrowOnNextCommit() => throwOnNextCommit = true;
 
     public Task<bool> ContainsAsync(Guid eventIdentifier, CancellationToken cancellationToken) =>
         Task.FromResult(Handled.Any(handled => handled.EventIdentifier == eventIdentifier));
@@ -22,6 +26,13 @@ internal sealed class InMemoryHandledContentCompletions : IHandledContentComplet
 
     public Task CommitAsync(CancellationToken cancellationToken)
     {
+        if (throwOnNextCommit)
+        {
+            throwOnNextCommit = false;
+            added.Clear();
+            throw new InvalidOperationException("The commit failed.");
+        }
+
         Handled.AddRange(added);
         added.Clear();
         Commits++;
