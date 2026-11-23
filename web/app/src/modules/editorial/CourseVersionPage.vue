@@ -18,11 +18,17 @@ import { t as translate } from '@/i18n';
 import { notify } from '@/lib/notify';
 import ChapterForm from './ChapterForm.vue';
 import ChapterList from './ChapterList.vue';
+import ConfirmWorkflowDialog from './ConfirmWorkflowDialog.vue';
 import { inboxStatuses } from './inboxQuery';
+import { publishChecklist, type PublishRefusal } from './publishChecklist';
+import PublishChecklist from './PublishChecklist.vue';
 import RemoveChapterDialog from './RemoveChapterDialog.vue';
+import ReturnVersionDialog from './ReturnVersionDialog.vue';
 import { useChapterMutations } from './useChapterMutations';
+import { useCourseVersionWorkflow, type WorkflowResult } from './useCourseVersionWorkflow';
 import { useDraftNextVersion } from './useDraftNextVersion';
 import { useReorderChapters } from './useReorderChapters';
+import { type WorkflowAction, workflowFailureKey } from './workflowErrors';
 
 // A course version (/editorial/versions/:id): its title, number and status, the way back to its inbox tab, and its
 // chapters. Only a draft can be changed; any other status says why not and shows its chapters read-only.
@@ -40,6 +46,7 @@ const {
 const { add, replace, remove, isSaving } = useChapterMutations(id);
 const { reorder } = useReorderChapters(id);
 const { draftNext } = useDraftNextVersion(id);
+const workflow = useCourseVersionWorkflow(id);
 const { t } = useI18n();
 
 /** The chapter form while it is open: with the chapter it replaces, or none to add one. */
@@ -56,6 +63,42 @@ const draftingNext = ref(false);
 const focusHeadingOf = ref<string>();
 const headingId = 'course-version-title';
 const newVersionId = 'course-version-new-version';
+
+/** The workflow's step from its press until the host has answered and the version is read again. */
+const stepping = ref<WorkflowAction>();
+/** The step a confirmation is asked for. */
+const confirming = ref<'publish' | 'retire'>();
+const returning = ref(false);
+/** Why four eyes refused this page's publish, for the version as it was then: it holds until its id or status changes. */
+const fourEyesRefusal = ref<{ id: string; status: string; reason: PublishRefusal }>();
+/** The elements to focus, the first one there, once it can take focus and no dialog is open or closing. */
+const focusWhenReady = ref<string[]>();
+let dialogClosing = false;
+const stepButtonId = (action: WorkflowAction) => `course-version-${action}`;
+
+/** The steps each status offers. */
+const steps = computed((): WorkflowAction[] => {
+  switch (version.value?.status) {
+    case 'Draft':
+      return ['submit'];
+    case 'InReview':
+      return ['publish', 'return'];
+    case 'Published':
+    case 'Superseded':
+      return ['retire'];
+    default:
+      return [];
+  }
+});
+const checklist = computed(() => {
+  const shown = version.value;
+  if (shown === undefined || (shown.status !== 'Draft' && shown.status !== 'InReview')) {
+    return undefined;
+  }
+  const refusal = fourEyesRefusal.value;
+  const applies = refusal !== undefined && refusal.id === shown.id && refusal.status === shown.status;
+  return publishChecklist(shown, applies ? refusal.reason : undefined);
+});
 
 const notFound = computed(() => error.value instanceof ApiError && error.value.status === 404);
 const editable = computed(() => version.value?.status === 'Draft');
@@ -128,6 +171,116 @@ watch(
   { flush: 'post' },
 );
 
+/** What each step reports once taken. */
+const takenKeys = {
+  submit: 'editorial.workflow.submitted',
+  publish: 'editorial.workflow.published',
+  return: 'editorial.workflow.returned',
+  retire: 'editorial.workflow.retired',
+} as const;
+
+function focusPending() {
+  const candidates = focusWhenReady.value;
+  if (candidates === undefined || dialogClosing || confirming.value !== undefined || returning.value) {
+    return;
+  }
+  const target = candidates.map((each) => document.getElementById(each)).find((each) => each !== null);
+  if (target === undefined || target === null) {
+    focusWhenReady.value = undefined;
+  } else if (!(target instanceof HTMLButtonElement && target.disabled)) {
+    focusWhenReady.value = undefined;
+    target.focus();
+  }
+}
+watch([focusWhenReady, version, stepping, confirming, returning], focusPending, { flush: 'post' });
+
+/** A dialog gives the focus to where the step left it, never back to the button that opened it unasked. */
+function dialogClosed(event: Event) {
+  event.preventDefault();
+  dialogClosing = false;
+  focusPending();
+}
+
+/** Closes the step's dialog; the focus moves once it has closed. */
+function closeDialogs() {
+  if (confirming.value !== undefined || returning.value) {
+    dialogClosing = true;
+  }
+  confirming.value = undefined;
+  returning.value = false;
+}
+
+/**
+ * Takes a step and reports it: the version has been read again by now. Taken, the focus goes to the heading; refused,
+ * to the button pressed while the version still offers it, else to the heading. A refused publish by four eyes adds why
+ * to the checklist.
+ */
+async function take(action: WorkflowAction, step: () => Promise<WorkflowResult>, keepOpen?: (key: string) => boolean) {
+  const before = version.value;
+  if (stepping.value !== undefined || before === undefined) {
+    return true;
+  }
+  stepping.value = action;
+  const result = await step();
+  stepping.value = undefined;
+  if (result.ok) {
+    closeDialogs();
+    focusWhenReady.value = [headingId];
+    notify.success(translate(takenKeys[action], { number: before.number }));
+    return true;
+  }
+  const key = workflowFailureKey(action, result.error);
+  if (keepOpen?.(key) === true) {
+    return false;
+  }
+  if (key === 'editorial.workflow.errors.fourEyes' || key === 'editorial.workflow.errors.publisherApprovedQuestions') {
+    fourEyesRefusal.value = {
+      id: before.id,
+      status: before.status,
+      reason: key === 'editorial.workflow.errors.fourEyes' ? 'fourEyes' : 'publisherApproved',
+    };
+  }
+  closeDialogs();
+  focusWhenReady.value = [stepButtonId(action), headingId];
+  notify.failure(translate(key));
+  return true;
+}
+
+function startStep(action: WorkflowAction) {
+  switch (action) {
+    case 'submit':
+      void take('submit', workflow.submit);
+      break;
+    case 'publish':
+    case 'retire':
+      confirming.value = action;
+      break;
+    case 'return':
+      returning.value = true;
+      break;
+  }
+}
+
+function confirmStep(action: 'publish' | 'retire') {
+  void take(action, action === 'publish' ? workflow.publish : workflow.retire);
+}
+
+function cancelDialog() {
+  const action = confirming.value ?? (returning.value ? 'return' : undefined);
+  closeDialogs();
+  if (action !== undefined) {
+    focusWhenReady.value = [stepButtonId(action), headingId];
+  }
+}
+
+/** Returns the version with the reason; false when the host refused the reason itself, and the dialog stays open. */
+const returnVersion = (reason: string) =>
+  take(
+    'return',
+    () => workflow.returnToDraft(reason),
+    (key) => key === 'editorial.workflow.returnForm.reasonInvalid',
+  );
+
 /** Deletes the chapter asked about, and reports how that went. */
 async function confirmRemove(chapter: EditorialChapterDto) {
   isRemoving.value = true;
@@ -185,6 +338,27 @@ async function confirmRemove(chapter: EditorialChapterDto) {
           {{ t('editorial.version.newVersion') }}
         </Button>
       </div>
+      <section
+        v-if="steps.length > 0"
+        aria-labelledby="course-version-workflow"
+        class="flex flex-col gap-4 rounded-md border p-4"
+      >
+        <h2 id="course-version-workflow">{{ t('editorial.workflow.title') }}</h2>
+        <PublishChecklist v-if="checklist !== undefined" :items="checklist" />
+        <div class="flex flex-wrap gap-2">
+          <Button
+            v-for="action in steps"
+            :id="stepButtonId(action)"
+            :key="action"
+            type="button"
+            :variant="action === 'return' || action === 'retire' ? 'outline' : 'default'"
+            :disabled="stepping !== undefined"
+            @click="startStep(action)"
+          >
+            {{ t(`editorial.workflow.${action}`) }}
+          </Button>
+        </div>
+      </section>
       <section aria-labelledby="course-version-chapters" class="flex flex-col gap-4">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <h2 id="course-version-chapters">{{ t('editorial.chapters.title') }}</h2>
@@ -208,6 +382,22 @@ async function confirmRemove(chapter: EditorialChapterDto) {
           </template>
         </EmptyState>
       </section>
+      <ConfirmWorkflowDialog
+        :step="confirming"
+        :number="Number(version.number)"
+        :title="version.title"
+        :pending="stepping !== undefined"
+        @confirm="confirmStep"
+        @cancel="cancelDialog"
+        @closed="dialogClosed"
+      />
+      <ReturnVersionDialog
+        :open="returning"
+        :pending="stepping !== undefined"
+        :on-return="returnVersion"
+        @cancel="cancelDialog"
+        @closed="dialogClosed"
+      />
       <template v-if="editable">
         <Dialog :open="form !== undefined" @update:open="(open) => !open && !chapterUploading && (form = undefined)">
           <DialogContent class="sm:max-w-2xl" :aria-describedby="undefined" :close-disabled="chapterUploading">
