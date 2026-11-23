@@ -1,9 +1,11 @@
 using System.Net;
 using System.Security.Claims;
+using System.Text;
 using System.Text.Json;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Api.Endpoints;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.ReturnToDraft;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -14,10 +16,40 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersion
 /// <summary>
 /// Every workflow step on a version resolves the calling editor's person first, review 6012816888 (3): a caller whose
 /// token names no person is refused with <c>editorial.identity-incomplete</c> before anything is dispatched, on return
-/// as on submit and publish. Each endpoint's request delegate is invoked directly, with authorization already passed.
+/// as on submit and publish. A return carries its reason in the body, which the endpoint turns into a
+/// <c>ReturnReason</c> before it dispatches, refusing one the caller got wrong with <c>editorial.invalid-return-reason</c>
+/// (#181). Each endpoint's request delegate is invoked directly, with authorization already passed.
 /// </summary>
 public class WorkflowEndpointsTests
 {
+    private const string AReason = """{"reason":"Kapitel 2 braucht eine Quelle."}""";
+
+    private const string Json = "application/json";
+
+    /// <summary>
+    /// A body the endpoint cannot turn into a reason, each with the content type it is sent with: no reason, a blank one,
+    /// one a character longer than the maximum, one holding RLO or an unpaired surrogate (escaped in the JSON); an empty
+    /// body, malformed JSON, JSON that is no request object (<c>null</c>, <c>[]</c>, a number as the reason); a reason
+    /// sent with no content type, in UTF-16 or Latin-1 as its charset says, and bytes that are not UTF-8 (#181, S2).
+    /// </summary>
+    public static TheoryData<string?, byte[]> WrongReasons =>
+    [
+        (Json, Utf8("{}")),
+        (Json, Utf8("""{"reason":"   "}""")),
+        (Json, Utf8($$"""{"reason":"{{new string('a', 1001)}}"}""")),
+        (Json, Utf8("""{"reason":"a\u202Eb"}""")),
+        (Json, Utf8("""{"reason":"a\ud800b"}""")),
+        (Json, []),
+        (Json, Utf8("""{"reason":"Quelle fehlt.""")),
+        (Json, Utf8("null")),
+        (Json, Utf8("[]")),
+        (Json, Utf8("""{"reason":5}""")),
+        (null, Utf8(AReason)),
+        ("application/json; charset=utf-16", Encoding.Unicode.GetBytes(AReason)),
+        ("application/json; charset=latin1", Encoding.Latin1.GetBytes(AReason)),
+        (Json, [.. Utf8("""{"reason":"a"""), 0xFF, 0xFE, .. Utf8("""b"}""")]),
+    ];
+
     [Theory]
     [InlineData("submit")]
     [InlineData("publish")]
@@ -36,7 +68,71 @@ public class WorkflowEndpointsTests
         await dispatcher.DidNotReceive().SendAsync(Arg.Any<ICommand<Result<Unit, ApiError>>>(), Arg.Any<CancellationToken>());
     }
 
-    private static async Task<(int Status, string? Code)> PostAsync(string step, ClaimsPrincipal user, IDispatcher dispatcher)
+    [Theory]
+    [MemberData(nameof(WrongReasons))]
+    public async Task A_return_with_a_reason_the_caller_got_wrong_is_refused_before_it_is_dispatched(string? contentType, byte[] body)
+    {
+        var dispatcher = Dispatcher();
+        var sent = $"{contentType ?? "no content type"}: {Convert.ToHexString(body)}";
+
+        var (status, code) = await PostAsync("return", Editor(), dispatcher, contentType, body);
+
+        status.ShouldBe((int)HttpStatusCode.BadRequest, $"POST …/return with {sent}");
+        code.ShouldBe("editorial.invalid-return-reason", $"POST …/return with {sent}");
+        await dispatcher.DidNotReceive().SendAsync(Arg.Any<ICommand<Result<Unit, ApiError>>>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>The caller's person is known before the body is read: one without a person is refused as such, whatever the body.</summary>
+    [Theory]
+    [InlineData(Json, "{}")]
+    [InlineData(Json, "{\"reason\":")]
+    [InlineData("text/plain", "{\"reason\":\"x\"}")]
+    [InlineData(null, "")]
+    public async Task A_caller_without_a_person_who_sends_a_wrong_reason_is_refused_as_without_a_person(string? contentType, string body)
+    {
+        var dispatcher = Dispatcher();
+        var withoutPerson = new ClaimsPrincipal(new ClaimsIdentity([new Claim("name", "Erika Editor")], authenticationType: "Bearer"));
+
+        var (status, code) = await PostAsync("return", withoutPerson, dispatcher, contentType, Utf8(body));
+
+        status.ShouldBe((int)HttpStatusCode.Forbidden, $"POST …/return with {contentType ?? "no content type"}: {body}");
+        code.ShouldBe("editorial.identity-incomplete");
+        await dispatcher.DidNotReceive().SendAsync(Arg.Any<ICommand<Result<Unit, ApiError>>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task A_return_dispatches_the_trimmed_reason()
+    {
+        var dispatcher = Dispatcher();
+
+        var (status, _) = await PostAsync("return", Editor(), dispatcher, Json, Utf8("""{"reason":"  Quelle fehlt. "}"""));
+
+        status.ShouldBe((int)HttpStatusCode.OK);
+        await dispatcher.Received(1).SendAsync(
+            Arg.Is<ICommand<Result<Unit, ApiError>>>(command => command is ReturnToDraft && ((ReturnToDraft)command).Reason.Value == "Quelle fehlt."),
+            Arg.Any<CancellationToken>());
+    }
+
+    private static byte[] Utf8(string text) => Encoding.UTF8.GetBytes(text);
+
+    private static IDispatcher Dispatcher()
+    {
+        var dispatcher = Substitute.For<IDispatcher>();
+        dispatcher.SendAsync(Arg.Any<ICommand<Result<Unit, ApiError>>>(), Arg.Any<CancellationToken>())
+            .Returns(Result<Unit, ApiError>.Success(Unit.Value));
+        return dispatcher;
+    }
+
+    /// <summary>A signed-in editor whose token names their person.</summary>
+    private static ClaimsPrincipal Editor() =>
+        new(new ClaimsIdentity([new Claim("sub", Guid.CreateVersion7().ToString()), new Claim("name", "Erika Editor")], authenticationType: "Bearer"));
+
+    /// <summary>
+    /// Posts the step; a return carries <paramref name="body"/> (a reason by default) as <paramref name="contentType"/>,
+    /// with no content type header when that is null, every other step no body.
+    /// </summary>
+    private static async Task<(int Status, string? Code)> PostAsync(
+        string step, ClaimsPrincipal user, IDispatcher dispatcher, string? contentType = Json, byte[]? body = null)
     {
         var builder = WebApplication.CreateSlimBuilder();
         builder.Services.AddSingleton(dispatcher);
@@ -47,15 +143,23 @@ public class WorkflowEndpointsTests
             .OfType<RouteEndpoint>()
             .Single(candidate => candidate.RoutePattern.RawText == $"/course-versions/{{id:guid}}/{step}");
 
-        using var body = new MemoryStream();
+        using var response = new MemoryStream();
         var context = new DefaultHttpContext { RequestServices = app.Services, User = user };
         context.Request.Method = HttpMethods.Post;
         context.Request.RouteValues["id"] = Guid.CreateVersion7().ToString();
-        context.Response.Body = body;
+        if (step == "return")
+        {
+            var bytes = body ?? Utf8(AReason);
+            context.Request.ContentType = contentType;
+            context.Request.ContentLength = bytes.Length;
+            context.Request.Body = new MemoryStream(bytes);
+        }
+
+        context.Response.Body = response;
 
         await endpoint.RequestDelegate!(context);
 
-        return (context.Response.StatusCode, CodeOf(body));
+        return (context.Response.StatusCode, CodeOf(response));
     }
 
     private static string? CodeOf(MemoryStream body)

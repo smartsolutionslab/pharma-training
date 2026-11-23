@@ -287,7 +287,7 @@ Alle Pfade beginnen mit dem Modulnamen; der Edge leitet danach weiter. Kein Serv
 | editorial | `POST …/{id}/uploads` | Redaktion | Upload-URL für PDF/Video direkt in den Blob Storage |
 | editorial | `PUT …/{id}/blueprint`, `POST …/{id}/test-draft` | Redaktion | Testvorgaben, KI-Entwurf (E3, E5) |
 | editorial | `POST/PUT/DELETE …/{id}/questions`, `POST …/questions/{qid}/approve` | Redaktion | Fragen pflegen und freigeben (E2, E7) |
-| editorial | `POST …/{id}/submit`, `…/return`, `…/publish`, `…/retire` | Redaktion | Workflow (E4) |
+| editorial | `POST …/{id}/submit`, `…/return` (Body: `reason`), `…/publish`, `…/retire`; `GET …/{id}/returns` | Redaktion | Workflow (E4), Rückgaben mit Grund |
 | catalog | `GET /catalog/courses` | Leitung | Veröffentlichte Schulungen zum Zuweisen |
 | catalog | `GET /catalog/course-versions/{id}` | Mitglied | Inhalt für den Player (ohne Fragen) |
 | compliance | `POST /compliance/pharmacies/{id}/assignments` | Leitung | Zuweisen an mehrere Mitarbeiter (C1, C2) |

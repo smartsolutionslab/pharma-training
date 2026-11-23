@@ -424,8 +424,8 @@ public class CourseVersionCoverageTests
         var draft = Draft();
         var inReview = InReview();
 
-        var fromDraft = draft.ReturnToDraft(Reviewer, Now);
-        var fromReview = inReview.ReturnToDraft(Reviewer, Now);
+        var fromDraft = draft.ReturnToDraft(Reviewer, ReturnReason.From("Kapitel 2 braucht eine Quelle."), Now);
+        var fromReview = inReview.ReturnToDraft(Reviewer, ReturnReason.From("Kapitel 2 braucht eine Quelle."), Now);
 
         fromDraft.Error.Value.ShouldBe(new NotInReview(draft.Id, CourseVersionStatus.Draft));
         fromDraft.Error.Value.ShouldBeOfType<NotInReview>().Code.ShouldBe("editorial.not-in-review");

@@ -6,24 +6,32 @@ using static SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVers
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersions;
 
 /// <summary>
-/// Returning a version in review to draft records who returned it and when, and raises <see cref="CourseVersionReturned"/>
-/// with the version and that person (ADR 0007, Consequences).
+/// Returning a version in review to draft hands back a <see cref="CourseVersionReturn"/>, the record of who returned it,
+/// when and why; the version keeps the latest editor and time, and raises <see cref="CourseVersionReturned"/> with the
+/// reason (#181). A later return yields a record of its own and changes none before it.
 /// </summary>
 public class ReturnRecordsTests
 {
     private static readonly Timestamp Later = Timestamp.From(Now.Value.AddHours(2));
+    private static readonly ReturnReason Reason = ReturnReason.From("Kapitel 2 braucht eine Quelle.");
+    private static readonly ReturnReason OtherReason = ReturnReason.From("Frage 1 ist mehrdeutig.");
 
     [Fact]
-    public void Returning_records_who_returned_and_when_and_raises_returned()
+    public void Returning_records_who_when_and_why_and_raises_returned()
     {
         var version = InReview();
 
-        version.ReturnToDraft(Reviewer, Later).IsSuccess.ShouldBeTrue();
+        var returned = version.ReturnToDraft(Reviewer, Reason, Later);
 
+        returned.IsSuccess.ShouldBeTrue();
+        returned.Value.Version.ShouldBe(version.Id);
+        returned.Value.ReturnedBy.ShouldBe(Reviewer);
+        returned.Value.ReturnedAt.ShouldBe(Later);
+        returned.Value.Reason.ShouldBe(Reason);
         version.Status.ShouldBe(CourseVersionStatus.Draft);
         version.ReturnedBy.ShouldBe(Reviewer);
         version.ReturnedAt.ShouldBe(Later);
-        version.DomainEvents.OfType<CourseVersionReturned>().ShouldHaveSingleItem().ShouldBe(new CourseVersionReturned(version.Id, Reviewer));
+        version.DomainEvents.OfType<CourseVersionReturned>().ShouldHaveSingleItem().ShouldBe(new CourseVersionReturned(version.Id, Reviewer, Reason));
     }
 
     [Fact]
@@ -37,11 +45,11 @@ public class ReturnRecordsTests
     }
 
     [Fact]
-    public void A_refused_return_records_no_one_and_raises_nothing()
+    public void A_refused_return_yields_no_record_records_no_one_and_raises_nothing()
     {
         var version = DraftWithChapter(out _);
 
-        var returned = version.ReturnToDraft(Reviewer, Later);
+        var returned = version.ReturnToDraft(Reviewer, Reason, Later);
 
         returned.IsFailure.ShouldBeTrue();
         CourseVersionFailures.From(returned.Error).Code.ShouldBe("editorial.not-in-review");
@@ -56,24 +64,31 @@ public class ReturnRecordsTests
     {
         var version = InReview();
 
-        version.ReturnToDraft(Author, Later).IsSuccess.ShouldBeTrue();
+        version.ReturnToDraft(Author, Reason, Later).IsSuccess.ShouldBeTrue();
 
         version.ReturnedBy.ShouldBe(Author);
     }
 
-    /// <summary>A version returned, resubmitted and returned again names the latest editor who returned it, and raises an event each time.</summary>
+    /// <summary>A version returned, resubmitted and returned again yields a second record; the first keeps who, when and why.</summary>
     [Fact]
-    public void A_second_return_records_the_latest_editor()
+    public void A_second_return_yields_a_second_record_and_leaves_the_first_as_it_was()
     {
         var version = InReview();
-        version.ReturnToDraft(Reviewer, Now).IsSuccess.ShouldBeTrue();
+        var first = version.ReturnToDraft(Reviewer, Reason, Now).Value;
         version.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
 
-        version.ReturnToDraft(Approver, Later).IsSuccess.ShouldBeTrue();
+        var second = version.ReturnToDraft(Approver, OtherReason, Later).Value;
 
+        second.Id.ShouldNotBe(first.Id);
+        first.ReturnedBy.ShouldBe(Reviewer);
+        first.Reason.ShouldBe(Reason);
+        first.ReturnedAt.ShouldBe(Now);
+        second.ReturnedBy.ShouldBe(Approver);
+        second.Reason.ShouldBe(OtherReason);
+        second.ReturnedAt.ShouldBe(Later);
         version.ReturnedBy.ShouldBe(Approver);
         version.ReturnedAt.ShouldBe(Later);
-        PersonId[] returners = [Reviewer, Approver];
-        version.DomainEvents.OfType<CourseVersionReturned>().Select(returned => returned.ReturnedBy).ShouldBe(returners);
+        ReturnReason[] reasons = [Reason, OtherReason];
+        version.DomainEvents.OfType<CourseVersionReturned>().Select(returned => returned.Reason).ShouldBe(reasons);
     }
 }
