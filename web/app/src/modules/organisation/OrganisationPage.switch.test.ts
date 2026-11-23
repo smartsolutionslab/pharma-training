@@ -172,7 +172,11 @@ const uferWrites = () => writesOf(fetch).filter(({ path }) => path.includes(ufer
 
 test('an invitation refused only after the page switched to another pharmacy is not shown there', async () => {
   let answer: (response: Response) => void = () => undefined;
-  host.invite = () => new Promise<Response>((resolve) => (answer = resolve));
+  let asked = false;
+  host.invite = () => {
+    asked = true;
+    return new Promise<Response>((resolve) => (answer = resolve));
+  };
   const { user, store } = await renderOnMarkt();
   await waitFor(() => expect(inviteButton()).toBeEnabled());
   await user.click(inviteButton());
@@ -187,6 +191,8 @@ test('an invitation refused only after the page switched to another pharmacy is 
 
   store.choose(ufer.id);
   await showingUfer();
+  // The form validates for a few milliseconds before it sends (vee-validate's debounce): answer once it has.
+  await vi.waitFor(() => expect(asked).toBe(true));
   answer(problem(409, 'organisation.already-member-or-invited', 'x'));
 
   await vi.waitFor(() => expect(notify.failure).toHaveBeenCalled());
@@ -197,7 +203,11 @@ test('an invitation refused only after the page switched to another pharmacy is 
 
 test('a change refused only after the page switched to another pharmacy is not shown there', async () => {
   let answer: (response: Response) => void = () => undefined;
-  host.change = () => new Promise<Response>((resolve) => (answer = resolve));
+  let asked = false;
+  host.change = () => {
+    asked = true;
+    return new Promise<Response>((resolve) => (answer = resolve));
+  };
   const { user, store } = await renderOnMarkt();
   await user.click(await changeButton(anna));
   const dialog = within(await screen.findByRole('dialog', { name: t('organisation.team.change.title') }));
@@ -205,6 +215,8 @@ test('a change refused only after the page switched to another pharmacy is not s
 
   store.choose(ufer.id);
   await showingUfer();
+  // The form validates for a few milliseconds before it sends (vee-validate's debounce): answer once it has.
+  await vi.waitFor(() => expect(asked).toBe(true));
   answer(problem(409, 'organisation.last-manager', 'x'));
 
   await vi.waitFor(() => expect(notify.failure).toHaveBeenCalled());
