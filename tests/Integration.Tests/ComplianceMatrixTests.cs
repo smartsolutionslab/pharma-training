@@ -7,9 +7,10 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 
 /// <summary>
 /// The team matrix through the edge, <c>GET /compliance/pharmacies/{id}/matrix</c> (#34): the pharmacy's active members
-/// by the courses assigned there, each cell the state its latest non-cancelled assignment shows today in German time,
-/// and the compliance rate, the share of active assignments (open, in progress, locked, overdue) that are not overdue,
-/// over every filtered row, in total and per course; only for a caller whose current role there grants viewing the
+/// by the courses with a non-cancelled assignment there, each cell the state its latest non-cancelled assignment shows
+/// today in German time and, once completed, the day it stays valid until, and the compliance rate, the share of cells
+/// that are compliant (open, in progress or locked, or completed and still valid), over every filtered row, in total and
+/// per course; only for a caller whose current role there grants viewing the
 /// team's compliance (docs/adr/0003). Each test has a pharmacy of its own, where developer is the manager "Mara Manager",
 /// employee-a the Pta "Anna Arndt" and employee-b the Pka "Berta Braun"; assignments are made through the edge and moved
 /// on in Compliance's table, since the events that complete them belong to other issues.
@@ -36,8 +37,8 @@ public class ComplianceMatrixTests(AspireFixture aspire)
         var matrix = await MatrixOfAsync(response, cancellationToken);
         matrix.Courses.ShouldBe(
         [
-            new MatrixCourse(scenario.FirstAid.Id, scenario.FirstAid.Title, 1, 0, 1.0),
-            new MatrixCourse(scenario.Hygiene.Id, scenario.Hygiene.Title, 2, 1, 0.5),
+            new MatrixCourse(scenario.FirstAid.Id, scenario.FirstAid.Title, 2, 2, 0, 1.0),
+            new MatrixCourse(scenario.Hygiene.Id, scenario.Hygiene.Title, 3, 2, 1, 2d / 3d),
         ]);
         matrix.Members.Items.Select(row => (row.PersonId, row.Name, row.JobFunction)).ShouldBe(
         [
@@ -47,22 +48,23 @@ public class ComplianceMatrixTests(AspireFixture aspire)
         ]);
         matrix.Members.Items[0].Cells.ShouldBe(
         [
-            new MatrixCell(scenario.FirstAid.Id, scenario.AnnaFirstAid, "CompletedLate", scenario.Yesterday, scenario.CompletedOn),
-            new MatrixCell(scenario.Hygiene.Id, scenario.AnnaHygiene, "InProgress", scenario.InAMonth, null),
+            new MatrixCell(scenario.FirstAid.Id, scenario.AnnaFirstAid, "CompletedLate", scenario.Yesterday, scenario.CompletedOn, scenario.CompletedOn.AddMonths(24)),
+            new MatrixCell(scenario.Hygiene.Id, scenario.AnnaHygiene, "InProgress", scenario.InAMonth, null, null),
         ]);
         matrix.Members.Items[1].Cells.ShouldBe(
         [
-            new MatrixCell(scenario.FirstAid.Id, scenario.BertaFirstAid, "Open", scenario.InAMonth, null),
-            new MatrixCell(scenario.Hygiene.Id, scenario.BertaHygiene, "Overdue", scenario.Yesterday, null),
+            new MatrixCell(scenario.FirstAid.Id, scenario.BertaFirstAid, "Open", scenario.InAMonth, null, null),
+            new MatrixCell(scenario.Hygiene.Id, scenario.BertaHygiene, "Overdue", scenario.Yesterday, null, null),
         ]);
         matrix.Members.Items[2].Cells.ShouldBe(
         [
-            new MatrixCell(scenario.Hygiene.Id, scenario.MaraHygiene, "Completed", scenario.InAMonth, scenario.CompletedOn),
+            new MatrixCell(scenario.Hygiene.Id, scenario.MaraHygiene, "Completed", scenario.InAMonth, scenario.CompletedOn, scenario.CompletedOn.AddMonths(24)),
         ]);
         matrix.Members.TotalCount.ShouldBe(3);
-        matrix.ActiveAssignments.ShouldBe(3);
+        matrix.Assignments.ShouldBe(5);
+        matrix.CompliantAssignments.ShouldBe(4);
         matrix.OverdueAssignments.ShouldBe(1);
-        matrix.ComplianceRate.ShouldBe(2d / 3d);
+        matrix.ComplianceRate.ShouldBe(0.8);
     }
 
     [Fact]
@@ -80,12 +82,36 @@ public class ComplianceMatrixTests(AspireFixture aspire)
         using var response = await manager.GetAsync(MatrixUri(setting.Pharmacy), cancellationToken);
 
         var matrix = await MatrixOfAsync(response, cancellationToken);
-        RowOf(matrix, setting.EmployeeA.PersonId).Cells.ShouldHaveSingleItem().ShouldBe(new MatrixCell(course.Id, dueToday, "Open", today, null));
-        RowOf(matrix, setting.EmployeeB.PersonId).Cells.ShouldHaveSingleItem().ShouldBe(new MatrixCell(course.Id, dueYesterday, "Overdue", today.AddDays(-1), null));
+        RowOf(matrix, setting.EmployeeA.PersonId).Cells.ShouldHaveSingleItem().ShouldBe(new MatrixCell(course.Id, dueToday, "Open", today, null, null));
+        RowOf(matrix, setting.EmployeeB.PersonId).Cells.ShouldHaveSingleItem().ShouldBe(new MatrixCell(course.Id, dueYesterday, "Overdue", today.AddDays(-1), null, null));
     }
 
     [Fact]
-    public async Task Only_courses_assigned_in_this_pharmacy_appear_and_one_only_cancelled_here_stays_a_column_without_cells()
+    public async Task A_completion_past_its_validity_counts_as_not_compliant()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var setting = await PharmacyAsync(cancellationToken);
+        var course = await CourseAsync("Hygiene", cancellationToken);
+        using var manager = await aspire.CreateHostClientAsync("developer");
+        var now = TimeProvider.System.GetUtcNow();
+        var inAMonth = DayInGermany(now).AddDays(30);
+        var expired = await AssignAsync(manager, setting.Pharmacy, course.Id, setting.EmployeeA.PersonId, inAMonth, cancellationToken);
+        var completedAt = now.AddMonths(-25);
+        await SetAsync(expired, "status = 'Completed', completed_at = @at, certificate_id = @certificate", cancellationToken, ("at", completedAt), ("certificate", Guid.CreateVersion7()));
+        await AssignAsync(manager, setting.Pharmacy, course.Id, setting.EmployeeB.PersonId, inAMonth, cancellationToken);
+
+        using var response = await manager.GetAsync(MatrixUri(setting.Pharmacy), cancellationToken);
+
+        var matrix = await MatrixOfAsync(response, cancellationToken);
+        var completedOn = DayInGermany(completedAt);
+        RowOf(matrix, setting.EmployeeA.PersonId).Cells.ShouldHaveSingleItem().ShouldBe(
+            new MatrixCell(course.Id, expired, "Completed", inAMonth, completedOn, completedOn.AddMonths(24)));
+        matrix.Courses.ShouldHaveSingleItem().ShouldBe(new MatrixCourse(course.Id, course.Title, 2, 1, 0, 0.5));
+        (matrix.Assignments, matrix.CompliantAssignments, matrix.OverdueAssignments, matrix.ComplianceRate).ShouldBe((2, 1, 0, 0.5));
+    }
+
+    [Fact]
+    public async Task Only_courses_assigned_in_this_pharmacy_appear_and_one_only_cancelled_here_is_no_column()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var setting = await PharmacyAsync(cancellationToken);
@@ -102,10 +128,11 @@ public class ComplianceMatrixTests(AspireFixture aspire)
         using var response = await manager.GetAsync(MatrixUri(setting.Pharmacy), cancellationToken);
 
         var matrix = await MatrixOfAsync(response, cancellationToken);
-        matrix.Courses.ShouldHaveSingleItem().ShouldBe(new MatrixCourse(cancelledHere.Id, cancelledHere.Title, 0, 0, null));
+        matrix.Courses.ShouldBeEmpty();
         matrix.Members.Items.Count.ShouldBe(3);
         matrix.Members.Items.ShouldAllBe(row => row.Cells.Count == 0);
-        matrix.ActiveAssignments.ShouldBe(0);
+        matrix.Assignments.ShouldBe(0);
+        matrix.CompliantAssignments.ShouldBe(0);
         matrix.OverdueAssignments.ShouldBe(0);
         matrix.ComplianceRate.ShouldBeNull();
     }
@@ -162,8 +189,8 @@ public class ComplianceMatrixTests(AspireFixture aspire)
         paged.Members.Page.ShouldBe(2);
         paged.Members.PageSize.ShouldBe(2);
         paged.Courses.ShouldBe(whole.Courses);
-        (paged.ActiveAssignments, paged.OverdueAssignments, paged.ComplianceRate).ShouldBe((whole.ActiveAssignments, whole.OverdueAssignments, whole.ComplianceRate));
-        (paged.ActiveAssignments, paged.OverdueAssignments).ShouldBe((3, 1));
+        (paged.Assignments, paged.CompliantAssignments, paged.OverdueAssignments, paged.ComplianceRate).ShouldBe((whole.Assignments, whole.CompliantAssignments, whole.OverdueAssignments, whole.ComplianceRate));
+        (paged.Assignments, paged.CompliantAssignments, paged.OverdueAssignments).ShouldBe((5, 4, 1));
     }
 
     [Fact]
@@ -180,10 +207,11 @@ public class ComplianceMatrixTests(AspireFixture aspire)
         matrix.Members.TotalCount.ShouldBe(1);
         matrix.Courses.ShouldBe(
         [
-            new MatrixCourse(scenario.FirstAid.Id, scenario.FirstAid.Title, 0, 0, null),
-            new MatrixCourse(scenario.Hygiene.Id, scenario.Hygiene.Title, 1, 0, 1.0),
+            new MatrixCourse(scenario.FirstAid.Id, scenario.FirstAid.Title, 1, 1, 0, 1.0),
+            new MatrixCourse(scenario.Hygiene.Id, scenario.Hygiene.Title, 1, 1, 0, 1.0),
         ]);
-        matrix.ActiveAssignments.ShouldBe(1);
+        matrix.Assignments.ShouldBe(2);
+        matrix.CompliantAssignments.ShouldBe(2);
         matrix.OverdueAssignments.ShouldBe(0);
         matrix.ComplianceRate.ShouldBe(1.0);
     }
@@ -195,7 +223,7 @@ public class ComplianceMatrixTests(AspireFixture aspire)
         var scenario = await ScenarioAsync(cancellationToken);
         using var manager = await aspire.CreateHostClientAsync("developer");
         using var before = await manager.GetAsync(MatrixUri(scenario.Setting.Pharmacy), cancellationToken);
-        (await MatrixOfAsync(before, cancellationToken)).ActiveAssignments.ShouldBe(3);
+        (await MatrixOfAsync(before, cancellationToken)).Assignments.ShouldBe(5);
 
         await DeliverAsync(EndedType, Ended(scenario.Setting.EmployeeB), cancellationToken);
         using var after = await manager.GetAsync(MatrixUri(scenario.Setting.Pharmacy), cancellationToken);
@@ -205,10 +233,11 @@ public class ComplianceMatrixTests(AspireFixture aspire)
         matrix.Members.TotalCount.ShouldBe(2);
         matrix.Courses.ShouldBe(
         [
-            new MatrixCourse(scenario.FirstAid.Id, scenario.FirstAid.Title, 0, 0, null),
-            new MatrixCourse(scenario.Hygiene.Id, scenario.Hygiene.Title, 1, 0, 1.0),
+            new MatrixCourse(scenario.FirstAid.Id, scenario.FirstAid.Title, 1, 1, 0, 1.0),
+            new MatrixCourse(scenario.Hygiene.Id, scenario.Hygiene.Title, 2, 2, 0, 1.0),
         ]);
-        matrix.ActiveAssignments.ShouldBe(1);
+        matrix.Assignments.ShouldBe(3);
+        matrix.CompliantAssignments.ShouldBe(3);
         matrix.OverdueAssignments.ShouldBe(0);
         matrix.ComplianceRate.ShouldBe(1.0);
     }
@@ -349,15 +378,15 @@ public class ComplianceMatrixTests(AspireFixture aspire)
         DateOnly Yesterday,
         DateOnly CompletedOn);
 
-    private sealed record MatrixAnswer(IReadOnlyList<MatrixCourse> Courses, MatrixPage Members, int ActiveAssignments, int OverdueAssignments, double? ComplianceRate);
+    private sealed record MatrixAnswer(IReadOnlyList<MatrixCourse> Courses, MatrixPage Members, int Assignments, int CompliantAssignments, int OverdueAssignments, double? ComplianceRate);
 
-    private sealed record MatrixCourse(Guid CourseId, string Title, int ActiveAssignments, int OverdueAssignments, double? ComplianceRate);
+    private sealed record MatrixCourse(Guid CourseId, string Title, int Assignments, int CompliantAssignments, int OverdueAssignments, double? ComplianceRate);
 
     private sealed record MatrixPage(IReadOnlyList<MatrixRow> Items, int TotalCount, int Page, int PageSize);
 
     private sealed record MatrixRow(Guid PersonId, string Name, string JobFunction, IReadOnlyList<MatrixCell> Cells);
 
-    private sealed record MatrixCell(Guid CourseId, Guid AssignmentId, string State, DateOnly DueDate, DateOnly? LastCompletedOn);
+    private sealed record MatrixCell(Guid CourseId, Guid AssignmentId, string State, DateOnly DueDate, DateOnly? LastCompletedOn, DateOnly? ValidUntil);
 
     private sealed record AssignmentAnswer(IReadOnlyList<AssignedLearner> Assigned, IReadOnlyList<RefusedLearner> Refused);
 
