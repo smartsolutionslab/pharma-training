@@ -40,7 +40,8 @@ vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(
 
 const signedUrl = 'https://storage.example/media/merkblatt.pdf?sig=pdf';
 const renewedUrl = 'https://storage.example/media/merkblatt.pdf?sig=renewed';
-let issued: string;
+/** The URL the host issues for the n-th read of the media, counted from 1. */
+let issuing: (read: number) => string;
 
 /** Gives getDocument the document to answer with. */
 function serving(document: FakeDocument) {
@@ -52,12 +53,12 @@ function serving(document: FakeDocument) {
 
 beforeEach(() => {
   pdfjs.getDocument.mockReset();
-  issued = signedUrl;
+  issuing = () => signedUrl;
   host.mockImplementation(async (input) => {
     const url = new URL(String(input), 'http://localhost');
     if (url.pathname === `/api/learning/media/${handout.chapterId}`) {
       const answer: LearningMediaUrlDto = {
-        url: issued,
+        url: issuing(mediaReads()),
         expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
         contentType: 'application/pdf',
         kind: 'Pdf',
@@ -145,11 +146,11 @@ test('the page indicator is a polite live region, so a page turned is heard', as
 });
 
 test('a page counts as shown once it is drawn, not before', async () => {
-  const { document, draw } = fakeDocument(2, { holdDrawing: true });
+  const { document, draw, rendered } = fakeDocument(2, { holdDrawing: true });
   serving(document);
   const { emitted } = renderChapter();
   await screen.findByText('Seite 1 von 2');
-  await waitFor(() => expect(pdfjs.getDocument).toHaveBeenCalled());
+  await waitFor(() => expect(rendered).toEqual([1]));
 
   expect(progressOf(emitted)).toEqual([]);
   draw(1);
@@ -163,12 +164,12 @@ test('a file that fails to open reads its signed URL again and opens the new one
     promise: url === signedUrl ? Promise.reject(new Error('403 from storage')) : Promise.resolve(document),
     destroy: async () => undefined,
   }));
-  issued = signedUrl;
+  // The first URL has expired; the host issues a fresh one when it is read again.
+  issuing = (read) => (read === 1 ? signedUrl : renewedUrl);
   renderChapter();
-  await waitFor(() => expect(pdfjs.getDocument).toHaveBeenCalledWith(expect.objectContaining({ url: signedUrl })));
-  issued = renewedUrl;
 
   expect(await screen.findByText('Seite 1 von 2')).toBeVisible();
+  expect(pdfjs.getDocument).toHaveBeenCalledWith(expect.objectContaining({ url: signedUrl }));
   expect(pdfjs.getDocument).toHaveBeenLastCalledWith(expect.objectContaining({ url: renewedUrl }));
   expect(screen.queryByRole('alert')).toBeNull();
 });
