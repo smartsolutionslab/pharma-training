@@ -9,14 +9,14 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application.Consum
 /// <summary>
 /// Puts the learner's open assignments of the course in progress when Learning started a session, in every pharmacy.
 /// It does not deduplicate on <c>Metadata.EventIdentifier</c>: the assignment applies the event by when it happened
-/// (<c>Metadata.OccurredAt</c>, docs/adr/0019), so a second delivery, a replay and a reordering change nothing by
+/// (<c>Metadata.OccurredAt</c>, docs/adr/0023), so a second delivery, a replay and a reordering change nothing by
 /// themselves, which is stronger, since it also absorbs an old event under a new identifier. A save that lost a race
 /// throws, and the retry reloads and applies it again.
 /// It also keeps a copy of the start, whether or not the person has an active assignment of the course, from which the
 /// dashboard tells the running session's version (docs/adr/0024); that copy is deduplicated on the session id, and two
 /// deliveries at once race only on its primary key: the loser throws and its retry finds the copy.
 /// </summary>
-public sealed class LearningSessionStartedV1Consumer(IAssignmentStore assignments, ILearnerProgressStore progress, IComplianceUnitOfWork unitOfWork)
+public sealed class LearningSessionStartedV1Consumer(IAssignmentStore assignments, ILearnerProgressStore progress, IComplianceUnitOfWork unitOfWork, TimeProvider time)
 {
     public async Task HandleAsync(LearningSessionStartedV1 message, CancellationToken cancellationToken)
     {
@@ -29,7 +29,10 @@ public sealed class LearningSessionStartedV1Consumer(IAssignmentStore assignment
         var session = LearningSessionId.From(message.SessionId);
         var person = PersonId.From(message.PersonId);
         var course = CourseId.From(message.CourseId);
-        var at = Timestamp.From(message.Metadata.OccurredAt);
+        // A publisher's clock ahead of Compliance's would otherwise hold off every later lock or unlock: an event
+        // stamped in the future counts as having happened when it was received (docs/adr/0023); the copy keeps that too.
+        var received = time.GetUtcNow();
+        var at = Timestamp.From(message.Metadata.OccurredAt < received ? message.Metadata.OccurredAt : received);
         var kept = false;
         if (!await progress.HasSessionStartAsync(session, cancellationToken))
         {

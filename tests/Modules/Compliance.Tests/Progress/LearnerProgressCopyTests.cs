@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Time.Testing;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application.Consumers;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Assignments;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Courses;
@@ -131,7 +132,8 @@ public class LearnerProgressCopyTests
 
     private static DateTimeOffset At(int hoursAfterMonday) => Monday.AddHours(hoursAfterMonday);
 
-    private LearningSessionStartedV1Consumer StartedConsumer() => new(store, progress, store);
+    // Compliance's clock reads a week after Monday, later than every event these tests send (docs/adr/0023 clamps later ones).
+    private LearningSessionStartedV1Consumer StartedConsumer() => new(store, progress, store, new FakeTimeProvider(Monday.AddDays(7)));
 
     private CertificateIssuedV1Consumer CertificateConsumer() => new(store, progress, store);
 

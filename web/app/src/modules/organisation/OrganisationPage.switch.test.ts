@@ -113,3 +113,36 @@ test('a refused revoke on one pharmacy is gone once the page shows another', asy
   expect(within(invitationsSection()).queryByRole('alert')).not.toBeInTheDocument();
   expect(screen.queryByText(message)).not.toBeInTheDocument();
 });
+
+// A refusal answered only after the switch belongs to the pharmacy the action was taken in, not to the one now shown.
+test('an end refused only after the page switched to another pharmacy is not shown there', async () => {
+  let answer: (response: Response) => void = () => undefined;
+  host.end = () => new Promise<Response>((resolve) => (answer = resolve));
+  const { user, store } = await renderOnMarkt();
+  await user.click(await endButton(you));
+  await user.click(await confirmIn(t('organisation.team.end.confirm')));
+
+  store.choose(ufer.id);
+  await screen.findByText(t('organisation.team.members.empty'));
+  answer(problem(409, 'organisation.last-manager', 'x'));
+
+  await vi.waitFor(() => expect(notify.failure).toHaveBeenCalled());
+  expect(within(membersSection()).queryByRole('alert')).not.toBeInTheDocument();
+  expect(screen.queryByText(t('organisation.team.errors.lastManager'))).not.toBeInTheDocument();
+});
+
+test('a revoke refused only after the page switched to another pharmacy is not shown there', async () => {
+  let answer: (response: Response) => void = () => undefined;
+  host.revoke = () => new Promise<Response>((resolve) => (answer = resolve));
+  const { user, store } = await renderOnMarkt();
+  await user.click(await revokeButton(ben));
+  await user.click(await confirmIn(t('organisation.team.revoke.confirm')));
+
+  store.choose(ufer.id);
+  await screen.findByText(t('organisation.team.invitations.empty'));
+  answer(problem(404, 'organisation.no-open-invitation', 'x'));
+
+  await vi.waitFor(() => expect(notify.failure).toHaveBeenCalled());
+  expect(within(invitationsSection()).queryByRole('alert')).not.toBeInTheDocument();
+  expect(screen.queryByText(t('organisation.team.errors.noOpenInvitation'))).not.toBeInTheDocument();
+});
