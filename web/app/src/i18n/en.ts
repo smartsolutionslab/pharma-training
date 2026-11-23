@@ -335,6 +335,9 @@ export const en: MessageSchema = {
         invalidJobFunction: 'The job function is missing or unknown.',
         invalidMembershipRole: 'The role is missing or unknown.',
         identityIncomplete: 'Your account gives no name or valid email address. Complete your profile.',
+        invitationRenewedTooSoon: 'This invitation was only just sent. You can send it again in a few minutes.',
+        tooManyInvitationsToday:
+          'Your pharmacy has reached the maximum number of invitation emails for today. Try again tomorrow.',
       },
     },
   },

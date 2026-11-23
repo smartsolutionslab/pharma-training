@@ -20,6 +20,8 @@ const byCode: Record<string, MessageKey> = {
   'organisation.invalid-job-function': 'organisation.team.errors.invalidJobFunction',
   'organisation.invalid-membership-role': 'organisation.team.errors.invalidMembershipRole',
   'organisation.identity-incomplete': 'organisation.team.errors.identityIncomplete',
+  'organisation.invitation-renewed-too-soon': 'organisation.team.errors.invitationRenewedTooSoon',
+  'organisation.too-many-invitations-today': 'organisation.team.errors.tooManyInvitationsToday',
 };
 
 /** Each action's text when it failed for a reason the page has no words of its own for. */
