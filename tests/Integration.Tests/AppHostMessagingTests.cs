@@ -141,8 +141,7 @@ public class AppHostMessagingTests
         script.ShouldContain($"${Definitions}");
         script.ShouldContain("@@", Case.Sensitive, "The broker's entrypoint does not fill in the definitions' password placeholders.");
         script.ShouldContain("load_definitions");
-        script.ShouldContain($"unset {Definitions}");
-        script.ShouldContain("exec docker-entrypoint.sh rabbitmq-server");
+        script.ShouldContain("docker-entrypoint.sh rabbitmq-server");
     }
 
     [Fact]

@@ -124,6 +124,20 @@ public class BrokerEntrypointTests
         run.Error.ShouldContain("BROKER_USER_CATALOG");
     }
 
+    [Fact]
+    public async Task A_broker_variable_whose_name_is_not_a_shell_identifier_is_gone_as_well()
+    {
+        var environment = Valid();
+        environment["BROKER_PASSWORD_CATALOG-OLD"] = "Old-Catalog-Pass.3";
+        environment["BROKER_USER_CATALOG-OLD"] = "catalog-old";
+
+        var run = await RunAsync(environment);
+
+        run.ExitCode.ShouldBe(0, run.Error);
+        run.Variables.ShouldNotContain("BROKER_PASSWORD_CATALOG-OLD", "bash does not see the variable, so it does not unset it, and hands it on to RabbitMQ.");
+        run.Variables.ShouldNotContain("BROKER_USER_CATALOG-OLD");
+    }
+
     private static Dictionary<string, string> Valid() => new(StringComparer.Ordinal)
     {
         ["BROKER_DEFINITIONS"] = Document,

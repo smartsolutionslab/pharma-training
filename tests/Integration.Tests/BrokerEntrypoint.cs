@@ -6,7 +6,8 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// <summary>
 /// Runs the broker's entrypoint script, as the AppHost publishes it, in the broker's own image (Docker required). The
 /// image's <c>docker-entrypoint.sh</c> is replaced by a stub on the <c>PATH</c> that prints its arguments, the definitions
-/// file and the names of the variables it was handed, and starts no RabbitMQ.
+/// file and the names of the variables it was handed, as <c>env</c> lists them (bash's own <c>compgen -e</c> leaves out a
+/// name that is not a shell identifier, which still reaches the process), and starts no RabbitMQ.
 /// </summary>
 public static class BrokerEntrypoint
 {
@@ -21,7 +22,7 @@ public static class BrokerEntrypoint
         printf '%s\n' '{{Separator}}'
         cat /tmp/rabbitmq-definitions.json
         printf '\n%s\n' '{{Separator}}'
-        compgen -e
+        env | cut -d= -f1
         STUB
         chmod +x /stub/docker-entrypoint.sh
         export PATH="/stub:$PATH"

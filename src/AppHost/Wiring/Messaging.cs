@@ -43,8 +43,9 @@ public static partial class Messaging
     /// connection strings need, and needing no escape in JSON; spelled out, so no locale widens it), when two user
     /// variables name the same user, or when anything that looks like a placeholder is left. No value holds <c>@</c>, so no
     /// value can bring in another placeholder. It writes the document to the container's own layer (never the data
-    /// volume), readable by RabbitMQ's user alone, has RabbitMQ load it at boot, drops every variable that held a part of
-    /// it, the admin's password included, and starts the image's own entrypoint in its place. The image starts as root and
+    /// volume), readable by RabbitMQ's user alone, has RabbitMQ load it at boot, and starts the image's own entrypoint in its
+    /// place without the admin's password or any <c>BROKER_*</c> variable, as <c>env</c> lists them: bash does not see one
+    /// whose name is not a shell identifier, so it could not unset it, yet would hand it on. The image starts as root and
     /// its entrypoint runs RabbitMQ as the user rabbitmq.
     /// </summary>
     private const string Entrypoint = """
@@ -74,13 +75,17 @@ public static partial class Messaging
         done
         unset value users
         case "$definitions" in *@@*) refuse "The broker definitions hold a placeholder that names no variable; a placeholder is @@<VARIABLE>@@ of letters, digits and _.";; esac
+        rm -f /tmp/rabbitmq-definitions.json
         printf '%s' "$definitions" > /tmp/rabbitmq-definitions.json
         unset definitions
         printf 'load_definitions = /tmp/rabbitmq-definitions.json\n' > /etc/rabbitmq/conf.d/90-definitions.conf
         if [ "$(id -u)" = 0 ]; then chown rabbitmq:rabbitmq /tmp/rabbitmq-definitions.json /etc/rabbitmq/conf.d/90-definitions.conf; fi
-        unset BROKER_DEFINITIONS RABBITMQ_DEFAULT_PASS
-        for variable in $(compgen -e BROKER_PASSWORD_ || true) $(compgen -e BROKER_USER_ || true); do unset "$variable"; done
-        exec docker-entrypoint.sh rabbitmq-server
+        unset RABBITMQ_DEFAULT_PASS
+        drop=()
+        while IFS= read -r -d '' entry; do
+          case "${entry%%=*}" in BROKER_*) drop+=(-u "${entry%%=*}");; esac
+        done < <(env -0)
+        exec env "${drop[@]}" docker-entrypoint.sh rabbitmq-server
         """;
 
     public static MessagingBroker AddMessaging(this IDistributedApplicationBuilder builder, DeploymentSecrets secrets)
@@ -254,6 +259,6 @@ public static partial class Messaging
         $"^({string.Join('|', names.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).Select(Regex.Escape))})$";
 
     /// <summary>What a broker user's name and password may hold: URI-safe, and nothing JSON escapes (docs/adr/0011).</summary>
-    [GeneratedRegex("^[A-Za-z0-9._~-]+$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"\A[A-Za-z0-9._~-]+\z", RegexOptions.CultureInvariant)]
     private static partial Regex UriSafe();
 }
