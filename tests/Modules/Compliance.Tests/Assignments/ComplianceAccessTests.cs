@@ -109,10 +109,15 @@ public class ComplianceAccessTests
         granted.Value.Version.ShouldBe(MembershipVersion.From(2));
     }
 
+    /// <summary>
+    /// Organisation holds one active membership per person and pharmacy, so two in Compliance's copy mean an ending is
+    /// still on its way (or dead-lettered), and Compliance cannot tell which one ended. It fails closed: the capability
+    /// holds only when every one of them grants it, so a manager who ended and came back as an employee cannot assign.
+    /// </summary>
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task Either_of_two_memberships_granting_suffices(bool managerFirst)
+    public async Task Of_two_memberships_one_lacking_the_capability_withholds_it(bool managerFirst)
     {
         var store = new InMemoryMemberStore();
         if (managerFirst)
@@ -125,6 +130,20 @@ public class ComplianceAccessTests
             await ComplianceMembers.StartAsync(store, Anna, Pharmacy, MembershipRole.Employee);
             await ComplianceMembers.StartAsync(store, Anna, Pharmacy, MembershipRole.Manager);
         }
+
+        var granted = await ComplianceAccess.RequireAsync(store, Anna, Pharmacy, Capability.AssignCourses, TestContext.Current.CancellationToken);
+
+        granted.IsFailure.ShouldBeTrue("a membership that lacks the capability was outvoted by another one");
+        granted.Error.Code.ShouldBe("compliance.capability-missing");
+        granted.Error.Status.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task Two_memberships_that_both_grant_the_capability_grant_it()
+    {
+        var store = new InMemoryMemberStore();
+        await ComplianceMembers.StartAsync(store, Anna, Pharmacy, MembershipRole.Manager);
+        await ComplianceMembers.StartAsync(store, Anna, Pharmacy, MembershipRole.Manager);
 
         var granted = await ComplianceAccess.RequireAsync(store, Anna, Pharmacy, Capability.AssignCourses, TestContext.Current.CancellationToken);
 

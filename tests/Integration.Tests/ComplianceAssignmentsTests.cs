@@ -180,6 +180,33 @@ public class ComplianceAssignmentsTests(AspireFixture aspire)
         await ShouldBeRefusedAsync(response, HttpStatusCode.BadRequest, "compliance.invalid-person", cancellationToken);
     }
 
+    /// <summary>A body without a due date is refused for it, not read as 0001-01-01 and then told the date is past.</summary>
+    [Fact]
+    public async Task A_missing_due_date_is_the_callers_mistake()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var setting = await PharmacyWithCourseAsync(cancellationToken);
+        using var manager = await aspire.CreateHostClientAsync("developer");
+
+        using var response = await AssignAsync(manager, setting.Pharmacy, new { courseId = setting.Course, personIds = new[] { setting.EmployeeA, Guid.CreateVersion7() } }, cancellationToken);
+
+        await ShouldBeRefusedAsync(response, HttpStatusCode.BadRequest, "compliance.due-date-missing", cancellationToken);
+        (await CountAsync(ActiveInPharmacy, setting.Pharmacy, cancellationToken)).ShouldBe(0);
+    }
+
+    /// <summary>A body far beyond the cap is refused before its ids are mapped one by one; repeats count, as they are read.</summary>
+    [Fact]
+    public async Task A_body_with_far_more_person_ids_than_the_cap_is_refused_before_anything_else()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var manager = await aspire.CreateHostClientAsync("developer");
+        var repeated = Guid.CreateVersion7();
+
+        using var response = await AssignAsync(manager, Guid.CreateVersion7(), Request(Guid.CreateVersion7(), [.. Enumerable.Repeat(repeated, 1001)]), cancellationToken);
+
+        await ShouldBeRefusedAsync(response, HttpStatusCode.BadRequest, "compliance.too-many-learners", cancellationToken);
+    }
+
     [Fact]
     public async Task Assigning_again_reports_the_person_who_already_has_an_active_assignment()
     {
