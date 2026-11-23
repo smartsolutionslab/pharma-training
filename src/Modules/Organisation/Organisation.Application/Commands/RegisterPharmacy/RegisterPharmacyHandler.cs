@@ -16,6 +16,11 @@ public sealed class RegisterPharmacyHandler(IPharmacyStore pharmacies, IOrganisa
     {
         Ensure.That(command).IsNotNull();
 
+        if (!command.FounderEmail.IsVerified)
+        {
+            return Failure(PharmacyFailures.EmailNotVerified());
+        }
+
         var now = Timestamp.From(time.GetUtcNow());
         var pharmacy = Pharmacy.Register(
             PharmacyId.New(),
@@ -23,7 +28,7 @@ public sealed class RegisterPharmacyHandler(IPharmacyStore pharmacies, IOrganisa
             MembershipId.New(),
             command.Founder,
             command.FounderName,
-            command.FounderEmail,
+            command.FounderEmail.Value,
             command.FounderJobFunction,
             now);
         pharmacies.Add(pharmacy);
