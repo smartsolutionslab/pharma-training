@@ -105,7 +105,7 @@ public partial class RealmUsersTests(AspireFixture aspire)
         var link = VerificationLink().Match(mails[^1].Text);
         link.Success.ShouldBeTrue($"no verification link in: {mails[^1].Text}");
         using var verified = await FollowWithinKeycloakAsync(browser, new Uri(WebUtility.HtmlDecode(link.Value)), cancellationToken);
-        verified.Headers.Location?.ToString().ShouldStartWith(WebApp);
+        verified.Headers.Location.ShouldNotBeNull().ToString().ShouldStartWith(WebApp);
 
         using var afterVerifying = await PasswordGrantAsync(username, cancellationToken);
         afterVerifying.StatusCode.ShouldBe(HttpStatusCode.OK, await afterVerifying.Content.ReadAsStringAsync(cancellationToken));
