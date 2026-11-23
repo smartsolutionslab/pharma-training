@@ -1,2 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <!-- LoadQuestions: the tests stand in for an EF Core load that takes rows past the version's rules. -->
+    <InternalsVisibleTo Include="Editorial.Tests" />
+  </ItemGroup>
+
 </Project>
