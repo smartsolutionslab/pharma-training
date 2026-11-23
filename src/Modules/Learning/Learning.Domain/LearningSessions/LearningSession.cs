@@ -101,7 +101,7 @@ public sealed class LearningSession : EventSourcedAggregate<LearningSessionId>
     /// Three failed attempts (AttemptsExhausted): the chapters of the wrongly answered questions open again,
     /// and the test unlocks only once they are worked through anew. The notice names the announcement, and the session
     /// notes it in the same append, so the same lock delivered again acts once, even after its chapters were worked
-    /// through again (ADR 0020). A finished session ignores every lock; a lock naming a chapter the session does not have
+    /// through again (ADR 0025). A finished session ignores every lock; a lock naming a chapter the session does not have
     /// is refused and changes nothing.
     /// </summary>
     public Result<Unit, DomainError> ReopenChapters(ExhaustionNotice notice, IReadOnlyList<ChapterId> failedChapters, Timestamp now)

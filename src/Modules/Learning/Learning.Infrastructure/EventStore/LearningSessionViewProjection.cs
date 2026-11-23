@@ -84,7 +84,7 @@ public sealed class LearningSessionViewProjection : SingleStreamProjection<Learn
         Ensure.That(noted).IsNotNull();
         Ensure.That(view).IsNotNull();
 
-        // The view shows no notices: the note only keeps the same lock from acting twice (ADR 0020).
+        // The view shows no notices: the note only keeps the same lock from acting twice (ADR 0025).
     }
 
     private static IEnumerable<LearningSessionChapterView> Chapters(IEnumerable<ChapterId> chapters, ChapterKind kind) =>

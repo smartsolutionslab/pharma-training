@@ -10,7 +10,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Tests.Consumers;
 /// <summary>
 /// Assessment's <see cref="AttemptsExhaustedV1"/> reopens the chapters of the wrong answers (#42): once per announcement,
 /// whatever happened to the session since, never in a finished session, and a fault throws so it is retried and then
-/// dead-lettered, never dropped (ADR 0020).
+/// dead-lettered, never dropped (ADR 0025).
 /// </summary>
 public class AttemptsExhaustedV1ConsumerTests
 {

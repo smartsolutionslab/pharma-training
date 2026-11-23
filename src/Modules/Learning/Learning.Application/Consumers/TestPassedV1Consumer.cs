@@ -6,7 +6,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.Consumer
 
 /// <summary>
 /// Finishes the session when Assessment reports its test passed, at the time it was passed, from any state: the graded
-/// examination is what counts (ADR 0018), so a passed test outranks a lock that arrived before or after it (ADR 0020).
+/// examination is what counts (ADR 0018), so a passed test outranks a lock that arrived before or after it (ADR 0025).
 /// A finished session never changes again, so a second delivery or a republish under a new identifier stores nothing.
 /// Memberships and the version's retirement are not consulted. A fault throws, so it is retried and then dead-lettered,
 /// never dropped: a malformed message, an unknown session, one whose learner, course or version differs, or an append

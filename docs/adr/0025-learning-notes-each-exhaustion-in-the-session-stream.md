@@ -1,4 +1,4 @@
-# 0020: Learning notes each exhaustion in the session's stream
+# 0025: Learning notes each exhaustion in the session's stream
 
 **Status:** Accepted (#42)
 

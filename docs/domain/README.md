@@ -209,7 +209,7 @@ Ein Stream pro Person × Schulungsversion und Durchlauf. Die Kapitelstruktur wir
 | `ChapterCompleted` | Kapitel erfüllt sein Abschlusskriterium |
 | `ContentCompleted` | Alle Pflichtkapitel erfüllt; einmal pro Zyklus. Schaltet nur die Prüfung frei und belegt allein keine Schulung (ADR 0018) |
 | `ChaptersReopened` | Nach `AttemptsExhausted`; die Kapitel der falsch beantworteten Fragen sind wieder offen |
-| `ExhaustionNoted` | Kennung des `AttemptsExhausted`, das die Sperre auslöste; dieselbe Sperre wirkt nur einmal (ADR 0020) |
+| `ExhaustionNoted` | Kennung des `AttemptsExhausted`, das die Sperre auslöste; dieselbe Sperre wirkt nur einmal (ADR 0025) |
 | `SessionFinished` | Nach `TestPassed` (Learning konsumiert es zusätzlich zu Certification); danach keine Änderungen; eine Sperre danach ändert nichts |
 
 Invarianten: Fortschritt pro Kapitel wächst nur; `ContentCompleted` erst, wenn jedes Pflichtkapitel erfüllt ist; höchstens eine nicht beendete Session pro Person × Version. Der Client meldet Fortschritt gebündelt (beim Pausieren, am Kapitelende, spätestens alle 30 s), damit der Stream klein bleibt.

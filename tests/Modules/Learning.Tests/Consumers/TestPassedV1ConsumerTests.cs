@@ -8,7 +8,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Tests.Consumers;
 
 /// <summary>
 /// Assessment's <see cref="TestPassedV1"/> finishes the session (#42) at the time the test was passed, from any state,
-/// once; a fault throws so it is retried and then dead-lettered, never dropped (ADR 0018, ADR 0020).
+/// once; a fault throws so it is retried and then dead-lettered, never dropped (ADR 0018, ADR 0025).
 /// </summary>
 public class TestPassedV1ConsumerTests
 {

@@ -8,7 +8,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Tests.Consumers;
 
 /// <summary>
 /// Both of Assessment's outcomes arrive on Learning's one queue and are handled in parallel, so in either order: a passed
-/// test outranks a lock, and a finished session takes no more progress (#42, ADR 0020).
+/// test outranks a lock, and a finished session takes no more progress (#42, ADR 0025).
 /// </summary>
 public class TestOutcomeOrderTests
 {

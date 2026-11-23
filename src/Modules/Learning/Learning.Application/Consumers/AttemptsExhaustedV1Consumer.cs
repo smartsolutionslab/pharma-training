@@ -6,7 +6,7 @@ using SmartSolutionsLab.PharmaTraining.Modules.Learning.Domain.LearningSessions;
 namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.Consumers;
 
 /// <summary>
-/// Reopens the chapters of the wrong answers when Assessment locks a session's test (ADR 0020). The session notes the
+/// Reopens the chapters of the wrong answers when Assessment locks a session's test (ADR 0025). The session notes the
 /// announcement's <c>Metadata.EventIdentifier</c> in the same append as the reopen, so the same lock delivered again acts
 /// once, even after the learner worked the chapters through anew; a finished session ignores every lock, since a passed
 /// test outranks it. Memberships and the version's retirement are not consulted: the outcome concerns an existing
