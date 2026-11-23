@@ -20,5 +20,6 @@ public static class LearningSessionFailures
     {
         SessionFinishedAlready finished => ApiError.From(finished, HttpStatusCode.Conflict),
         ChapterNotInCourse outside => ApiError.From(outside, HttpStatusCode.UnprocessableEntity),
+        ProgressTooFast => throw new NotImplementedException("#43: map ProgressTooFast."),
     };
 }

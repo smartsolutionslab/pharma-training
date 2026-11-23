@@ -34,4 +34,8 @@ public sealed class CourseVersionCopies(LearningDbContext context) : ICourseVers
             ? Option<CourseVersionCopy>.Some(found)
             : Option<CourseVersionCopy>.None;
     }
+
+    // Stub for #43's red run: no duration is read yet.
+    public Task<Option<VideoDuration>> FindVideoDurationAsync(CourseVersionId version, ChapterId chapter, CancellationToken cancellationToken) =>
+        Task.FromResult(Option<VideoDuration>.None);
 }

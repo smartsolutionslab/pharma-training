@@ -60,7 +60,7 @@ public sealed class LearningSession : EventSourcedAggregate<LearningSessionId>
     /// The client reports progress in batches (on pause, at the end of a chapter, at most every 30 s).
     /// Only real progress is stored, so a replayed or older report changes nothing.
     /// </summary>
-    public Result<Unit, RecordProgressError> RecordProgress(ChapterId chapter, ProgressPercent reported, Timestamp now)
+    public Result<Unit, RecordProgressError> RecordProgress(ChapterId chapter, ProgressPercent reported, Option<VideoDuration> duration, Timestamp now)
     {
         Ensure.That(chapter).IsNotNull();
         Ensure.That(reported).IsNotNull();

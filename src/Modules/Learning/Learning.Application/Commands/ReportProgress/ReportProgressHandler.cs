@@ -12,7 +12,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.Commands
 /// cycle, is published as ContentCompletedV1 and committed. A report that lost the append race to another one answers
 /// learning.session-changed and publishes nothing; the server does not retry it.
 /// </summary>
-public sealed class ReportProgressHandler(ILearningAggregateStore store, ILearningUnitOfWork unitOfWork, TimeProvider time)
+public sealed class ReportProgressHandler(ILearningAggregateStore store, ILearningUnitOfWork unitOfWork, ICourseVersionCopies versions, TimeProvider time)
     : ICommandHandler<ReportProgress, Result<Unit, ApiError>>
 {
     public async Task<Result<Unit, ApiError>> HandleAsync(ReportProgress command, CancellationToken cancellationToken)
@@ -26,7 +26,8 @@ public sealed class ReportProgressHandler(ILearningAggregateStore store, ILearni
         }
 
         var session = loaded.Value;
-        var recorded = session.RecordProgress(command.Chapter, command.Progress, Timestamp.From(time.GetUtcNow()));
+        var duration = await versions.FindVideoDurationAsync(session.CourseVersion, command.Chapter, cancellationToken);
+        var recorded = session.RecordProgress(command.Chapter, command.Progress, duration, Timestamp.From(time.GetUtcNow()));
         if (recorded.IsFailure)
         {
             return Failure(LearningSessionFailures.From(recorded.Error));
