@@ -27,6 +27,8 @@ public static class Databases
 
     private const string RolesKey = "database-roles-key";
 
+    private const int RolesKeyMinimumLength = 32;
+
     private const string ServiceVariable = "ConnectionStrings__database";
 
     // Aspire's name for the vault secret holding a database's connection string, which the role's secret is named after.
@@ -47,7 +49,9 @@ public static class Databases
         var size = DatabaseServerSize.For(builder.Environment.EnvironmentName);
         var userName = builder.AddParameter($"{Name}-username");
         var password = secrets.Secret($"{Name}-password");
-        var rolesKey = secrets.Secret(RolesKey);
+        // Every role's password is guid(database_roles_key, '<module>'): the key is all that stands between a guess and every
+        // role, so publishing refuses one under 32 characters.
+        var rolesKey = secrets.Secret(RolesKey).RequireMinimumLength(RolesKeyMinimumLength);
         var server = builder.AddAzurePostgresFlexibleServer(Name)
             .WithPasswordAuthentication(secrets.Vault, userName, password)
             .WithParameter(Infrastructure.NormalizeBicepIdentifier(RolesKey), rolesKey)

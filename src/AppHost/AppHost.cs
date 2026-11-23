@@ -79,7 +79,8 @@ if (builder.ExecutionContext.IsRunMode)
 }
 else
 {
-    frontendUrlParameter = builder.AddParameter("frontend-url");
+    // The storage account's CORS rule allows it and mail links lead to it: an https origin, which publishing checks.
+    frontendUrlParameter = builder.AddParameter("frontend-url").RequireHttpsOrigin();
     frontendUrl = ReferenceExpression.Create($"{frontendUrlParameter}");
 }
 
