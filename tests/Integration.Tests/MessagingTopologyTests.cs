@@ -52,12 +52,12 @@ public class MessagingTopologyTests
     }
 
     [Fact]
-    public void Compliance_consumes_the_course_versions_and_the_memberships()
+    public void Compliance_consumes_the_course_versions_the_memberships_and_the_certificates()
     {
         var (consumed, _) = MessagingTopology.Of("compliance");
 
         consumed.ShouldBe(
-            [CourseVersionPublished, CourseVersionRetired, Contracts + "Organisation.MembershipChangedV1", Contracts + "Organisation.MembershipEndedV1", Contracts + "Organisation.MembershipStartedV1"],
+            [Contracts + "Certification.CertificateIssuedV1", CourseVersionPublished, CourseVersionRetired, Contracts + "Organisation.MembershipChangedV1", Contracts + "Organisation.MembershipEndedV1", Contracts + "Organisation.MembershipStartedV1"],
             ignoreOrder: false);
     }
 
