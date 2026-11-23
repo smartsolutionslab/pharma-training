@@ -16,7 +16,7 @@ partial class AssessmentModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261118000000_CreateSamples";
+    public override string LastMigrationId => "20261123040211_AddHandledContentCompletions";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -27,6 +27,26 @@ partial class AssessmentModelSnapshot : ModelSnapshot
             .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
         NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Assessment.Application.ReadModels.HandledContentCompletion", b =>
+            {
+                b.Property<Guid>("EventIdentifier")
+                    .HasColumnType("uuid")
+                    .HasColumnName("event_identifier");
+
+                b.Property<DateTimeOffset>("HandledAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("handled_at");
+
+                b.Property<Guid>("SessionId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("session_id");
+
+                b.HasKey("EventIdentifier")
+                    .HasName("pk_handled_content_completions");
+
+                b.ToTable("handled_content_completions", "assessment");
+            });
 
         modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Assessment.Application.ReadModels.SampleSummary", b =>
             {
@@ -43,6 +63,127 @@ partial class AssessmentModelSnapshot : ModelSnapshot
                 b.HasKey("Id");
 
                 b.ToTable("sample_summaries", "assessment");
+            });
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Assessment.Application.ReadModels.TestDefinitionCopy", b =>
+            {
+                b.Property<Guid>("CourseVersionId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("course_version_id");
+
+                b.Property<Guid>("CourseId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("course_id");
+
+                b.Property<int>("MaxAttempts")
+                    .HasColumnType("integer")
+                    .HasColumnName("max_attempts");
+
+                b.Property<int>("PassingScorePercent")
+                    .HasColumnType("integer")
+                    .HasColumnName("passing_score_percent");
+
+                b.HasKey("CourseVersionId")
+                    .HasName("pk_test_definitions");
+
+                b.ToTable("test_definitions", "assessment");
+            });
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Assessment.Application.ReadModels.TestOptionCopy", b =>
+            {
+                b.Property<Guid>("CourseVersionId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("course_version_id");
+
+                b.Property<Guid>("QuestionId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("question_id");
+
+                b.Property<Guid>("OptionId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("option_id");
+
+                b.Property<bool>("IsCorrect")
+                    .HasColumnType("boolean")
+                    .HasColumnName("is_correct");
+
+                b.Property<int>("Position")
+                    .HasColumnType("integer")
+                    .HasColumnName("position");
+
+                b.Property<string>("Text")
+                    .IsRequired()
+                    .HasColumnType("text")
+                    .HasColumnName("text");
+
+                b.HasKey("CourseVersionId", "QuestionId", "OptionId")
+                    .HasName("pk_test_definition_options");
+
+                b.ToTable("test_definition_options", "assessment");
+            });
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Assessment.Application.ReadModels.TestQuestionCopy", b =>
+            {
+                b.Property<Guid>("CourseVersionId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("course_version_id");
+
+                b.Property<Guid>("QuestionId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("question_id");
+
+                b.Property<Guid>("ChapterId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("chapter_id");
+
+                b.Property<int>("Position")
+                    .HasColumnType("integer")
+                    .HasColumnName("position");
+
+                b.Property<string>("Text")
+                    .IsRequired()
+                    .HasColumnType("text")
+                    .HasColumnName("text");
+
+                b.Property<string>("Type")
+                    .IsRequired()
+                    .HasColumnType("text")
+                    .HasColumnName("type");
+
+                b.HasKey("CourseVersionId", "QuestionId")
+                    .HasName("pk_test_definition_questions");
+
+                b.ToTable("test_definition_questions", "assessment");
+            });
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Assessment.Application.ReadModels.TestOptionCopy", b =>
+            {
+                b.HasOne("SmartSolutionsLab.PharmaTraining.Modules.Assessment.Application.ReadModels.TestQuestionCopy", null)
+                    .WithMany("Options")
+                    .HasForeignKey("CourseVersionId", "QuestionId")
+                    .OnDelete(DeleteBehavior.Cascade)
+                    .IsRequired()
+                    .HasConstraintName("fk_test_definition_options_test_definition_questions");
+            });
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Assessment.Application.ReadModels.TestQuestionCopy", b =>
+            {
+                b.HasOne("SmartSolutionsLab.PharmaTraining.Modules.Assessment.Application.ReadModels.TestDefinitionCopy", null)
+                    .WithMany("Questions")
+                    .HasForeignKey("CourseVersionId")
+                    .OnDelete(DeleteBehavior.Cascade)
+                    .IsRequired()
+                    .HasConstraintName("fk_test_definition_questions_test_definitions_course_version_id");
+            });
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Assessment.Application.ReadModels.TestDefinitionCopy", b =>
+            {
+                b.Navigation("Questions");
+            });
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Assessment.Application.ReadModels.TestQuestionCopy", b =>
+            {
+                b.Navigation("Options");
             });
 #pragma warning restore 612, 618
     }

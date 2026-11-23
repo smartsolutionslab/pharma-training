@@ -7,6 +7,7 @@ using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Commands
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Commands.RenewInvitation;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Commands.RevokeInvitation;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.DTOs;
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Queries.ListPharmacyInvitations;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -15,15 +16,33 @@ using Microsoft.AspNetCore.Routing;
 namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Api.Endpoints;
 
 /// <summary>
-/// Invite an address, renew an invitation with a fresh link, or revoke it, and accept one with the link's token. Any
-/// signed-in user may ask; whether they may is decided by their own membership in the pharmacy (managing members), or,
-/// to accept, by the token and the account's verified address, not by a realm role.
+/// List a pharmacy's invitations, open or run out, invite an address, renew an invitation with a fresh link, or revoke
+/// it, and accept one with the link's token. Any signed-in user may ask; whether they may is decided by their own
+/// membership in the pharmacy (managing members), or, to accept, by the token and the account's verified address, not
+/// by a realm role.
 /// </summary>
 public sealed class InvitationEndpoints : IEndpoint
 {
     public void Map(IEndpointRouteBuilder endpoints)
     {
         Ensure.That(endpoints).IsNotNull();
+
+        endpoints.MapGet("/pharmacies/{id:guid}/invitations", async (Guid id, Page? page, PageSize? pageSize, ClaimsPrincipal user, IDispatcher dispatcher, CancellationToken cancellationToken) =>
+        {
+            var person = CallerClaims.PersonOf(user);
+            if (!person.HasValue)
+            {
+                return Result<PagedResult<PharmacyInvitationDto>, ApiError>.Failure(PharmacyFailures.IdentityIncomplete()).ToHttpResult();
+            }
+
+            if (Unknown(id) is { } unknown)
+            {
+                return Result<PagedResult<PharmacyInvitationDto>, ApiError>.Failure(unknown).ToHttpResult();
+            }
+
+            var query = new ListPharmacyInvitations(PharmacyId.From(id), person.Value, page ?? Page.First, pageSize ?? PageSize.Default);
+            return (await dispatcher.QueryAsync(query, cancellationToken)).ToHttpResult();
+        }).RequireAuthorization();
 
         endpoints.MapPost("/pharmacies/{id:guid}/invitations", async (Guid id, InviteOrganisationMemberRequest request, ClaimsPrincipal user, IDispatcher dispatcher, CancellationToken cancellationToken) =>
         {
