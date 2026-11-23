@@ -10,7 +10,8 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// What Learning announces on the broker (story L2): a session once when it is created, never when it is resumed, and
 /// its content once per cycle when its last chapter is worked through. Each test counts on a queue of its own, up to a
 /// marker session announced after the steps it counts: Learning sends the events of one type in the order it commits
-/// them, so the marker's comes after any the counted steps would have sent.
+/// them, so the marker's comes after any the counted steps would have sent. The learner is made a member of a pharmacy
+/// first, since only an active member may start a session (#194).
 /// </summary>
 public class LearningSessionEventsTests(AspireFixture aspire)
 {
@@ -22,6 +23,7 @@ public class LearningSessionEventsTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await aspire.CreateHostClientAsync("employee-a");
+        await MemberAsync(aspire, SubjectOf(client), cancellationToken);
         await using var connection = await Broker.ConnectAsync(aspire, cancellationToken);
         await using var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
         var queue = await ListenAsync(client, connection, channel, StartedExchange, complete: false, cancellationToken);
@@ -47,6 +49,7 @@ public class LearningSessionEventsTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await aspire.CreateHostClientAsync("employee-a");
+        await MemberAsync(aspire, SubjectOf(client), cancellationToken);
         await using var connection = await Broker.ConnectAsync(aspire, cancellationToken);
         await using var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
         var queue = await ListenAsync(client, connection, channel, CompletedExchange, complete: true, cancellationToken);
@@ -78,6 +81,7 @@ public class LearningSessionEventsTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await aspire.CreateHostClientAsync("employee-a");
+        await MemberAsync(aspire, SubjectOf(client), cancellationToken);
         await using var connection = await Broker.ConnectAsync(aspire, cancellationToken);
         await using var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
         var queue = await ListenAsync(client, connection, channel, CompletedExchange, complete: true, cancellationToken);

@@ -57,16 +57,6 @@ public class MessagingTopologyTests
         published.ShouldBe([ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired, TestDefinitionPublished], ignoreOrder: false);
     }
 
-    /// <summary>#41: Learning copies the files Editorial releases, so its queue is bound to their exchange too.</summary>
-    [Fact]
-    public void Learning_consumes_the_course_versions_and_the_released_files()
-    {
-        var (consumed, _) = MessagingTopology.Of("learning");
-
-        consumed.ShouldContain(ChapterFilesReleased);
-        consumed.ShouldContain(CourseVersionPublished);
-    }
-
     [Fact]
     public void Compliance_consumes_the_course_versions_the_memberships_the_learning_progress_and_the_certificates()
     {
@@ -77,15 +67,31 @@ public class MessagingTopologyTests
             ignoreOrder: false);
     }
 
+    /// <summary>
+    /// #41: Learning copies the files Editorial releases, so its queue is bound to their exchange too; #194: it keeps a
+    /// copy of the memberships, so it is bound to Organisation's three membership exchanges; #195: it keeps the
+    /// retirements, so it is bound to the retirement's exchange; #42: it reopens or finishes a session on Assessment's
+    /// test outcomes, so it is bound to their two exchanges.
+    /// </summary>
     [Fact]
-    public void Learning_consumes_the_test_outcomes_beside_the_course_versions_and_publishes_its_session_events()
+    public void Learning_consumes_the_course_versions_the_released_files_and_the_memberships_and_publishes_its_session_events()
     {
         var (consumed, published) = MessagingTopology.Of("learning");
 
         consumed.ShouldBe(
-            [Contracts + "Assessment.AttemptsExhaustedV1", Contracts + "Assessment.TestPassedV1", ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired],
+            [Contracts + "Assessment.AttemptsExhaustedV1", Contracts + "Assessment.TestPassedV1", ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired, Contracts + "Organisation.MembershipChangedV1", Contracts + "Organisation.MembershipEndedV1", Contracts + "Organisation.MembershipStartedV1"],
             ignoreOrder: false);
         published.ShouldBe([Contracts + "Learning.ContentCompletedV1", Contracts + "Learning.LearningSessionStartedV1"], ignoreOrder: false);
+    }
+
+    /// <summary>#42: Learning reopens the failed chapters on the exhaustion and finishes the session on the passed test.</summary>
+    [Fact]
+    public void Learning_consumes_the_test_outcomes()
+    {
+        var (consumed, _) = MessagingTopology.Of("learning");
+
+        consumed.ShouldContain(Contracts + "Assessment.AttemptsExhaustedV1");
+        consumed.ShouldContain(Contracts + "Assessment.TestPassedV1");
     }
 
     [Fact]

@@ -115,6 +115,7 @@ MVP 1 besteht aus acht Contexts. Der Kernfluss läuft von der Zuweisung über da
 flowchart LR
   subgraph MVP1[MVP 1]
     Organisation -- Mitglieder --> Compliance
+    Organisation -- Mitglieder --> Learning
     Organisation --- Identity
     Editorial -- Freigabe --> Catalog
     Catalog -- "Version + Fragen" --> Assessment
@@ -158,9 +159,9 @@ Regeln:
 | `TestDefinitionPublished` | Editorial | Assessment | CourseVersionId, Questions inkl. richtiger Antworten, PassingScorePercent, MaxAttempts |
 | `CourseVersionRetired` | Editorial | Catalog, Compliance, Learning | CourseId, CourseVersionId |
 | `PharmacyRegistered` | Organisation | Compliance, Certification | PharmacyId, Name |
-| `MembershipStarted` | Organisation | Compliance, Certification | MembershipId, PersonId, PharmacyId, DisplayName, JobFunction, Role |
-| `MembershipEnded` | Organisation | Compliance | MembershipId, PersonId, PharmacyId, EndedAt |
-| `MembershipChanged` | Organisation | Compliance | MembershipId, PersonId, PharmacyId, DisplayName, JobFunction, Role, Version |
+| `MembershipStarted` | Organisation | Compliance, Certification, Learning | MembershipId, PersonId, PharmacyId, DisplayName, JobFunction, Role |
+| `MembershipEnded` | Organisation | Compliance, Learning | MembershipId, PersonId, PharmacyId, EndedAt |
+| `MembershipChanged` | Organisation | Compliance, Learning | MembershipId, PersonId, PharmacyId, DisplayName, JobFunction, Role, Version |
 | `CourseAssigned` | Compliance | (keiner in MVP 1, später Benachrichtigung) | AssignmentId, PersonId, PharmacyId, CourseId, DueDate |
 | `AssignmentCompleted` | Compliance | (keiner in MVP 1) | AssignmentId, CertificateId, CompletedAt, Late |
 | `LearningSessionStarted` | Learning | Compliance | SessionId, PersonId, CourseId, CourseVersionId |
@@ -300,7 +301,7 @@ Alle Pfade beginnen mit dem Modulnamen; der Edge leitet danach weiter. Kein Serv
 | compliance | `POST /compliance/pharmacies/{id}/assignments` | Leitung | Zuweisen an mehrere Mitarbeiter (C1, C2) |
 | compliance | `GET /compliance/pharmacies/{id}/members?jobFunction=` | Leitung | Aktive Mitglieder für den Zuweisungsassistenten, nach Name, filterbar nach Tätigkeit |
 | compliance | `PATCH …/assignments/{aid}`, `DELETE …/assignments/{aid}` | Leitung | Frist ändern, zurückziehen |
-| compliance | `GET /compliance/pharmacies/{id}/matrix` | Leitung | Matrix Mitarbeiter × Schulung mit Status und Quote (C3) |
+| compliance | `GET /compliance/pharmacies/{id}/matrix?jobFunction=` | Leitung | Matrix Mitarbeiter × Schulung mit Status und Quote (C3); Zeilen = aktive Mitglieder, seitenweise; Spalten = Schulungen mit mindestens einer nicht stornierten Zuweisung in der Apotheke; Quote = konforme unter allen Zellen (je Person und Schulung die neueste nicht stornierte Zuweisung): offen, in Bearbeitung oder gesperrt ist konform, überfällig nicht, abgeschlossen (auch verspätet) bis einschließlich „gültig bis“ = deutscher Abschlusstag + Gültigkeitsmonate der neuesten Version; für alle Zeilen des Filters, je Schulung und gesamt; ohne Zelle keine Quote |
 | compliance | `GET /compliance/me/assignments` | Mitglied | Mein Dashboard, Überfällige zuerst (C4) |
 | learning | `POST /learning/sessions` | Mitglied | Starten oder fortsetzen (idempotent) |
 | learning | `GET /learning/sessions/{id}`, `POST …/{id}/progress` | Mitglied | Fortschritt lesen und melden (L1, L2) |
@@ -316,6 +317,7 @@ Lokale Kopien, die daraus folgen:
 - **Compliance** hält Namen der Mitglieder (`MembershipStarted`) und Titel der Schulungen (`CourseVersionPublished`) für Matrix und Dashboard. Der Status kommt aus der Zuweisung selbst; Learning wird nicht abgefragt.
 - **Certification** hält Mitgliedschaften mit Beginn und Ende, damit der Export nur Bestätigungen aus der Beschäftigungszeit bei dieser Apotheke enthält.
 - **Learning** und **Assessment** halten Kapitelstruktur bzw. Testdefinition der Version.
+- **Learning** hält Mitgliedschaften ohne Namen, Rolle und Tätigkeit (Beginn, Änderungen, Ende), um nur aktive Mitglieder lernen zu lassen; nach dem Ende bleibt die eigene Sitzung lesbar.
 
 ### Vue-Seiten
 

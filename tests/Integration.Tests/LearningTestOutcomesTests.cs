@@ -23,6 +23,7 @@ public class LearningTestOutcomesTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await aspire.CreateHostClientAsync("employee-a");
+        await MemberAsync(aspire, SubjectOf(client), cancellationToken);
         await using var connection = await Broker.ConnectAsync(aspire, cancellationToken);
         await using var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
         var queue = await ListenToCompletionsAsync(client, connection, channel, cancellationToken);
@@ -51,6 +52,7 @@ public class LearningTestOutcomesTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await aspire.CreateHostClientAsync("employee-a");
+        await MemberAsync(aspire, SubjectOf(client), cancellationToken);
         var session = await CompletedSessionAsync(client, cancellationToken);
         var pdf = ChapterOf(session.Published, "Pdf");
         var exhausted = Exhausted(client, session, Guid.CreateVersion7(), pdf);
@@ -69,6 +71,7 @@ public class LearningTestOutcomesTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await aspire.CreateHostClientAsync("employee-a");
+        await MemberAsync(aspire, SubjectOf(client), cancellationToken);
         var session = await CompletedSessionAsync(client, cancellationToken);
 
         await SendAsync(PassedType, Passed(client, session), cancellationToken);
@@ -84,6 +87,7 @@ public class LearningTestOutcomesTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await aspire.CreateHostClientAsync("employee-a");
+        await MemberAsync(aspire, SubjectOf(client), cancellationToken);
         var session = await CompletedSessionAsync(client, cancellationToken);
         await SendAsync(PassedType, Passed(client, session), cancellationToken);
 

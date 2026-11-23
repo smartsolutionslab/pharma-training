@@ -63,9 +63,9 @@ public class AppHostBrokerUsersTests(AspireFixture aspire)
         },
         {
             "learning",
-            ["learning", ContentCompleted, LearningSessionStarted, AttemptsExhausted, TestPassed, ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired],
+            ["learning", ContentCompleted, LearningSessionStarted, AttemptsExhausted, TestPassed, ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired, MembershipChanged, MembershipEnded, MembershipStarted],
             ["learning", ContentCompleted, LearningSessionStarted],
-            ["learning", AttemptsExhausted, TestPassed, ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired]
+            ["learning", AttemptsExhausted, TestPassed, ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired, MembershipChanged, MembershipEnded, MembershipStarted]
         },
         {
             "organisation",

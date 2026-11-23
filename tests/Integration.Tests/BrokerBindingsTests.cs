@@ -27,6 +27,10 @@ public partial class BrokerBindingsTests(AspireFixture aspire)
     // is the one a host needs.
     private const string MembershipStarted = "SmartSolutionsLab.PharmaTraining.Contracts.Organisation.MembershipStartedV1";
 
+    private const string MembershipChanged = "SmartSolutionsLab.PharmaTraining.Contracts.Organisation.MembershipChangedV1";
+
+    private const string MembershipEnded = "SmartSolutionsLab.PharmaTraining.Contracts.Organisation.MembershipEndedV1";
+
     private const string LearningQueue = "learning";
 
     private const string AttemptsExhausted = "SmartSolutionsLab.PharmaTraining.Contracts.Assessment.AttemptsExhaustedV1";
@@ -151,16 +155,34 @@ public partial class BrokerBindingsTests(AspireFixture aspire)
             .ShouldContain(binding => binding.Source == TestPassed && binding.Destination == LearningQueue && binding.DestinationType == "queue");
     }
 
+    /// <summary>Learning admits only active members (#194), so it binds its queue to all three of Organisation's membership events.</summary>
+    [Fact]
+    public async Task The_membership_events_are_bound_to_learnings_queue()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var management = await ManagementClientAsync(cancellationToken);
+
+        await WaitForBindingAsync(management, MembershipStarted, LearningQueue, cancellationToken);
+        await WaitForBindingAsync(management, MembershipChanged, LearningQueue, cancellationToken);
+        await WaitForBindingAsync(management, MembershipEnded, LearningQueue, cancellationToken);
+
+        var bindings = await BindingsAsync(management, cancellationToken);
+        foreach (var exchange in new[] { MembershipStarted, MembershipChanged, MembershipEnded })
+        {
+            bindings.ShouldContain(binding => binding.Source == exchange && binding.Destination == LearningQueue && binding.DestinationType == "queue", $"{exchange} is not bound to Learning's queue.");
+        }
+    }
+
     [Fact]
     public async Task Learnings_queue_is_bound_to_the_course_version_retirement()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var management = await ManagementClientAsync(cancellationToken);
 
-        await WaitForBindingAsync(management, CourseVersionRetired, "learning", cancellationToken);
+        await WaitForBindingAsync(management, CourseVersionRetired, LearningQueue, cancellationToken);
 
         (await BindingsAsync(management, cancellationToken))
-            .ShouldContain(binding => binding.Source == CourseVersionRetired && binding.Destination == "learning" && binding.DestinationType == "queue");
+            .ShouldContain(binding => binding.Source == CourseVersionRetired && binding.Destination == LearningQueue && binding.DestinationType == "queue");
     }
 
     /// <summary>

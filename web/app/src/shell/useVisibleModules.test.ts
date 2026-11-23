@@ -85,7 +85,7 @@ const inOrder = (wanted: string[]) => paths(moduleRoutes).filter((path) => wante
 test('a member of a pharmacy sees the pages for employees', () => {
   answer([employee]);
 
-  expect(paths(visibleTo([]).value)).toEqual(inOrder(['assessment', 'certification', 'compliance', 'learning']));
+  expect(paths(visibleTo([]).value)).toEqual(inOrder(['assessment', 'certification', 'learning']));
 });
 
 test('a member who may manage the pharmacy sees the pages for managers too', () => {
@@ -100,9 +100,7 @@ test('a member who may manage the pharmacy sees the pages for managers too', () 
 test('the realm role manager alone shows no page for managers', () => {
   answer([employee]);
 
-  expect(paths(visibleTo(['manager']).value)).toEqual(
-    inOrder(['assessment', 'certification', 'compliance', 'learning']),
-  );
+  expect(paths(visibleTo(['manager']).value)).toEqual(inOrder(['assessment', 'certification', 'learning']));
 });
 
 test('an editor without a pharmacy sees the editorial pages only', () => {
@@ -114,9 +112,7 @@ test('an editor without a pharmacy sees the editorial pages only', () => {
 test('an editor who is a member of a pharmacy sees both', () => {
   answer([employee]);
 
-  expect(paths(visibleTo(['editor']).value)).toEqual(
-    inOrder(['assessment', 'certification', 'compliance', 'editorial', 'learning']),
-  );
+  expect(paths(visibleTo(['editor']).value)).toEqual(inOrder(['assessment', 'certification', 'editorial', 'learning']));
 });
 
 test('while the memberships load no pharmacy page is visible, the editorial ones are', () => {

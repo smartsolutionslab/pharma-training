@@ -59,6 +59,7 @@ public class LearningCourseVersionRetirementsTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var learner = await aspire.CreateHostClientAsync("employee-a");
+        await MemberAsync(aspire, SubjectOf(learner), cancellationToken);
         var published = Published(Guid.CreateVersion7());
 
         await DeliverAsync(aspire, Retired(published), cancellationToken);
