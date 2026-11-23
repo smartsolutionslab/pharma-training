@@ -17,6 +17,8 @@
     <PackageReference Include="RabbitMQ.Client" />
     <!-- Compiles the probe consumers MessagingTopologyTests reads as a module's Application (ConsumerProbe). -->
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+    <!-- Serializes the Wolverine envelope a forged scheduled-envelope wrapper carries (BrokerPublisherIntegrityTests). -->
+    <PackageReference Include="WolverineFx" />
   </ItemGroup>
 
   <ItemGroup>

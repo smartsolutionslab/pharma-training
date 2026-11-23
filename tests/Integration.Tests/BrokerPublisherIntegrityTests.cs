@@ -2,6 +2,8 @@ using System.Text.Json;
 using Aspire.Hosting.Testing;
 using Npgsql;
 using RabbitMQ.Client;
+using Wolverine;
+using Wolverine.Runtime.Serialization;
 
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 
@@ -36,6 +38,9 @@ public class BrokerPublisherIntegrityTests(AspireFixture aspire)
 
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(250);
 
+    // How long a forwarded envelope is given to reach the consumer on the local queue; a real one takes a second or two.
+    private static readonly TimeSpan ForwardWait = TimeSpan.FromSeconds(10);
+
     [Fact]
     public async Task A_course_version_organisation_forges_on_its_membership_exchange_is_dead_lettered_at_once_and_never_stored()
     {
@@ -66,6 +71,42 @@ public class BrokerPublisherIntegrityTests(AspireFixture aspire)
         var outcome = await OutcomeAsync(messageId, cancellationToken);
         outcome.ShouldBe(Outcome.DeadLettered(Forged), $"Compliance's inbox holds the membership {messageId} without a user_id as {outcome}.");
         (await MembersAsync(started.MembershipId, cancellationToken)).ShouldBe(0, "Compliance stored a membership whose publisher no broker user vouches for.");
+    }
+
+    /// <summary>
+    /// Wolverine handles a <c>scheduled-envelope</c> itself, outside the consumers' chains and so outside any middleware,
+    /// by forwarding the envelope inside it to the destination that envelope names, a local queue among them. Only a
+    /// module's integration event may come through the broker, so the wrapper is dead-lettered before it is handled.
+    /// </summary>
+    [Fact]
+    public async Task A_course_version_organisation_wraps_in_a_scheduled_envelope_is_never_stored()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var courseVersion = CourseVersion();
+        var inner = new Envelope
+        {
+            Id = Guid.CreateVersion7(),
+            MessageType = CourseVersionPublished,
+            ContentType = "application/json",
+            Data = JsonSerializer.SerializeToUtf8Bytes(courseVersion, JsonSerializerOptions.Web),
+            Destination = new Uri("local://durable/"),
+        };
+        var messageId = Guid.CreateVersion7();
+        var organisation = await BrokerUsers.ConnectionStringOfAsync(aspire, Organisation, cancellationToken);
+        await ExchangeExistsAsync(MembershipStarted, cancellationToken);
+
+        await using (var connection = await BrokerUsers.ConnectAsync(organisation, cancellationToken))
+        await using (var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken))
+        {
+            var properties = Properties("scheduled-envelope", messageId, BrokerUsers.UserOf(organisation));
+            properties.ContentType = "binary/envelope";
+            await channel.BasicPublishAsync(MembershipStarted, string.Empty, mandatory: false, properties, EnvelopeSerializer.Serialize(inner), cancellationToken);
+        }
+
+        var outcome = await OutcomeAsync(messageId, cancellationToken);
+        outcome.State.ShouldStartWith("dead-lettered", customMessage: $"Compliance's inbox holds the scheduled envelope {messageId} as {outcome}; Wolverine's own handler forwards what it carries.");
+        await Task.Delay(ForwardWait, cancellationToken);
+        (await CourseVersionsAsync(courseVersion.CourseVersionId, cancellationToken)).ShouldBe(0, "Compliance stored the course version Organisation forged inside a scheduled envelope.");
     }
 
     [Fact]

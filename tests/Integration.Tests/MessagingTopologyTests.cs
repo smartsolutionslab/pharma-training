@@ -102,6 +102,32 @@ public class MessagingTopologyTests
     }
 
     [Fact]
+    public void A_handler_method_whose_message_is_no_contract_grants_no_exchange()
+    {
+        // A helper named like a handler, or a typo in one, must not widen what the service's broker user may read.
+        using var probe = ConsumerProbe.Compile("Probe", """
+            using SmartSolutionsLab.PharmaTraining.Contracts.Editorial;
+
+            namespace SmartSolutionsLab.PharmaTraining.Modules.Probe.Application;
+
+            public sealed class CourseVersionPublishedConsumer
+            {
+                public void Handle(CourseVersionPublishedV1 message)
+                {
+                }
+
+                public static void Handle(string note)
+                {
+                }
+            }
+            """);
+
+        var (consumed, _) = MessagingTopology.Of("probe", [probe.Application, probe.Contracts]);
+
+        consumed.ShouldBe([CourseVersionPublished], ignoreOrder: false);
+    }
+
+    [Fact]
     public async Task Every_service_host_publishes_only_its_own_modules_events_and_consumes_none_of_them()
     {
         await using var builder = await PublishedAppHost.ModelAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);

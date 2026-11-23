@@ -41,7 +41,7 @@ public sealed class BrokerPublishers
         }
 
         var type = envelope.Message?.GetType().FullName ?? envelope.MessageType ?? "(no type)";
-        var module = ModuleOf(envelope.Message?.GetType().Namespace);
+        var module = ModuleOf(envelope.Message?.GetType().FullName);
         if (module is null)
         {
             return $"Message {envelope.Id} of type {type} from {envelope.Destination} is no integration event of a module; nothing else travels on the broker.";
@@ -60,15 +60,18 @@ public sealed class BrokerPublishers
         return null;
     }
 
-    /// <summary>The module of a type in <c>SmartSolutionsLab.PharmaTraining.Contracts.&lt;Module&gt;</c>, or nothing.</summary>
-    private static string? ModuleOf(string? space)
+    /// <summary>
+    /// The module of a type named <c>SmartSolutionsLab.PharmaTraining.Contracts.&lt;Module&gt;.&lt;Event&gt;</c>, as its full
+    /// name or as Wolverine's <c>message-type</c> spells it, or nothing for any other name.
+    /// </summary>
+    public static string? ModuleOf(string? typeName)
     {
-        if (space is null || !space.StartsWith(ContractsNamespace + ".", StringComparison.Ordinal))
+        if (typeName is null || !typeName.StartsWith(ContractsNamespace + ".", StringComparison.Ordinal))
         {
             return null;
         }
 
-        var rest = space[(ContractsNamespace.Length + 1)..];
-        return rest.Length == 0 || rest.Contains('.', StringComparison.Ordinal) ? null : rest;
+        var parts = typeName[(ContractsNamespace.Length + 1)..].Split('.');
+        return parts is [{ Length: > 0 } module, { Length: > 0 }] ? module : null;
     }
 }

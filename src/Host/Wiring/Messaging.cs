@@ -67,6 +67,9 @@ public static class Messaging
             // An event whose publisher may not publish it is refused before any consumer runs, and dead-lettered at once:
             // trying it again cannot change who sent it. This rule comes first, so the retries below never apply to it.
             options.Policies.AddMiddleware(typeof(PublisherCheck));
+            // What PublisherEnvelopeMapper refuses as no module's integration event carries a type no handler has; it is
+            // dead-lettered rather than discarded, so an operator sees it.
+            options.UnknownMessageBehavior = UnknownMessageBehavior.DeadLetterQueue;
             options.OnException<ForgedPublisherException>().MoveToErrorQueue();
             // A consumer that throws is tried again, the wait doubling from 1 second, before its message is dead-lettered
             // (seven attempts, about a minute; see docs/adr). The retry is scheduled in the durable inbox, so the

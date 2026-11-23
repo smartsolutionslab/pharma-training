@@ -8,7 +8,7 @@ namespace Aspire.Hosting;
 
 /// <summary>
 /// What each module puts on the broker and takes from it, derived from its code without a list of modules (docs/adr/0011):
-/// the exchanges of the integration events its <c>*Consumer</c> classes handle, and of the integration events declared in
+/// the exchanges of the integration events its <c>*Consumer</c> classes handle (a handler of anything else grants nothing), and of the integration events declared in
 /// its own contract namespace (<c>src/Contracts/&lt;Module&gt;/</c>). Wolverine names an event's exchange after the event's
 /// full CLR name. An event a module both publishes and consumes is local to its host and never on the broker
 /// (docs/adr/0004), so it is in neither list; that is the rule the host's own messaging follows
@@ -63,16 +63,22 @@ public static class MessagingTopology
         var metadata = image.GetMetadataReader();
 
         var own = $"{ContractsNamespace}.{module}";
-        var owned = contracts.GetTypes()
-            .Where(type => type is { IsClass: true, IsAbstract: false } && string.Equals(type.Namespace, own, StringComparison.OrdinalIgnoreCase) && IsIntegrationEvent(type))
+        var events = contracts.GetTypes()
+            .Where(type => type is { IsClass: true, IsAbstract: false } && IsIntegrationEvent(type))
+            .ToList();
+        var owned = events
+            .Where(type => string.Equals(type.Namespace, own, StringComparison.OrdinalIgnoreCase))
             .Select(type => type.FullName!)
             .ToHashSet(StringComparer.Ordinal);
+        // Only an integration event is ever an exchange: a helper named like a handler, or a typo in one, grants nothing.
+        var integrationEvents = events.Select(type => type.FullName!).ToHashSet(StringComparer.Ordinal);
         var consumed = application.GetExportedTypes()
             .Where(type => type.Name.EndsWith("Consumer", StringComparison.Ordinal) && type is { IsClass: true, IsAbstract: false })
             .SelectMany(type => type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly))
             .Where(method => HandlerMethodNames.Contains(method.Name))
             .Select(method => FirstParameterType(metadata, method.MetadataToken))
             .OfType<string>()
+            .Where(integrationEvents.Contains)
             .ToHashSet(StringComparer.Ordinal);
 
         return (
