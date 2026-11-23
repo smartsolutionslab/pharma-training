@@ -6,7 +6,7 @@ namespace Microsoft.Extensions.DependencyInjection;
 /// The edge's route table (ADR-0017): a module's paths, /&lt;module&gt;/..., go to the module's service, which service
 /// discovery finds under the module's name. The AppHost names every service it starts under Edge:Modules, by the same
 /// convention that names the services, so neither it nor the edge has a line per module. Every body goes to a service
-/// behind <c>Expect: 100-continue</c>, so a service's refusal of a body too large reaches the caller (docs/adr/0019).
+/// behind <c>Expect: 100-continue</c>, so a service's refusal of a body too large reaches the caller (docs/adr/0021).
 /// </summary>
 public static class ModuleRoutes
 {

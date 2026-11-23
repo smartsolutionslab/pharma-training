@@ -10,7 +10,7 @@ using Yarp.ReverseProxy.Transforms.Builder;
 namespace SmartSolutionsLab.PharmaTraining.Edge.Tests;
 
 /// <summary>
-/// How the edge readies a caller's body before it forwards it to a service (docs/adr/0019), through the transforms
+/// How the edge readies a caller's body before it forwards it to a service (docs/adr/0021), through the transforms
 /// <c>ForwardBodiesBehindContinue</c> gives every route. A body of unknown length is held at the edge only for a
 /// caller the edge has signed in, and only up to <c>Edge:MaxBufferedRequestBodyBytes</c>; an anonymous caller's body
 /// is streamed as it comes, so it costs the edge neither memory nor disk.

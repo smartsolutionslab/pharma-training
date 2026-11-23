@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Tests of the edge (src/Edge): how it forwards a request's body to a service (docs/adr/0019). -->
+  <!-- Tests of the edge (src/Edge): how it forwards a request's body to a service (docs/adr/0021). -->
   <PropertyGroup>
     <RootNamespace>SmartSolutionsLab.PharmaTraining.Edge.Tests</RootNamespace>
   </PropertyGroup>
