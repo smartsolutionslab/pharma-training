@@ -62,7 +62,8 @@ jobs:
       # Every service has a broker password of its own, messaging-<module>-password (docs/adr/0011, D3): the
       # environment's secret MESSAGING_<MODULE>_PASSWORD for each service host, found as the AppHost finds them
       # (src/Services/*/Host/Host.csproj and its <ModuleName>), so no module is listed here. It names a missing or
-      # unsafe secret, never its value.
+      # unsafe secret, never its value. SECRETS holds every secret of the environment: never run this step with set -x or
+      # echo a line that expands it, which would print them all (GitHub masks each value, not every encoding of it).
       - name: Each service's broker password
         env:
           SECRETS: ${{ toJSON(secrets) }}
@@ -168,7 +169,8 @@ jobs:
       # Every service has a broker password of its own, messaging-<module>-password (docs/adr/0011, D3): the
       # environment's secret MESSAGING_<MODULE>_PASSWORD for each service host, found as the AppHost finds them
       # (src/Services/*/Host/Host.csproj and its <ModuleName>), so no module is listed here. It names a missing or
-      # unsafe secret, never its value.
+      # unsafe secret, never its value. SECRETS holds every secret of the environment: never run this step with set -x or
+      # echo a line that expands it, which would print them all (GitHub masks each value, not every encoding of it).
       - name: Each service's broker password
         env:
           SECRETS: ${{ toJSON(secrets) }}

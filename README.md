@@ -117,8 +117,19 @@ Do this once per environment, `staging` and `production`, with `az` signed in as
 3. **An Entra app registration for the deploy**, one per environment so staging's identity cannot touch production:
    - `az ad app create --display-name <name>`, then `az ad sp create --id <app id>`.
    - A federated credential (`az ad app federated-credential create --id <app id> --parameters <file>`): issuer `https://token.actions.githubusercontent.com`, subject `repo:<owner>/<repository>:environment:<staging or production>`, audience `api://AzureADTokenExchange`. No client secret is created.
-   - On the resource group only: `Contributor`, and `Role Based Access Control Administrator`, since the deploy assigns roles to the apps' identities (Key Vault Secrets User per secret, the storage roles, AcrPull).
-4. **The GitHub environments** `staging` and `production` (Settings, Environments). On `production`: required reviewers. On both: deployment branches and tags limited to `main` and the tags you deploy from (`deploy/*`, see "Roll back").
+   - On the resource group only: `Contributor`, and `Role Based Access Control Administrator`, since the deploy assigns roles to the apps' identities (Key Vault Secrets User per secret, the storage roles, AcrPull). Give the second one a condition that lets it assign and remove those four roles alone, so the deploying identity cannot make itself or anyone else `Owner`:
+
+     ```bash
+     roles='4633458b-17de-408a-b874-0445c86b69e6, 7f951dda-4ed3-4680-a7ca-43fe172d538d, ba92f5b4-2d11-453d-a403-e96b0029c9fe, db58b8e5-c6ad-4a2a-8342-4190687cbf4a'
+     # Key Vault Secrets User, AcrPull, Storage Blob Data Contributor, Storage Blob Delegator: what the published Bicep assigns.
+     az role assignment create --assignee <app id> --role "Role Based Access Control Administrator" \
+       --scope "$(az group show --name <resource group> --query id -o tsv)" --condition-version 2.0 --condition \
+       "((!(ActionMatches{'Microsoft.Authorization/roleAssignments/write'})) OR (@Request[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {$roles})) AND ((!(ActionMatches{'Microsoft.Authorization/roleAssignments/delete'})) OR (@Resource[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {$roles}))"
+     ```
+
+     A deploy that assigns another role then fails with `AuthorizationFailed` naming it; add its id to the condition deliberately, never drop the condition.
+4. **The GitHub environments** `staging` and `production` (Settings, Environments). On `production`: required reviewers, with "Prevent self-review" on, so whoever started the run cannot approve it. On both: deployment branches and tags limited to `main` and the tags you deploy from (`deploy/*`, see "Roll back").
+   - **A tag ruleset** for `deploy/*` (Settings, Rules, Rulesets, New tag ruleset; target `refs/tags/deploy/*`): restrict creations, updates and deletions to the people who may deploy (the bypass list), so nobody else can point a `deploy/*` tag, which the environments accept, at a commit of their choosing.
 5. **The environment's variables** (`gh variable set <NAME> --env <environment> --body <value>`):
    - `AZURE_CLIENT_ID` (the app registration's), `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `AZURE_RESOURCE_GROUP`;
    - `POSTGRES_USERNAME`: the server's administrator login (not `admin`, `postgres`, `azure_superuser` or another name Flexible Server reserves);
@@ -143,12 +154,26 @@ The services and Keycloak are built from images whose bases come from `mcr.micro
 
 1. Run `deploy.yml` on `main`. Watch `staging`; leave `production` waiting until staging is checked (or reject it, and run the workflow again later).
 2. Read staging's domain, `az containerapp env list -g <resource group> --query "[0].properties.defaultDomain" -o tsv`, set `FRONTEND_URL` to `https://host.<domain>` and run `deploy.yml` again. Until then invitation links and the second CORS origin point at `https://host.invalid`; Keycloak and sign-in already use the real addresses, which come from the domain itself. Do the same for production after its first deploy.
-3. Create the first editor and manager in Keycloak. Registration is off in the published realm until #158, so every account is created this way for now. Open a shell in Keycloak's container, `az containerapp exec -g <resource group> -n keycloak --command /bin/bash`, and there:
+3. **Replace Keycloak's bootstrap administrator.** `admin`, with `KEYCLOAK_ADMIN_PASSWORD`, is Keycloak's temporary bootstrap administrator, and the master realm has no brute-force protection of its own. Open a shell in Keycloak's container, `az containerapp exec -g <resource group> -n keycloak --command /bin/bash`, and there:
 
    ```bash
    cd /opt/keycloak/bin
-   read -rs KEYCLOAK_ADMIN_PASSWORD   # paste the environment's KEYCLOAK_ADMIN_PASSWORD
-   ./kcadm.sh config credentials --server http://localhost:8080 --realm master --user admin --password "$KEYCLOAK_ADMIN_PASSWORD"
+   # Without --password, kcadm.sh asks for it, so it is in no shell history, no process list and no variable.
+   ./kcadm.sh config credentials --server http://localhost:8080 --realm master --user admin
+   ./kcadm.sh update realms/master -s bruteForceProtected=true -s failureFactor=10 -s eventsEnabled=true -s adminEventsEnabled=true
+   ./kcadm.sh create users -r master -s username=<your name> -s enabled=true
+   ./kcadm.sh set-password -r master --username <your name>   # asks for the new password: long, random, kept in your password manager
+   ./kcadm.sh add-roles -r master --uusername <your name> --rolename admin
+   ./kcadm.sh config credentials --server http://localhost:8080 --realm master --user <your name>   # the new administrator works
+   ./kcadm.sh delete users/$(./kcadm.sh get users -r master -q username=admin -q exact=true --fields id --format csv --noquotes) -r master
+   ```
+
+   Keycloak creates a bootstrap administrator only while the master realm has no user, so `admin` does not come back at the next start. Every later session signs in as the new administrator. It has no OTP: kcadm.sh signs in with the password grant and has no way to send one, and the master realm's pages, where an OTP would be set up, are not published (the auth proxy forwards the realm `pharma-training` alone). The second factor in front of it is Azure's: only someone whose Entra sign-in, with the tenant's MFA, may run `az containerapp exec` on `keycloak` reaches kcadm.sh at all ([ADR 0005](docs/adr/0005-deploy-to-azure-container-apps.md)).
+4. Create the first editor and manager in Keycloak. Registration is off in the published realm until #158, so every account is created this way for now. In Keycloak's container, signed in as the administrator:
+
+   ```bash
+   cd /opt/keycloak/bin
+   ./kcadm.sh config credentials --server http://localhost:8080 --realm master --user <your name>   # asks for the password
    ./kcadm.sh create users -r pharma-training -s username=<email> -s email=<email> -s enabled=true
    ./kcadm.sh add-roles -r pharma-training --uusername <email> --rolename manager   # or editor
    ./kcadm.sh get users -r pharma-training -q username=<email> --fields id
@@ -163,8 +188,8 @@ ADR 0005 lists what is first observed in Azure, each with its fix in the AppHost
 
 1. **Key Vault references.** Every revision is running (`az containerapp revision list -g <resource group> -n <app> -o table`). An "unable to fetch secret" that a retry clears is a role assignment still propagating; one that stays on an init container means the migrations identity's lifecycle `None` is not used for secrets, and it becomes `Init` (`src/AppHost/Wiring/Migrations.cs`).
 2. **Ordering and images.** No service failed its first revision with "image not found"; if one did, a second run succeeds and the order is recorded on #114.
-3. **The database.** Each init container (`az containerapp logs show -g <resource group> -n <app> --container <init container>`) applied its migrations and ensured its role without failing on database ownership (`azure_pg_admin`); note whether it warned that `CONNECT` on `postgres` could not be revoked. Keycloak's init container created `keycloak_app` and the schema `keycloak`.
-4. **Sign-in.** `https://auth.<domain>/realms/pharma-training/.well-known/openid-configuration` answers an `issuer` of exactly `https://auth.<domain>/realms/pharma-training`; `https://auth.<domain>/admin` and `/realms/master` answer 404. `https://host.<domain>` loads the web app, and the first manager signs in and sees the modules.
+3. **The database.** Each init container (`az containerapp logs show -g <resource group> -n <app> --container <init container>`) applied its migrations and ensured its role without failing on database ownership (`azure_pg_admin`); note whether it warned that `CONNECT` on `postgres` could not be revoked; if it did, open a follow-up issue to revoke it another way (the security review of #114), since every module role can then connect to the maintenance database. Keycloak's init container created `keycloak_app` and the schema `keycloak`.
+4. **Sign-in.** `https://auth.<domain>/realms/pharma-training/.well-known/openid-configuration` answers an `issuer` of exactly `https://auth.<domain>/realms/pharma-training`; `https://auth.<domain>/admin` and `/realms/master` answer 404. `https://host.<domain>` loads the web app, and the first manager signs in and sees the modules. `curl -sI https://host.<domain>/` answers `Content-Security-Policy`, `X-Content-Type-Options: nosniff`, `Referrer-Policy` and `Strict-Transport-Security`, and the browser's console shows no Content Security Policy violation while the manager uploads a chapter's file.
 5. **The broker.** The `messaging` app runs and its log shows every service's user connected; RabbitMQ's data volume on Azure Files keeps its data across a restart.
 6. **Mail.** Keycloak's verification mail and an invitation mail arrive through `SMTP_HOST`. Invitations need #193's idempotent mail, which is merged; registration stays off until #158.
 
