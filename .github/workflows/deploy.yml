@@ -1,0 +1,223 @@
+name: deploy
+
+# Deploys the AppHost to Azure Container Apps (docs/adr/0005): staging, then production once staging succeeded and the
+# production environment's reviewers approve. It is the only path to Azure, and it runs only when someone starts it, at the
+# branch or tag they choose; rolling back is running it again at an earlier tag (README, "Roll back"). Every value comes
+# from the GitHub environment the job runs in: the secret or variable named like the parameter in upper snake case
+# (Parameters__postgres-password from POSTGRES_PASSWORD), and one MESSAGING_<MODULE>_PASSWORD per service. The one-time
+# setup is in the README, "Deploy (Azure Container Apps)".
+on:
+  workflow_dispatch:
+
+# One deploy at a time, and never cancelled halfway: a second run waits for the first.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+# id-token: azure/login exchanges the run's OIDC token for the federated credential's; there is no client secret.
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  staging:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: staging
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          global-json-file: global.json
+      # The AppHost uses the Aspire CLI bundle; set it up before anything builds the AppHost.
+      - run: dnx --yes aspire.cli@13.6.5 -- setup --install-path "$HOME/.aspire"
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      # No region is named in the AppHost; this job deploys to germanywestcentral alone. A resource group that exists
+      # elsewhere stops the deploy before anything is created in it.
+      - name: The resource group is in germanywestcentral
+        env:
+          RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          LOCATION: germanywestcentral
+        run: |
+          if [ -z "$RESOURCE_GROUP" ]; then
+            echo "::error::The environment has no variable AZURE_RESOURCE_GROUP."
+            exit 1
+          fi
+          actual="$(az group show --name "$RESOURCE_GROUP" --query location --output tsv 2>/dev/null || true)"
+          if [ -n "$actual" ] && [ "$actual" != "$LOCATION" ]; then
+            echo "::error::The resource group $RESOURCE_GROUP is in $actual, not $LOCATION."
+            exit 1
+          fi
+          echo "Deploying to $RESOURCE_GROUP in $LOCATION."
+      # Every service has a broker password of its own, messaging-<module>-password (docs/adr/0011, D3): the
+      # environment's secret MESSAGING_<MODULE>_PASSWORD for each service host, found as the AppHost finds them
+      # (src/Services/*/Host/Host.csproj and its <ModuleName>), so no module is listed here. It names a missing or
+      # unsafe secret, never its value.
+      - name: Each service's broker password
+        env:
+          SECRETS: ${{ toJSON(secrets) }}
+        run: |
+          count=0
+          failed=0
+          for project in src/Services/*/Host/Host.csproj; do
+            module="$(sed -n 's:.*<ModuleName>\(.*\)</ModuleName>.*:\1:p' "$project")"
+            if [ -z "$module" ]; then
+              echo "::error file=$project::$project names no <ModuleName>."
+              exit 1
+            fi
+            secret="MESSAGING_$(printf '%s' "$module" | tr '[:lower:]-' '[:upper:]_')_PASSWORD"
+            password="$(jq --raw-output --arg name "$secret" '.[$name] // empty' <<< "$SECRETS")"
+            if [ -z "$password" ]; then
+              echo "::error::The environment has no secret $secret, the broker password of $module."
+              failed=1
+              continue
+            fi
+            if ! [[ "$password" =~ ^[A-Za-z0-9._~-]+$ ]]; then
+              echo "::error::The secret $secret is not URI-safe; it may hold letters, digits, '-', '.', '_' and '~' alone."
+              failed=1
+              continue
+            fi
+            echo "Parameters__messaging-$module-password=$password" >> "$GITHUB_ENV"
+            count=$((count + 1))
+          done
+          test "$failed" -eq 0
+          echo "Set the broker password of $count services."
+          test "$count" -gt 0
+      - name: Deploy staging
+        env:
+          Azure__SubscriptionId: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          Azure__TenantId: ${{ vars.AZURE_TENANT_ID }}
+          Azure__ResourceGroup: ${{ vars.AZURE_RESOURCE_GROUP }}
+          Azure__Location: germanywestcentral
+          Azure__CredentialSource: AzureCli
+          Parameters__postgres-username: ${{ vars.POSTGRES_USERNAME }}
+          Parameters__postgres-password: ${{ secrets.POSTGRES_PASSWORD }}
+          Parameters__database-roles-key: ${{ secrets.DATABASE_ROLES_KEY }}
+          Parameters__messaging-username: ${{ vars.MESSAGING_USERNAME }}
+          Parameters__messaging-password: ${{ secrets.MESSAGING_PASSWORD }}
+          Parameters__keycloak-admin-password: ${{ secrets.KEYCLOAK_ADMIN_PASSWORD }}
+          Parameters__smtp-host: ${{ vars.SMTP_HOST }}
+          Parameters__smtp-from: ${{ vars.SMTP_FROM }}
+          Parameters__smtp-username: ${{ secrets.SMTP_USERNAME }}
+          Parameters__smtp-password: ${{ secrets.SMTP_PASSWORD }}
+          Parameters__frontend-url: ${{ vars.FRONTEND_URL }}
+          Parameters__azure-openai-endpoint: ${{ vars.AZURE_OPENAI_ENDPOINT }}
+          Parameters__azure-openai-api-key: ${{ secrets.AZURE_OPENAI_API_KEY }}
+        run: |
+          # A secret or variable the environment lacks arrives empty; name each one, never a value.
+          missing="$(env | sed -n 's/^Parameters__\([^=]*\)=$/\1/p' | sort)"
+          if [ -n "$missing" ]; then
+            for name in $missing; do
+              echo "::error::Parameters__$name is empty; set the environment's secret or variable $(printf '%s' "$name" | tr '[:lower:]-' '[:upper:]_')."
+            done
+            exit 1
+          fi
+          dnx --yes aspire.cli@13.6.5 -- deploy --apphost src/AppHost/AppHost.csproj -e staging --non-interactive --nologo
+
+  production:
+    needs: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    # The production environment's required reviewers approve before this job starts.
+    environment: production
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          global-json-file: global.json
+      # The AppHost uses the Aspire CLI bundle; set it up before anything builds the AppHost.
+      - run: dnx --yes aspire.cli@13.6.5 -- setup --install-path "$HOME/.aspire"
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      # No region is named in the AppHost; this job deploys to germanywestcentral alone. A resource group that exists
+      # elsewhere stops the deploy before anything is created in it.
+      - name: The resource group is in germanywestcentral
+        env:
+          RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          LOCATION: germanywestcentral
+        run: |
+          if [ -z "$RESOURCE_GROUP" ]; then
+            echo "::error::The environment has no variable AZURE_RESOURCE_GROUP."
+            exit 1
+          fi
+          actual="$(az group show --name "$RESOURCE_GROUP" --query location --output tsv 2>/dev/null || true)"
+          if [ -n "$actual" ] && [ "$actual" != "$LOCATION" ]; then
+            echo "::error::The resource group $RESOURCE_GROUP is in $actual, not $LOCATION."
+            exit 1
+          fi
+          echo "Deploying to $RESOURCE_GROUP in $LOCATION."
+      # Every service has a broker password of its own, messaging-<module>-password (docs/adr/0011, D3): the
+      # environment's secret MESSAGING_<MODULE>_PASSWORD for each service host, found as the AppHost finds them
+      # (src/Services/*/Host/Host.csproj and its <ModuleName>), so no module is listed here. It names a missing or
+      # unsafe secret, never its value.
+      - name: Each service's broker password
+        env:
+          SECRETS: ${{ toJSON(secrets) }}
+        run: |
+          count=0
+          failed=0
+          for project in src/Services/*/Host/Host.csproj; do
+            module="$(sed -n 's:.*<ModuleName>\(.*\)</ModuleName>.*:\1:p' "$project")"
+            if [ -z "$module" ]; then
+              echo "::error file=$project::$project names no <ModuleName>."
+              exit 1
+            fi
+            secret="MESSAGING_$(printf '%s' "$module" | tr '[:lower:]-' '[:upper:]_')_PASSWORD"
+            password="$(jq --raw-output --arg name "$secret" '.[$name] // empty' <<< "$SECRETS")"
+            if [ -z "$password" ]; then
+              echo "::error::The environment has no secret $secret, the broker password of $module."
+              failed=1
+              continue
+            fi
+            if ! [[ "$password" =~ ^[A-Za-z0-9._~-]+$ ]]; then
+              echo "::error::The secret $secret is not URI-safe; it may hold letters, digits, '-', '.', '_' and '~' alone."
+              failed=1
+              continue
+            fi
+            echo "Parameters__messaging-$module-password=$password" >> "$GITHUB_ENV"
+            count=$((count + 1))
+          done
+          test "$failed" -eq 0
+          echo "Set the broker password of $count services."
+          test "$count" -gt 0
+      - name: Deploy production
+        env:
+          Azure__SubscriptionId: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          Azure__TenantId: ${{ vars.AZURE_TENANT_ID }}
+          Azure__ResourceGroup: ${{ vars.AZURE_RESOURCE_GROUP }}
+          Azure__Location: germanywestcentral
+          Azure__CredentialSource: AzureCli
+          Parameters__postgres-username: ${{ vars.POSTGRES_USERNAME }}
+          Parameters__postgres-password: ${{ secrets.POSTGRES_PASSWORD }}
+          Parameters__database-roles-key: ${{ secrets.DATABASE_ROLES_KEY }}
+          Parameters__messaging-username: ${{ vars.MESSAGING_USERNAME }}
+          Parameters__messaging-password: ${{ secrets.MESSAGING_PASSWORD }}
+          Parameters__keycloak-admin-password: ${{ secrets.KEYCLOAK_ADMIN_PASSWORD }}
+          Parameters__smtp-host: ${{ vars.SMTP_HOST }}
+          Parameters__smtp-from: ${{ vars.SMTP_FROM }}
+          Parameters__smtp-username: ${{ secrets.SMTP_USERNAME }}
+          Parameters__smtp-password: ${{ secrets.SMTP_PASSWORD }}
+          Parameters__frontend-url: ${{ vars.FRONTEND_URL }}
+          Parameters__azure-openai-endpoint: ${{ vars.AZURE_OPENAI_ENDPOINT }}
+          Parameters__azure-openai-api-key: ${{ secrets.AZURE_OPENAI_API_KEY }}
+        run: |
+          # A secret or variable the environment lacks arrives empty; name each one, never a value.
+          missing="$(env | sed -n 's/^Parameters__\([^=]*\)=$/\1/p' | sort)"
+          if [ -n "$missing" ]; then
+            for name in $missing; do
+              echo "::error::Parameters__$name is empty; set the environment's secret or variable $(printf '%s' "$name" | tr '[:lower:]-' '[:upper:]_')."
+            done
+            exit 1
+          fi
+          dnx --yes aspire.cli@13.6.5 -- deploy --apphost src/AppHost/AppHost.csproj -e production --non-interactive --nologo
