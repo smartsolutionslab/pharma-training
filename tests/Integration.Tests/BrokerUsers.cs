@@ -25,6 +25,9 @@ public static class BrokerUsers
     /// <summary>The environment variable the broker's entrypoint writes its definitions from.</summary>
     public const string Definitions = "BROKER_DEFINITIONS";
 
+    /// <summary>The broker's variable that holds the admin's password, as RabbitMQ's image reads it.</summary>
+    public const string AdminPasswordVariable = "RABBITMQ_DEFAULT_PASS";
+
     /// <summary>RabbitMQ's reply code for an operation the user's permissions refuse (ACCESS_REFUSED).</summary>
     public const ushort AccessRefused = 403;
 
@@ -54,9 +57,23 @@ public static class BrokerUsers
         return environment[$"ConnectionStrings__{Broker}"];
     }
 
+    /// <summary>
+    /// The broker's variable that holds a service user's password, <c>BROKER_PASSWORD_&lt;MODULE&gt;</c>: the module in
+    /// upper case, a character a shell variable's name may not hold as <c>_</c>.
+    /// </summary>
+    public static string PasswordVariable(string module) =>
+        "BROKER_PASSWORD_" + string.Concat(module.ToUpperInvariant().Select(character => char.IsAsciiLetterOrDigit(character) ? character : '_'));
+
+    /// <summary>The text that stands for a variable's value in the definitions until the broker's entrypoint fills it in.</summary>
+    public static string Placeholder(string variable) => $"@@{variable}@@";
+
     /// <summary>The user name in an AMQP connection string.</summary>
     public static string UserOf(string connectionString) =>
         Uri.UnescapeDataString(new Uri(connectionString).UserInfo.Split(':', 2)[0]);
+
+    /// <summary>The password in an AMQP connection string.</summary>
+    public static string PasswordOf(string connectionString) =>
+        Uri.UnescapeDataString(new Uri(connectionString).UserInfo.Split(':', 2)[1]);
 
     /// <summary>The broker's admin connection string, which the tests keep and no service may hold.</summary>
     public static async Task<string> AdminConnectionStringAsync(AspireFixture aspire, CancellationToken cancellationToken) =>

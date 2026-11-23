@@ -7,7 +7,9 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// Run mode (#183): every service connects to the broker as a user of its own, named after its module, and never holds
 /// the admin user's credentials; the broker imports those users at boot from <c>BROKER_DEFINITIONS</c>, each with
 /// configure, write and read permissions on its own queue, the exchanges of its own module's events and the exchanges of
-/// the events it consumes, and nothing else.
+/// the events it consumes, and nothing else. As published, the definitions carry no password: each is the placeholder
+/// <c>@@&lt;VARIABLE&gt;@@</c> of a variable of the broker's own, which its entrypoint fills in before RabbitMQ loads them, so
+/// both modes import the users one way.
 /// </summary>
 public class AppHostBrokerUsersTests(AspireFixture aspire)
 {
@@ -103,6 +105,37 @@ public class AppHostBrokerUsersTests(AspireFixture aspire)
             user.GetProperty("tags").EnumerateArray().ShouldBeEmpty($"{user.GetProperty("name").GetString()} carries a management tag.");
             user.TryGetProperty("password", out var password).ShouldBeTrue($"{user.GetProperty("name").GetString()} has no password.");
             password.GetString().ShouldNotBeNullOrWhiteSpace();
+        }
+    }
+
+    [Fact]
+    public async Task The_definitions_carry_each_password_as_the_placeholder_of_a_broker_variable_holding_it()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var admin = await BrokerUsers.AdminConnectionStringAsync(aspire, cancellationToken);
+        var adminUser = BrokerUsers.UserOf(admin);
+        var services = BrokerUsers.ServiceHosts(aspire);
+        var broker = await BrokerUsers.EnvironmentAsync(aspire, BrokerUsers.Broker, cancellationToken);
+        using var definitions = await BrokerUsers.DefinitionsAsync(aspire, cancellationToken);
+        var users = definitions.RootElement.GetProperty("users").EnumerateArray()
+            .ToDictionary(user => user.GetProperty("name").GetString()!, user => user.GetProperty("password").GetString()!, StringComparer.Ordinal);
+
+        List<(string User, string Variable, string Password)> expected = [(adminUser, BrokerUsers.AdminPasswordVariable, BrokerUsers.PasswordOf(admin))];
+        foreach (var service in services)
+        {
+            var connectionString = await BrokerUsers.ConnectionStringOfAsync(aspire, service.Name, cancellationToken);
+            expected.Add((service.Name, BrokerUsers.PasswordVariable(service.Name), BrokerUsers.PasswordOf(connectionString)));
+        }
+
+        services.ShouldNotBeEmpty();
+        foreach (var (user, variable, password) in expected)
+        {
+            users.ShouldContainKey(user, $"The definitions do not carry the user '{user}'.");
+            // Compared as booleans, so a failure never prints a password.
+            (users[user] == BrokerUsers.Placeholder(variable)).ShouldBeTrue($"The definitions carry '{user}'s password as something other than the placeholder {BrokerUsers.Placeholder(variable)}.");
+            broker.ShouldContainKey(variable, $"The broker is not given '{user}'s password as {variable}.");
+            (broker[variable] == password).ShouldBeTrue($"The broker's {variable} is not the password '{user}' connects with.");
+            broker[BrokerUsers.Definitions].Contains(password, StringComparison.Ordinal).ShouldBeFalse($"The definitions carry '{user}'s password.");
         }
     }
 
