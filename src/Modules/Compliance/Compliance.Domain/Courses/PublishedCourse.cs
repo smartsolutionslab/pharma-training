@@ -3,7 +3,9 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Courses;
 /// <summary>
 /// A course as Compliance knows it from the versions and retirements that have arrived, in whatever order. Its latest
 /// version is the one with the highest number, and it names the course; that version is current unless it is retired,
-/// and then the course has no current version: an older one was superseded in Editorial already.
+/// and then the course has no current version: an older one was superseded in Editorial already. A retirement that
+/// arrived before its version names no version received and changes nothing until that version arrives, which it then
+/// retires, as Catalog lists courses.
 /// </summary>
 public sealed class PublishedCourse
 {
