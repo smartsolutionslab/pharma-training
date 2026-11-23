@@ -586,6 +586,16 @@ export const de = {
       text: {
         hint: 'Scrollen Sie bis zum Ende, um das Kapitel abzuschließen.',
       },
+      video: {
+        label: 'Video: {title}',
+        seekHint: 'Sie können nur bis zur bereits gesehenen Stelle vorspulen.',
+        seekRefused: 'Vorspulen ist nur bis {position} möglich.',
+        resumed: 'Fortgesetzt bei {position}.',
+        failed: 'Das Video konnte nicht abgespielt werden.',
+      },
+      media: {
+        notReady: 'Die Datei wird noch bereitgestellt. Versuchen Sie es in einem Moment erneut.',
+      },
       progress: {
         failed: 'Ihr Fortschritt konnte nicht gespeichert werden. Er wird erneut gesendet.',
         saveNow: 'Jetzt speichern',

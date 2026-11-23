@@ -8,6 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import TextChapter from './TextChapter.vue';
 import { type PlayerChapter, useCoursePlayer } from './useCoursePlayer';
 import { useProgressReporter } from './useProgressReporter';
+import VideoChapter from './VideoChapter.vue';
 
 // The chapter player (#44) at /learning/courses/:courseVersionId: the course's title, its chapters in order with their
 // kind and state, and the chapter shown (?chapter=). Progress goes to the host only; what it answers is what is shown.
@@ -17,11 +18,12 @@ const { version, sessionId, chapters, current, contentCompleted, failure, retrya
 
 /** What the polite status region says: the latest few, so two in a row are both heard. */
 const announcements = ref<string[]>([]);
+function announce(text: string) {
+  announcements.value = [...announcements.value.slice(-2), text];
+}
 const reporter = useProgressReporter(sessionId, {
   titleOf: (chapterId) => chapters.value.find((chapter) => chapter.chapterId === chapterId)?.title ?? '',
-  announce: (text) => {
-    announcements.value = [...announcements.value.slice(-2), text];
-  },
+  announce,
 });
 const { failed: reportFailed, finished: sessionFinished } = reporter;
 
@@ -37,6 +39,10 @@ watch(
 
 function reportProgress(chapter: PlayerChapter, percent: number) {
   reporter.report(chapter.chapterId, percent);
+}
+
+function trackProgress(chapter: PlayerChapter, percent: number) {
+  reporter.track(chapter.chapterId, percent);
 }
 
 function stateOf(chapter: PlayerChapter): string {
@@ -153,7 +159,19 @@ const chapterHeadingId = 'course-player-chapter';
             :completed="current.completed"
             @progress="(percent) => current !== undefined && reportProgress(current, percent)"
           />
-          <!-- The video (VideoChapter) and the PDF (PdfChapter) chapters take their place here with their own tasks. -->
+          <VideoChapter
+            v-else-if="current.kind === 'Video'"
+            :key="current.chapterId"
+            :chapter-id="current.chapterId"
+            :title="current.title"
+            :duration-seconds="current.videoDurationSeconds ?? 0"
+            :progress-percent="current.progressPercent"
+            :completed="current.completed"
+            @progress="(percent) => current !== undefined && reportProgress(current, percent)"
+            @tracking="(percent) => current !== undefined && trackProgress(current, percent)"
+            @announce="announce"
+          />
+          <!-- The PDF chapter (PdfChapter) takes its place here with its own task. -->
         </section>
       </div>
     </template>

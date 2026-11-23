@@ -570,6 +570,16 @@ export const en: MessageSchema = {
       text: {
         hint: 'Scroll to the end to complete the chapter.',
       },
+      video: {
+        label: 'Video: {title}',
+        seekHint: 'You can only skip ahead to the point you have already watched.',
+        seekRefused: 'You can only skip ahead to {position}.',
+        resumed: 'Resumed at {position}.',
+        failed: 'The video could not be played.',
+      },
+      media: {
+        notReady: 'The file is still being prepared. Please try again in a moment.',
+      },
       progress: {
         failed: 'Your progress could not be saved. It will be sent again.',
         saveNow: 'Save now',
