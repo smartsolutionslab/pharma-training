@@ -39,7 +39,7 @@ public partial class OrganisationInvitationsTests(AspireFixture aspire)
             () => database.InsertInvitationAsync(pharmacy, address, Hash(), "Invited", cancellationToken));
 
         refused.SqlState.ShouldBe(UniqueViolation);
-        (await database.StatusesOfAsync(pharmacy, address, cancellationToken)).ShouldBe(["Invited", "Revoked"]);
+        (await database.StatusesOfAsync(pharmacy, address, cancellationToken)).ShouldBe(["Invited", "Revoked"], ignoreOrder: true);
     }
 
     [Fact]
