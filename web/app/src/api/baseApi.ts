@@ -14,6 +14,11 @@ export class ApiError extends Error {
    * framework's codes (invalid-argument, already-exists). A page tells refusals of one status apart by it.
    */
   readonly code?: string;
+  /**
+   * The problem details' code at any status, the framework's included (model-not-configured, already-exists). Never
+   * words for the user: a page tells the host's own refusals above 500 from an edge's by it. Absent without one.
+   */
+  readonly failureCode?: string;
 
   constructor(status: number, body: string) {
     super(`The API answered ${status}: ${body}`);
@@ -22,7 +27,22 @@ export class ApiError extends Error {
     const refusal = status < 500 ? moduleRefusalOf(body) : undefined;
     this.serverMessage = refusal === undefined ? undefined : serverMessageOf(refusal);
     this.code = refusal?.code;
+    this.failureCode = failureCodeOf(body);
   }
+}
+
+function failureCodeOf(body: string): string | undefined {
+  let problem: unknown;
+  try {
+    problem = JSON.parse(body);
+  } catch {
+    return undefined;
+  }
+  if (typeof problem !== 'object' || problem === null || Array.isArray(problem)) {
+    return undefined;
+  }
+  const { code } = problem as Record<string, unknown>;
+  return typeof code === 'string' && code.trim() !== '' ? code : undefined;
 }
 
 /** A refusal of a module's own: problem details with a module's code (`<module>.<code>`). */

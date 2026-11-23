@@ -105,6 +105,7 @@ const registerPage = () => t('modules.organisation.pages.register.title');
 const palette = () => t('shell.palette.title');
 const courseVersion = () => t('modules.editorial.details.version.title');
 const reportEntry = () => t('modules.reports.details.entry.title');
+const courseTest = () => t('modules.editorial.details.test.title');
 
 // GET /organisation/pharmacies/mine as useMyPharmacies answers it: TanStack Query's refs, which a test sets.
 const pharmacies = await vi.hoisted(async () => {
@@ -800,6 +801,24 @@ test("at a course version's address the breadcrumbs lead home, to the editorial 
     editorial(),
     courseVersion(),
   ]);
+  expect(breadcrumbs.queryByText('versions')).not.toBeInTheDocument();
+  expect(breadcrumbs.queryByText(version)).not.toBeInTheDocument();
+});
+
+// The test page of a version (#25) is a detail of three segments, versions/:id/test, beside the version's own.
+test('the breadcrumbs name the test page by its title', async () => {
+  await renderAt(`/editorial/versions/${version}/test`);
+
+  const breadcrumbs = within(screen.getByRole('navigation', { name: t('ui.breadcrumb.label') }));
+  expect(breadcrumbs.getByRole('link', { name: 'Startseite' })).toHaveAttribute('href', '/');
+  expect(breadcrumbs.getByRole('link', { name: 'Redaktion' })).toHaveAttribute('href', '/editorial');
+  expect(breadcrumbs.getByText('Test')).toHaveAttribute('aria-current', 'page');
+  expect(breadcrumbs.getAllByRole('listitem').map((item) => item.textContent.trim())).toEqual([
+    home(),
+    editorial(),
+    courseTest(),
+  ]);
+  expect(breadcrumbs.queryByText(courseVersion())).not.toBeInTheDocument();
   expect(breadcrumbs.queryByText('versions')).not.toBeInTheDocument();
   expect(breadcrumbs.queryByText(version)).not.toBeInTheDocument();
 });

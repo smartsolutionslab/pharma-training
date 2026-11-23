@@ -169,3 +169,48 @@ test('a 5xx carries no code', async () => {
   expect(error.status).toBe(503);
   expect(error.code).toBeUndefined();
 });
+
+// The problem's code at any status, apart from code (#25, S3): the host's own refusals above 500 (503
+// model-not-configured, 502 editorial.ai-draft-malformed) are told apart from an edge's 503 or 502 by it. It is never
+// words for the user, so it is kept apart from code and serverMessage, whose rules stay.
+test.each([
+  ['a 503 model-not-configured', 503, 'model-not-configured'],
+  ['a 502 ai-draft-malformed', 502, 'editorial.ai-draft-malformed'],
+  ["a 409 module's refusal", 409, 'editorial.not-a-draft'],
+  ["a 409 framework's code", 409, 'already-exists'],
+  ['a 400 failed guard', 400, 'invalid-argument'],
+])("%s carries the problem's code as its failure code", async (_answer, status, code) => {
+  const error = await refusalOf(problem(status, { title: 'Refused', status, detail: 'Words of the host.', code }));
+
+  expect(error.status).toBe(status);
+  expect(error.failureCode).toBe(code);
+});
+
+test('a 5xx with a code keeps code and serverMessage absent while carrying the failure code', async () => {
+  const error = await refusalOf(
+    problem(503, { title: 'Service Unavailable', status: 503, detail: 'No model.', code: 'model-not-configured' }),
+  );
+
+  expect(error.failureCode).toBe('model-not-configured');
+  expect(error.code).toBeUndefined();
+  expect(error.serverMessage).toBeUndefined();
+});
+
+test.each([
+  ['an empty body', () => new Response('', { status: 503 })],
+  ['a plain-text body', () => new Response('Bad Gateway', { status: 502, headers: { 'Content-Type': 'text/plain' } })],
+  ['a problem without a code', () => problem(503, { title: 'Service Unavailable', status: 503 })],
+  ['a code that is not a string', () => problem(502, { title: 'Bad Gateway', status: 502, code: 42 })],
+  ['a blank code', () => problem(503, { title: 'Service Unavailable', status: 503, code: ' ' })],
+  ['a JSON body that is not an object', () => Response.json('model-not-configured', { status: 503 })],
+])('a refusal with %s carries no failure code', async (_body, response) => {
+  const error = await refusalOf(response());
+
+  expect(error.failureCode).toBeUndefined();
+});
+
+test('an ApiError made from a body directly carries its failure code too', () => {
+  const error = new ApiError(503, JSON.stringify({ title: 'Refused', status: 503, code: 'model-not-configured' }));
+
+  expect(error.failureCode).toBe('model-not-configured');
+});
