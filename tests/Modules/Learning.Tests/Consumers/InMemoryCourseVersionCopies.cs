@@ -5,12 +5,19 @@ using SmartSolutionsLab.PharmaTraining.Modules.Learning.Domain.LearningSessions;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Tests.Consumers;
 
-/// <summary>Learning's local copy of the published course versions in memory, and its unit of work: what is added is stored only once committed.</summary>
+/// <summary>
+/// Learning's local copy of the published course versions and their retirements in memory, and its unit of work: what
+/// is added is stored only once committed.
+/// </summary>
 internal sealed class InMemoryCourseVersionCopies : ICourseVersionCopies, ILearningUnitOfWork
 {
     private readonly List<CourseVersionCopy> added = [];
 
+    private readonly List<CourseVersionRetirement> addedRetirements = [];
+
     public List<CourseVersionCopy> Versions { get; } = [];
+
+    public List<CourseVersionRetirement> Retirements { get; } = [];
 
     public int Commits { get; private set; }
 
@@ -24,8 +31,16 @@ internal sealed class InMemoryCourseVersionCopies : ICourseVersionCopies, ILearn
             ? Option<CourseVersionCopy>.Some(found)
             : Option<CourseVersionCopy>.None);
 
+    public Task<bool> IsRetiredAsync(CourseVersionId version, CancellationToken cancellationToken) =>
+        Task.FromResult(Retirements.Any(stored => stored.CourseVersionId == version.Value));
+
+    public void Add(CourseVersionRetirement retirement) => addedRetirements.Add(retirement);
+
     /// <summary>Stores a copy as if its event had been handled, for tests that start from a version Learning holds.</summary>
     public void Hold(CourseVersionCopy version) => Versions.Add(version);
+
+    /// <summary>Stores a retirement as if its event had been handled, for tests that start from a version Learning knows is retired.</summary>
+    public void Retire(CourseVersionRetirement retirement) => Retirements.Add(retirement);
 
     public Task PublishAsync(IntegrationEvent integrationEvent) => Task.CompletedTask;
 
@@ -33,6 +48,8 @@ internal sealed class InMemoryCourseVersionCopies : ICourseVersionCopies, ILearn
     {
         Versions.AddRange(added);
         added.Clear();
+        Retirements.AddRange(addedRetirements);
+        addedRetirements.Clear();
         Commits++;
         return Task.CompletedTask;
     }
