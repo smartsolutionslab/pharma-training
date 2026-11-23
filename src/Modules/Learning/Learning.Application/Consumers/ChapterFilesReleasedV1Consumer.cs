@@ -1,3 +1,4 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Storage;
 using SmartSolutionsLab.PharmaTraining.Contracts.Editorial;
 using SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.Media;
@@ -12,9 +13,14 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.Consumer
 /// without copying again, and no row is written. A copy that fails, an expired source first, throws, so the message is
 /// retried and then dead-lettered. It does not ask whether Learning holds the version: this event may arrive before
 /// <c>CourseVersionPublishedV1</c>.
+/// The files are copied one after another within one message, each in a request that may take up to the copy's network
+/// timeout (10 minutes), so the message has 30 minutes instead of the default 60 seconds: a copy can start only while the
+/// source URLs are valid, at most 15 minutes after signing, and the last one started may then run for a whole network
+/// timeout; 30 minutes covers both with room to spare (docs/adr/0002).
 /// </summary>
 public sealed class ChapterFilesReleasedV1Consumer(IBlobCopies copies)
 {
+    [ConsumerTimeout(30)]
     public async Task HandleAsync(ChapterFilesReleasedV1 message, CancellationToken cancellationToken)
     {
         // Refused here, each by its name, before anything is copied, so a poison message dead-letters with a reason that says which field.

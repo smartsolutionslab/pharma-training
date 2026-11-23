@@ -16,8 +16,12 @@ namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Storage;
 /// </summary>
 public sealed class AzureBlobCopies : IBlobCopies
 {
-    // A large video is read by the storage service in one request; the SDK's default of 100 seconds would cut it off.
-    private static readonly TimeSpan NetworkTimeout = TimeSpan.FromMinutes(10);
+    /// <summary>
+    /// How long one copy request may take: a large video is read by the storage service in one request, and the SDK's
+    /// default of 100 seconds would cut it off. A consumer that copies needs an execution timeout at least this long
+    /// (<c>[ConsumerTimeout]</c>, docs/adr/0002).
+    /// </summary>
+    public static TimeSpan NetworkTimeout { get; } = TimeSpan.FromMinutes(10);
 
     private readonly Lazy<ModuleBlobLocation> location;
 
