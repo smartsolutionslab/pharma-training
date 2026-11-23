@@ -7,10 +7,36 @@ using Microsoft.EntityFrameworkCore;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Infrastructure;
 
-/// <summary>The course versions with their chapters and questions. The module's unit of work saves what is added or changed.</summary>
+/// <summary>
+/// The course versions with their chapters and questions, and the records of their returns. The module's unit of work
+/// saves what is added or changed.
+/// </summary>
 public sealed class CourseVersionStore(EditorialDbContext context) : ICourseVersionStore
 {
     public void Add(CourseVersion version) => context.Add(version);
+
+    public void AddReturn(CourseVersionReturn record) => context.Add(record);
+
+    public async Task<Option<PagedResult<CourseVersionReturn>>> ListReturnsAsync(CourseVersionId version, Page page, PageSize pageSize, CancellationToken cancellationToken)
+    {
+        Ensure.That(page).IsNotNull();
+        Ensure.That(pageSize).IsNotNull();
+
+        if (!await context.Set<CourseVersion>().AnyAsync(stored => stored.Id == version, cancellationToken))
+        {
+            return Option<PagedResult<CourseVersionReturn>>.None;
+        }
+
+        var returns = context.Set<CourseVersionReturn>().AsNoTracking().Where(record => record.Version == version);
+        var total = await returns.CountAsync(cancellationToken);
+        var items = await returns
+            .OrderByDescending(record => record.ReturnedAt)
+            .ThenByDescending(record => record.Id)
+            .Skip(page.Skip(pageSize))
+            .Take(pageSize.Value)
+            .ToListAsync(cancellationToken);
+        return Option<PagedResult<CourseVersionReturn>>.Some(new PagedResult<CourseVersionReturn>(items, total, page.Value, pageSize.Value));
+    }
 
     /// <summary>
     /// The version as it is read back, untracked, loaded in one snapshot by <see cref="FindInOneSnapshotAsync"/>.

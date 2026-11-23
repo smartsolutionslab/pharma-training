@@ -10,6 +10,14 @@ public interface ICourseVersionStore
 {
     void Add(CourseVersion version);
 
+    /// <summary>The record of a return, saved with the version when the unit of work commits.</summary>
+    void AddReturn(CourseVersionReturn record);
+
+    /// <summary>
+    /// One page of the version's returns, newest first, then by id, newest first; none when no such version exists.
+    /// </summary>
+    Task<Option<PagedResult<CourseVersionReturn>>> ListReturnsAsync(CourseVersionId version, Page page, PageSize pageSize, CancellationToken cancellationToken);
+
     /// <summary>The version with its chapters in order, as it is stored, for a query: nothing that changes it is saved.</summary>
     Task<Option<CourseVersion>> FindAsync(CourseVersionId id, CancellationToken cancellationToken);
 
