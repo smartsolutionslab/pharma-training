@@ -140,6 +140,35 @@ public class ExaminationTests
         examination.Submit(other, Now).Error.ShouldBeOfType<DefinitionOfAnotherVersion>();
     }
 
+    [Fact]
+    public void Changing_the_callers_question_list_after_the_start_changes_neither_the_attempt_nor_its_event()
+    {
+        var examination = Open();
+        List<QuestionVersionId> shuffled = [Q2, Q1];
+        examination.StartAttempt(AttemptId.New(), shuffled, Now).IsSuccess.ShouldBeTrue();
+
+        shuffled.Reverse();
+        shuffled.Add(QuestionVersionId.From(Guid.CreateVersion7()));
+
+        examination.Attempts[^1].Questions.ShouldBe([Q2, Q1]);
+        Pending(examination).OfType<AttemptStarted>().ShouldHaveSingleItem().Questions.ShouldBe([Q2, Q1]);
+    }
+
+    [Fact]
+    public void Changing_the_callers_chosen_options_after_the_answer_changes_neither_the_attempt_nor_its_event()
+    {
+        var examination = Open();
+        StartAttempt(examination);
+        List<AnswerOptionId> chosen = [A];
+        examination.Answer(Q1, chosen, Now).IsSuccess.ShouldBeTrue();
+        examination.Answer(Q2, [B, C], Now).IsSuccess.ShouldBeTrue();
+
+        chosen.Add(D);
+
+        Pending(examination).OfType<QuestionAnswered>().First().Chosen.ShouldBe([A]);
+        examination.Submit(Definition, Now).Value.ShouldBe(AttemptOutcome.Passed);
+    }
+
     private static Examination Open() =>
         Examination.Open(
             ExaminationId.New(),

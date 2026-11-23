@@ -62,4 +62,59 @@ public class ValueObjectTests
         timestamp.Value.Offset.ShouldBe(TimeSpan.Zero);
         timestamp.ShouldBe(Timestamp.From(new DateTimeOffset(2027, 3, 1, 9, 0, 0, TimeSpan.Zero)));
     }
+
+    [Fact]
+    public void Timestamps_compare_by_instant()
+    {
+        var earlier = Timestamp.From(new DateTimeOffset(2027, 3, 1, 9, 0, 0, TimeSpan.Zero));
+        var later = Timestamp.From(new DateTimeOffset(2027, 3, 1, 12, 0, 0, TimeSpan.FromHours(2)));
+        var none = (Timestamp)null!;
+        var alsoNone = (Timestamp)null!;
+
+        earlier.CompareTo(later).ShouldBeLessThan(0);
+        later.CompareTo(earlier).ShouldBeGreaterThan(0);
+        earlier.CompareTo(Timestamp.From(earlier.Value)).ShouldBe(0);
+        earlier.CompareTo(null).ShouldBe(1);
+        (earlier < later).ShouldBeTrue();
+        (later > earlier).ShouldBeTrue();
+        (earlier <= Timestamp.From(earlier.Value)).ShouldBeTrue();
+        (later >= Timestamp.From(later.Value)).ShouldBeTrue();
+        (later < earlier).ShouldBeFalse();
+        (earlier > later).ShouldBeFalse();
+        (none < earlier).ShouldBeTrue();
+        (earlier > none).ShouldBeTrue();
+        (none <= alsoNone).ShouldBeTrue();
+        (none >= alsoNone).ShouldBeTrue();
+        earlier.ToString().ShouldBe("2027-03-01T09:00:00.0000000+00:00");
+    }
+
+    [Fact]
+    public void Attempt_numbers_compare_by_value_and_put_none_first()
+    {
+        var none = (AttemptNumber)null!;
+        var alsoNone = (AttemptNumber)null!;
+
+        (AttemptNumber.From(1) < AttemptNumber.From(2)).ShouldBeTrue();
+        (AttemptNumber.From(2) <= AttemptNumber.From(2)).ShouldBeTrue();
+        (AttemptNumber.From(2) < AttemptNumber.From(1)).ShouldBeFalse();
+        (AttemptNumber.From(3) <= AttemptNumber.From(2)).ShouldBeFalse();
+        AttemptNumber.First.CompareTo(null).ShouldBe(1);
+        (none < AttemptNumber.First).ShouldBeTrue();
+        (none <= alsoNone).ShouldBeTrue();
+        (AttemptNumber.First >= none).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Scores_put_none_first()
+    {
+        var none = (ScorePercent)null!;
+        var alsoNone = (ScorePercent)null!;
+
+        (ScorePercent.From(40) < ScorePercent.From(40)).ShouldBeFalse();
+        (ScorePercent.From(60) <= ScorePercent.From(40)).ShouldBeFalse();
+        ScorePercent.From(0).CompareTo(null).ShouldBe(1);
+        (none < ScorePercent.From(0)).ShouldBeTrue();
+        (none <= alsoNone).ShouldBeTrue();
+        (ScorePercent.From(0) > none).ShouldBeTrue();
+    }
 }

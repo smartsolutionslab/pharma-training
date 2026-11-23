@@ -1,5 +1,6 @@
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.EventSourcing;
 using SmartSolutionsLab.PharmaTraining.Modules.Assessment.Domain.Examinations;
+using SmartSolutionsLab.PharmaTraining.Modules.Assessment.Domain.Examinations.Events;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Assessment.Tests.Examinations;
 
@@ -15,6 +16,21 @@ public class ExaminationReplayTests
     private static readonly TestDefinition Definition = new(
         Version,
         [new DefinedQuestion(Question, ChapterId.From(Guid.CreateVersion7()), [Right, Wrong], [Right])],
+        ScorePercent.From(100),
+        AttemptNumber.From(3));
+
+    // Two questions in two chapters, for replays that must keep which chapters failed.
+    private static readonly ChapterId Hygiene = ChapterId.From(Guid.CreateVersion7());
+    private static readonly ChapterId Gloves = ChapterId.From(Guid.CreateVersion7());
+    private static readonly QuestionVersionId HygieneQuestion = QuestionVersionId.From(Guid.CreateVersion7());
+    private static readonly QuestionVersionId GlovesQuestion = QuestionVersionId.From(Guid.CreateVersion7());
+
+    private static readonly TestDefinition TwoChapters = new(
+        Version,
+        [
+            new DefinedQuestion(HygieneQuestion, Hygiene, [Right, Wrong], [Right]),
+            new DefinedQuestion(GlovesQuestion, Gloves, [Right, Wrong], [Right]),
+        ],
         ScorePercent.From(100),
         AttemptNumber.From(3));
 
@@ -59,6 +75,36 @@ public class ExaminationReplayTests
         replayed.Attempts[^1].Number.ShouldBe(AttemptNumber.First);
     }
 
+    [Fact]
+    public void Replaying_an_open_attempt_keeps_its_answers_for_the_submit()
+    {
+        var examination = Open();
+        examination.StartAttempt(AttemptId.New(), [GlovesQuestion, HygieneQuestion], Now).IsSuccess.ShouldBeTrue();
+        examination.Answer(HygieneQuestion, [Right], Now).IsSuccess.ShouldBeTrue();
+        examination.Answer(GlovesQuestion, [Right], Now).IsSuccess.ShouldBeTrue();
+
+        var replayed = Replay(examination);
+
+        replayed.Status.ShouldBe(ExaminationStatus.InAttempt);
+        replayed.Submit(TwoChapters, Now).Value.ShouldBe(AttemptOutcome.Passed);
+        replayed.Status.ShouldBe(ExaminationStatus.Passed);
+    }
+
+    [Fact]
+    public void Replaying_two_failed_attempts_keeps_their_chapters_for_the_exhaustion()
+    {
+        var examination = Open();
+        Fail(examination, wrong: HygieneQuestion);
+        Fail(examination, wrong: GlovesQuestion);
+
+        var replayed = Replay(examination);
+        Fail(replayed, wrong: HygieneQuestion);
+
+        replayed.Status.ShouldBe(ExaminationStatus.Exhausted);
+        ((IEventSourced)replayed).PendingEvents.OfType<ExaminationExhausted>().ShouldHaveSingleItem()
+            .FailedChapters.ShouldBe([Hygiene, Gloves], ignoreOrder: true);
+    }
+
     private static Examination Open() =>
         Examination.Open(
             ExaminationId.New(),
@@ -73,6 +119,14 @@ public class ExaminationReplayTests
         examination.StartAttempt(AttemptId.New(), [Question], Now).IsSuccess.ShouldBeTrue();
         examination.Answer(Question, [chosen], Now).IsSuccess.ShouldBeTrue();
         examination.Submit(Definition, Now).IsSuccess.ShouldBeTrue();
+    }
+
+    private static void Fail(Examination examination, QuestionVersionId wrong)
+    {
+        examination.StartAttempt(AttemptId.New(), [HygieneQuestion, GlovesQuestion], Now).IsSuccess.ShouldBeTrue();
+        examination.Answer(HygieneQuestion, [wrong == HygieneQuestion ? Wrong : Right], Now).IsSuccess.ShouldBeTrue();
+        examination.Answer(GlovesQuestion, [wrong == GlovesQuestion ? Wrong : Right], Now).IsSuccess.ShouldBeTrue();
+        examination.Submit(TwoChapters, Now).Value.ShouldBe(AttemptOutcome.Failed);
     }
 
     private static Examination Replay(Examination examination)
