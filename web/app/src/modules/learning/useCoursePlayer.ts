@@ -63,8 +63,9 @@ export function useCoursePlayer() {
 
   const catalog = useGetCatalogCourseVersionsId(versionId, { query: { enabled: validVersion } });
 
-  const { mutateAsync: postStart } = usePostLearningSessions();
-  const started = ref<LearningSessionDto>();
+  // The start's answer is read from the mutation, whose data is the latest start's alone; a start that lost a race is
+  // posted again, and the second post is the latest.
+  const { mutateAsync: postStart, data: started } = usePostLearningSessions();
   const startError = ref<unknown>();
 
   async function startOnce(): Promise<LearningSessionDto> {
@@ -88,20 +89,12 @@ export function useCoursePlayer() {
     try {
       const answer = await startOnce();
       queryClient.setQueryData(getGetLearningSessionsIdQueryKey(answer.id), answer);
-      started.value = answer;
     } catch (error) {
       startError.value = error;
     }
   }
 
-  watch(
-    versionId,
-    () => {
-      started.value = undefined;
-      void start();
-    },
-    { immediate: true },
-  );
+  watch(versionId, () => void start(), { immediate: true });
 
   const sessionId = computed(() => started.value?.id ?? '');
   const sessionQuery = useGetLearningSessionsId(sessionId, {
