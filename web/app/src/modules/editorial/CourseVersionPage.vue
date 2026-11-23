@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
-import { i18n, t as translate } from '@/i18n';
+import { t as translate } from '@/i18n';
 import { notify } from '@/lib/notify';
 import ChapterForm from './ChapterForm.vue';
 import ChapterList from './ChapterList.vue';
@@ -39,7 +39,7 @@ const {
 } = useGetEditorialCourseVersionsId(id, { query: { enabled: validId } });
 const { add, replace, remove, isSaving } = useChapterMutations(id);
 const { reorder } = useReorderChapters(id);
-const { draftNext, isDrafting } = useDraftNextVersion(id);
+const { draftNext } = useDraftNextVersion(id);
 const { t } = useI18n();
 
 /** The chapter form while it is open: with the chapter it replaces, or none to add one. */
@@ -79,8 +79,9 @@ async function save(request: EditorialChapterRequest) {
 }
 
 /**
- * Drafts the published version's successor and opens it; a refusal is reported and the page stays, the version read
- * again. Without a module's words, the button takes the focus back, ready to try again.
+ * Drafts the published version's successor and opens it, unless the editor has left meanwhile; a refusal is reported
+ * and the page stays, the version read again, with the focus on the button or, when the version no longer offers it,
+ * on its heading. The button stays shut from the press until the page has moved on or the host has refused.
  */
 async function draftNextVersion() {
   const published = version.value;
@@ -88,26 +89,26 @@ async function draftNextVersion() {
     return;
   }
   draftingNext.value = true;
-  const next = Number(published.number) + 1;
+  const source = router.currentRoute.value.path;
   const result = await draftNext();
-  draftingNext.value = false;
   if (result.ok) {
+    const reported = () =>
+      notify.success(translate('editorial.version.newVersionCreated', { number: Number(published.number) + 1 }));
+    if (router.currentRoute.value.path !== source) {
+      draftingNext.value = false;
+      reported();
+      return;
+    }
     focusHeadingOf.value = result.id;
     await router.push(`/editorial/versions/${result.id}`);
-    notify.success(
-      translate('editorial.version.newVersionCreated', {
-        number: Number.isFinite(next) ? i18n.global.n(next, 'integer') : String(published.number),
-      }),
-    );
+    draftingNext.value = false;
+    reported();
     return;
   }
-  if (result.serverMessage !== undefined) {
-    notify.failure(result.serverMessage);
-    return;
-  }
-  notify.failure(translate('editorial.version.newVersionFailed'));
+  draftingNext.value = false;
+  notify.failure(result.serverMessage ?? translate('editorial.version.newVersionFailed'));
   await nextTick();
-  document.getElementById(newVersionId)?.focus();
+  (document.getElementById(newVersionId) ?? document.getElementById(headingId))?.focus();
 }
 
 // The drafted version's heading takes the focus once it shows: the button that had it is gone.
@@ -174,13 +175,7 @@ async function confirmRemove(chapter: EditorialChapterDto) {
         {{ t(`editorial.version.readOnly.${version.status}`) }}
       </p>
       <div v-if="version.status === 'Published'">
-        <Button
-          :id="newVersionId"
-          type="button"
-          :disabled="draftingNext || isDrafting"
-          :aria-busy="draftingNext || isDrafting"
-          @click="draftNextVersion"
-        >
+        <Button :id="newVersionId" type="button" :disabled="draftingNext" @click="draftNextVersion">
           {{ t('editorial.version.newVersion') }}
         </Button>
       </div>

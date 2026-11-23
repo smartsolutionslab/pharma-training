@@ -12,14 +12,18 @@ export type DraftNextResult = { ok: true; id: string } | { ok: false; serverMess
 
 /**
  * Drafts the successor of a published version (POST /editorial/course-versions/{id}/next). Afterwards every cached
- * inbox page is stale, the new draft may be on any of them; after a refusal the published version is stale instead:
- * it may have been retired or superseded meanwhile.
+ * inbox page is stale, the new draft may be on any of them (a version's own key shares the prefix, but is left alone:
+ * the published one has not changed); after a refusal the published version is stale instead: it may have been
+ * retired or superseded meanwhile.
  */
 export function useDraftNextVersion(versionId: MaybeRefOrGetter<string>) {
   const { mutateAsync, isPending } = usePostEditorialCourseVersionsIdNext({
     mutation: {
       onSuccess: (_id, _variables, _result, { client }) =>
-        client.invalidateQueries({ queryKey: getGetEditorialCourseVersionsQueryKey() }),
+        client.invalidateQueries({
+          queryKey: getGetEditorialCourseVersionsQueryKey(),
+          predicate: ({ queryKey }) => typeof queryKey[2] !== 'string',
+        }),
       onError: (_error, { id }, _result, { client }) =>
         client.invalidateQueries({ queryKey: getGetEditorialCourseVersionsIdQueryKey(id) }),
     },
