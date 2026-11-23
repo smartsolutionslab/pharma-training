@@ -3,7 +3,9 @@ import { type APIRequestContext, expect, type Page, test } from '@playwright/tes
 // A version through the whole workflow on its page (#26), as the realm's local user `editor` (realm role editor)
 // against the AppHost: the course is started in the inbox and given a chapter, a blueprint of one question and that
 // question approved through the API; then, on the page, the checklist shows the submission open, the editor submits,
-// returns it with a reason (the hint not to name people beside the field), submits again, publishes and retires it.
+// tries to return it without a reason (refused on the page, nothing sent), returns it with a reason (the hint not to
+// name people beside the field) and sees it in the version's return history (#201), submits again, publishes and
+// retires it, the return still listed.
 // The realm has one editor and four eyes is off by default (ADR 0007): the four-eyes refusal is covered by the page's
 // component tests only. Keycloak's login is English.
 
@@ -108,7 +110,17 @@ test('an editor submits, returns with a reason, submits again, publishes and ret
     checklist.getByRole('listitem').filter({ hasText: 'Die Version ist zur Prüfung eingereicht.' }),
   ).toContainText('Erfüllt:');
 
-  // Return, with a reason.
+  // The return history (#201) shows before the version was ever returned, with its empty state.
+  const history = page.getByRole('region', { name: 'Rückgaben' });
+  await expect(history.getByText('Diese Version wurde noch nie zur Überarbeitung zurückgegeben.')).toBeVisible();
+
+  // Return: an empty reason is refused on the page and never sent.
+  const returnPosts: string[] = [];
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && request.url().endsWith(`/api/editorial/course-versions/${id}/return`)) {
+      returnPosts.push(request.postData() ?? '');
+    }
+  });
   const reason = 'Kapitel 1 braucht eine Quelle.';
   await workflow.getByRole('button', { name: 'Zur Überarbeitung zurückgeben' }).click();
   const returning = page.getByRole('dialog', { name: 'Version zurückgeben' });
@@ -118,6 +130,13 @@ test('an editor submits, returns with a reason, submits again, publishes and ret
     ),
   ).toBeVisible();
   await expect(returning.getByRole('textbox', { name: 'Grund' })).toBeFocused();
+  await returning.getByRole('textbox', { name: 'Grund' }).fill('   ');
+  await returning.getByRole('button', { name: 'Zurückgeben', exact: true }).click();
+  await expect(returning.getByRole('alert')).toHaveText('Geben Sie einen Grund an.');
+  await expect(returning.getByRole('textbox', { name: 'Grund' })).toHaveAttribute('aria-invalid', 'true');
+  expect(returnPosts).toEqual([]);
+
+  // Then with a reason.
   await returning.getByRole('textbox', { name: 'Grund' }).fill(`  ${reason}  `);
   await returning.getByRole('button', { name: 'Zurückgeben', exact: true }).click();
   await expect(returning).toHaveCount(0);
@@ -127,6 +146,22 @@ test('an editor submits, returns with a reason, submits again, publishes and ret
     items: { reason: string }[];
   };
   expect(returns.items.map((each) => each.reason)).toEqual([reason]);
+  expect(returnPosts).toHaveLength(1);
+
+  // The history shows the return at once: today, by the editor (Ihnen, the realm user's own sub) and why.
+  const today = await page.evaluate(() =>
+    new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date()),
+  );
+  /** The history's data rows, the header row left out. */
+  const historyRows = history.getByRole('row').filter({ has: page.getByRole('cell') });
+  const expectTheReturnListed = async () => {
+    await expect(historyRows).toHaveCount(1);
+    const cells = historyRows.first().getByRole('cell');
+    await expect(cells.nth(0)).toContainText(today);
+    await expect(cells.nth(1)).toHaveText('Ihnen');
+    await expect(cells.nth(2)).toHaveText(reason);
+  };
+  await expectTheReturnListed();
 
   // Submit again, and publish after confirming.
   await workflow.getByRole('button', { name: 'Zur Prüfung einreichen' }).click();
@@ -139,6 +174,8 @@ test('an editor submits, returns with a reason, submits again, publishes and ret
   await expect(page.getByText('Veröffentlicht', { exact: true })).toBeVisible();
   await expect(checklist).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Neue Version anlegen' })).toBeVisible();
+  // Published, the history is still there: an audit trail.
+  await expectTheReturnListed();
 
   // Retire after confirming; the page read again still says so.
   await workflow.getByRole('button', { name: 'Zurückziehen' }).click();
@@ -149,4 +186,6 @@ test('an editor submits, returns with a reason, submits again, publishes and ret
   await page.reload();
   await expect(page.getByText('Zurückgezogen', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Zurückziehen' })).toHaveCount(0);
+  // Retired, read again, the history still shows the return.
+  await expectTheReturnListed();
 });
