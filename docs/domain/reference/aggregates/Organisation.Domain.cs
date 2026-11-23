@@ -356,10 +356,15 @@ public sealed class Membership : Entity<MembershipId>
     internal void RecordMailed(InvitationVersion version) => InvitationMailedFor = version;
 
     /// <summary>The instant from which the invitation may be renewed again; none while no mail was ever requested.</summary>
-    internal Option<Timestamp> RenewableFrom(RenewCooldown cooldown) =>
-        InvitationRequestedAt is { } requestedAt
-            ? Option<Timestamp>.Some(requestedAt.Plus(cooldown.Value))
-            : Option<Timestamp>.None;
+    internal Option<Timestamp> RenewableFrom(RenewCooldown cooldown)
+    {
+        if (InvitationRequestedAt is { } requestedAt)
+        {
+            return Option<Timestamp>.Some(requestedAt.Plus(cooldown.Value));
+        }
+
+        return Option<Timestamp>.None;
+    }
 
     internal void RenewInvitation(Timestamp now, Timestamp expiresAt)
     {
@@ -625,9 +630,12 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
     private Option<Timestamp> DailyCapReached(Timestamp now, DailyMailCap cap)
     {
         var day = CountingDay(now);
-        return InvitationMailDay == day && InvitationMailsThatDay.Value >= cap.Value
-            ? Option<Timestamp>.Some(day.Next().Start)
-            : Option<Timestamp>.None;
+        if (InvitationMailDay == day && InvitationMailsThatDay.Value >= cap.Value)
+        {
+            return Option<Timestamp>.Some(day.Next().Start);
+        }
+
+        return Option<Timestamp>.None;
     }
 
     /// <summary>Counts one invitation mail toward the counted day's tally: the first of a new day starts it afresh.</summary>
@@ -638,11 +646,19 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
         InvitationMailDay = day;
     }
 
-    /// <summary>Today, or the stored day when it is later: a clock behind around 00:00 UTC adds to the new day's tally instead of restarting it.</summary>
+    /// <summary>
+    /// Today, or the stored day when it is tomorrow: a clock behind around 00:00 UTC adds to the new day's tally instead
+    /// of restarting it. A stored day further ahead is not trusted: today counts and the tally restarts.
+    /// </summary>
     private UtcDay CountingDay(Timestamp now)
     {
         var today = UtcDay.Of(now);
-        return InvitationMailDay is { } stored && stored.Value > today.Value ? stored : today;
+        if (InvitationMailDay is { } stored && stored.Value.DayNumber - today.Value.DayNumber == 1)
+        {
+            return stored;
+        }
+
+        return today;
     }
 }
 
@@ -698,7 +714,7 @@ public sealed record InvitationRenewedTooSoon(PharmacyId Pharmacy, MembershipId 
     : DomainError("organisation.invitation-renewed-too-soon", "The invitation was mailed a moment ago; renew it once the waiting time has passed.");
 
 public sealed record TooManyInvitationsToday(PharmacyId Pharmacy, Timestamp RetryAt)
-    : DomainError("organisation.too-many-invitations-today", "The pharmacy has sent as many invitation mails today as it may; try again tomorrow.");
+    : DomainError("organisation.too-many-invitations-today", "The pharmacy has sent as many invitation mails today as it may; try again later.");
 
 public sealed record InvitationForAnotherAddress(PharmacyId Pharmacy, MembershipId Membership)
     : DomainError("organisation.invitation-for-another-address", "Die Einladung gilt für eine andere E-Mail-Adresse.");
