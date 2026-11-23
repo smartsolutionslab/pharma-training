@@ -1,0 +1,101 @@
+using Aspire.Hosting.ApplicationModel;
+using Aspire.Hosting.Azure;
+
+namespace Aspire.Hosting;
+
+/// <summary>
+/// Where Keycloak's realm and data come from (docs/adr/0005). In run mode it is Keycloak's own image in <c>start-dev</c>,
+/// importing the development realm from <c>./realms</c> on its first start and keeping its data on a volume, as it always
+/// was. Published, it runs an image built from Keycloak's own, optimized for PostgreSQL with health checks and holding the
+/// published realm (<c>./keycloak/realm.json</c>), which it imports once, on its first start (B10 on #114); it keeps its data
+/// in its own database on the Flexible Server, in the schema <c>keycloak</c>, logged in over TLS as <c>keycloak_app</c>
+/// with the password from the vault, a role its init container ensures (<see cref="Migrations.EnsuresOwnedSchemaFirst"/>,
+/// Q2 on #114). It serves plain HTTP behind the auth proxy (<see cref="AuthProxy"/>) and the Container Apps ingress, whose
+/// <c>X-Forwarded-*</c> headers it reads; its public address and the web app's origin come from the environment's default
+/// domain (<see cref="PublicAddresses"/>).
+/// </summary>
+public static class KeycloakPublishing
+{
+    /// <summary>The image both modes start from, and the published build's base.</summary>
+    public const string Image = "quay.io/keycloak/keycloak";
+
+    public const string Tag = "26.6";
+
+    // The schema Keycloak's tables live in (X3), owned by its role.
+    private const string Schema = "keycloak";
+
+    private const string RealmImport = "/opt/keycloak/data/import";
+
+    /// <summary>
+    /// In run mode, <c>start-dev</c> with the development realm and a data volume; published, the built image, started
+    /// optimized, logging in to <paramref name="server"/>'s Keycloak database as its own role.
+    /// </summary>
+    public static IResourceBuilder<ContainerResource> WithRealmAndStore(
+        this IResourceBuilder<ContainerResource> keycloak,
+        IResourceBuilder<IResourceWithConnectionString> server,
+        IResourceBuilder<ProjectResource>? migrations,
+        DeploymentSecrets secrets)
+    {
+        ArgumentNullException.ThrowIfNull(keycloak);
+        ArgumentNullException.ThrowIfNull(server);
+        ArgumentNullException.ThrowIfNull(secrets);
+
+        if (!keycloak.ApplicationBuilder.ExecutionContext.IsPublishMode)
+        {
+            return keycloak
+                .WithArgs("start-dev", "--import-realm")
+                .WithBindMount("./realms", RealmImport, isReadOnly: true)
+                .WithVolume(VolumeNameGenerator.Generate(keycloak, "data"), "/opt/keycloak/data");
+        }
+
+        if (server.Resource is not AzurePostgresFlexibleServerResource flexibleServer)
+        {
+            throw new InvalidOperationException($"Published, Keycloak keeps its data on the Flexible Server; {server.Resource.Name} is none.");
+        }
+
+        var database = Databases.KeycloakDatabaseOf(server);
+        var databaseName = ((AzurePostgresFlexibleServerDatabaseResource)database.Resource).DatabaseName;
+        return keycloak
+            .WithDockerfileFactory("./keycloak", _ => Dockerfile())
+            .WithArgs("start", "--optimized", "--import-realm")
+            .WithEnvironment("KC_DB_URL_HOST", new BicepOutputReference("hostName", flexibleServer))
+            .WithEnvironment("KC_DB_URL_DATABASE", databaseName)
+            .WithEnvironment("KC_DB_URL_PROPERTIES", "?sslmode=require")
+            .WithEnvironment("KC_DB_SCHEMA", Schema)
+            .WithEnvironment("KC_DB_USERNAME", Databases.RoleName(databaseName))
+            .WithEnvironment("KC_DB_PASSWORD", Databases.RolePassword(database, secrets))
+            .WithEnvironment("KC_HTTP_ENABLED", "true")
+            .WithEnvironment("KC_PROXY_HEADERS", "xforwarded")
+            .EnsuresOwnedSchemaFirst(Schema, database, migrations, secrets);
+    }
+
+    /// <summary>
+    /// Published, the origin the realm's web client accepts, <c>${WEB_ORIGIN}</c>: the edge's public address, which serves
+    /// the web app. Not <c>frontend-url</c>, which the deployment can set only once the environment exists, after the realm
+    /// was imported once. In run mode nothing: the development realm names the web app's dev server.
+    /// </summary>
+    public static IResourceBuilder<ContainerResource> WithWebOrigin(this IResourceBuilder<ContainerResource> keycloak, IResourceBuilder<ProjectResource> edge)
+    {
+        ArgumentNullException.ThrowIfNull(keycloak);
+        ArgumentNullException.ThrowIfNull(edge);
+
+        return keycloak.ApplicationBuilder.ExecutionContext.IsPublishMode
+            ? keycloak.WithEnvironment("WEB_ORIGIN", PublicAddresses.Of(edge))
+            : keycloak;
+    }
+
+    /// <summary>
+    /// The published image: built for PostgreSQL with health checks in one stage, run from another with the published realm
+    /// in Keycloak's import directory.
+    /// </summary>
+    private static string Dockerfile() =>
+        $"""
+        FROM {Image}:{Tag} AS builder
+        RUN /opt/keycloak/bin/kc.sh build --db=postgres --health-enabled=true
+
+        FROM {Image}:{Tag}
+        COPY --from=builder /opt/keycloak/ /opt/keycloak/
+        COPY realm.json {RealmImport}/realm.json
+
+        """;
+}

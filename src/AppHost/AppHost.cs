@@ -13,23 +13,27 @@ var postgres = builder.AddDatabaseServer(secrets);
 // The one SMTP server Keycloak and the services send through: Mailpit in run mode, whose inbox is http://localhost:8025;
 // published, the server the deployment names in the smtp-* parameters (Wiring/MailServer.cs, docs/adr/0004 and 0005).
 var mail = MailServer.Add(builder, secrets);
+// Published, the MigrationRunner's image, which every service and Keycloak run as their init container; nothing in run mode.
+var migrations = builder.AddMigrations();
 // Keycloak runs as a plain container. In run mode its administrator is "admin", with a password Aspire generates once and
-// keeps in the AppHost's user secrets, and the realm in ./realms is imported on first start; published, the deployment
-// sets the administrator and the mail server (Wiring/KeycloakSettings.cs), and it never runs a second replica.
-var keycloak = builder.AddContainer("keycloak", "quay.io/keycloak/keycloak", "26.6")
-    .WithArgs("start-dev", "--import-realm")
+// keeps in the AppHost's user secrets, the realm in ./realms is imported on first start in start-dev, and its data stays on
+// a volume. Published, the deployment sets the administrator and the mail server (Wiring/KeycloakSettings.cs); it runs an
+// image built with the published realm (./keycloak), imported once, and keeps its data in its own database as its own
+// role, keycloak_app, which its init container ensures (Wiring/KeycloakPublishing.cs); it never runs a second replica.
+var keycloak = builder.AddContainer("keycloak", KeycloakPublishing.Image, KeycloakPublishing.Tag)
     .WithAdministrator(secrets)
     .WithMailServer(mail, secrets)
     .WithEnvironment("KC_HEALTH_ENABLED", "true")
     .WithHttpEndpoint(port: 8080, targetPort: 8080)
     .WithHttpEndpoint(targetPort: 9000, name: "management")
     .WithHttpHealthCheck("/health/ready", endpointName: "management")
-    .WithSingleReplica();
-if (builder.ExecutionContext.IsRunMode)
-{
-    keycloak.WithBindMount("./realms", "/opt/keycloak/data/import", isReadOnly: true);
-    keycloak.WithVolume(VolumeNameGenerator.Generate(keycloak, "data"), "/opt/keycloak/data");
-}
+    .WithSingleReplica()
+    .WithRealmAndStore(postgres, migrations, secrets);
+// Published, the browser reaches Keycloak through the auth proxy alone, at https://auth.<the environment's default domain>,
+// which forwards the realm pharma-training and the static resources (Wiring/AuthProxy.cs); in run mode, Keycloak's own
+// endpoint. That address is the issuer the edge and every service validate.
+var auth = builder.AddAuthProxy(keycloak);
+var authority = AuthProxy.Authority(keycloak, auth);
 // Blob storage: one account, a container per module in the services' loop (docs/adr/0002). Each service signs short-lived
 // upload and read URLs for its own container only: with Azurite's account key in run mode; published, with a user
 // delegation key under its own identity, which may use its own container alone (Wiring/BlobContainerAccess.cs).
@@ -51,12 +55,14 @@ var azureOpenAIApiKey = secrets.IsPublishing
     : builder.AddParameter("azure-openai-api-key", () => builder.Configuration["Parameters:azure-openai-api-key"] ?? string.Empty, publishValueAsDefault: false, secret: true);
 
 var host = builder.AddProject<Projects.Edge>("host")
-    // The one entry from outside once published; the services, Keycloak and the broker stay inside the environment.
+    // With the auth proxy, the one entry from outside once published; the services, Keycloak and the broker stay inside.
     .WithExternalHttpEndpoints()
     .WithHttpHealthCheck("/health")
     .WithReference(keycloak.GetEndpoint("http"))
     .WaitFor(keycloak)
-    .WithEnvironment("Authentication__Authority", ReferenceExpression.Create($"{keycloak.GetEndpoint("http")}/realms/pharma-training"));
+    .WithEnvironment("Authentication__Authority", authority);
+// Published, the realm's web client accepts the edge's origin, which serves the web app.
+keycloak.WithWebOrigin(host);
 
 // Links in mail lead into the web app: its dev server when run, its public address (the parameter frontend-url) deployed,
 // which no endpoint reference knows.
@@ -83,9 +89,6 @@ else
     frontendUrl = ReferenceExpression.Create($"{frontendUrlParameter}");
 }
 
-// Published, the MigrationRunner's image, which every service runs as its init container; nothing in run mode.
-var migrations = builder.AddMigrations();
-
 foreach (var (module, project) in builder.ServiceHosts())
 {
     // The service's own database on the one server, named after its module.
@@ -106,7 +109,7 @@ foreach (var (module, project) in builder.ServiceHosts())
         .WaitFor(database)
         .WithReference(keycloak.GetEndpoint("http"))
         .WaitFor(keycloak)
-        .WithEnvironment("Authentication__Authority", ReferenceExpression.Create($"{keycloak.GetEndpoint("http")}/realms/pharma-training"))
+        .WithEnvironment("Authentication__Authority", authority)
         .WithMessaging(messaging, secrets, module)
         .WithBlobContainer(blobs, "blobs")
         .WithEnvironment("AzureOpenAI__Endpoint", azureOpenAIEndpoint)
