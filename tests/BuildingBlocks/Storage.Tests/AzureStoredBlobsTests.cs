@@ -14,7 +14,9 @@ namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Storage.Tests;
 /// every request with the error the test chooses, as the service does: a status and the <c>x-ms-error-code</c> header.
 /// Reading a blob's start reads the version whose properties were checked: the ranged read carries <c>If-Match</c> with
 /// the ETag <c>FindAsync</c> saw, and a blob changed in between (412 <c>ConditionNotMet</c>) answers no bytes, which the
-/// module refuses as it refuses a file that does not start as its kind does.
+/// module refuses as it refuses a file that does not start as its kind does. Published, it reads the module's container
+/// keyless, under the service's own managed identity: the <c>blobs</c> connection string has the account's endpoint and
+/// the container but no key (docs/adr/0002).
 /// </summary>
 public sealed class AzureStoredBlobsTests : IDisposable
 {
@@ -147,6 +149,21 @@ public sealed class AzureStoredBlobsTests : IDisposable
         found.HasValue.ShouldBeTrue("the service holds the blob");
         found.Value.ContentDisposition.ShouldBeNull();
         found.Value.ContentEncoding.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task Without_an_account_key_or_a_managed_identity_it_fails_when_a_blob_is_first_looked_up_naming_both()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:blobs"] = "Endpoint=https://probeaccount.blob.core.windows.net/;ContainerName=editorial" })
+            .Build();
+        var blobs = new AzureStoredBlobs(configuration);
+
+        var failure = await Should.ThrowAsync<InvalidOperationException>(() =>
+            blobs.FindAsync(BlobName.From("handout.pdf"), TestContext.Current.CancellationToken));
+
+        failure.Message.ShouldContain("AccountKey");
+        failure.Message.ShouldContain("AZURE_CLIENT_ID");
     }
 
     public void Dispose() => service.Dispose();

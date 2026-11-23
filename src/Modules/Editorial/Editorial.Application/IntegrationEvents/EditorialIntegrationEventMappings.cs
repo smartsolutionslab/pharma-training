@@ -6,9 +6,10 @@ using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.IntegrationEvents;
 
 /// <summary>
-/// How a published course version is announced to other modules; pure, no I/O. The course version goes out with its
-/// chapters and without questions; its test, with the solutions, goes out separately and to Assessment only; the files
-/// of its PDF and video chapters go out with the read URLs Editorial signed on them, for Learning to copy (#41).
+/// How a course version is announced to other modules; pure, no I/O. The course version goes out with its chapters
+/// and without questions; its test, with the solutions, goes out separately and to Assessment only; the files of its PDF
+/// and video chapters go out with the read URLs Editorial signed on them, for Learning to copy (#41); its retirement
+/// names the course and the version.
 /// </summary>
 public static class EditorialIntegrationEventMappings
 {
@@ -56,6 +57,13 @@ public static class EditorialIntegrationEventMappings
                     option.Id.Value,
                     option.Text.Value,
                     option.Correctness == Correctness.Correct))]))]);
+    }
+
+    public static CourseVersionRetiredV1 ToCourseVersionRetiredV1(this CourseVersion version)
+    {
+        Ensure.That(version).IsNotNull();
+
+        return new CourseVersionRetiredV1(version.Course.Value, version.Id.Value);
     }
 
     /// <summary>

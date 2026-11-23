@@ -124,13 +124,12 @@ public class TestDraftRequestTests
     public void Approved_questions_that_fill_the_blueprint_leave_nothing_to_draft(int blueprint, int approved)
     {
         var version = DraftWithChapter(out var chapter);
+        version.SetBlueprint(Blueprint(blueprint)).IsSuccess.ShouldBeTrue();
         for (var index = 0; index < approved; index++)
         {
             var question = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
             version.ApproveQuestion(question, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
         }
-
-        version.SetBlueprint(Blueprint(blueprint)).IsSuccess.ShouldBeTrue();
 
         var result = TestDraftRequest.For(version);
 

@@ -8,6 +8,8 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// </summary>
 public sealed partial class PublishedBicep
 {
+    private const string VaultSecretType = "Microsoft.KeyVault/vaults/secrets";
+
     private PublishedBicep(IReadOnlyDictionary<string, string> files) => Files = files;
 
     /// <summary>Every file written, by its path relative to the output directory with '/' between folders.</summary>
@@ -117,6 +119,135 @@ public sealed partial class PublishedBicep
             .Order(StringComparer.Ordinal)];
     }
 
+    /// <summary>
+    /// The value a Bicep file writes into a Key Vault secret it declares (not an <c>existing</c> one) by the secret's name,
+    /// <c>properties.value</c> as written, quotes taken off; empty where the file writes no such secret.
+    /// </summary>
+    public static string VaultSecretValue(string bicep, string secret) =>
+        Resources(bicep).Values
+            .Where(resource => resource.Type == VaultSecretType && resource.Name == secret)
+            .Select(resource => Property(Block(resource.Body, "properties"), "value"))
+            .FirstOrDefault(value => value.Length > 0) ?? string.Empty;
+
+    /// <summary>The names of the Key Vault secrets a Bicep file writes (declares with a value, not as <c>existing</c>).</summary>
+    public static IReadOnlyList<string> VaultSecretsWritten(string bicep) =>
+        [.. Resources(bicep).Values
+            .Where(resource => resource.Type == VaultSecretType && Property(Block(resource.Body, "properties"), "value").Length > 0)
+            .Select(resource => resource.Name)
+            .Order(StringComparer.Ordinal)];
+
+    /// <summary>The array that follows <c>&lt;property&gt;: [</c>, up to its closing bracket, or empty where there is none.</summary>
+    public static string Array(string bicep, string property)
+    {
+        var start = Regex.Match(bicep, $@"\b{Regex.Escape(property)}:\s*\[", RegexOptions.None, TimeSpan.FromSeconds(1));
+        if (!start.Success)
+        {
+            return string.Empty;
+        }
+
+        var depth = 0;
+        for (var index = start.Index + start.Length - 1; index < bicep.Length; index++)
+        {
+            if (bicep[index] == '[')
+            {
+                depth++;
+            }
+            else if (bicep[index] == ']')
+            {
+                depth--;
+                if (depth == 0)
+                {
+                    return bicep[start.Index..(index + 1)];
+                }
+            }
+        }
+
+        return bicep[start.Index..];
+    }
+
+    /// <summary>The objects directly inside an array <see cref="Array"/> returned, each from its brace to the one closing it.</summary>
+    public static IReadOnlyList<string> Objects(string array)
+    {
+        List<string> objects = [];
+        var opening = array.IndexOf('[', StringComparison.Ordinal);
+        if (opening < 0)
+        {
+            return objects;
+        }
+
+        var depth = 0;
+        var start = -1;
+        for (var index = opening + 1; index < array.Length; index++)
+        {
+            if (array[index] == '{')
+            {
+                if (depth == 0)
+                {
+                    start = index;
+                }
+
+                depth++;
+            }
+            else if (array[index] == '}')
+            {
+                depth--;
+                if (depth == 0)
+                {
+                    objects.Add(array[start..(index + 1)]);
+                }
+            }
+        }
+
+        return objects;
+    }
+
+    /// <summary>A plain property of one object, <c>&lt;property&gt;: &lt;value&gt;</c> on a line of its own, quotes taken off; empty where there is none.</summary>
+    public static string Property(string bicepObject, string property)
+    {
+        var match = Regex.Match(bicepObject, $@"(?m)^\s*{Regex.Escape(property)}:\s*(?<value>.+?)\s*$", RegexOptions.None, TimeSpan.FromSeconds(1));
+        if (!match.Success)
+        {
+            return string.Empty;
+        }
+
+        var value = match.Groups["value"].Value;
+        return value.Length > 1 && value[0] == '\'' && value[^1] == '\'' ? value[1..^1] : value;
+    }
+
+    /// <summary>
+    /// The entries of a Container App's <c>configuration.secrets</c>: each one's name, the identity that resolves it and the
+    /// Key Vault secret it reads.
+    /// </summary>
+    public static IReadOnlyList<PublishedSecretEntry> SecretEntries(string app)
+    {
+        var resources = Resources(app);
+        return [.. Objects(Array(Block(app, "configuration"), "secrets")).Select(entry =>
+        {
+            var identity = IdentityParameter().Match(Property(entry, "identity"));
+            var url = KeyVaultUrl().Match(entry);
+            var secret = url.Success && resources.TryGetValue(url.Groups["secret"].Value, out var declared) ? declared.Name : url.Groups["secret"].Value;
+            return new PublishedSecretEntry(
+                Property(entry, "name"),
+                identity.Success ? identity.Groups["identity"].Value.Replace('_', '-') : string.Empty,
+                secret);
+        })];
+    }
+
+    /// <summary>A container's <c>env</c> entries, for one object of <c>containers</c> or <c>initContainers</c>.</summary>
+    public static IReadOnlyList<PublishedEnvironmentEntry> EnvironmentOf(string container) =>
+        [.. Objects(Array(container, "env")).Select(entry => new PublishedEnvironmentEntry(Property(entry, "name"), Property(entry, "value"), Property(entry, "secretRef")))];
+
+    /// <summary>
+    /// The identities whose principal main.bicep creates, <c>&lt;name&gt;-identity</c>, as each one's module is named
+    /// (<c>&lt;name&gt;-identity/&lt;name&gt;-identity.bicep</c>).
+    /// </summary>
+    public IReadOnlyList<string> Identities() =>
+        [.. Files.Keys
+            .Select(path => path.Split('/'))
+            .Where(parts => parts.Length == 2 && parts[0].EndsWith("-identity", StringComparison.Ordinal) && parts[1] == $"{parts[0]}.bicep")
+            .Select(parts => parts[0])
+            .Order(StringComparer.Ordinal)];
+
     /// <summary>Every resource a Bicep file declares, existing ones too, by its symbol: its type, name and body.</summary>
     private static Dictionary<string, (string Type, string Name, string Body)> Resources(string bicep) =>
         ResourceDeclaration().Matches(bicep).ToDictionary(
@@ -180,4 +311,7 @@ public sealed partial class PublishedBicep
 
     [GeneratedRegex(@"keyVaultUrl:\s*(?<secret>\w+)\.properties\.secretUri")]
     private static partial Regex KeyVaultUrl();
+
+    [GeneratedRegex(@"^(?<identity>\w+?)_outputs_id$")]
+    private static partial Regex IdentityParameter();
 }

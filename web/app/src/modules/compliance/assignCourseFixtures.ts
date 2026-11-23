@@ -16,7 +16,7 @@ export type User = ReturnType<typeof userEvent.setup>;
 export type Fetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 /** The day the tests run on, at 10:00 local time: today is 2026-11-23. */
-export const now = new Date(2026, 10, 23, 10, 0, 0);
+export const now = new Date('2026-11-23T09:00:00Z');
 export const today = '2026-11-23';
 
 /** A manager who may assign courses in the Apotheke am Markt. */
