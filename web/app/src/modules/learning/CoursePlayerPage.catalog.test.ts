@@ -2,7 +2,7 @@ import { expect, test } from 'vitest';
 import { type MessageKey, setLanguage, t } from '@/i18n';
 
 // The chapter player's texts (#44), each a key in both catalogs (ADR 0007), German with Sie. The video's keys came with
-// T4; the PDF's and next/previous come with their own tasks.
+// T4 and the PDF's with T5 (its page buttons beyond the spec's table); next/previous come with T6.
 const texts: Record<string, { de: string; en: string }> = {
   'modules.learning.details.player.title': { de: 'Schulung', en: 'Course' },
   'learning.player.loadFailed': {
@@ -50,6 +50,14 @@ const texts: Record<string, { de: string; en: string }> = {
     de: 'Die Datei wird noch bereitgestellt. Versuchen Sie es in einem Moment erneut.',
     en: 'The file is still being prepared. Please try again in a moment.',
   },
+  'learning.player.pdf.label': { de: 'PDF: {title}', en: 'PDF: {title}' },
+  'learning.player.pdf.page': { de: 'Seite {page} von {pages}', en: 'Page {page} of {pages}' },
+  'learning.player.pdf.hint': {
+    de: 'Blättern Sie bis zur letzten Seite, um das Kapitel abzuschließen.',
+    en: 'Scroll to the last page to complete the chapter.',
+  },
+  'learning.player.pdf.next': { de: 'Nächste Seite', en: 'Next page' },
+  'learning.player.pdf.previous': { de: 'Vorherige Seite', en: 'Previous page' },
   'learning.player.progress.failed': {
     de: 'Ihr Fortschritt konnte nicht gespeichert werden. Er wird erneut gesendet.',
     en: 'Your progress could not be saved. It will be sent again.',
@@ -64,7 +72,13 @@ const texts: Record<string, { de: string; en: string }> = {
 // A table of keys, some not in the catalogs yet: each is looked up as a key, and an unknown one comes back as itself.
 const message = (key: string, values: Record<string, string> = {}) => t(key as MessageKey, values);
 // The placeholders stay placeholders here, so the message reads as the catalog writes it.
-const placeholders = { percent: '{percent}', title: '{title}', position: '{position}' };
+const placeholders = {
+  percent: '{percent}',
+  title: '{title}',
+  position: '{position}',
+  page: '{page}',
+  pages: '{pages}',
+};
 
 test("the chapter player's texts are in the German catalog", () => {
   setLanguage('de-DE', { remember: false });

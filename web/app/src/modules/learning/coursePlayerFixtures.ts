@@ -37,6 +37,15 @@ export const summary: CatalogChapterDto = {
   videoDurationSeconds: null,
   text: '## Merksätze\n\nHände **30 Sekunden** waschen.',
 };
+/** A PDF chapter, for a course that has one: courseVersion([introduction, handout]). */
+export const handout: CatalogChapterDto = {
+  chapterId: '0198c1a0-0000-7000-8000-0000000000e4',
+  position: 4,
+  title: 'Merkblatt Händehygiene',
+  kind: 'Pdf',
+  videoDurationSeconds: null,
+  text: null,
+};
 
 export function courseVersion(
   chapters: CatalogChapterDto[] = [introduction, handwashing, summary],
