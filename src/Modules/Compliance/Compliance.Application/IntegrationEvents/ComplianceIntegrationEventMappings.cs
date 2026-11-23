@@ -12,4 +12,19 @@ public static class ComplianceIntegrationEventMappings
 
         return new CourseAssignedV1(assigned.Assignment.Value, assigned.Learner.Value, assigned.Pharmacy.Value, assigned.Course.Value, assigned.DueDate.Value);
     }
+
+    /// <summary>Late when the completion's day in Germany lies after the due date, as the dashboard's CompletedLate.</summary>
+    public static AssignmentCompletedV1 ToIntegrationEvent(this AssignmentCompleted completed)
+    {
+        Ensure.That(completed).IsNotNull();
+
+        return new AssignmentCompletedV1(
+            completed.Assignment.Value,
+            completed.Learner.Value,
+            completed.Pharmacy.Value,
+            completed.Course.Value,
+            completed.Certificate.Value,
+            completed.CompletedAt.Value,
+            completed.DueDate.IsMissedBy(completed.CompletedAt));
+    }
 }

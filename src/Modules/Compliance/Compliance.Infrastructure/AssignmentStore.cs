@@ -10,6 +10,12 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Infrastructure;
 /// <summary>The module's assignments. The module's unit of work saves what is added.</summary>
 public sealed class AssignmentStore(ComplianceDbContext context) : IAssignmentStore
 {
+    public async Task<IReadOnlyList<Assignment>> InPharmacyAsync(PharmacyId pharmacy, CancellationToken cancellationToken) =>
+        await context.Set<Assignment>()
+            .AsNoTracking()
+            .Where(assignment => assignment.Pharmacy == pharmacy)
+            .ToListAsync(cancellationToken);
+
     public async Task<IReadOnlySet<PersonId>> ActiveLearnersAsync(PharmacyId pharmacy, CourseId course, IReadOnlyCollection<PersonId> learners, CancellationToken cancellationToken)
     {
         Ensure.That(learners).IsNotNull();
