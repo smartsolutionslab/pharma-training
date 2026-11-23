@@ -2867,7 +2867,9 @@
           "provenance",
           "review",
           "reviewedBy",
-          "reviewedAt"
+          "reviewedAt",
+          "approvedByName",
+          "approvedAt"
         ],
         "type": "object",
         "properties": {
@@ -2913,6 +2915,19 @@
             "format": "uuid"
           },
           "reviewedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "approvedByName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "approvedAt": {
             "type": [
               "null",
               "string"
