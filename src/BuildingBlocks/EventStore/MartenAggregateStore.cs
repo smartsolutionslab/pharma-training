@@ -36,7 +36,7 @@ public abstract class MartenAggregateStore(IDocumentStore store) : IAggregateSto
     /// projections write in the same transaction, is a lost race too. A stream created twice
     /// (<c>ExistingStreamIdCollisionException</c>) is not: it stays the host's 409 already-exists (ADR 0010). A module
     /// opts in by declaring this method on its own aggregate store's interface; <see cref="SaveAsync"/> still lets a
-    /// lost race through, as a 500 (ADR 0014).
+    /// lost race through, as a 500 (ADR 0016).
     /// </summary>
     public async Task<bool> TrySaveAsync(IEventSourced aggregate, CancellationToken cancellationToken)
     {
