@@ -1,9 +1,11 @@
 using System.Net;
 using Microsoft.Extensions.Time.Testing;
+using SmartSolutionsLab.PharmaTraining.Contracts.Learning;
 using SmartSolutionsLab.PharmaTraining.Modules.Learning.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.Commands.ReportProgress;
 using SmartSolutionsLab.PharmaTraining.Modules.Learning.Domain.LearningSessions;
 using SmartSolutionsLab.PharmaTraining.Modules.Learning.Domain.LearningSessions.Events;
+using static SmartSolutionsLab.PharmaTraining.Modules.Learning.Tests.Sessions.InMemoryLearningSessions;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Tests.Sessions;
 
@@ -139,7 +141,105 @@ public class ReportProgressTests
         sessions.Saves.ShouldBe(saves);
     }
 
+    [Fact]
+    public async Task Completing_the_last_chapter_publishes_ContentCompletedV1_once_with_its_ids()
+    {
+        var session = await StartedAsync();
+        await ReportAsync(session, Intro, 100);
+        await ReportAsync(session, Handbook, 100);
+        sessions.Published.ShouldBeEmpty();
+
+        var reported = await ReportAsync(session, Film, 95);
+
+        reported.IsSuccess.ShouldBeTrue();
+        var completed = sessions.Published.ShouldHaveSingleItem().ShouldBeOfType<ContentCompletedV1>();
+        completed.SessionId.ShouldBe(session.Value);
+        completed.PersonId.ShouldBe(learner.Value);
+        completed.CourseId.ShouldBe(course.Value);
+        completed.CourseVersionId.ShouldBe(version.Value);
+        sessions.Commits.ShouldBe(1);
+        sessions.Streams[session.Value].OfType<ContentCompleted>().ShouldHaveSingleItem();
+
+        // The session is stored before its announcement is published and committed.
+        sessions.Steps.ShouldBe([Saved, Saved, Saved, Queued, Committed]);
+    }
+
+    [Fact]
+    public async Task A_report_after_content_completed_publishes_nothing()
+    {
+        var session = await CompletedAsync();
+        var saves = sessions.Saves;
+
+        var reported = await ReportAsync(session, Film, 100);
+
+        reported.IsSuccess.ShouldBeTrue();
+        sessions.Saves.ShouldBe(saves + 1);
+        sessions.Published.Count.ShouldBe(1);
+        sessions.Commits.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task A_report_that_completes_nothing_publishes_nothing_and_commits_nothing()
+    {
+        var session = await StartedAsync();
+
+        var reported = await ReportAsync(session, Film, 60);
+
+        reported.IsSuccess.ShouldBeTrue();
+        sessions.Published.ShouldBeEmpty();
+        sessions.Commits.ShouldBe(0);
+        sessions.Steps.ShouldBe([Saved]);
+    }
+
+    [Fact]
+    public async Task After_chapters_reopen_completing_them_publishes_ContentCompletedV1_again()
+    {
+        var session = await CompletedAsync();
+        await ChangeAsync(session, completed => completed.ReopenChapters([Intro], Now()));
+
+        await ReportAsync(session, Intro, 99);
+        sessions.Published.Count.ShouldBe(1);
+        var reported = await ReportAsync(session, Intro, 100);
+
+        reported.IsSuccess.ShouldBeTrue();
+        sessions.Published.Count.ShouldBe(2);
+        sessions.Published.OfType<ContentCompletedV1>().Select(completed => completed.SessionId).ShouldBe([session.Value, session.Value]);
+        sessions.Commits.ShouldBe(2);
+        sessions.Streams[session.Value].OfType<ContentCompleted>().Count().ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task A_refused_report_publishes_nothing()
+    {
+        var session = await StartedAsync();
+        await ReportAsync(session, Intro, 100);
+        await ReportAsync(session, Handbook, 100);
+        sessions.Steps.Clear();
+
+        var outside = await ReportAsync(session, ChapterId.From(Guid.CreateVersion7()), 100);
+        var someoneElse = await ReportAsync(session, PersonId.From(Guid.CreateVersion7()), Film, 100);
+        var unknown = await ReportAsync(LearningSessionId.New(), Film, 100);
+
+        outside.IsFailure.ShouldBeTrue();
+        someoneElse.IsFailure.ShouldBeTrue();
+        unknown.IsFailure.ShouldBeTrue();
+        sessions.Published.ShouldBeEmpty();
+        sessions.Commits.ShouldBe(0);
+        sessions.Steps.ShouldBeEmpty();
+    }
+
     private ReportProgressHandler Handler() => new(sessions, sessions, time);
+
+    /// <summary>A session whose every chapter the learner completed through the use case, so its first ContentCompletedV1 is published.</summary>
+    private async Task<LearningSessionId> CompletedAsync()
+    {
+        var session = await StartedAsync();
+        await ReportAsync(session, Intro, 100);
+        await ReportAsync(session, Handbook, 100);
+        await ReportAsync(session, Film, 95);
+        sessions.Published.ShouldHaveSingleItem();
+        return session;
+    }
 
     private Task<Result<Unit, ApiError>> ReportAsync(LearningSessionId session, ChapterId chapter, int percent) =>
         ReportAsync(session, learner, chapter, percent);
