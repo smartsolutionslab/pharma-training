@@ -12,8 +12,9 @@ import { useCourseVersionReturns } from './useCourseVersionReturns';
 
 // A version's return history: when it went back to draft and why, newest first as the host answers, a page at a time.
 // The reason is the editor's text as typed: a text child, so markup in it shows as the characters it is.
-// Who returned it, until the host names them (#220): the signed-in editor, or another editor of the team. A row carries
-// whether it is the signed-in editor's, so the columns stay at module scope.
+// Who returned it: the name the host stored with the return (#220), as text. A return stored before names were has
+// none; it reads as the signed-in editor's or another editor's. A row carries whether it is the signed-in editor's, so
+// the columns stay at module scope.
 type ReturnRow = EditorialCourseVersionReturnDto & { byYou: boolean };
 const returnsOf = columnsOf<ReturnRow>();
 const columns = returnsOf.columns([
@@ -23,8 +24,13 @@ const columns = returnsOf.columns([
   }),
   returnsOf.accessor('byYou', {
     ...translatedHeader('editorial.returns.columns.returnedBy'),
-    cell: ({ row }) =>
-      i18n.global.t(row.original.byYou ? 'editorial.returns.byYou' : 'editorial.returns.byAnotherEditor'),
+    cell: ({ row }) => {
+      const name = row.original.returnedByName?.trim() ?? '';
+      if (name !== '') {
+        return name;
+      }
+      return i18n.global.t(row.original.byYou ? 'editorial.returns.byYou' : 'editorial.returns.byAnotherEditor');
+    },
   }),
   returnsOf.accessor('reason', {
     ...translatedHeader('editorial.returns.columns.reason'),
