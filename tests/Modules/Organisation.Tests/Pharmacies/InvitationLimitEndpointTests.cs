@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Api;
@@ -83,8 +84,8 @@ public class InvitationLimitEndpointTests
 
     private static IDispatcher Dispatching(InMemoryPharmacyStore store, TimeProvider time, InvitationMailLimits limits)
     {
-        var invite = new InviteMemberHandler(store, store, time, limits);
-        var renew = new RenewInvitationHandler(store, store, time, limits);
+        var invite = new InviteMemberHandler(store, store, time, limits, NullLogger<InviteMemberHandler>.Instance);
+        var renew = new RenewInvitationHandler(store, store, time, limits, NullLogger<RenewInvitationHandler>.Instance);
         var dispatcher = Substitute.For<IDispatcher>();
         dispatcher.SendAsync(Arg.Any<ICommand<Result<Guid, ApiError>>>(), Arg.Any<CancellationToken>())
             .Returns(call => invite.HandleAsync((InviteMember)call.ArgAt<ICommand<Result<Guid, ApiError>>>(0), call.ArgAt<CancellationToken>(1)));

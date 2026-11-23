@@ -1,5 +1,8 @@
 using System.Net;
 using System.Security.Cryptography;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Extensions.Time.Testing;
 using SmartSolutionsLab.PharmaTraining.Contracts.Organisation;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Commands.RenewInvitation;
@@ -32,7 +35,7 @@ public class RenewInvitationTests
         time.Advance(TimeSpan.FromDays(daysOld) + TimeSpan.FromMinutes(10));
         var now = Start.AddDays(daysOld).AddMinutes(10);
 
-        var renewed = await new RenewInvitationHandler(store, store, time, InvitationMailLimits.Default)
+        var renewed = await new RenewInvitationHandler(store, store, time, InvitationMailLimits.Default, NullLogger<RenewInvitationHandler>.Instance)
             .HandleAsync(new RenewInvitation(pharmacy.Id, invitation, Owner), TestContext.Current.CancellationToken);
 
         renewed.IsSuccess.ShouldBeTrue();
@@ -157,7 +160,7 @@ public class RenewInvitationTests
         var time = new FakeTimeProvider(Start);
         time.Advance(TimeSpan.FromMinutes(4));
 
-        var refused = await new RenewInvitationHandler(store, store, time, InvitationMailLimits.Default)
+        var refused = await new RenewInvitationHandler(store, store, time, InvitationMailLimits.Default, NullLogger<RenewInvitationHandler>.Instance)
             .HandleAsync(new RenewInvitation(pharmacy.Id, invitation, Owner), TestContext.Current.CancellationToken);
 
         refused.IsSuccess.ShouldBeFalse("an invitation was renewed 4 minutes after its invite");
@@ -169,7 +172,25 @@ public class RenewInvitationTests
         store.Published.ShouldBeEmpty();
     }
 
-    private static RenewInvitationHandler Handler(InMemoryPharmacyStore store) => new(store, store, new FakeTimeProvider(Start), InvitationMailLimits.Default);
+    [Fact]
+    public async Task A_stored_mail_day_beyond_tomorrow_is_logged_as_a_warning_even_when_the_renewal_is_refused()
+    {
+        var store = new InMemoryPharmacyStore();
+        var pharmacy = TestPharmacies.Register(Owner);
+        var invitation = pharmacy.Invite(MembershipId.New(), Invitee, JobFunction.Pta, MembershipRole.Employee, Timestamp.From(Start.AddDays(3)), InvitationMailLimits.Default).Value;
+        pharmacy.Stored(store);
+        var logger = new FakeLogger<RenewInvitationHandler>();
+
+        await new RenewInvitationHandler(store, store, new FakeTimeProvider(Start), InvitationMailLimits.Default, logger)
+            .HandleAsync(new RenewInvitation(pharmacy.Id, invitation, Owner), TestContext.Current.CancellationToken);
+
+        var warning = logger.Collector.GetSnapshot().Where(record => record.Level == LogLevel.Warning).ShouldHaveSingleItem();
+        warning.Message.ShouldContain(pharmacy.Id.Value.ToString());
+        warning.Message.ShouldContain("2027-04-04");
+        warning.Message.ShouldContain("2027-04-01");
+    }
+
+    private static RenewInvitationHandler Handler(InMemoryPharmacyStore store) => new(store, store, new FakeTimeProvider(Start), InvitationMailLimits.Default, NullLogger<RenewInvitationHandler>.Instance);
 
     private static InvitationToken Token() => InvitationToken.From(RandomNumberGenerator.GetHexString(64));
 }

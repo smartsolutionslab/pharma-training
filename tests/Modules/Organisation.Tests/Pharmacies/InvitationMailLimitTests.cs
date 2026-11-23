@@ -150,7 +150,7 @@ public class InvitationMailLimitTests
     }
 
     [Fact]
-    public void A_stored_day_later_than_today_counts_as_today_so_a_clock_behind_does_not_restart_the_count()
+    public void A_stored_day_of_tomorrow_is_the_counted_day_so_a_clock_behind_does_not_restart_the_count()
     {
         var limits = new InvitationMailLimits(RenewCooldown.From(TimeSpan.FromMinutes(10)), DailyMailCap.From(2));
         var pharmacy = TestPharmacies.Register(Owner);
@@ -170,32 +170,57 @@ public class InvitationMailLimitTests
     }
 
     [Fact]
-    public void A_stored_day_more_than_one_day_ahead_counts_as_today_and_restarts_the_count()
+    public void A_stored_day_more_than_one_day_ahead_counts_as_tomorrow_and_keeps_its_tally()
     {
         var limits = new InvitationMailLimits(RenewCooldown.From(TimeSpan.FromMinutes(10)), DailyMailCap.From(2));
         var pharmacy = TestPharmacies.Register(Owner);
         Invite(pharmacy, "anna@example.org", Start.AddDays(3), limits);
 
         var today = pharmacy.Invite(MembershipId.New(), EmailAddress.From("ben@example.org"), JobFunction.Pta, MembershipRole.Employee, At(Start), limits);
+        var day = pharmacy.InvitationMailDay;
+        var counted = pharmacy.InvitationMailsThatDay.Value;
+        var third = pharmacy.Invite(MembershipId.New(), EmailAddress.From("cleo@example.org"), JobFunction.Pta, MembershipRole.Employee, At(Start.AddMinutes(1)), limits);
 
-        today.IsSuccess.ShouldBeTrue("a mail was refused on a day that had counted none");
-        pharmacy.InvitationMailDay.ShouldBe(UtcDay.Of(At(Start)), "a day three days ahead was kept as the counted day");
-        pharmacy.InvitationMailsThatDay.Value.ShouldBe(1, "a day three days ahead was counted onto");
+        today.IsSuccess.ShouldBeTrue("the second mail of a day capped at two was refused");
+        day.ShouldBe(UtcDay.Of(At(NextMidnight)), "a day three days ahead was not counted as tomorrow");
+        counted.ShouldBe(2, "a day three days ahead restarted the tally");
+        third.IsSuccess.ShouldBeFalse("a clock three days ahead let the daily cap restart");
+        third.Error.ShouldBeOfType<TooManyInvitationsToday>().RetryAt.ShouldBe(At(NextMidnight.AddDays(1)));
+        pharmacy.InvitationMailsThatDay.Value.ShouldBe(2);
     }
 
     [Fact]
-    public void A_stored_day_at_the_end_of_the_calendar_counts_as_today_and_does_not_throw()
+    public void A_stored_day_at_the_end_of_the_calendar_counts_as_tomorrow_and_does_not_throw()
     {
         var limits = new InvitationMailLimits(RenewCooldown.From(TimeSpan.FromMinutes(10)), DailyMailCap.From(1));
         var pharmacy = TestPharmacies.Register(Owner);
         Invite(pharmacy, "anna@example.org", Start, limits);
         typeof(Pharmacy).GetProperty(nameof(Pharmacy.InvitationMailDay)).ShouldNotBeNull().SetValue(pharmacy, UtcDay.From(DateOnly.MaxValue));
 
-        var today = pharmacy.Invite(MembershipId.New(), EmailAddress.From("ben@example.org"), JobFunction.Pta, MembershipRole.Employee, At(Start.AddHours(1)), limits);
+        var refused = pharmacy.Invite(MembershipId.New(), EmailAddress.From("ben@example.org"), JobFunction.Pta, MembershipRole.Employee, At(Start.AddHours(1)), limits);
 
-        today.IsSuccess.ShouldBeTrue("a stored day of 9999-12-31 kept today's mail from being counted on today");
-        pharmacy.InvitationMailDay.ShouldBe(UtcDay.Of(At(Start)));
+        refused.IsSuccess.ShouldBeFalse("a stored day of 9999-12-31 with its tally at the cap restarted the count");
+        refused.Error.ShouldBeOfType<TooManyInvitationsToday>().RetryAt.ShouldBe(At(NextMidnight.AddDays(1)));
         pharmacy.InvitationMailsThatDay.Value.ShouldBe(1);
+    }
+
+    [Fact]
+    public void A_stored_day_beyond_tomorrow_is_reported_so_the_clock_fault_can_be_logged()
+    {
+        var registered = TestPharmacies.Register(Owner);
+        var ahead = TestPharmacies.Register(Owner);
+        Invite(ahead, "anna@example.org", Start.AddDays(3));
+
+        var beyond = ahead.InvitationMailDayBeyondTomorrow(At(Start));
+        var tomorrow = ahead.InvitationMailDayBeyondTomorrow(At(Start.AddDays(2)));
+        var today = ahead.InvitationMailDayBeyondTomorrow(At(Start.AddDays(3)));
+        var none = registered.InvitationMailDayBeyondTomorrow(At(Start));
+
+        beyond.HasValue.ShouldBeTrue("a stored day three days ahead was not reported");
+        beyond.Value.ShouldBe(UtcDay.Of(At(Start.AddDays(3))));
+        tomorrow.HasValue.ShouldBeFalse("a stored day of tomorrow was reported");
+        today.HasValue.ShouldBeFalse("a stored day of today was reported");
+        none.HasValue.ShouldBeFalse("a pharmacy that has counted nothing was reported");
     }
 
     [Fact]
