@@ -93,6 +93,9 @@ test('the blueprint is saved and shown', async ({ page }) => {
   await expect(blueprint(page).locator('dd').first()).toHaveText('2');
 });
 
+/** The approval line of a hand-written question the realm's editor, Emma Editor, approved. */
+const approvedByEmma = /Von Hand geschrieben, geprüft von Emma Editor am \d{2}\.\d{2}\.\d{4}/;
+
 test('a hand-written question is added, marked unreviewed, approved and counted', async ({ page }) => {
   const title = `E2E Fragen ${Date.now()}`;
   await startCourse(page, title);
@@ -107,6 +110,7 @@ test('a hand-written question is added, marked unreviewed, approved and counted'
   await expect(questions(page).first()).toContainText('Ungeprüft');
   await expect(questions(page).first()).toContainText('Von Hand geschrieben, noch nicht geprüft');
   await expect(page.getByText('0 von 2 Fragen geprüft')).toBeVisible();
+  await expect(questions(page).first()).not.toContainText('geprüft von');
 
   await page.getByRole('button', { name: 'Frage 1 freigeben' }).click();
 
@@ -115,9 +119,11 @@ test('a hand-written question is added, marked unreviewed, approved and counted'
   await expect(questions(page).first()).not.toContainText('Ungeprüft');
   await expect(page.getByText('1 von 2 Fragen geprüft')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Frage 1 freigeben' })).toHaveCount(0);
-  // Who approved it, and when (Von Hand geschrieben, geprüft von … am …), is T8's, pending a decision.
+  // Who approved it, and when: the realm's editor, on the day the browser is in.
+  await expect(questions(page).first()).toContainText(approvedByEmma);
   await page.reload();
   await expect(questions(page).first()).toContainText('Geprüft');
+  await expect(questions(page).first()).toContainText(approvedByEmma);
   await expect(page.getByText('1 von 2 Fragen geprüft')).toBeVisible();
 });
 

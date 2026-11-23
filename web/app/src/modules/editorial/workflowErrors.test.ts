@@ -1,13 +1,14 @@
 import { describe, expect, test } from 'vitest';
 import { ApiError } from '@/api/baseApi';
 import { setLanguage, t } from '@/i18n';
-import { type WorkflowAction, workflowFailureKey } from './workflowErrors';
+import { type WorkflowAction, workflowFailure, workflowFailureText } from './workflowErrors';
 
 // What the course version page says when a step of the workflow (#26: submit, publish, return, retire) is refused or
-// fails: a key of the catalogs chosen by the module's code, never the host's words (some of them are English). The
-// three defects of a question publishing finds (422) say one thing; a policy's 403 without a code says the editor may
-// not take the step; anything else, a network failure included, says the step failed. A return's refused reason
-// (400 invalid-return-reason) is the reason field's own message.
+// fails: a key of the catalogs chosen by the module's code where the page knows the code. The three defects of a
+// question publishing finds (422) say one thing; a policy's 403 without a code says the editor may not take the step;
+// a return's refused reason (400 invalid-return-reason) is the reason field's own message. A module's refusal with a
+// code the page does not know says the host's words (ADR 0007: ApiError.serverMessage, until #147 translates them);
+// anything else, a network failure included, says the step failed.
 
 /** Problem details as the host sends them, with a code where it has one. */
 const problem = (status: number, code?: string) =>
@@ -184,7 +185,11 @@ const fallbacks: [string, () => unknown][] = [
   ['a 500', () => new ApiError(500, problem(500))],
   ['a 401', () => new ApiError(401, '')],
   ['a 413 without a code', () => new ApiError(413, '')],
-  ['a 409 with a code the page does not know', refusal(409, 'editorial.something-else')],
+  ['a 502 with a module code', refusal(502, 'editorial.something-else')],
+  [
+    'a 409 with a module code the page does not know but no words',
+    () => new ApiError(409, JSON.stringify({ status: 409, code: 'editorial.something-new' })),
+  ],
   ["the unique index's 409 already-exists", refusal(409, 'already-exists')],
   ['an error that is no error at all', () => 'nothing'],
 ];
@@ -202,13 +207,13 @@ const fallbackCases = failed.flatMap(([action, key, german, english]) =>
 
 describe('in German', () => {
   test.each(answers)('%s on %s says its own text', (_answer, action, error, key, german) => {
-    expect(workflowFailureKey(action, error())).toBe(key);
-    expect(t(workflowFailureKey(action, error()))).toBe(german);
+    expect(workflowFailure(action, error())).toEqual({ key });
+    expect(workflowFailureText(workflowFailure(action, error()))).toBe(german);
   });
 
   test.each(fallbackCases)('%s on %s says the step failed', (_answer, action, error, key, german) => {
-    expect(workflowFailureKey(action, error())).toBe(key);
-    expect(t(workflowFailureKey(action, error()))).toBe(german);
+    expect(workflowFailure(action, error())).toEqual({ key });
+    expect(workflowFailureText(workflowFailure(action, error()))).toBe(german);
   });
 });
 
@@ -216,21 +221,68 @@ describe('in English', () => {
   test.each(answers)('%s on %s says its own text', (_answer, action, error, key, _german, english) => {
     setLanguage('en-GB', { remember: false });
 
-    expect(workflowFailureKey(action, error())).toBe(key);
-    expect(t(workflowFailureKey(action, error()))).toBe(english);
+    expect(workflowFailure(action, error())).toEqual({ key });
+    expect(workflowFailureText(workflowFailure(action, error()))).toBe(english);
   });
 
   test.each(fallbackCases)('%s on %s says the step failed', (_answer, action, error, key, _german, english) => {
     setLanguage('en-GB', { remember: false });
 
-    expect(workflowFailureKey(action, error())).toBe(key);
-    expect(t(workflowFailureKey(action, error()))).toBe(english);
+    expect(workflowFailure(action, error())).toEqual({ key });
+    expect(workflowFailureText(workflowFailure(action, error()))).toBe(english);
   });
 });
 
-test("the host's words are never what the page says", () => {
+/** A module's refusals with a code the page has no words of its own for: the host's words, as ADR 0007 says. */
+const unknownRefusals: [string, () => unknown, string][] = [
+  [
+    'a 409 editorial.something-new with a title',
+    () =>
+      new ApiError(
+        409,
+        JSON.stringify({ title: 'Die Version ist gesperrt.', status: 409, code: 'editorial.something-new' }),
+      ),
+    'Die Version ist gesperrt.',
+  ],
+  [
+    'a 422 editorial.something-new with a detail',
+    () =>
+      new ApiError(
+        422,
+        JSON.stringify({
+          title: 'Unprocessable',
+          detail: 'Kapitel 3 ist leer.',
+          status: 422,
+          code: 'editorial.something-new',
+        }),
+      ),
+    'Kapitel 3 ist leer.',
+  ],
+  [
+    'a 403 editorial.something-new with a title',
+    () => new ApiError(403, JSON.stringify({ title: 'Gesperrt.', status: 403, code: 'editorial.something-new' })),
+    'Gesperrt.',
+  ],
+];
+
+describe.each(['de-DE', 'en-GB'] as const)('in %s', (language) => {
+  test.each(
+    unknownRefusals.flatMap(([answer, error, words]) =>
+      (['submit', 'publish', 'return', 'retire'] as const).map(
+        (action): [string, WorkflowAction, () => unknown, string] => [answer, action, error, words],
+      ),
+    ),
+  )('%s on %s says what the host said', (_answer, action, error, words) => {
+    setLanguage(language, { remember: false });
+
+    expect(workflowFailure(action, error())).toEqual({ serverMessage: words });
+    expect(workflowFailureText(workflowFailure(action, error()))).toBe(words);
+  });
+});
+
+test("the host's words are never what the page says for a code it knows or a failure without a module's words", () => {
   for (const [, action, error] of [...answers, ...fallbackCases]) {
-    expect(t(workflowFailureKey(action, error()))).not.toContain('Words of the host');
+    expect(workflowFailureText(workflowFailure(action, error()))).not.toContain('Words of the host');
   }
 });
 

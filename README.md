@@ -104,7 +104,9 @@ dotnet tool restore && dotnet aieval report --path TestResults/evals --output Te
 
 A step that finds a secret or variable missing, or a broker password that is not URI-safe, fails naming it, never its value.
 
-`database-roles-key` is the key every module's database role password is derived from (`guid(database-roles-key, '<module>')`): each service logs in to its own database as `<module>_app`, never as the server's administrator. Give each environment a long random key of its own; changing it rotates every role's password at the next deploy.
+`database-roles-key` is the key every module's database role password is derived from (`guid(database-roles-key, '<module>')`): each service logs in to its own database as `<module>_app`, never as the server's administrator. Give each environment a random key of its own, at least 32 characters long (publishing refuses a shorter one); changing it rotates every role's password at the next deploy. `frontend-url` must be an https origin, `https://host` or `https://host:port`, with no path, query or trailing slash; publishing refuses anything else.
+
+Each service's init container, the MigrationRunner, builds the module's database as the administrator: its migrations, its event store and Wolverine's message storage (schema `wolverine`). The module's role owns nothing there and may only read and write. To replay a dead letter (`UPDATE wolverine.wolverine_dead_letters SET replayable = true`), connect as the module's role, with its connection string from the Key Vault secret `connectionstrings--<module>-database-app`, never as the administrator ([ADR 0005](docs/adr/0005-deploy-to-azure-container-apps.md)).
 
 ### One-time setup (#129)
 

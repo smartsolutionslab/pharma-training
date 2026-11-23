@@ -50,9 +50,13 @@ public static partial class OwnedSchemaRole
             BEGIN
                 IF EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = role_name) THEN
                     -- Only a superuser may change SUPERUSER, REPLICATION or BYPASSRLS, which a role this created never has.
-                    EXECUTE pg_catalog.format('ALTER ROLE %I WITH LOGIN NOCREATEDB NOCREATEROLE INHERIT PASSWORD %L', role_name, role_verifier);
+                    -- As for a module's role: an expiry, a connection limit or a setting an operator, or the role on itself,
+                    -- set since the last run no longer locks it out.
+                    EXECUTE pg_catalog.format('ALTER ROLE %I WITH LOGIN NOCREATEDB NOCREATEROLE INHERIT CONNECTION LIMIT -1 VALID UNTIL %L PASSWORD %L', role_name, 'infinity', role_verifier);
+                    EXECUTE pg_catalog.format('ALTER ROLE %I RESET ALL', role_name);
+                    EXECUTE pg_catalog.format('ALTER ROLE %I IN DATABASE %I RESET ALL', role_name, database_name);
                 ELSE
-                    EXECUTE pg_catalog.format('CREATE ROLE %I WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS INHERIT PASSWORD %L', role_name, role_verifier);
+                    EXECUTE pg_catalog.format('CREATE ROLE %I WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS INHERIT CONNECTION LIMIT -1 VALID UNTIL %L PASSWORD %L', role_name, 'infinity', role_verifier);
                 END IF;
             EXCEPTION WHEN OTHERS THEN
                 GET STACKED DIAGNOSTICS
@@ -167,9 +171,11 @@ public static partial class OwnedSchemaRole
             await settings.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        // Two init containers of one app may start together: the second waits here until the first has committed.
+        // Two init containers of one app may start together: the second waits here until the first has committed, without a
+        // command timeout, however long that takes; cancellation still ends the wait.
         await using (var gate = new NpgsqlCommand(RoleLock, connection, transaction))
         {
+            gate.CommandTimeout = 0;
             gate.Parameters.AddWithValue("role", role.Username!);
             await gate.ExecuteNonQueryAsync(cancellationToken);
         }

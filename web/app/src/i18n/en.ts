@@ -313,6 +313,8 @@ export const en: MessageSchema = {
         incorrect: 'Incorrect',
         provenance: {
           unreviewed: '{origin}, not yet approved',
+          approved: '{origin}, approved by {name} on {date}',
+          approvedUnnamed: '{origin}, approved on {date}',
         },
         edit: 'Edit question {position}',
         remove: 'Delete question {position}',

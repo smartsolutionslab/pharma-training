@@ -4,9 +4,9 @@ namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Persistence;
 
 /// <summary>
 /// The schema named after a module database's administrator, which comes first on the administrator's default search_path
-/// (<c>"$user", public</c>). A module role holds CREATE on the database, so it could create that schema itself and put
-/// functions there that every administrator session not pinned to pg_catalog would run with the administrator's rights:
-/// the CVE-2018-1058 pattern. The MigrationRunner's own sessions are pinned (<see cref="AdministratorSession"/>); this
+/// (<c>"$user", public</c>). A module role holds no CREATE on the database, but one that did (granted by hand, or by a run
+/// before the review of #231) could create that schema itself and put functions there that every administrator session not
+/// pinned to pg_catalog would run with the administrator's rights: the CVE-2018-1058 pattern. The MigrationRunner's own sessions are pinned (<see cref="AdministratorSession"/>); this
 /// protects any other, an operator's psql included. Before the migrations, the MigrationRunner creates the schema, owned by
 /// the administrator and empty, so no role can take the name; one some other role already owns fails the run. No role is
 /// granted anything in it (<see cref="ModuleDatabaseRole"/>).
