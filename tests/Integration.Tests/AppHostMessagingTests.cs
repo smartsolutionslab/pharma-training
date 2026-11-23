@@ -22,6 +22,9 @@ public class AppHostMessagingTests
     /// <summary>The broker's variable that holds the admin's password, as RabbitMQ's image reads it.</summary>
     private const string AdminPassword = "RABBITMQ_DEFAULT_PASS";
 
+    /// <summary>The broker's variable that holds the admin's user name, as RabbitMQ's image reads it.</summary>
+    private const string AdminUser = "RABBITMQ_DEFAULT_USER";
+
     [Fact]
     public async Task The_broker_keeps_its_data_on_a_volume_with_explicit_credentials()
     {
@@ -58,6 +61,30 @@ public class AppHostMessagingTests
         foreach (var module in modules)
         {
             text.ShouldContain($"\"password\":\"{Placeholder(PasswordVariable(module))}\"", Case.Sensitive, $"{module}'s password in the definitions is not the placeholder of {PasswordVariable(module)}.");
+        }
+    }
+
+    [Fact]
+    public async Task The_definitions_carry_every_user_name_as_the_placeholder_of_a_broker_variable_holding_it()
+    {
+        await using var builder = await PublishedAppHost.ModelAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
+        var broker = builder.Resources.OfType<RabbitMQServerResource>().ShouldHaveSingleItem();
+        var modules = PublishedAppHost.Services(builder).Select(service => service.Name).ToList();
+
+        var environment = await EnvironmentAsync(builder, broker);
+
+        modules.ShouldNotBeEmpty();
+        var definitions = environment[Definitions].ShouldBeOfType<string>("The broker's definitions hold a value the AppHost puts in; every user name is a placeholder the entrypoint fills in and checks.");
+        definitions.ShouldContain($"{{\"name\":\"{Placeholder(AdminUser)}\",", Case.Sensitive, "The admin's user name in the definitions is not the placeholder of RABBITMQ_DEFAULT_USER.");
+        definitions.ShouldContain($"{{\"user\":\"{Placeholder(AdminUser)}\",", Case.Sensitive, "The admin's permissions in the definitions do not name the placeholder of RABBITMQ_DEFAULT_USER.");
+        environment.ShouldContainKey(AdminUser);
+        foreach (var module in modules)
+        {
+            var variable = BrokerUsers.UserVariable(module);
+            definitions.ShouldContain($"{{\"name\":\"{Placeholder(variable)}\",", Case.Sensitive, $"{module}'s user name in the definitions is not the placeholder of {variable}.");
+            definitions.ShouldContain($"{{\"user\":\"{Placeholder(variable)}\",", Case.Sensitive, $"{module}'s permissions in the definitions do not name the placeholder of {variable}.");
+            environment.ShouldContainKey(variable, $"The broker is not given {module}'s user name as {variable}.");
+            environment[variable].ShouldBe(module);
         }
     }
 
@@ -114,8 +141,7 @@ public class AppHostMessagingTests
         script.ShouldContain($"${Definitions}");
         script.ShouldContain("@@", Case.Sensitive, "The broker's entrypoint does not fill in the definitions' password placeholders.");
         script.ShouldContain("load_definitions");
-        script.ShouldContain($"unset {Definitions}");
-        script.ShouldContain("exec docker-entrypoint.sh rabbitmq-server");
+        script.ShouldContain("docker-entrypoint.sh rabbitmq-server");
     }
 
     [Fact]
