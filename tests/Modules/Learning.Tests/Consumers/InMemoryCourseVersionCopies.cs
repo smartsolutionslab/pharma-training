@@ -24,6 +24,14 @@ internal sealed class InMemoryCourseVersionCopies : ICourseVersionCopies, ILearn
             ? Option<CourseVersionCopy>.Some(found)
             : Option<CourseVersionCopy>.None);
 
+    public Task<Option<VideoDuration>> FindVideoDurationAsync(CourseVersionId version, ChapterId chapter, CancellationToken cancellationToken) =>
+        Task.FromResult(Versions
+            .Where(stored => stored.Id == version.Value)
+            .SelectMany(stored => stored.Chapters)
+            .FirstOrDefault(stored => stored.ChapterId == chapter.Value && stored.Kind == ChapterKind.Video) is { VideoDurationSeconds: { } seconds }
+            ? Option<VideoDuration>.Some(VideoDuration.From(seconds))
+            : Option<VideoDuration>.None);
+
     /// <summary>Stores a copy as if its event had been handled, for tests that start from a version Learning holds.</summary>
     public void Hold(CourseVersionCopy version) => Versions.Add(version);
 
