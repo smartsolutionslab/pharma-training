@@ -111,6 +111,7 @@ public static partial class Messaging
             // The module is URI-safe (Users checks it), so it goes in as it is.
             return new MessagingBroker(
                 broker,
+                UserNames(users),
                 users.ToDictionary(
                     user => user.Module,
                     user => ReferenceExpression.Create($"amqp://{user.Module}:{user.Password.Resource:uri}@{address}"),
@@ -146,7 +147,7 @@ public static partial class Messaging
             secrets.Store($"{Name}-{user.Module}-connection-string", ReferenceExpression.Create($"amqp://{user.Module}:{user.Password.Resource}@{publishedAddress}"));
         }
 
-        return new MessagingBroker(published, []);
+        return new MessagingBroker(published, UserNames(publishedUsers), []);
     }
 
     /// <summary>
@@ -162,6 +163,14 @@ public static partial class Messaging
         ArgumentException.ThrowIfNullOrWhiteSpace(module);
 
         service.WithEnvironment("Messaging__Queue", module).WaitFor(broker.Resource);
+        // Every module's user name, so the service knows whose events a message's user_id vouches for (docs/adr/0011):
+        // RabbitMQ refuses a user_id other than the connection's, and the service refuses an event of a module other than
+        // the one whose user sent it. User names are no secret.
+        foreach (var (publisher, userName) in broker.UserNames)
+        {
+            service.WithEnvironment($"Messaging__Publishers__{publisher}", userName);
+        }
+
         if (!secrets.IsPublishing)
         {
             return service.WithEnvironment($"ConnectionStrings__{Name}", broker.ConnectionStringOf(module));
@@ -170,6 +179,10 @@ public static partial class Messaging
         IAzureKeyVaultSecretReference connectionString = secrets.Stored($"{Name}-{module}-connection-string").Resource;
         return service.WithEnvironment($"ConnectionStrings__{Name}", connectionString);
     }
+
+    /// <summary>The broker user of each module, by module: the module itself, since every user is named after its module.</summary>
+    private static SortedDictionary<string, string> UserNames(List<BrokerUser> users) =>
+        new(users.ToDictionary(user => user.Module, user => user.Module, StringComparer.Ordinal), StringComparer.Ordinal);
 
     /// <summary>
     /// A user per service host, named after its module, in ordinal order. No parameter overrides the name (docs/adr/0011): an

@@ -10,6 +10,7 @@ import {
   refused,
   renderVersionPage,
   requestsOf,
+  stepTaken,
   tryToClose,
   type WorkflowHost,
   workflowHost,
@@ -200,6 +201,35 @@ describe('the return dialog', () => {
     await waitFor(() => expect(reason).toHaveFocus());
     expect(notify.success).not.toHaveBeenCalled();
     expect(notify.failure).not.toHaveBeenCalledWith(expect.stringContaining('Words of the host'));
+  });
+
+  test('refused because the version changed meanwhile stays open with the reason, says so, and returns it when sent again', async () => {
+    host.step = async () => refused(409, 'editorial.course-version-changed');
+    const { user, dialog, reason, confirm, heading } = await openReturn();
+
+    await user.type(reason, 'Kapitel 2 fehlt die Quelle.');
+    await user.click(confirm);
+
+    await waitFor(() =>
+      expect(notify.failure).toHaveBeenCalledWith(
+        'Die Version wurde inzwischen geändert. Sie sehen jetzt den aktuellen Stand; versuchen Sie es erneut.',
+      ),
+    );
+    await waitFor(() => expect(reason).toHaveFocus());
+    expect(screen.getByRole('dialog')).toBe(dialog);
+    expect(reason).toHaveValue('Kapitel 2 fehlt die Quelle.');
+    expect(reason).not.toHaveAttribute('aria-invalid');
+    expect(confirm).toBeEnabled();
+
+    host.step = async (step) => stepTaken(host, step);
+    await user.click(confirm);
+
+    await waitFor(() => expect(heading).toHaveFocus());
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(posts().map(({ body }) => body)).toEqual([
+      { reason: 'Kapitel 2 fehlt die Quelle.' },
+      { reason: 'Kapitel 2 fehlt die Quelle.' },
+    ]);
   });
 
   test('refused because the version is no longer in review closes, says so and puts the focus on the heading', async () => {
