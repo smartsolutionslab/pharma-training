@@ -22,4 +22,10 @@ public interface IMemberStore
     Task<bool> HasChangeAsync(MembershipId membership, MembershipVersion version, CancellationToken cancellationToken);
 
     void Add(MembershipChange change);
+
+    /// <summary>The person's memberships in the pharmacy that have not ended, each as it stands now with its changes.</summary>
+    Task<IReadOnlyList<CurrentMembership>> ActiveMembershipsAsync(PersonId person, PharmacyId pharmacy, CancellationToken cancellationToken);
+
+    /// <summary>Which of the persons have a membership in the pharmacy that has not ended.</summary>
+    Task<IReadOnlySet<PersonId>> ActiveMembersAsync(PharmacyId pharmacy, IReadOnlyCollection<PersonId> persons, CancellationToken cancellationToken);
 }
