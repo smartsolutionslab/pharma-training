@@ -185,5 +185,6 @@ test('nothing about progress is kept in the browser: the server is the only reco
 
   expect(setItem).not.toHaveBeenCalled();
   expect(open).not.toHaveBeenCalled();
-  expect(sessionStorage.length).toBe(0);
+  // vue-router keeps its own scroll positions under vue-router:scroll; the page keeps nothing there.
+  expect(Object.keys(sessionStorage).filter((key) => key !== 'vue-router:scroll')).toEqual([]);
 });

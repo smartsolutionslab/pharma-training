@@ -116,7 +116,10 @@ test("the page is headed by the course's title and lists its chapters in order, 
   expect(overviewItem(introduction)).toHaveTextContent(t('glossary.chapterKind.Text'));
   expect(overviewItem(introduction)).toHaveTextContent(t('learning.player.state.done'));
   expect(overviewItem(handwashing)).toHaveTextContent(t('glossary.chapterKind.Video'));
-  expect(overviewItem(handwashing)).toHaveTextContent(t('learning.player.state.progress', { percent: percent(0.4) }));
+  // toHaveTextContent folds the received text's whitespace, U+00A0 of "40 %" included, but not the expected's.
+  expect(overviewItem(handwashing)).toHaveTextContent(
+    t('learning.player.state.progress', { percent: percent(0.4) }).replace(/\s+/g, ' '),
+  );
   expect(overviewItem(summary)).toHaveTextContent(t('learning.player.state.open'));
 });
 
