@@ -28,6 +28,9 @@ public static class BrokerUsers
     /// <summary>The broker's variable that holds the admin's password, as RabbitMQ's image reads it.</summary>
     public const string AdminPasswordVariable = "RABBITMQ_DEFAULT_PASS";
 
+    /// <summary>The broker's variable that holds the admin's user name, as RabbitMQ's image reads it.</summary>
+    public const string AdminUserVariable = "RABBITMQ_DEFAULT_USER";
+
     /// <summary>RabbitMQ's reply code for an operation the user's permissions refuse (ACCESS_REFUSED).</summary>
     public const ushort AccessRefused = 403;
 
@@ -64,6 +67,12 @@ public static class BrokerUsers
     public static string PasswordVariable(string module) =>
         "BROKER_PASSWORD_" + string.Concat(module.ToUpperInvariant().Select(character => char.IsAsciiLetterOrDigit(character) ? character : '_'));
 
+    /// <summary>
+    /// The broker's variable that holds a service user's name, <c>BROKER_USER_&lt;MODULE&gt;</c>, spelled as its password's.
+    /// </summary>
+    public static string UserVariable(string module) =>
+        "BROKER_USER_" + PasswordVariable(module)["BROKER_PASSWORD_".Length..];
+
     /// <summary>The text that stands for a variable's value in the definitions until the broker's entrypoint fills it in.</summary>
     public static string Placeholder(string variable) => $"@@{variable}@@";
 
@@ -80,12 +89,21 @@ public static class BrokerUsers
         await aspire.App.GetConnectionStringAsync(Broker, cancellationToken)
             ?? throw new InvalidOperationException("The broker has no connection string.");
 
-    /// <summary>The definitions the broker imports at every boot, from its environment.</summary>
+    /// <summary>
+    /// The definitions the broker imports at every boot, from its environment, with each user name's placeholder filled in
+    /// from the broker's variable as its entrypoint does; every password stays the placeholder it is.
+    /// </summary>
     public static async Task<JsonDocument> DefinitionsAsync(AspireFixture aspire, CancellationToken cancellationToken)
     {
         var environment = await EnvironmentAsync(aspire, Broker, cancellationToken);
         environment.ShouldContainKey(Definitions, $"The broker is given no {Definitions}; it creates no user of a service's own.");
-        return JsonDocument.Parse(environment[Definitions]);
+        var definitions = environment[Definitions];
+        foreach (var (variable, value) in environment.Where(variable => variable.Key == AdminUserVariable || variable.Key.StartsWith("BROKER_USER_", StringComparison.Ordinal)))
+        {
+            definitions = definitions.Replace(Placeholder(variable), value, StringComparison.Ordinal);
+        }
+
+        return JsonDocument.Parse(definitions);
     }
 
     /// <summary>A connection of the given user's own, as a service holding that connection string makes it.</summary>

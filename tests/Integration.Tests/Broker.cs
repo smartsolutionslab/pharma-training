@@ -139,14 +139,20 @@ public static class Broker
     }
 
     /// <summary>
-    /// Sends an event as a publishing service's Wolverine does: to the fanout exchange named after its type, which its
-    /// consumer's Wolverine declares, with the type and the envelope id in the message's properties and the event as
-    /// camelCase JSON.
+    /// Sends an event as a publishing service's Wolverine does: with the credentials of the service whose module declares
+    /// the event (<c>Contracts.&lt;Module&gt;</c>), to the fanout exchange named after its type, which its consumer's
+    /// Wolverine declares, with the type, the envelope id and that service's user as <c>user_id</c> in the message's
+    /// properties and the event as camelCase JSON. A consumer refuses an event no user of its module sent (docs/adr/0011).
     /// </summary>
     public static async Task SendAsync<T>(AspireFixture aspire, string type, T message, Guid messageId, CancellationToken cancellationToken)
     {
-        await using var connection = await ConnectAsync(aspire, cancellationToken);
-        await WaitForExchangeAsync(connection, type, cancellationToken);
+        await using (var admin = await ConnectAsync(aspire, cancellationToken))
+        {
+            await WaitForExchangeAsync(admin, type, cancellationToken);
+        }
+
+        var publisher = await BrokerUsers.ConnectionStringOfAsync(aspire, PublisherOf(type), cancellationToken);
+        await using var connection = await BrokerUsers.ConnectAsync(publisher, cancellationToken);
         await using var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
         var properties = new BasicProperties
         {
@@ -154,8 +160,17 @@ public static class Broker
             ContentType = "application/json",
             MessageId = messageId.ToString(),
             DeliveryMode = DeliveryModes.Persistent,
+            UserId = BrokerUsers.UserOf(publisher),
         };
 
         await channel.BasicPublishAsync(type, routingKey: string.Empty, mandatory: false, properties, JsonSerializer.SerializeToUtf8Bytes(message, JsonSerializerOptions.Web), cancellationToken);
+    }
+
+    /// <summary>The service of the module that declares the event: <c>editorial</c> for <c>Contracts.Editorial.…</c>.</summary>
+    private static string PublisherOf(string type)
+    {
+        const string Contracts = "SmartSolutionsLab.PharmaTraining.Contracts.";
+        type.ShouldStartWith(Contracts, customMessage: $"{type} is no integration event of a module.");
+        return type[Contracts.Length..type.IndexOf('.', Contracts.Length)].ToLowerInvariant();
     }
 }
