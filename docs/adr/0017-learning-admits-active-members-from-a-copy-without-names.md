@@ -22,7 +22,7 @@
   | `GET /learning/sessions/{id}` | as before | 200 (running or finished) | 403 (an active member gets 404, as before) |
   | `POST /learning/sessions/{id}/progress` (#206) | as before | 403 | 403 |
 
-  Reading stays: the session is the person's own record, and hiding it serves nobody. Progress and resume stop: they are "work", and progress leads to an examination and a certificate, which a person who has left every pharmacy should not produce. Start checks the membership before it looks the version up, so a non-member cannot probe which versions Learning holds. Read loads the session first and answers the caller's own session whatever their membership; only on the other path is the membership read, so a non-member gets the same 403 for every id but their own.
+  Reading stays: the session is the person's own record, and hiding it serves nobody. Progress and resume stop: they are "work", and progress leads to an examination and a certificate, which a person who has left every pharmacy should not produce. Start checks the membership before it looks the version up, so a non-member cannot probe which versions Learning holds. Read loads the session first and answers the caller's own session whatever their membership; only on the other path is the membership read, so a non-member gets the same 403 for every id but their own. One exception, before any of this: an empty version or session id is refused as not found at the endpoint, before the membership is read. The empty Guid names no version or session, so the answer depends on no stored data and reveals nothing.
 - **D4. The copy.** Three insert-only tables in schema `learning`, with no foreign keys between them, each with an index on `person_id`:
 
   | Table | Key | Columns |

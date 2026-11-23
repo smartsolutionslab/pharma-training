@@ -12,7 +12,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Tests.Sessions;
 
 /// <summary>
 /// A learner reads their own session whatever their membership, so a former member still reads it (#194, D3); asked for
-/// any other id, an active member is told it is not found, and anyone else that they are no active member (D5).
+/// any other id, an active member is told it is not found, and anyone else that they are no active member (ADR 0017, D3).
 /// </summary>
 public class GetLearningSessionTests
 {
