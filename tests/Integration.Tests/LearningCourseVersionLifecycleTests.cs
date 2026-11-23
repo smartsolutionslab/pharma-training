@@ -53,9 +53,8 @@ public class LearningCourseVersionLifecycleTests(AspireFixture aspire)
     }
 
     /// <summary>
-    /// v2 is made the next version of v1's course with <see cref="SeedAsNextVersionAsync"/>, as
-    /// <c>EditorialWorkflowTests</c> does, until #20 (<c>POST /editorial/course-versions/{id}/next</c>) is on main; its
-    /// publish then supersedes v1 through Editorial's real publish handler.
+    /// v2 is drafted from v1 with <c>POST /editorial/course-versions/{id}/next</c> (#20), which copies v1's chapters,
+    /// blueprint and approved questions; its publish then supersedes v1 through Editorial's real publish handler.
     /// </summary>
     [Fact]
     public async Task A_session_on_a_superseded_version_stays_on_it_and_the_new_version_starts_a_session_of_its_own()
@@ -69,13 +68,11 @@ public class LearningCourseVersionLifecycleTests(AspireFixture aspire)
         started.StatusCode.ShouldBe(HttpStatusCode.Created, await started.Content.ReadAsStringAsync(cancellationToken));
         var s1 = await BodyOfAsync(started, cancellationToken);
 
-        var v2 = await ReadyToSubmitAsync(editor, cancellationToken);
-        await SubmitAsync(editor, v2.Id, cancellationToken);
-        await SeedAsNextVersionAsync(await ConnectionStringAsync(aspire, cancellationToken), v2.Id, v1.CourseId, 2, cancellationToken);
-        await ApproveAllAsync(editor, v2.Id, cancellationToken);
-        await PublishAsync(editor, v2.Id, cancellationToken);
+        var v2 = await DraftNextAsync(editor, v1.Id, cancellationToken);
+        await SubmitAsync(editor, v2, cancellationToken);
+        await PublishAsync(editor, v2, cancellationToken);
         (await ReadAsync(editor, v1.Id, cancellationToken)).Status.ShouldBe("Superseded");
-        await WaitUntilHeldAsync(aspire, v2.Id, cancellationToken);
+        await WaitUntilHeldAsync(aspire, v2, cancellationToken);
 
         using var resumed = await StartAsync(learner, v1.Id, cancellationToken);
         resumed.StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -83,11 +80,11 @@ public class LearningCourseVersionLifecycleTests(AspireFixture aspire)
         resumedSession.Id.ShouldBe(s1.Id);
         resumedSession.CourseVersionId.ShouldBe(v1.Id);
 
-        using var startedOnV2 = await StartAsync(learner, v2.Id, cancellationToken);
+        using var startedOnV2 = await StartAsync(learner, v2, cancellationToken);
         startedOnV2.StatusCode.ShouldBe(HttpStatusCode.Created);
         var s2 = await BodyOfAsync(startedOnV2, cancellationToken);
         s2.Id.ShouldNotBe(s1.Id);
-        s2.CourseVersionId.ShouldBe(v2.Id);
+        s2.CourseVersionId.ShouldBe(v2);
 
         using var read = await ReadSessionAsync(learner, s1.Id, cancellationToken);
         read.StatusCode.ShouldBe(HttpStatusCode.OK);
