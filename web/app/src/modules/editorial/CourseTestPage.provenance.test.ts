@@ -69,7 +69,10 @@ function onlyCard(): HTMLElement {
   const cards = [...list.querySelectorAll(':scope > li')];
   expect(cards).toHaveLength(1);
   const [card] = cards;
-  return card instanceof HTMLElement ? card : document.body;
+  if (!(card instanceof HTMLElement)) {
+    throw new Error('The question list has no card.');
+  }
+  return card;
 }
 
 /** Switches to English and waits for the page to have re-rendered in it. */
@@ -78,12 +81,11 @@ async function inEnglish() {
   await screen.findByRole('heading', { level: 2, name: 'Questions' });
 }
 
-// The new keys are not in the catalogs' schema yet: they are translated by name, as catalogs.test.ts does.
-const translate = i18n.global.t as unknown as (
-  key: string,
+const translate = (
+  key: 'editorial.test.questions.provenance.approved' | 'editorial.test.questions.provenance.approvedUnnamed',
   named: Record<string, string>,
   options: { locale: Language },
-) => string;
+) => i18n.global.t(key, named, options);
 
 const approvedOn = '2026-11-20T09:30:00Z';
 const approvedBy = (question: EditorialQuestionDto, changes: Partial<EditorialQuestionDto> = {}) => ({
@@ -96,8 +98,7 @@ const approvedBy = (question: EditorialQuestionDto, changes: Partial<EditorialQu
   ...changes,
 });
 
-const provenanceOf = (catalog: typeof de | typeof en) =>
-  catalog.editorial.test.questions.provenance as Record<string, string | undefined>;
+const provenanceOf = (catalog: typeof de | typeof en) => catalog.editorial.test.questions.provenance;
 
 describe('the approval line, with the approver’s name', () => {
   test.each([
@@ -240,5 +241,12 @@ describe('a question not approved', () => {
 
     expect(within(card()).getByText('KI-entworfen')).toBeInTheDocument();
     expect(card()).not.toHaveTextContent(/geprüft (von|am)/);
+  });
+
+  test('an approved question whose time of approval is no date shows its origin alone', async () => {
+    const { card } = await renderWith(approvedBy(approvedAi, { approvedAt: 'not-a-date' }));
+
+    expect(within(card()).getByText('KI-entworfen')).toBeInTheDocument();
+    expect(card()).not.toHaveTextContent(/geprüft (von|am)|Invalid/);
   });
 });
