@@ -131,6 +131,30 @@ public sealed class OwnedSchemaRoleTests(AspireFixture aspire) : IAsyncDisposabl
     }
 
     /// <summary>
+    /// As for a module's role: whatever keeps Keycloak's role from logging in or working, set on it since the last run, by
+    /// an operator or by the role on itself, the next run lifts: its expiry, its connection limit and its settings,
+    /// everywhere and in its database.
+    /// </summary>
+    [Theory]
+    [InlineData("VALID UNTIL '2000-01-01'")]
+    [InlineData("CONNECTION LIMIT 0")]
+    [InlineData("SET statement_timeout = 1")]
+    [InlineData("IN DATABASE {database} SET statement_timeout = 1")]
+    public async Task Running_it_again_lifts_what_locks_the_role_out(string lockOut)
+    {
+        var administrator = await ManagedAdministratorAsync();
+        var application = Application(administrator);
+        await OwnedSchemaRole.EnsureAsync(administrator, application, Schema, TestContext.Current.CancellationToken);
+        var alteration = lockOut.Replace("{database}", new NpgsqlConnectionStringBuilder(administrator).Database!, StringComparison.Ordinal);
+        await ExecuteAsync(administrator, $"ALTER ROLE {Username(application)} {alteration}");
+        (await WorkAsync(application)).ShouldNotBe(Username(application), $"ALTER ROLE ... {alteration} did not lock {Username(application)} out; the test proves nothing.");
+
+        await OwnedSchemaRole.EnsureAsync(administrator, application, Schema, TestContext.Current.CancellationToken);
+
+        (await WorkAsync(application)).ShouldBe(Username(application), $"{Username(application)} is still locked out by {alteration} after the run.");
+    }
+
+    /// <summary>
     /// PostgreSQL grants CONNECT on a new database to PUBLIC: without a revoke, every module's role could connect to
     /// Keycloak's database. Once the role is ensured, it alone may (PR-B's security review).
     /// </summary>
@@ -266,6 +290,21 @@ public sealed class OwnedSchemaRoleTests(AspireFixture aspire) : IAsyncDisposabl
         try
         {
             return await ScalarAsync<string>(connectionString, "SELECT current_user");
+        }
+        catch (PostgresException refused)
+        {
+            return Refused(refused.SqlState);
+        }
+    }
+
+    /// <summary>Who a fresh connection logs in as after a query that takes a moment, or the SQL state the server refused it with.</summary>
+    private static async Task<string> WorkAsync(string connectionString)
+    {
+        try
+        {
+            return await ScalarAsync<string>(
+                new NpgsqlConnectionStringBuilder(connectionString) { Pooling = false }.ConnectionString,
+                "SELECT current_user::text FROM pg_sleep(0.05)");
         }
         catch (PostgresException refused)
         {
