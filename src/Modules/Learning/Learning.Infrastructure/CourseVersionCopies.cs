@@ -48,4 +48,19 @@ public sealed class CourseVersionCopies(LearningDbContext context) : ICourseVers
 
         context.Add(retirement);
     }
+
+    public async Task<IReadOnlyList<ChapterPlacement>> ListPlacementsAsync(ChapterId chapter, CancellationToken cancellationToken)
+    {
+        Ensure.That(chapter).IsNotNull();
+
+        return await context.Set<CourseVersionChapterCopy>()
+            .AsNoTracking()
+            .Where(copied => copied.ChapterId == chapter.Value)
+            .Join(
+                context.Set<CourseVersionCopy>(),
+                copied => copied.CourseVersionId,
+                version => version.Id,
+                (copied, version) => new ChapterPlacement(version.Id, version.VersionNumber, copied.Kind))
+            .ToListAsync(cancellationToken);
+    }
 }

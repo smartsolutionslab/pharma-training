@@ -1,6 +1,9 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.EventSourcing;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
+using SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.IntegrationEvents;
 using SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.ReadModels;
 using SmartSolutionsLab.PharmaTraining.Modules.Learning.Domain.LearningSessions;
+using SmartSolutionsLab.PharmaTraining.Modules.Learning.Domain.LearningSessions.Events;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.Commands.StartLearningSession;
 
@@ -11,11 +14,14 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.Commands
 /// A retired version starts no new run; a run not finished yet is still resumed. A start that read the version as not
 /// retired just before its retirement was stored still starts: that session began before the retirement, and no lock
 /// is taken against it.
+/// A created session is announced as LearningSessionStartedV1 once its stream is stored; a resume announces nothing,
+/// and the losing concurrent start is refused before it publishes.
 /// </summary>
 public sealed class StartLearningSessionHandler(
     ICourseVersionCopies versions,
     ILearningSessions sessions,
     ILearningAggregateStore store,
+    ILearningUnitOfWork unitOfWork,
     TimeProvider time)
     : ICommandHandler<StartLearningSession, Result<LearningSessionStart, ApiError>>
 {
@@ -45,7 +51,13 @@ public sealed class StartLearningSessionHandler(
         }
 
         var session = Start(command, copy.Value, SessionRun.From(runs.Count + 1));
+        var started = ((IEventSourced)session).PendingEvents.OfType<SessionStarted>().Single();
         await store.SaveAsync(session, cancellationToken);
+
+        // The stream is stored: a caller who goes away now must not cancel the announcement, or it is lost for good
+        // (a resume announces nothing), so the outbox commit no longer takes the request's token.
+        await unitOfWork.PublishAsync(started.ToIntegrationEvent());
+        await unitOfWork.CommitAsync(CancellationToken.None);
         return Success(new LearningSessionStart(session.Id.Value, Created: true));
     }
 

@@ -12,8 +12,8 @@ using SmartSolutionsLab.PharmaTraining.Modules.Learning.Infrastructure.Persisten
 namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Infrastructure.Migrations;
 
 [DbContext(typeof(LearningDbContext))]
-[Migration("20261123133120_AddCourseVersionRetirements")]
-partial class _20261123133120_AddCourseVersionRetirements
+[Migration("20261123141707_IndexCourseVersionChaptersByChapter")]
+partial class _20261123141707_IndexCourseVersionChaptersByChapter
 {
     /// <inheritdoc />
     protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -53,6 +53,9 @@ partial class _20261123133120_AddCourseVersionRetirements
                 b.HasKey("CourseVersionId", "ChapterId")
                     .HasName("pk_course_version_chapters");
 
+                b.HasIndex("ChapterId")
+                    .HasDatabaseName("ix_course_version_chapters_chapter_id");
+
                 b.ToTable("course_version_chapters", "learning");
             });
 
@@ -74,22 +77,6 @@ partial class _20261123133120_AddCourseVersionRetirements
                     .HasName("pk_course_versions");
 
                 b.ToTable("course_versions", "learning");
-            });
-
-        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.ReadModels.CourseVersionRetirement", b =>
-            {
-                b.Property<Guid>("CourseVersionId")
-                    .HasColumnType("uuid")
-                    .HasColumnName("course_version_id");
-
-                b.Property<Guid>("CourseId")
-                    .HasColumnType("uuid")
-                    .HasColumnName("course_id");
-
-                b.HasKey("CourseVersionId")
-                    .HasName("pk_course_version_retirements");
-
-                b.ToTable("course_version_retirements", "learning");
             });
 
         modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.ReadModels.SampleSummary", b =>

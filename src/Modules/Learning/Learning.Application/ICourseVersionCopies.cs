@@ -19,4 +19,7 @@ public interface ICourseVersionCopies
 
     /// <summary>Adds the retirement; committing the module's unit of work stores it.</summary>
     void Add(CourseVersionRetirement retirement);
+
+    /// <summary>Every version Learning holds with the chapter, with its number and the chapter's kind there; none when it holds the chapter in no version.</summary>
+    Task<IReadOnlyList<ChapterPlacement>> ListPlacementsAsync(ChapterId chapter, CancellationToken cancellationToken);
 }

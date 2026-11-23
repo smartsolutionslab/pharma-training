@@ -9,6 +9,7 @@ import {
   usePostEditorialCourseVersionsIdSubmit,
 } from '@/api/generated';
 import { ApiError } from '@/api/baseApi';
+import { isKnownRefusal } from './workflowErrors';
 
 /** What a step of the workflow came to: taken, or what the client threw. */
 export type WorkflowResult = { ok: true } | { ok: false; error: unknown };
@@ -18,13 +19,22 @@ const stepTaken = (_data: unknown, _variables: unknown, _result: unknown, { clie
   client.invalidateQueries({ queryKey: getGetEditorialCourseVersionsQueryKey() });
 
 /**
- * A refused step may mean the version changed meanwhile: the version alone (not its returns) is read again, and the
- * step answers once it has been. A step that never reached the host changed nothing, and the host is likely out of
- * reach: the version is marked stale, but the step answers at once, not after the read's retries.
+ * A refusal may mean the version changed meanwhile: a conflict (409), a request the version no longer allows (422), or
+ * a module's refusal the page knows of a version that is still there (four eyes, an incomplete identity). Then the
+ * version alone (not its returns) is read again, and the step answers once it has been, so the page shows why. Any
+ * other failure (an edge's 5xx, a policy's 403, a 404, the network) changed nothing and the host may be out of reach:
+ * the version is marked stale, but the step answers at once, not after the read's retries.
  */
+function mayHaveChanged(error: unknown): boolean {
+  if (!(error instanceof ApiError)) {
+    return false;
+  }
+  return error.status === 409 || error.status === 422 || (error.status !== 404 && isKnownRefusal(error));
+}
+
 const stepRefused = (error: unknown, { id }: { id: string }, _result: unknown, { client }: { client: QueryClient }) => {
   const read = client.invalidateQueries({ queryKey: getGetEditorialCourseVersionsIdQueryKey(id), exact: true });
-  return error instanceof ApiError ? read : undefined;
+  return mayHaveChanged(error) ? read : undefined;
 };
 
 const mutation = { mutation: { onSuccess: stepTaken, onError: stepRefused } };

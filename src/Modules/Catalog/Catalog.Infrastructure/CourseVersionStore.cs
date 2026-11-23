@@ -29,6 +29,9 @@ public sealed class CourseVersionStore(CatalogDbContext context) : ICourseVersio
             ? Option<CourseVersion>.Some(version)
             : Option<CourseVersion>.None;
 
+    public Task<bool> HasNewerVersionAsync(Guid courseId, int versionNumber, CancellationToken cancellationToken) =>
+        context.Set<CourseVersion>().AnyAsync(version => version.CourseId == courseId && version.VersionNumber > versionNumber, cancellationToken);
+
     public async Task<PagedResult<CourseVersion>> ListCurrentAsync(Page page, PageSize pageSize, CancellationToken cancellationToken)
     {
         Ensure.That(page).IsNotNull();

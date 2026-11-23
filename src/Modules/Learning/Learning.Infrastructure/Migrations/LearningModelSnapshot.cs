@@ -16,7 +16,7 @@ partial class LearningModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261123133120_AddCourseVersionRetirements";
+    public override string LastMigrationId => "20261123190857_AddCourseVersionRetirements";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -54,6 +54,9 @@ partial class LearningModelSnapshot : ModelSnapshot
 
                 b.HasKey("CourseVersionId", "ChapterId")
                     .HasName("pk_course_version_chapters");
+
+                b.HasIndex("ChapterId")
+                    .HasDatabaseName("ix_course_version_chapters_chapter_id");
 
                 b.ToTable("course_version_chapters", "learning");
             });

@@ -6,6 +6,7 @@ using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Api.Endpoints;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.ReturnToDraft;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -113,6 +114,57 @@ public class WorkflowEndpointsTests
             Arg.Any<CancellationToken>());
     }
 
+    /// <summary>
+    /// A return records who took it under the name the token carries (#220): a caller whose token names no usable
+    /// display name is refused with <c>editorial.reviewer-name-missing</c>, as an approval is (#205), and nothing is
+    /// dispatched.
+    /// </summary>
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("a\0b")]
+    public async Task A_caller_without_a_name_is_refused_with_reviewer_name_missing_before_the_return_is_dispatched(string? name)
+    {
+        var dispatcher = Dispatcher();
+
+        var (status, code) = await PostAsync("return", EditorNamed(name), dispatcher);
+
+        status.ShouldBe((int)HttpStatusCode.Forbidden, $"POST …/return with the name claim {name ?? "missing"}");
+        code.ShouldBe("editorial.reviewer-name-missing");
+        await dispatcher.DidNotReceive().SendAsync(Arg.Any<ICommand<Result<Unit, ApiError>>>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>The name belongs to the caller and is checked before the body is read: no name wins over a wrong reason (#220).</summary>
+    [Theory]
+    [InlineData(Json, "{}")]
+    [InlineData(Json, "{\"reason\":")]
+    [InlineData("text/plain", "{\"reason\":\"x\"}")]
+    [InlineData(null, "")]
+    public async Task A_caller_without_a_name_who_sends_a_wrong_reason_is_refused_as_without_a_name(string? contentType, string body)
+    {
+        var dispatcher = Dispatcher();
+
+        var (status, code) = await PostAsync("return", EditorNamed(null), dispatcher, contentType, Utf8(body));
+
+        status.ShouldBe((int)HttpStatusCode.Forbidden, $"POST …/return with {contentType ?? "no content type"}: {body}");
+        code.ShouldBe("editorial.reviewer-name-missing");
+        await dispatcher.DidNotReceive().SendAsync(Arg.Any<ICommand<Result<Unit, ApiError>>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task A_return_dispatches_the_callers_trimmed_name()
+    {
+        var dispatcher = Dispatcher();
+
+        var (status, _) = await PostAsync("return", EditorNamed("  Erika Editor  "), dispatcher);
+
+        status.ShouldBe((int)HttpStatusCode.OK);
+        await dispatcher.Received(1).SendAsync(
+            Arg.Is<ICommand<Result<Unit, ApiError>>>(command => command is ReturnToDraft && ((ReturnToDraft)command).EditorName == ReviewerName.From("Erika Editor")),
+            Arg.Any<CancellationToken>());
+    }
+
     private static byte[] Utf8(string text) => Encoding.UTF8.GetBytes(text);
 
     private static IDispatcher Dispatcher()
@@ -126,6 +178,21 @@ public class WorkflowEndpointsTests
     /// <summary>A signed-in editor whose token names their person.</summary>
     private static ClaimsPrincipal Editor() =>
         new(new ClaimsIdentity([new Claim("sub", Guid.CreateVersion7().ToString()), new Claim("name", "Erika Editor")], authenticationType: "Bearer"));
+
+    /// <summary>
+    /// A signed-in editor whose token names their person and, unless <paramref name="name"/> is null, carries it as the
+    /// <c>name</c> claim; <c>preferred_username</c> is there too, and is never read for the name.
+    /// </summary>
+    private static ClaimsPrincipal EditorNamed(string? name)
+    {
+        List<Claim> claims = [new Claim("sub", Guid.CreateVersion7().ToString()), new Claim("preferred_username", "editor")];
+        if (name is not null)
+        {
+            claims.Add(new Claim("name", name));
+        }
+
+        return new ClaimsPrincipal(new ClaimsIdentity(claims, authenticationType: "Bearer"));
+    }
 
     /// <summary>
     /// Posts the step; a return carries <paramref name="body"/> (a reason by default) as <paramref name="contentType"/>,

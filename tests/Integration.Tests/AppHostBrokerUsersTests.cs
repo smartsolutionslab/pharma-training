@@ -15,6 +15,8 @@ public class AppHostBrokerUsersTests(AspireFixture aspire)
 {
     private const string Contracts = "SmartSolutionsLab.PharmaTraining.Contracts.";
 
+    private const string ChapterFilesReleased = Contracts + "Editorial.ChapterFilesReleasedV1";
+
     private const string CourseVersionPublished = Contracts + "Editorial.CourseVersionPublishedV1";
 
     private const string CourseVersionRetired = Contracts + "Editorial.CourseVersionRetiredV1";
@@ -51,15 +53,15 @@ public class AppHostBrokerUsersTests(AspireFixture aspire)
         },
         {
             "editorial",
-            ["editorial", CourseVersionPublished, CourseVersionRetired, TestDefinitionPublished],
-            ["editorial", CourseVersionPublished, CourseVersionRetired, TestDefinitionPublished],
+            ["editorial", ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired, TestDefinitionPublished],
+            ["editorial", ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired, TestDefinitionPublished],
             ["editorial"]
         },
         {
             "learning",
-            ["learning", ContentCompleted, LearningSessionStarted, CourseVersionPublished, CourseVersionRetired],
+            ["learning", ContentCompleted, LearningSessionStarted, ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired],
             ["learning", ContentCompleted, LearningSessionStarted],
-            ["learning", CourseVersionPublished, CourseVersionRetired]
+            ["learning", ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired]
         },
         {
             "organisation",
@@ -90,6 +92,35 @@ public class AppHostBrokerUsersTests(AspireFixture aspire)
                 .Select(variable => variable.Key)
                 .ShouldBeEmpty($"{service.Name} is handed the broker's admin credentials.");
             environment["Messaging__Queue"].ShouldBe(service.Name);
+        }
+    }
+
+    /// <summary>
+    /// A service handles an event from the broker only when the user who sent it is that event's module's (#202), so it
+    /// is told every module's user, by module, each the one that module's service connects as.
+    /// </summary>
+    [Fact]
+    public async Task Every_service_is_told_the_broker_user_of_every_module()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var services = BrokerUsers.ServiceHosts(aspire);
+        Dictionary<string, string> users = [];
+        foreach (var service in services)
+        {
+            users[service.Name] = BrokerUsers.UserOf(await BrokerUsers.ConnectionStringOfAsync(aspire, service.Name, cancellationToken));
+        }
+
+        services.ShouldNotBeEmpty();
+        foreach (var service in services)
+        {
+            var publishers = (await BrokerUsers.EnvironmentAsync(aspire, service.Name, cancellationToken))
+                .Where(variable => variable.Key.StartsWith("Messaging__Publishers__", StringComparison.Ordinal))
+                .ToDictionary(variable => variable.Key["Messaging__Publishers__".Length..], variable => variable.Value, StringComparer.Ordinal);
+
+            publishers.OrderBy(publisher => publisher.Key, StringComparer.Ordinal).ShouldBe(
+                users.OrderBy(user => user.Key, StringComparer.Ordinal),
+                ignoreOrder: false,
+                $"{service.Name} is not told each module's broker user.");
         }
     }
 

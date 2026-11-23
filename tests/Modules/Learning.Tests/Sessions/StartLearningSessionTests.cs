@@ -1,5 +1,6 @@
 using System.Net;
 using Microsoft.Extensions.Time.Testing;
+using SmartSolutionsLab.PharmaTraining.Contracts.Learning;
 using SmartSolutionsLab.PharmaTraining.Modules.Learning.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.Commands.StartLearningSession;
 using SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.ReadModels;
@@ -197,7 +198,102 @@ public class StartLearningSessionTests
         sessions.Saves.ShouldBe(0);
     }
 
-    private StartLearningSessionHandler Handler() => new(copies, sessions, sessions, time);
+    [Fact]
+    public async Task Starting_a_version_announces_the_session_once_with_its_ids()
+    {
+        var started = await StartAsync(learner);
+
+        var announced = sessions.Published.ShouldHaveSingleItem().ShouldBeOfType<LearningSessionStartedV1>();
+        announced.SessionId.ShouldBe(started.Value.Id);
+        announced.PersonId.ShouldBe(learner.Value);
+        announced.CourseId.ShouldBe(version.CourseId);
+        announced.CourseVersionId.ShouldBe(version.Id);
+        sessions.Commits.ShouldBe(1);
+        sessions.Steps.ShouldBe([InMemoryLearningSessions.Saved, InMemoryLearningSessions.Queued, InMemoryLearningSessions.Committed]);
+    }
+
+    [Fact]
+    public async Task Resuming_a_session_announces_nothing()
+    {
+        await StartAsync(learner);
+        var steps = sessions.Steps.Count;
+        time.Advance(TimeSpan.FromHours(1));
+
+        var again = await StartAsync(learner);
+
+        again.Value.Created.ShouldBeFalse();
+        sessions.Published.Count.ShouldBe(1);
+        sessions.Commits.ShouldBe(1);
+        sessions.Steps.Count.ShouldBe(steps);
+    }
+
+    [Fact]
+    public async Task A_version_Learning_does_not_hold_announces_nothing()
+    {
+        var started = await Handler().HandleAsync(
+            new StartLearningSession(learner, CourseVersionId.From(Guid.CreateVersion7())),
+            TestContext.Current.CancellationToken);
+
+        started.IsFailure.ShouldBeTrue();
+        sessions.Published.ShouldBeEmpty();
+        sessions.Commits.ShouldBe(0);
+        sessions.Steps.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task After_a_finished_session_the_next_run_is_announced_under_its_own_id()
+    {
+        var now = Timestamp.From(time.GetUtcNow());
+        var finished = LearningSession.Start(
+            LearningSessionId.For(learner, Version, SessionRun.First),
+            learner,
+            CourseId.From(version.CourseId),
+            Version,
+            [ChapterId.From(Intro)],
+            [ChapterId.From(Handbook)],
+            [ChapterId.From(Film)],
+            now);
+        finished.Finish(now);
+        await sessions.SaveAsync(finished, TestContext.Current.CancellationToken);
+        time.Advance(TimeSpan.FromDays(365));
+
+        var started = await StartAsync(learner);
+
+        var announced = sessions.Published.ShouldHaveSingleItem().ShouldBeOfType<LearningSessionStartedV1>();
+        announced.SessionId.ShouldBe(LearningSessionId.For(learner, Version, SessionRun.From(2)).Value);
+        announced.SessionId.ShouldBe(started.Value.Id);
+        announced.PersonId.ShouldBe(learner.Value);
+        announced.CourseVersionId.ShouldBe(version.Id);
+        sessions.Commits.ShouldBe(1);
+    }
+
+    /// <summary>A resume never announces the session again, so a start whose caller goes away once it is stored still commits its announcement.</summary>
+    [Fact]
+    public async Task A_new_session_is_announced_even_when_the_caller_goes_away_after_the_save()
+    {
+        using var caller = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        sessions.CancelAfterNextSave(caller);
+
+        var started = await Handler().HandleAsync(new StartLearningSession(learner, Version), caller.Token);
+
+        sessions.Published.ShouldHaveSingleItem().ShouldBeOfType<LearningSessionStartedV1>().SessionId.ShouldBe(started.Value.Id);
+        sessions.Commits.ShouldBe(1);
+    }
+
+    /// <summary>Of two first starts of one version, the loser's save is refused (Marten's stream collision); it announces nothing.</summary>
+    [Fact]
+    public async Task A_start_that_loses_the_race_announces_nothing()
+    {
+        sessions.LoseNextSave();
+
+        await Should.ThrowAsync<InvalidOperationException>(() => StartAsync(learner));
+
+        sessions.Published.ShouldBeEmpty();
+        sessions.Commits.ShouldBe(0);
+        sessions.Steps.ShouldBeEmpty();
+    }
+
+    private StartLearningSessionHandler Handler() => new(copies, sessions, sessions, sessions, time);
 
     private Task<Result<LearningSessionStart, ApiError>> StartAsync(PersonId person) =>
         Handler().HandleAsync(new StartLearningSession(person, Version), TestContext.Current.CancellationToken);
