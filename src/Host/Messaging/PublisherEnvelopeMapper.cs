@@ -57,8 +57,10 @@ public sealed class PublisherEnvelopeMapper(IRabbitMqEnvelopeMapper inner, strin
         {
             inner.MapIncomingToEnvelope(envelope, incoming);
         }
-        catch (Exception unreadable) when (unreadable is FormatException or ArgumentException or InvalidOperationException or OverflowException)
+        catch (Exception unreadable)
         {
+            // Every exception: Wolverine's mapping promises nothing about what it throws (a void header ends in a
+            // NullReferenceException), and whatever escapes here is rescheduled without end.
             // The mapping stopped before it read the message's id; the envelope's own is a fresh one, under which the
             // dead letter could not be found by the id the publisher gave.
             if (Guid.TryParse(incoming.MessageId, out var id))
