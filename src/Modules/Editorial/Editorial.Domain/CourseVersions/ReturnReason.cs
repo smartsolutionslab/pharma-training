@@ -1,6 +1,4 @@
 using System.Diagnostics.CodeAnalysis;
-using System.Globalization;
-using System.Text;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 
@@ -39,32 +37,6 @@ public sealed record ReturnReason : IValueObject<string>
     private static bool IsValid(string value)
     {
         var text = value.Trim();
-        return text.Length is > 0 and <= MaxLength && !HasUnpairedSurrogate(text) && text.EnumerateRunes().All(IsShowable);
+        return text.Length is > 0 and <= MaxLength && PlainText.IsPlain(text, allowLineBreaksAndTabs: true);
     }
-
-    /// <summary>A lone high or low surrogate, which <see cref="string.EnumerateRunes"/> would read as U+FFFD and let through.</summary>
-    private static bool HasUnpairedSurrogate(string text)
-    {
-        for (var index = 0; index < text.Length; index++)
-        {
-            if (char.IsSurrogatePair(text, index))
-            {
-                index++;
-            }
-            else if (char.IsSurrogate(text[index]))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool IsShowable(Rune character) =>
-        character.Value is '\n' or '\r' or '\t'
-        || (!Rune.IsControl(character) && Rune.GetUnicodeCategory(character) is not (UnicodeCategory.Format
-            or UnicodeCategory.LineSeparator
-            or UnicodeCategory.ParagraphSeparator
-            or UnicodeCategory.PrivateUse
-            or UnicodeCategory.OtherNotAssigned));
 }

@@ -197,6 +197,20 @@ internal static class EditorialDatabase
     }
 
     /// <summary>
+    /// Clears the reviewer's name of an approved question, as an approval recorded before #205 kept none: the question
+    /// stays approved, by its person and at its time.
+    /// </summary>
+    public static async Task ForgetReviewerNameAsync(string connectionString, Guid question, CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("UPDATE editorial.course_version_questions SET reviewed_by_name = NULL WHERE id = @id", connection);
+        command.Parameters.AddWithValue("id", question);
+
+        (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1);
+    }
+
+    /// <summary>
     /// A writer that has taken the number but not committed: the handler's check does not see it, and an INSERT of the
     /// same number waits on it. It inserts a bare draft of the course with that number in a transaction it leaves
     /// open; committing the gate keeps the row, disposing it uncommitted drops it.

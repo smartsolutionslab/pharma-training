@@ -325,6 +325,8 @@ export const de = {
         incorrect: 'Falsch',
         provenance: {
           unreviewed: '{origin}, noch nicht geprüft',
+          approved: '{origin}, geprüft von {name} am {date}',
+          approvedUnnamed: '{origin}, geprüft am {date}',
         },
         edit: 'Frage {position} bearbeiten',
         remove: 'Frage {position} löschen',
