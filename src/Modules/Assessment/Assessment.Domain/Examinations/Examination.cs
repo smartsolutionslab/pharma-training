@@ -10,7 +10,6 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Assessment.Domain.Examination
 public sealed class Examination : EventSourcedAggregate<ExaminationId>
 {
     private readonly List<TestAttempt> attempts = [];
-    private readonly Dictionary<AttemptId, IReadOnlyList<ChapterId>> failedChaptersByAttempt = [];
     private readonly List<TestAttempt> attemptsSinceUnlock = [];
 
     // Only loading creates an empty examination, which its first event fills.
@@ -30,14 +29,14 @@ public sealed class Examination : EventSourcedAggregate<ExaminationId>
 
     public IReadOnlyList<TestAttempt> Attempts => attempts;
 
-    /// <summary>The open attempt, or none. Stub for the red run of #46: not implemented yet.</summary>
-    public Option<TestAttempt> CurrentAttempt => throw new NotImplementedException();
+    /// <summary>The open attempt, or none.</summary>
+    public Option<TestAttempt> CurrentAttempt => OpenAttempt is { } open ? Option<TestAttempt>.Some(open) : Option<TestAttempt>.None;
 
-    /// <summary>The attempts since the examination was opened or last unlocked. Stub for the red run of #46: not implemented yet.</summary>
-    public IReadOnlyList<TestAttempt> AttemptsSinceUnlock => throw new NotImplementedException();
+    /// <summary>The attempts since the examination was opened or last unlocked, oldest first, the open one included.</summary>
+    public IReadOnlyList<TestAttempt> AttemptsSinceUnlock => attemptsSinceUnlock;
 
-    /// <summary>Every chapter failed since the last unlock, once exhausted. Stub for the red run of #46: not implemented yet.</summary>
-    public IReadOnlyList<ChapterId> ChaptersToRelearn => throw new NotImplementedException();
+    /// <summary>Every chapter failed since the last unlock, once the examination is exhausted; none otherwise.</summary>
+    public IReadOnlyList<ChapterId> ChaptersToRelearn { get; private set; } = [];
 
     private TestAttempt? OpenAttempt => attempts.LastOrDefault(attempt => attempt.Outcome is null);
 
@@ -79,7 +78,7 @@ public sealed class Examination : EventSourcedAggregate<ExaminationId>
     /// <param name="attempt">The new attempt's id.</param>
     /// <param name="shuffledQuestions">The definition's questions in this attempt's random order (shuffled by the Application), at least one.</param>
     /// <param name="now">When the attempt starts.</param>
-    public Result<AttemptId, DomainError> StartAttempt(AttemptId attempt, IReadOnlyList<QuestionVersionId> shuffledQuestions, Timestamp now)
+    public Result<AttemptId, ExaminationError> StartAttempt(AttemptId attempt, IReadOnlyList<QuestionVersionId> shuffledQuestions, Timestamp now)
     {
         Ensure.That(attempt).IsNotNull();
         Ensure.That(shuffledQuestions).IsNotNull();
@@ -96,7 +95,7 @@ public sealed class Examination : EventSourcedAggregate<ExaminationId>
         return Success(attempt);
     }
 
-    public Result<Unit, DomainError> Answer(QuestionVersionId question, IReadOnlyList<AnswerOptionId> chosen, Timestamp now)
+    public Result<Unit, ExaminationError> Answer(QuestionVersionId question, IReadOnlyList<AnswerOptionId> chosen, Timestamp now)
     {
         Ensure.That(question).IsNotNull();
         Ensure.That(chosen).IsNotNull();
@@ -117,7 +116,7 @@ public sealed class Examination : EventSourcedAggregate<ExaminationId>
     }
 
     /// <summary>Scores the open attempt on the server against the version's definition. Unanswered questions are wrong.</summary>
-    public Result<AttemptOutcome, DomainError> Submit(TestDefinition definition, Timestamp now)
+    public Result<AttemptOutcome, ExaminationError> Submit(TestDefinition definition, Timestamp now)
     {
         Ensure.That(definition).IsNotNull();
         Ensure.That(now).IsNotNull();
@@ -152,7 +151,8 @@ public sealed class Examination : EventSourcedAggregate<ExaminationId>
         else if (attempt.Number >= definition.MaxAttempts)
         {
             var allFailedChapters = attemptsSinceUnlock
-                .SelectMany(FailedChaptersOf)
+                .Where(earlier => earlier.Id != attempt.Id)
+                .SelectMany(earlier => earlier.FailedChapters)
                 .Concat(failedChapters)
                 .Distinct()
                 .ToList();
@@ -161,9 +161,6 @@ public sealed class Examination : EventSourcedAggregate<ExaminationId>
 
         return Success(outcome);
     }
-
-    private IReadOnlyList<ChapterId> FailedChaptersOf(TestAttempt attempt) =>
-        failedChaptersByAttempt.TryGetValue(attempt.Id, out var chapters) ? chapters : [];
 
     // Apply: the only place state changes; replaying the stream rebuilds the same examination.
     private void Apply(ExaminationOpened opened)
@@ -179,6 +176,7 @@ public sealed class Examination : EventSourcedAggregate<ExaminationId>
     private void Apply(ExaminationUnlocked unlocked)
     {
         attemptsSinceUnlock.Clear();
+        ChaptersToRelearn = [];
         Status = ExaminationStatus.Unlocked;
     }
 
@@ -195,12 +193,15 @@ public sealed class Examination : EventSourcedAggregate<ExaminationId>
 
     private void Apply(AttemptSubmitted submitted)
     {
-        attempts.Single(attempt => attempt.Id == submitted.Attempt).Close(submitted.Score, submitted.Outcome);
-        failedChaptersByAttempt[submitted.Attempt] = submitted.FailedChapters;
+        attempts.Single(attempt => attempt.Id == submitted.Attempt).Close(submitted.Score, submitted.Outcome, submitted.FailedChapters);
         Status = ExaminationStatus.Unlocked;
     }
 
     private void Apply(ExaminationPassed passed) => Status = ExaminationStatus.Passed;
 
-    private void Apply(ExaminationExhausted exhausted) => Status = ExaminationStatus.Exhausted;
+    private void Apply(ExaminationExhausted exhausted)
+    {
+        ChaptersToRelearn = exhausted.FailedChapters;
+        Status = ExaminationStatus.Exhausted;
+    }
 }
