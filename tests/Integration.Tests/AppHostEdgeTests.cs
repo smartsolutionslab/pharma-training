@@ -82,6 +82,21 @@ public partial class AppHostEdgeTests
         ignored.ShouldContain("**/dist", "web/.dockerignore should leave out every earlier build.");
     }
 
+    /// <summary>
+    /// The security review of #114 (PR-D): the web build runs in a base image a tag alone could move to one nobody reviewed,
+    /// so every stage but the empty last one starts from its image by tag and digest, which Dependabot keeps current.
+    /// </summary>
+    [Fact]
+    public async Task The_web_images_stages_start_from_a_digest()
+    {
+        var dockerfile = await File.ReadAllTextAsync(Path.Combine(RepositoryRoot, "web", "Dockerfile"), TestContext.Current.CancellationToken);
+
+        var stages = FromLine().Matches(dockerfile).Select(match => match.Groups["image"].Value).Where(image => image != "scratch").ToList();
+
+        stages.ShouldNotBeEmpty("web/Dockerfile has no stage that starts from an image.");
+        stages.Where(stage => !PinnedImage().IsMatch(stage)).ShouldBeEmpty("Every FROM of web/Dockerfile but FROM scratch should name its image as <image>:<tag>@sha256:<64 hex characters>; a tag alone can be moved.");
+    }
+
     [Fact]
     public async Task Dependabot_keeps_the_web_images_base_current()
     {
@@ -130,6 +145,10 @@ public partial class AppHostEdgeTests
 
     [GeneratedRegex(@"^FROM\s+(?:--\S+\s+)*(?<image>\S+)", RegexOptions.Multiline, matchTimeoutMilliseconds: 1000)]
     private static partial Regex FromLine();
+
+    /// <summary>An image named by its tag and its digest: <c>name:tag@sha256:&lt;64 hex characters&gt;</c>.</summary>
+    [GeneratedRegex(@"^[^\s@]+:[^\s@/]+@sha256:[0-9a-f]{64}$", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex PinnedImage();
 
     [GeneratedRegex(@"^COPY\s+(?:--\S+\s+)*\S+\s+(?<destination>\S+)\s*$", RegexOptions.Multiline, matchTimeoutMilliseconds: 1000)]
     private static partial Regex CopyDestination();

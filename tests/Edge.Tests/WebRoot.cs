@@ -13,6 +13,12 @@ public sealed class WebRoot : IDisposable
 
     public const string AssetContent = "console.log('edge-tests-asset');";
 
+    /// <summary>
+    /// The text of the inline script in the test's <c>index.html</c>, exactly as it stands between its tags, as the web app's
+    /// own <c>index.html</c> sets the theme and language before the first paint.
+    /// </summary>
+    public const string InlineScript = "\n      document.documentElement.dataset.edgeTests = 'inline';\n    ";
+
     private WebRoot(string path) => Path = path;
 
     public string Path { get; }
@@ -23,7 +29,7 @@ public sealed class WebRoot : IDisposable
         var root = Empty();
         File.WriteAllText(
             System.IO.Path.Combine(root.Path, "index.html"),
-            $"<!doctype html><html lang=\"en\"><head><title>{AppMarker}</title></head><body><div id=\"app\"></div></body></html>");
+            $"<!doctype html><html lang=\"en\"><head><title>{AppMarker}</title><script>{InlineScript}</script></head><body><div id=\"app\"></div><script type=\"module\" src=\"{AssetPath}\"></script></body></html>");
         Directory.CreateDirectory(System.IO.Path.Combine(root.Path, "assets"));
         File.WriteAllText(System.IO.Path.Combine(root.Path, "assets", "app.js"), AssetContent);
         return root;

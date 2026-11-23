@@ -15,8 +15,23 @@ public class PublishedRealmTests
 {
     private const string WebClient = "pharma-training-web";
 
-    // Every path below may differ between the two realms; K1 pins what the published realm holds at each.
-    private static readonly string[] RealmDifferences = ["users", "registrationAllowed", "verifyEmail", "sslRequired", "bruteForceProtected"];
+    // Keycloak's own command-line client, which every realm gets on import unless the realm declares it: public, with the
+    // password grant on (the security review of #114, PR-C).
+    private const string AdminCli = "admin-cli";
+
+    // The most failed logins brute-force detection lets one user have before it locks them out for a while.
+    private const int MostFailures = 10;
+
+    // Every path below may differ between the two realms; K1 and the security review of #114 pin what the published realm
+    // holds at each.
+    private static readonly string[] RealmDifferences =
+    [
+        "users", "registrationAllowed", "verifyEmail", "sslRequired", "bruteForceProtected",
+        "failureFactor", "eventsEnabled", "enabledEventTypes", "adminEventsEnabled", "adminEventsDetailsEnabled",
+    ];
+
+    // Clients the published realm may declare and the development realm need not: admin-cli, pinned below.
+    private static readonly string[] PublishedClients = [AdminCli];
 
     private static readonly string[] MailDifferences = ["host", "from", "user", "password", "port", "starttls", "ssl", "auth"];
 
@@ -59,6 +74,57 @@ public class PublishedRealmTests
     }
 
     [Fact]
+    public void No_client_of_the_published_realm_accepts_the_password_grant()
+    {
+        var realm = Published();
+        var clients = (realm["clients"] as JsonArray ?? []).OfType<JsonObject>().ToList();
+        if (Client(realm, AdminCli) is null)
+        {
+            // Keycloak adds its own admin-cli to a realm that does not declare one: public, with the password grant on.
+            clients.Add(new JsonObject { ["clientId"] = AdminCli, ["publicClient"] = true, ["directAccessGrantsEnabled"] = true });
+        }
+
+        clients.Where(client => Value(client, "directAccessGrantsEnabled") == "true")
+            .Select(client => Value(client, "clientId"))
+            .ShouldBeEmpty("These clients of the published realm, as Keycloak imports it, accept the password grant, which takes a user's password at the token endpoint the auth proxy makes public; nothing published signs in that way.");
+    }
+
+    [Fact]
+    public void The_published_realm_declares_admin_cli_without_the_password_grant()
+    {
+        var client = Client(Published(), AdminCli);
+
+        client.ShouldNotBeNull($"The published realm does not declare {AdminCli}, so Keycloak creates its own on import: a public client that accepts the password grant, at /realms/pharma-training/protocol/openid-connect/token, which the auth proxy forwards from the internet. Declare it with directAccessGrantsEnabled false.");
+        Value(client, "publicClient").ShouldBe("true", $"{AdminCli} must stay a public client, as Keycloak creates it.");
+        Value(client, "directAccessGrantsEnabled").ShouldBe("false", $"{AdminCli} must not accept the password grant in the published realm.");
+    }
+
+    [Fact]
+    public void The_published_realm_records_logins_and_administration()
+    {
+        var realm = Published();
+
+        Value(realm, "eventsEnabled").ShouldBe("true", "The published realm must record user events (eventsEnabled true), so failed logins can be traced.");
+        if (realm["enabledEventTypes"] is JsonArray types)
+        {
+            types.Select(type => (string?)type).ShouldContain("LOGIN_ERROR", $"The published realm records the event types {types.ToJsonString()}, without LOGIN_ERROR: a failed login leaves no trace.");
+        }
+
+        Value(realm, "adminEventsEnabled").ShouldBe("true", "The published realm must record admin events (adminEventsEnabled true), so a change to its users, roles or clients can be traced.");
+    }
+
+    [Fact]
+    public void Brute_force_detection_locks_out_after_a_few_failed_logins()
+    {
+        var realm = Published();
+
+        Value(realm, "bruteForceProtected").ShouldBe("true", "The published realm must have bruteForceProtected true.");
+        var failures = Value(realm, "failureFactor");
+        int.TryParse(failures, System.Globalization.CultureInfo.InvariantCulture, out var factor).ShouldBeTrue($"The published realm must state its failureFactor, at most {MostFailures}; Keycloak's default is 30. It is {failures}.");
+        factor.ShouldBeInRange(1, MostFailures, $"The published realm's failureFactor must be from 1 to {MostFailures}.");
+    }
+
+    [Fact]
     public void Mail_goes_through_the_deployments_smtp_server_with_starttls()
     {
         var mail = Published()["smtpServer"];
@@ -90,7 +156,7 @@ public class PublishedRealmTests
         Compare("$", development, published, differences);
 
         differences.ShouldBeEmpty(
-            "src/AppHost/keycloak/realm.json differs from src/AppHost/realms/realm.json beyond the differences K1 allows (users, registrationAllowed, verifyEmail, sslRequired, bruteForceProtected, smtpServer's server, port and security, and pharma-training-web's redirectUris, webOrigins and directAccessGrantsEnabled).");
+            "src/AppHost/keycloak/realm.json differs from src/AppHost/realms/realm.json beyond the differences K1 and the security review allow (users, registrationAllowed, verifyEmail, sslRequired, bruteForceProtected, failureFactor, the event settings, smtpServer's server, port and security, pharma-training-web's redirectUris, webOrigins and directAccessGrantsEnabled, and the client admin-cli).");
     }
 
     private static JsonNode Published() => Read("src/AppHost/keycloak/realm.json");
@@ -104,7 +170,7 @@ public class PublishedRealmTests
         return JsonNode.Parse(File.ReadAllText(path)) ?? throw new ShouldAssertException($"{relativePath} is empty.");
     }
 
-    /// <summary>A copy of a realm without the paths K1 lets differ.</summary>
+    /// <summary>A copy of a realm without the paths K1 and the security review let differ.</summary>
     private static JsonObject WithoutTheDifferences(JsonNode realm)
     {
         var copy = realm.DeepClone().AsObject();
@@ -118,6 +184,14 @@ public class PublishedRealmTests
             foreach (var key in MailDifferences)
             {
                 mail.Remove(key);
+            }
+        }
+
+        if (copy["clients"] is JsonArray clients)
+        {
+            foreach (var publishedOnly in clients.OfType<JsonObject>().Where(candidate => PublishedClients.Contains((string?)candidate["clientId"])).ToList())
+            {
+                clients.Remove(publishedOnly);
             }
         }
 

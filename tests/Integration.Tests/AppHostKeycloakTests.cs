@@ -147,11 +147,56 @@ public partial class AppHostKeycloakTests
 
         var stages = FromLine().Matches(dockerfile).Select(match => match.Groups["image"].Value).ToList();
         stages.Count.ShouldBeGreaterThanOrEqualTo(2, $"Keycloak's Dockerfile should build in one stage and run in another:\n{dockerfile}");
-        stages.ShouldAllBe(stage => stage == $"{Image}:{Version}", $"Every stage of Keycloak's Dockerfile should start from {Image}:{Version}:\n{dockerfile}");
+        stages.ShouldAllBe(stage => stage == $"{Image}:{Version}" || stage.StartsWith($"{Image}:{Version}@sha256:", StringComparison.Ordinal), $"Every stage of Keycloak's Dockerfile should start from {Image}:{Version}:\n{dockerfile}");
         dockerfile.ShouldMatch(@"(?m)^RUN\s+/opt/keycloak/bin/kc\.sh\s+build\b.*--db=postgres\b", $"Keycloak's Dockerfile does not run kc.sh build --db=postgres:\n{dockerfile}");
         dockerfile.ShouldMatch(@"(?m)^RUN\s+/opt/keycloak/bin/kc\.sh\s+build\b.*--health-enabled=true\b", $"Keycloak's Dockerfile does not build with --health-enabled=true:\n{dockerfile}");
         dockerfile.ShouldMatch(@"(?m)^COPY\s+--from=\S+\s+/opt/keycloak/?\s+/opt/keycloak/?\s*$", $"Keycloak's Dockerfile does not copy the built /opt/keycloak into the stage it runs:\n{dockerfile}");
         dockerfile.ShouldMatch(@"(?m)^COPY\s+realm\.json\s+/opt/keycloak/data/import/realm\.json\s*$", $"Keycloak's Dockerfile does not copy the published realm to /opt/keycloak/data/import/realm.json:\n{dockerfile}");
+    }
+
+    /// <summary>
+    /// The security review of #114 (PR-C): a tag can be moved to an image nobody reviewed, so every stage of Keycloak's
+    /// published image starts from Keycloak's image by its digest, beside the tag that names its version for people and
+    /// Dependabot.
+    /// </summary>
+    [Fact]
+    public async Task Keycloaks_published_image_starts_from_a_digest()
+    {
+        await using var builder = await PublishedAppHost.ModelAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
+        var keycloak = builder.Resources.OfType<ContainerResource>().Single(resource => resource.Name == Keycloak);
+        var build = keycloak.Annotations.OfType<DockerfileBuildAnnotation>().Single();
+        build.DockerfileFactory.ShouldNotBeNull("Keycloak's Dockerfile should be written by the AppHost.");
+        await using var app = await builder.BuildAsync(TestContext.Current.CancellationToken);
+
+        var dockerfile = await build.DockerfileFactory(new DockerfileFactoryContext
+        {
+            Services = app.Services,
+            Resource = keycloak,
+            CancellationToken = TestContext.Current.CancellationToken,
+        });
+
+        var stages = FromLine().Matches(dockerfile).Select(match => match.Groups["image"].Value).ToList();
+        stages.ShouldNotBeEmpty($"Keycloak's Dockerfile has no FROM:\n{dockerfile}");
+        stages.Where(stage => !PinnedImage().IsMatch(stage)).ShouldBeEmpty($"Every FROM of Keycloak's Dockerfile should name {Image}:{Version}@sha256:<64 hex characters>, not a tag alone, which can be moved:\n{dockerfile}");
+        stages.ShouldAllBe(stage => stage.StartsWith($"{Image}:{Version}@", StringComparison.Ordinal), $"Every FROM of Keycloak's Dockerfile should keep the tag {Version} beside the digest:\n{dockerfile}");
+    }
+
+    /// <summary>
+    /// The security review of #114 (PR-C): the <c>auth</c> proxy, the browser's one way to Keycloak, runs YARP's image by
+    /// its digest. Aspire's default is a nightly preview tag, which moves with every build.
+    /// </summary>
+    [Fact]
+    public async Task The_auth_proxy_runs_its_image_by_digest()
+    {
+        var bicep = await PublishedAppHost.PublishAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
+        bicep.ContainerApps.ShouldContainKey(Auth);
+
+        var images = PublishedBicep.Objects(PublishedBicep.Array(bicep.ContainerApps[Auth], "containers"))
+            .Select(container => PublishedBicep.Property(container, "image"))
+            .ToList();
+
+        images.ShouldNotBeEmpty($"The auth proxy's Container App has no container:\n{bicep.ContainerApps[Auth]}");
+        images.Where(image => !DigestImage().IsMatch(image)).ShouldBeEmpty("The auth proxy's container should run its image by digest, <image>@sha256:<64 hex characters> (WithImageSHA256); a tag alone can be moved to an image nobody reviewed.");
     }
 
     [Theory]
@@ -480,6 +525,14 @@ public partial class AppHostKeycloakTests
 
     [GeneratedRegex(@"(?m)^FROM\s+(?<image>\S+)")]
     private static partial Regex FromLine();
+
+    /// <summary>An image named by its tag and its digest: <c>registry/name:tag@sha256:&lt;64 hex characters&gt;</c>.</summary>
+    [GeneratedRegex(@"^'?[^\s'@]+:[^\s'@/]+@sha256:[0-9a-f]{64}'?$")]
+    private static partial Regex PinnedImage();
+
+    /// <summary>An image named by its digest, with or without a tag: <c>registry/name[:tag]@sha256:&lt;64 hex characters&gt;</c>.</summary>
+    [GeneratedRegex(@"^'?[^\s'@]+@sha256:[0-9a-f]{64}'?$")]
+    private static partial Regex DigestImage();
 
     [GeneratedRegex(@"^REVERSEPROXY__ROUTES__(?<route>.+)__MATCH__PATH$")]
     private static partial Regex RoutePath();
