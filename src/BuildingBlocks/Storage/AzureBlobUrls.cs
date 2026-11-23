@@ -60,12 +60,15 @@ public sealed class AzureBlobUrls : IBlobUrls
     }
 
     public Task<BlobUrl> CreateUploadUrlAsync(BlobName name, BlobUrlLifetime lifetime, CancellationToken cancellationToken) =>
-        SignAsync(name, lifetime, BlobSasPermissions.Create, cancellationToken);
+        SignAsync(name, lifetime, BlobSasPermissions.Create, headers: null, cancellationToken);
 
-    public Task<BlobUrl> CreateReadUrlAsync(BlobName name, BlobUrlLifetime lifetime, CancellationToken cancellationToken) =>
-        SignAsync(name, lifetime, BlobSasPermissions.Read, cancellationToken);
+    public Task<BlobUrl> CreateReadUrlAsync(BlobName name, BlobUrlLifetime lifetime, BlobReadHeaders headers, CancellationToken cancellationToken)
+    {
+        Ensure.That(headers).IsNotNull();
+        return SignAsync(name, lifetime, BlobSasPermissions.Read, headers, cancellationToken);
+    }
 
-    private async Task<BlobUrl> SignAsync(BlobName name, BlobUrlLifetime lifetime, BlobSasPermissions permissions, CancellationToken cancellationToken)
+    private async Task<BlobUrl> SignAsync(BlobName name, BlobUrlLifetime lifetime, BlobSasPermissions permissions, BlobReadHeaders? headers, CancellationToken cancellationToken)
     {
         Ensure.That(name).IsNotNull();
         Ensure.That(lifetime).IsNotNull();
@@ -83,6 +86,18 @@ public sealed class AzureBlobUrls : IBlobUrls
             BlobName = name.Value,
             Resource = "b",
         };
+
+        // The response overrides (rsct, rscd) are part of what is signed, on both signing paths, so changing one breaks the URL.
+        if (headers is not null)
+        {
+            sas.ContentType = headers.ContentType;
+            sas.ContentDisposition = headers.Disposition switch
+            {
+                BlobDisposition.Inline => "inline",
+                BlobDisposition.Attachment => "attachment",
+                _ => throw new InvalidOperationException($"No Content-Disposition for {headers.Disposition}."),
+            };
+        }
 
         // A signature for an https endpoint works only over https (spr=https), so it never travels in the clear, on both
         // signing paths. The emulator, Azurite, serves http, which that would refuse; its URLs name no protocol.

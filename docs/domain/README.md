@@ -204,7 +204,7 @@ Ein Stream pro Person × Schulungsversion und Durchlauf. Die Kapitelstruktur wir
 | `SessionStarted` | PersonId, CourseId, CourseVersionId, Pflichtkapitel |
 | `ChapterProgressRecorded` | Kapitel, gesehene Abschnitte bzw. Seiten; nur bei echtem Fortschritt |
 | `ChapterCompleted` | Kapitel erfüllt sein Abschlusskriterium |
-| `ContentCompleted` | Alle Pflichtkapitel erfüllt; einmal pro Zyklus |
+| `ContentCompleted` | Alle Pflichtkapitel erfüllt; einmal pro Zyklus. Schaltet nur die Prüfung frei und belegt allein keine Schulung (ADR 0018) |
 | `ProgressReset` | Nach `AttemptsExhausted`; die Kapitel der falsch beantworteten Fragen sind wieder offen |
 | `SessionFinished` | Nach `TestPassed` (Learning konsumiert es zusätzlich zu Certification); danach keine Änderungen |
 
@@ -277,7 +277,8 @@ Alle Pfade beginnen mit dem Modulnamen; der Edge leitet danach weiter. Kein Serv
 | --- | --- | --- | --- |
 | organisation | `POST /organisation/pharmacies` | angemeldet | Apotheke registrieren (O1) |
 | organisation | `GET /organisation/pharmacies/mine` | angemeldet | Eigene Mitgliedschaften, Apotheke wählen |
-| organisation | `GET /organisation/pharmacies/{id}/members` | Leitung | Mitglieder und offene Einladungen |
+| organisation | `GET /organisation/pharmacies/{id}/members?page&pageSize` | Leitung | Aktive Mitglieder nach Name (O3) |
+| organisation | `GET /organisation/pharmacies/{id}/invitations?page&pageSize` | Leitung | Offene und abgelaufene Einladungen nach Ablaufdatum (O2) |
 | organisation | `POST /organisation/pharmacies/{id}/invitations` | Leitung | Einladen (O2) |
 | organisation | `POST …/invitations/{membershipId}/renew`, `DELETE …/invitations/{membershipId}` | Leitung | Neu senden, zurückziehen |
 | organisation | `POST /organisation/invitations/accept` | angemeldet | Einladung annehmen |
