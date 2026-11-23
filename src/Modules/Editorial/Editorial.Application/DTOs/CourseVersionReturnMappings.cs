@@ -9,6 +9,6 @@ public static class CourseVersionReturnMappings
     {
         Ensure.That(record).IsNotNull();
 
-        return new EditorialCourseVersionReturnDto(record.Id.Value, record.ReturnedBy.Value, record.ReturnedAt.Value, record.Reason.Value);
+        return new EditorialCourseVersionReturnDto(record.Id.Value, record.ReturnedBy.Value, record.ReturnedByName?.Value, record.ReturnedAt.Value, record.Reason.Value);
     }
 }

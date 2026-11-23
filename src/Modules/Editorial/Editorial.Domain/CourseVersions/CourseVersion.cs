@@ -400,11 +400,13 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
     }
 
     /// <summary>
-    /// Sends the version back to its editors and hands back the record of who did, when and why, which the caller stores
-    /// in the same save; the version keeps the latest editor and time. Returning is not bound by four eyes.
+    /// Sends the version back to its editors and hands back the record of who did, under which name, when and why, which
+    /// the caller stores in the same save; the version keeps the latest editor and time. Returning is not bound by four
+    /// eyes.
     /// </summary>
-    public Result<CourseVersionReturn, CourseVersionWorkflowError> ReturnToDraft(PersonId editor, ReturnReason reason, Timestamp now)
+    public Result<CourseVersionReturn, CourseVersionWorkflowError> ReturnToDraft(PersonId editor, ReviewerName name, ReturnReason reason, Timestamp now)
     {
+        Ensure.That(name).IsNotNull();
         Ensure.That(reason).IsNotNull();
 
         if (Status != CourseVersionStatus.InReview)
@@ -416,7 +418,7 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         ReturnedBy = editor;
         ReturnedAt = now;
         Raise(new CourseVersionReturned(Id, editor, reason));
-        return Success(new CourseVersionReturn(CourseVersionReturnId.New(), Id, editor, now, reason));
+        return Success(new CourseVersionReturn(CourseVersionReturnId.New(), Id, editor, name, now, reason));
     }
 
     /// <summary>
