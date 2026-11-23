@@ -68,7 +68,7 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
 
     /// <summary>
     /// The next version of a published one: a copy of its chapters and questions with new ids. Approved questions
-    /// stay approved until their chapter or they themselves change.
+    /// stay approved until their chapter, they themselves or the test's settings change.
     /// </summary>
     public Result<CourseVersion, DomainError> DraftNext(
         CourseVersionId id,
@@ -233,6 +233,10 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
 
     // ── Test ──
 
+    /// <summary>
+    /// Replaces a draft's test settings. Replacing them sends every question of the version back to review, copied
+    /// ones included, so reviewers sign off the changed test again. The same settings again change nothing.
+    /// </summary>
     public Result<Unit, DomainError> SetBlueprint(TestBlueprint blueprint)
     {
         Ensure.That(blueprint).IsNotNull();
@@ -242,7 +246,17 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
             return Failure(CourseVersionErrors.NotADraft(Id, Status));
         }
 
+        if (blueprint == Blueprint)
+        {
+            return Success(Unit.Value);
+        }
+
         Blueprint = blueprint;
+        foreach (var question in questions)
+        {
+            question.MarkUnreviewed();
+        }
+
         return Success(Unit.Value);
     }
 
