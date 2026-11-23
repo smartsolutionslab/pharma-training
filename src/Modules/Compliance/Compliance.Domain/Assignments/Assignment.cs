@@ -236,7 +236,7 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
         return Status switch
         {
             AssignmentStatus.Cancelled => AssignmentState.Cancelled,
-            AssignmentStatus.Completed when CompletedAt is not null && CompletedAt.DayInGermany() > DueDate.AsDate() => AssignmentState.CompletedLate,
+            AssignmentStatus.Completed when CompletedAt is not null && DueDate.IsMissedBy(CompletedAt) => AssignmentState.CompletedLate,
             AssignmentStatus.Completed => AssignmentState.Completed,
             _ when today > DueDate.AsDate() => AssignmentState.Overdue,
             AssignmentStatus.InProgress when TestAccess == TestAccess.LockedAfterFailedAttempts => AssignmentState.Locked,
