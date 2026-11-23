@@ -11,8 +11,9 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application;
 public static class ComplianceAccess
 {
     /// <summary>
-    /// The caller's membership that grants the capability. There is normally one; two exist only while an ending is
-    /// still on its way, and either granting suffices.
+    /// The caller's membership that grants the capability. There is normally one; two mean an ending is still on its way
+    /// or was dead-lettered, and Compliance cannot tell which one ended. It fails closed: the capability holds only when
+    /// every one of them grants it, and then one of them is returned.
     /// </summary>
     public static async Task<Result<CurrentMembership, ApiError>> RequireAsync(
         IMemberStore members,
@@ -31,12 +32,11 @@ public static class ComplianceAccess
             return Failure(AssignmentFailures.PharmacyNotFound(pharmacy.Value));
         }
 
-        var granting = memberships.FirstOrDefault(membership => membership.Grants(capability));
-        if (granting is null)
+        if (!memberships.All(membership => membership.Grants(capability)))
         {
             return Failure(AssignmentFailures.CapabilityMissing());
         }
 
-        return Success(granting);
+        return Success(memberships[0]);
     }
 }
