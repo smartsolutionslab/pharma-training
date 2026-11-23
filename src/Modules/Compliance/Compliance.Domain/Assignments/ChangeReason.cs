@@ -9,6 +9,9 @@ public sealed record ChangeReason : IValueObject<string>
 
     public static ChangeReason MembershipEnded => new("Mitgliedschaft beendet");
 
+    /// <summary>A manager withdrew the assignment; a withdrawal carries no reason of the manager's own.</summary>
+    public static ChangeReason Withdrawn => new("Von der Leitung zurückgezogen");
+
     public string Value { get; }
 
     public static ChangeReason From(string value)

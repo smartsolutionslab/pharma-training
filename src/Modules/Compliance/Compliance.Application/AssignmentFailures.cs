@@ -34,6 +34,12 @@ public static class AssignmentFailures
     /// <summary>The job function asked for is a number no job function has.</summary>
     public static ApiError InvalidJobFunction() => new InvalidJobFunction();
 
+    /// <summary>The pharmacy has no assignment of that id: unknown, or another pharmacy's.</summary>
+    public static ApiError AssignmentNotFound(Guid id) => new AssignmentNotFound(id);
+
+    /// <summary>A change's reason is longer than <see cref="ChangeReason.MaxLength"/>.</summary>
+    public static ApiError InvalidChangeReason() => new InvalidChangeReason(ChangeReason.MaxLength);
+
     public static ApiError LearnerNotAMember(Guid person) => new LearnerNotAMember(person);
 
     /// <summary>The save lost a race to another, or deadlocked with it; nothing of it was saved or announced.</summary>
