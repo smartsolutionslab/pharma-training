@@ -170,6 +170,35 @@ public class InvitationMailLimitTests
     }
 
     [Fact]
+    public void A_stored_day_more_than_one_day_ahead_counts_as_today_and_restarts_the_count()
+    {
+        var limits = new InvitationMailLimits(RenewCooldown.From(TimeSpan.FromMinutes(10)), DailyMailCap.From(2));
+        var pharmacy = TestPharmacies.Register(Owner);
+        Invite(pharmacy, "anna@example.org", Start.AddDays(3), limits);
+
+        var today = pharmacy.Invite(MembershipId.New(), EmailAddress.From("ben@example.org"), JobFunction.Pta, MembershipRole.Employee, At(Start), limits);
+
+        today.IsSuccess.ShouldBeTrue("a mail was refused on a day that had counted none");
+        pharmacy.InvitationMailDay.ShouldBe(UtcDay.Of(At(Start)), "a day three days ahead was kept as the counted day");
+        pharmacy.InvitationMailsThatDay.Value.ShouldBe(1, "a day three days ahead was counted onto");
+    }
+
+    [Fact]
+    public void A_stored_day_at_the_end_of_the_calendar_counts_as_today_and_does_not_throw()
+    {
+        var limits = new InvitationMailLimits(RenewCooldown.From(TimeSpan.FromMinutes(10)), DailyMailCap.From(1));
+        var pharmacy = TestPharmacies.Register(Owner);
+        Invite(pharmacy, "anna@example.org", Start, limits);
+        typeof(Pharmacy).GetProperty(nameof(Pharmacy.InvitationMailDay)).ShouldNotBeNull().SetValue(pharmacy, UtcDay.From(DateOnly.MaxValue));
+
+        var today = pharmacy.Invite(MembershipId.New(), EmailAddress.From("ben@example.org"), JobFunction.Pta, MembershipRole.Employee, At(Start.AddHours(1)), limits);
+
+        today.IsSuccess.ShouldBeTrue("a stored day of 9999-12-31 kept today's mail from being counted on today");
+        pharmacy.InvitationMailDay.ShouldBe(UtcDay.Of(At(Start)));
+        pharmacy.InvitationMailsThatDay.Value.ShouldBe(1);
+    }
+
+    [Fact]
     public void An_invite_refused_as_already_invited_counts_toward_nothing()
     {
         var limits = new InvitationMailLimits(RenewCooldown.From(TimeSpan.FromMinutes(10)), DailyMailCap.From(2));
