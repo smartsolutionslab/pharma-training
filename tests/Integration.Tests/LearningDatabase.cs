@@ -104,6 +104,18 @@ internal static class LearningDatabase
         }
     }
 
+    /// <summary>How many sessions the learner has on the version, as Learning's session view holds them.</summary>
+    public static async Task<long> CountSessionsAsync(AspireFixture aspire, Guid learner, Guid courseVersionId, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(aspire, cancellationToken);
+        await using var command = new NpgsqlCommand(
+            "select count(*) from learning.mt_doc_learningsessionview where data->>'LearnerId' = @learner and data->>'CourseVersionId' = @version",
+            connection);
+        command.Parameters.AddWithValue("learner", learner.ToString());
+        command.Parameters.AddWithValue("version", courseVersionId.ToString());
+        return (long)(await command.ExecuteScalarAsync(cancellationToken))!;
+    }
+
     public static async Task<long> CountAsync(AspireFixture aspire, string query, Guid id, CancellationToken cancellationToken)
     {
         await using var connection = await OpenAsync(aspire, cancellationToken);

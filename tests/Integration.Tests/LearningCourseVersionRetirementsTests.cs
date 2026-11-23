@@ -1,12 +1,15 @@
+using System.Net;
 using Npgsql;
+using static SmartSolutionsLab.PharmaTraining.Integration.Tests.EditorialWorkflow;
 using static SmartSolutionsLab.PharmaTraining.Integration.Tests.LearningDatabase;
+using static SmartSolutionsLab.PharmaTraining.Integration.Tests.LearningSessions;
 
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 
 /// <summary>
 /// Learning's record of Editorial's retired course versions through the running application (#195): the retirement
 /// reaches Learning through the broker and is stored in its own table, once, however often it arrives and whether or
-/// not Learning holds the version yet.
+/// not Learning holds the version yet; once Learning holds the version, its retirement refuses a new session on it.
 /// </summary>
 public class LearningCourseVersionRetirementsTests(AspireFixture aspire)
 {
@@ -49,6 +52,27 @@ public class LearningCourseVersionRetirementsTests(AspireFixture aspire)
 
         (await CountAsync(aspire, RetirementsByVersion, published.CourseVersionId, cancellationToken)).ShouldBe(1);
         (await CountAsync(aspire, VersionsById, published.CourseVersionId, cancellationToken)).ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task A_retirement_arriving_before_its_version_refuses_a_new_session_once_the_version_arrives()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var learner = await aspire.CreateHostClientAsync("employee-a");
+        var published = Published(Guid.CreateVersion7());
+
+        await DeliverAsync(aspire, Retired(published), cancellationToken);
+        using var beforeTheVersion = await StartAsync(learner, published.CourseVersionId, cancellationToken);
+
+        beforeTheVersion.StatusCode.ShouldBe(HttpStatusCode.NotFound, await beforeTheVersion.Content.ReadAsStringAsync(cancellationToken));
+        (await CodeOfAsync(beforeTheVersion, cancellationToken)).ShouldBe("learning.course-version-not-found");
+
+        await DeliverAsync(aspire, published, cancellationToken);
+        await WaitUntilHeldAsync(aspire, published.CourseVersionId, cancellationToken);
+        using var once = await StartAsync(learner, published.CourseVersionId, cancellationToken);
+
+        once.StatusCode.ShouldBe(HttpStatusCode.Conflict, await once.Content.ReadAsStringAsync(cancellationToken));
+        (await CodeOfAsync(once, cancellationToken)).ShouldBe("learning.course-version-retired");
     }
 
     /// <summary>The course of every retirement Learning stored for the version.</summary>
