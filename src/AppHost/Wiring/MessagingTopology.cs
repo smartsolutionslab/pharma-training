@@ -1,4 +1,7 @@
 using System.Reflection;
+using System.Reflection.Metadata;
+using System.Reflection.Metadata.Ecma335;
+using System.Reflection.PortableExecutable;
 using System.Runtime.InteropServices;
 
 namespace Aspire.Hosting;
@@ -28,27 +31,36 @@ public static class MessagingTopology
     /// The exchanges the module's service binds its queue to (<c>Consumed</c>) and those it publishes to
     /// (<c>Published</c>), each sorted ordinally. The module is matched ignoring case.
     /// </summary>
-    public static (IReadOnlyList<string> Consumed, IReadOnlyList<string> Published) Of(string module)
+    public static (IReadOnlyList<string> Consumed, IReadOnlyList<string> Published) Of(string module) =>
+        Of(module, [.. typeof(MessagingTopology).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
+            .Where(attribute => attribute.Key == MetadataKey && !string.IsNullOrEmpty(attribute.Value))
+            .Select(attribute => attribute.Value!)]);
+
+    /// <summary>
+    /// What <see cref="Of(string)"/> answers, read from the given assemblies instead of those the AppHost's build recorded:
+    /// the module's Application (<c>SmartSolutionsLab.PharmaTraining.Modules.&lt;Module&gt;.Application.dll</c>) and the
+    /// contracts (<c>Contracts.dll</c>) among them. No other assembly needs to be given.
+    /// </summary>
+    public static (IReadOnlyList<string> Consumed, IReadOnlyList<string> Published) Of(string module, IReadOnlyCollection<string> assemblyPaths)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(module);
+        ArgumentNullException.ThrowIfNull(assemblyPaths);
 
-        var paths = typeof(MessagingTopology).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
-            .Where(attribute => attribute.Key == MetadataKey && !string.IsNullOrEmpty(attribute.Value))
-            .Select(attribute => attribute.Value!)
-            .ToList();
         var applicationName = $"SmartSolutionsLab.PharmaTraining.Modules.{module}.Application";
-        var applicationPath = paths.SingleOrDefault(path => string.Equals(Path.GetFileNameWithoutExtension(path), applicationName, StringComparison.OrdinalIgnoreCase));
-        var contractsPath = paths.SingleOrDefault(path => string.Equals(Path.GetFileNameWithoutExtension(path), ContractsAssembly, StringComparison.Ordinal));
+        var applicationPath = assemblyPaths.SingleOrDefault(path => string.Equals(Path.GetFileNameWithoutExtension(path), applicationName, StringComparison.OrdinalIgnoreCase));
+        var contractsPath = assemblyPaths.SingleOrDefault(path => string.Equals(Path.GetFileNameWithoutExtension(path), ContractsAssembly, StringComparison.Ordinal));
         if (applicationPath is null || !File.Exists(applicationPath) || contractsPath is null || !File.Exists(contractsPath))
         {
             throw new InvalidOperationException(
                 $"The AppHost's build recorded no Application assembly of the module '{module}' ({applicationName}) beside the contracts; AppHost.csproj references every src/Modules/*/*.Application/*.Application.csproj and src/Contracts, so build the AppHost again.");
         }
 
-        var resolver = new PathAssemblyResolver([.. Directory.EnumerateFiles(RuntimeEnvironment.GetRuntimeDirectory(), "*.dll"), .. paths.Where(File.Exists)]);
+        var resolver = new PathAssemblyResolver([.. Directory.EnumerateFiles(RuntimeEnvironment.GetRuntimeDirectory(), "*.dll"), .. assemblyPaths.Where(File.Exists)]);
         using var context = new MetadataLoadContext(resolver);
         var contracts = context.LoadFromAssemblyPath(contractsPath);
         var application = context.LoadFromAssemblyPath(applicationPath);
+        using var image = new PEReader(File.OpenRead(applicationPath));
+        var metadata = image.GetMetadataReader();
 
         var own = $"{ContractsNamespace}.{module}";
         var owned = contracts.GetTypes()
@@ -58,13 +70,26 @@ public static class MessagingTopology
         var consumed = application.GetExportedTypes()
             .Where(type => type.Name.EndsWith("Consumer", StringComparison.Ordinal) && type is { IsClass: true, IsAbstract: false })
             .SelectMany(type => type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly))
-            .Where(method => HandlerMethodNames.Contains(method.Name) && method.GetParameters().Length > 0)
-            .Select(method => method.GetParameters()[0].ParameterType.FullName!)
+            .Where(method => HandlerMethodNames.Contains(method.Name))
+            .Select(method => FirstParameterType(metadata, method.MetadataToken))
+            .OfType<string>()
             .ToHashSet(StringComparer.Ordinal);
 
         return (
             [.. consumed.Where(exchange => !owned.Contains(exchange)).Order(StringComparer.Ordinal)],
             [.. owned.Where(exchange => !consumed.Contains(exchange)).Order(StringComparer.Ordinal)]);
+    }
+
+    /// <summary>
+    /// The full name of a handler method's first parameter, the message it handles, or nothing for a method without one.
+    /// The signature is read by name alone: <see cref="MethodBase.GetParameters"/> would resolve every parameter's
+    /// assembly, and a consumer may take services of any assembly beside its message (AGENTS.md), which the AppHost
+    /// does not have at hand.
+    /// </summary>
+    private static string? FirstParameterType(MetadataReader metadata, int token)
+    {
+        var signature = metadata.GetMethodDefinition((MethodDefinitionHandle)MetadataTokens.EntityHandle(token)).DecodeSignature(new SignatureTypeNames(metadata), null);
+        return signature.ParameterTypes.IsEmpty ? null : signature.ParameterTypes[0];
     }
 
     private static bool IsIntegrationEvent(Type type)
