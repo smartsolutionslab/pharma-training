@@ -62,6 +62,17 @@ public class MessagingTopologyTests
     }
 
     [Fact]
+    public void Learning_consumes_the_course_versions_and_the_memberships_and_publishes_its_session_events()
+    {
+        var (consumed, published) = MessagingTopology.Of("learning");
+
+        consumed.ShouldBe(
+            [CourseVersionPublished, Contracts + "Organisation.MembershipChangedV1", Contracts + "Organisation.MembershipEndedV1", Contracts + "Organisation.MembershipStartedV1"],
+            ignoreOrder: false);
+        published.ShouldBe([Contracts + "Learning.ContentCompletedV1", Contracts + "Learning.LearningSessionStartedV1"], ignoreOrder: false);
+    }
+
+    [Fact]
     public void The_module_is_matched_ignoring_case()
     {
         MessagingTopology.Of("Catalog").Consumed.ShouldBe([CourseVersionPublished, CourseVersionRetired], ignoreOrder: false);
