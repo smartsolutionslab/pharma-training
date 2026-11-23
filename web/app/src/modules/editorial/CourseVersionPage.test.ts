@@ -431,6 +431,31 @@ test('a version the host cannot give is reported', async () => {
   expect(screen.queryByText(t('editorial.version.notFound'))).not.toBeInTheDocument();
 });
 
+// The version's test is a page of its own (#25, S1): its header links to it, whatever the version's status, since a
+// version that cannot be changed still shows its test.
+test.each(['Draft' as const, 'InReview' as const, 'Published' as const, 'Superseded' as const, 'Retired' as const])(
+  'the version links to its test, %s',
+  async (status) => {
+    version = versionOf(status);
+    await renderPage();
+
+    expect(screen.getByRole('link', { name: t('editorial.version.openTest') })).toHaveAttribute(
+      'href',
+      `/editorial/versions/${versionId}/test`,
+    );
+  },
+);
+
+test('the link to the test speaks German by default and English when switched', async () => {
+  await renderPage();
+
+  expect(screen.getByRole('link', { name: 'Test: Vorgaben und Fragen' })).toBeInTheDocument();
+
+  setLanguage('en-GB', { remember: false });
+
+  expect(await screen.findByRole('link', { name: 'Test: blueprint and questions' })).toBeInTheDocument();
+});
+
 // The detail /editorial/versions/:id (T1) opens this page; the placeholder it opened until now is gone.
 test('the editorial detail versions/:id opens the course version page', () => {
   const detail = route.details?.find((each) => each.path === 'versions/:id');

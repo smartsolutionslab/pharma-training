@@ -56,6 +56,16 @@ public class CourseVersionFailuresTests
     }
 
     [Fact]
+    public void What_a_caller_gets_wrong_about_a_return_is_a_bad_request_with_its_own_code()
+    {
+        var refused = CourseVersionFailures.InvalidReturnReason();
+
+        refused.Code.ShouldBe("editorial.invalid-return-reason");
+        refused.Status.ShouldBe(HttpStatusCode.BadRequest);
+        refused.Message.ShouldBe("A return's reason is 1 to 1000 characters after trimming, and holds no control or format characters but line breaks and tabs.");
+    }
+
+    [Fact]
     public void A_file_not_uploaded_yet_is_a_conflict_the_caller_may_retry()
     {
         CourseVersionFailures.UploadNotFound().Code.ShouldBe("editorial.upload-not-found");

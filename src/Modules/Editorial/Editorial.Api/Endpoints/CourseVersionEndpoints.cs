@@ -3,6 +3,7 @@ using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.DTOs;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Queries.GetCourseVersion;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Queries.ListCourseVersionReturns;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Queries.ListCourseVersions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -10,7 +11,10 @@ using Microsoft.AspNetCore.Routing;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Api.Endpoints;
 
-/// <summary>The editors' inbox: the course versions a page at a time, of one status or of all, and one version with its chapters.</summary>
+/// <summary>
+/// The editors' inbox: the course versions a page at a time, of one status or of all, one version with its chapters, and
+/// a version's returns a page at a time, newest first.
+/// </summary>
 public sealed class CourseVersionEndpoints : IEndpoint
 {
     public void Map(IEndpointRouteBuilder endpoints)
@@ -32,6 +36,10 @@ public sealed class CourseVersionEndpoints : IEndpoint
 
         endpoints.MapGet("/course-versions/{id:guid}", async (Guid id, IDispatcher dispatcher, CancellationToken cancellationToken) =>
             (await dispatcher.QueryAsync(new GetCourseVersion(id), cancellationToken)).ToHttpResult())
+            .RequireAuthorization(EditorialPolicyNames.Edit);
+
+        endpoints.MapGet("/course-versions/{id:guid}/returns", async (Guid id, Page? page, PageSize? pageSize, IDispatcher dispatcher, CancellationToken cancellationToken) =>
+            (await dispatcher.QueryAsync(new ListCourseVersionReturns(id, page ?? Page.First, pageSize ?? PageSize.Default), cancellationToken)).ToHttpResult())
             .RequireAuthorization(EditorialPolicyNames.Edit);
     }
 

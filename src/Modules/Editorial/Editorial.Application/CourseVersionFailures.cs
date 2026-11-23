@@ -28,6 +28,9 @@ public static class CourseVersionFailures
 
     public static ApiError IdentityIncomplete() => new IdentityIncomplete();
 
+    /// <summary>A return's reason that is missing, blank, too long or holds a control or format character.</summary>
+    public static ApiError InvalidReturnReason() => new InvalidReturnReason();
+
     public static ApiError InvalidUploadKind() => new InvalidUploadKind();
 
     public static ApiError InvalidChapterKind() => new InvalidChapterKind();

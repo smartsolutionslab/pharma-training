@@ -170,6 +170,12 @@ async function confirmRemove(chapter: EditorialChapterDto) {
             t(`glossary.courseVersionStatus.${version.status}`)
           }}</span>
         </div>
+        <RouterLink
+          :to="`/editorial/versions/${id}/test`"
+          class="text-body text-primary self-start underline-offset-4 hover:underline"
+        >
+          {{ t('editorial.version.openTest') }}
+        </RouterLink>
       </header>
       <p v-if="version.status !== 'Draft'" class="text-body bg-muted rounded-md p-3">
         {{ t(`editorial.version.readOnly.${version.status}`) }}
