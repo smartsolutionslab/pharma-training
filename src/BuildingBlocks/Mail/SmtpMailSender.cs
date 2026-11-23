@@ -1,5 +1,7 @@
 using MailKit.Net.Smtp;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using MimeKit;
 
 namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Mail;
@@ -9,7 +11,7 @@ namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Mail;
 /// <c>Mail:From</c>. Both are read at every send, so a host without them starts, fails only where it mails, and sends
 /// once they are supplied.
 /// </summary>
-public sealed class SmtpMailSender : IMailSender
+public sealed partial class SmtpMailSender : IMailSender
 {
     private const string FromKey = "Mail:From";
 
@@ -22,6 +24,8 @@ public sealed class SmtpMailSender : IMailSender
 
     private readonly Func<ISmtpClient> clients;
 
+    private readonly ILogger<SmtpMailSender> logger;
+
     public SmtpMailSender(IConfiguration configuration)
         : this(configuration, TimeProvider.System)
     {
@@ -30,7 +34,15 @@ public sealed class SmtpMailSender : IMailSender
     /// <param name="configuration">Where the server and the sender address are read at each send.</param>
     /// <param name="time">The clock the whole send's bound is measured on.</param>
     public SmtpMailSender(IConfiguration configuration, TimeProvider time)
-        : this(configuration, time, () => new SmtpClient())
+        : this(configuration, time, NullLogger<SmtpMailSender>.Instance)
+    {
+    }
+
+    /// <param name="configuration">Where the server and the sender address are read at each send.</param>
+    /// <param name="time">The clock the whole send's bound is measured on.</param>
+    /// <param name="logger">Where a failure after the mail was sent is written, since it fails nothing.</param>
+    public SmtpMailSender(IConfiguration configuration, TimeProvider time, ILogger<SmtpMailSender> logger)
+        : this(configuration, time, () => new SmtpClient(), logger)
     {
     }
 
@@ -38,18 +50,31 @@ public sealed class SmtpMailSender : IMailSender
     /// <param name="time">The clock the whole send's bound is measured on.</param>
     /// <param name="clients">Makes the client of one send; a test gives one whose failures it chooses.</param>
     internal SmtpMailSender(IConfiguration configuration, TimeProvider time, Func<ISmtpClient> clients)
+        : this(configuration, time, clients, NullLogger<SmtpMailSender>.Instance)
+    {
+    }
+
+    /// <param name="configuration">Where the server and the sender address are read at each send.</param>
+    /// <param name="time">The clock the whole send's bound is measured on.</param>
+    /// <param name="clients">Makes the client of one send; a test gives one whose failures it chooses.</param>
+    /// <param name="logger">Where a failure after the mail was sent is written, since it fails nothing.</param>
+    internal SmtpMailSender(IConfiguration configuration, TimeProvider time, Func<ISmtpClient> clients, ILogger<SmtpMailSender> logger)
     {
         Ensure.That(configuration).IsNotNull();
         Ensure.That(time).IsNotNull();
         Ensure.That(clients).IsNotNull();
+        Ensure.That(logger).IsNotNull();
         this.configuration = configuration;
         this.time = time;
         this.clients = clients;
+        this.logger = logger;
     }
 
     /// <summary>
     /// Sends the mail within <see cref="Bound"/>. The caller's token is honoured only before the send starts: a mail half
-    /// handed to the server is finished or fails on the bound, never abandoned because the request went away.
+    /// handed to the server is finished or fails on the bound, never abandoned because the request went away. Once the
+    /// client's send has returned, the server has taken the mail: a failure while disconnecting afterwards, the bound
+    /// firing included, is logged and the mail counts as sent, so nothing retries a mail the recipient already has.
     /// </summary>
     public async Task SendAsync(OutgoingMail mail, CancellationToken cancellationToken)
     {
@@ -70,7 +95,6 @@ public sealed class SmtpMailSender : IMailSender
             }
 
             await client.SendAsync(message, bound.Token);
-            await client.DisconnectAsync(quit: true, bound.Token);
         }
         catch (Exception) when (bound.IsCancellationRequested)
         {
@@ -90,6 +114,8 @@ public sealed class SmtpMailSender : IMailSender
             // the recipient; only the kind of failure goes on, without the exception itself.
             throw new MailNotSentException($"The mail was not sent: {failed.GetType().Name}.");
         }
+
+        await DisconnectAfterSendAsync(client, bound.Token);
     }
 
     /// <summary>
@@ -109,6 +135,25 @@ public sealed class SmtpMailSender : IMailSender
         message.Body = new TextPart(MimeKit.Text.TextFormat.Plain) { Text = mail.Text };
         return message;
     }
+
+    /// <summary>
+    /// Says goodbye to a server that has taken the mail. Whatever fails here fails nothing: the mail is sent, and only the
+    /// kind of failure is logged, since the exception may carry the server's address, its text or the recipient.
+    /// </summary>
+    private async Task DisconnectAfterSendAsync(ISmtpClient client, CancellationToken bound)
+    {
+        try
+        {
+            await client.DisconnectAsync(quit: true, bound);
+        }
+        catch (Exception failed)
+        {
+            DisconnectFailedAfterSend(logger, failed.GetType().Name);
+        }
+    }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The SMTP server took the mail, but disconnecting afterwards failed with {Failure}; the mail counts as sent.")]
+    private static partial void DisconnectFailedAfterSend(ILogger logger, string failure);
 
     private static bool IsBareAddress(string to) =>
         MailboxAddress.TryParse(to, out var parsed) && string.IsNullOrEmpty(parsed.Name) && string.Equals(parsed.Address, to, StringComparison.Ordinal);
