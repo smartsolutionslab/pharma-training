@@ -158,30 +158,30 @@ async function draw(opened: PDFDocumentProxy, shown: number) {
     highest = shown;
     emit('progress', percentOf(shown, opened.numPages));
   }
-  await layText(pdfJs, pdfPage, fit);
+  await layText(pdfJs, pdfPage, fit, isShown);
 }
 
-/** Lays the page's text over the canvas: pdf.js sizes it by --total-scale-factor, the page's scale on the screen. */
+/**
+ * Lays the page's text over the canvas: pdf.js sizes it by --total-scale-factor, the page's scale on the screen. The
+ * text comes later than the drawing; if another page is shown by then, this page's text is dropped, so only the page
+ * shown has its text laid, whichever text arrives first.
+ */
 async function layText(
   pdfJs: Awaited<ReturnType<typeof loadPdfJs>>,
   pdfPage: Awaited<ReturnType<PDFDocumentProxy['getPage']>>,
   fit: number,
+  isShown: () => boolean,
 ) {
+  const textContentSource = await pdfPage.getTextContent();
   const container = textLayerElement.value;
-  if (container === null) {
+  if (container === null || !isShown()) {
     return;
   }
+  textLayer?.cancel();
+  container.replaceChildren();
   container.style.setProperty('--scale-factor', String(fit));
   container.style.setProperty('--total-scale-factor', String(fit));
-  const layer = new pdfJs.TextLayer({
-    textContentSource: await pdfPage.getTextContent(),
-    container,
-    viewport: pdfPage.getViewport({ scale: fit }),
-  });
-  if (textLayer !== undefined || renderTask === undefined) {
-    // Another page was asked for meanwhile; its own drawing lays its text.
-    return;
-  }
+  const layer = new pdfJs.TextLayer({ textContentSource, container, viewport: pdfPage.getViewport({ scale: fit }) });
   textLayer = layer;
   try {
     await layer.render();
