@@ -8,7 +8,7 @@ import type {
   OrganisationJobFunction,
   OrganisationMembershipRole,
 } from '@/api/generated';
-import type { CellStatus } from '@/modules/compliance/cellStatus';
+import type { AssignmentStatus } from '@/components/status/assignmentStatus';
 
 // The German catalog, which defines the keys (MessageSchema). German follows docs/domain/README.md's glossary and
 // addresses the user as "Sie". vue-i18n reads @ { } | $ as syntax: write a literal one as {'@'}.
@@ -215,7 +215,7 @@ export const de = {
       Completed: 'Abgeschlossen',
       CompletedLate: 'Verspätet abgeschlossen',
       Expired: 'Abgelaufen',
-    } satisfies Record<CellStatus, string>,
+    } satisfies Record<AssignmentStatus, string>,
     assign: {
       notAllowed: 'Sie dürfen in dieser Apotheke keine Schulungen zuweisen.',
       steps: {
