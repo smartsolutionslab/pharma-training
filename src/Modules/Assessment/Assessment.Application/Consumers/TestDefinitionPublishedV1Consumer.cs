@@ -88,6 +88,7 @@ public sealed class TestDefinitionPublishedV1Consumer(ITestDefinitionCopies defi
             Ensure.That(option, nameof(question.Options)).IsNotNull();
             Ensure.That(option.AnswerOptionId, nameof(option.AnswerOptionId)).IsNotEmpty();
             Ensure.That(option.AnswerOptionId.ToString(), nameof(option.AnswerOptionId)).Satisfies(_ => optionIds.Add(option.AnswerOptionId), "An option id may appear once in its question.");
+            Ensure.That(option.Text, nameof(option.Text)).IsNotNullOrWhiteSpace();
         }
 
         var correct = question.Options.Count(option => option.IsCorrect);

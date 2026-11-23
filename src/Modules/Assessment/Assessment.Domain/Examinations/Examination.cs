@@ -83,7 +83,7 @@ public sealed class Examination : EventSourcedAggregate<ExaminationId>
         }
 
         var number = attemptsSinceUnlock.Count == 0 ? AttemptNumber.First : attemptsSinceUnlock[^1].Number.Next();
-        Raise(new AttemptStarted(Id, attempt, number, shuffledQuestions, now));
+        Raise(new AttemptStarted(Id, attempt, number, [.. shuffledQuestions], now));
         return Success(attempt);
     }
 
@@ -103,7 +103,7 @@ public sealed class Examination : EventSourcedAggregate<ExaminationId>
             return Failure(ExaminationErrors.QuestionNotInAttempt(Id, question));
         }
 
-        Raise(new QuestionAnswered(Id, attempt.Id, question, chosen, now));
+        Raise(new QuestionAnswered(Id, attempt.Id, question, [.. chosen], now));
         return Success(Unit.Value);
     }
 

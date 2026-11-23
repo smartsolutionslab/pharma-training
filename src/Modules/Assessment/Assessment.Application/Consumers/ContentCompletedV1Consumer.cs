@@ -22,6 +22,7 @@ public sealed class ContentCompletedV1Consumer(
         // Refused here, each by its name, so a poison message dead-letters with a reason that says which field.
         Ensure.That(message).IsNotNull();
         Ensure.That(message.Metadata, nameof(message.Metadata)).IsNotNull();
+        Ensure.That(message.Metadata.EventIdentifier, nameof(message.Metadata.EventIdentifier)).IsNotEmpty();
         Ensure.That(message.SessionId, nameof(message.SessionId)).IsNotEmpty();
         Ensure.That(message.PersonId, nameof(message.PersonId)).IsNotEmpty();
         Ensure.That(message.CourseId, nameof(message.CourseId)).IsNotEmpty();
