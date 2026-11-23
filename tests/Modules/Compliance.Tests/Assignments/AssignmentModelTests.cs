@@ -43,9 +43,11 @@ public sealed class AssignmentModelTests : IDisposable
     {
         var assignment = AssignmentType();
 
-        var history = assignment.FindComplexProperty(nameof(Assignment.History));
+        // Mapped through the property or, since EF Core refuses a complex collection typed IReadOnlyList, its backing field.
+        var history = assignment.GetComplexProperties()
+            .SingleOrDefault(candidate => string.Equals(candidate.Name, nameof(Assignment.History), StringComparison.OrdinalIgnoreCase));
 
-        history.ShouldNotBeNull("History is no complex property");
+        history.ShouldNotBeNull("the history is no complex property");
         history.IsCollection.ShouldBeTrue();
         history.ComplexType.IsMappedToJson().ShouldBeTrue();
         history.ComplexType.GetContainerColumnName().ShouldBe("history");

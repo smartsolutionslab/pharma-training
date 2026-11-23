@@ -233,7 +233,7 @@ public class AssignmentCoverageTests
     [InlineData("AssignmentAlreadyActive", "compliance.assignment-already-active")]
     public void Each_error_carries_its_code(string name, string code)
     {
-        DomainError error = name switch
+        var error = name switch
         {
             "DueDateInThePast" => AssignmentErrors.DueDateInThePast(DueInDays(-1)).Value.ShouldBeAssignableTo<DomainError>().ShouldNotBeNull(),
             "AssignmentNotActive" => AssignmentErrors.NotActive(AssignmentId.New(), AssignmentStatus.Completed).Value.ShouldBeAssignableTo<DomainError>().ShouldNotBeNull(),
