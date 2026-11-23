@@ -24,6 +24,10 @@ public sealed class CourseVersionConfiguration : IEntityTypeConfiguration<Course
         builder.Property(version => version.SubmittedBy).HasColumnName("submitted_by");
         builder.Property(version => version.PublishedBy).HasColumnName("published_by");
         builder.Property(version => version.PublishedAt).HasColumnName("published_at");
+        builder.Property(version => version.ReturnedBy).HasColumnName("returned_by");
+        builder.Property(version => version.ReturnedAt).HasColumnName("returned_at");
+        builder.Property(version => version.RetiredBy).HasColumnName("retired_by");
+        builder.Property(version => version.RetiredAt).HasColumnName("retired_at");
         // The version is the consistency boundary: a save of it or of any of its chapters, questions or options checks and moves this on.
         builder.HasRowVersion();
         builder.ComplexProperty(version => version.Blueprint, blueprint =>

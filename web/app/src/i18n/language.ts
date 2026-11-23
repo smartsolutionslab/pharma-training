@@ -12,7 +12,7 @@ function isLanguage(value: unknown): value is Language {
 
 /** The browser's most preferred language if it is German or English, and German, the fallback, otherwise. */
 export function preferredLanguage(): Language {
-  const preferred = navigator.languages?.[0] ?? navigator.language ?? '';
+  const preferred = navigator.languages?.[0] || navigator.language || '';
   const primary = preferred.split('-')[0]?.toLowerCase();
   return primary === 'en' ? 'en-GB' : 'de-DE';
 }

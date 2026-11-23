@@ -13,8 +13,8 @@ using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Infrastructure.Persiste
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Infrastructure.Migrations;
 
 [DbContext(typeof(EditorialDbContext))]
-[Migration("20261122224531_UniqueCourseVersionNumbers")]
-partial class _20261122224531_UniqueCourseVersionNumbers
+[Migration("20261123003341_UniqueCourseVersionNumbers")]
+partial class _20261123003341_UniqueCourseVersionNumbers
 {
     /// <inheritdoc />
     protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -134,6 +134,22 @@ partial class _20261122224531_UniqueCourseVersionNumbers
                 b.Property<Guid?>("PublishedBy")
                     .HasColumnType("uuid")
                     .HasColumnName("published_by");
+
+                b.Property<DateTimeOffset?>("RetiredAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("retired_at");
+
+                b.Property<Guid?>("RetiredBy")
+                    .HasColumnType("uuid")
+                    .HasColumnName("retired_by");
+
+                b.Property<DateTimeOffset?>("ReturnedAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("returned_at");
+
+                b.Property<Guid?>("ReturnedBy")
+                    .HasColumnType("uuid")
+                    .HasColumnName("returned_by");
 
                 b.Property<uint>("RowVersion")
                     .IsConcurrencyToken()

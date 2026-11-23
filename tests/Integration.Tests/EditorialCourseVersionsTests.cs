@@ -84,16 +84,19 @@ public class EditorialCourseVersionsTests(AspireFixture aspire)
         var title = $"Hygiene {Guid.CreateVersion7()}";
         var id = await CreateAsync(client, title, cancellationToken);
 
-        var drafts = await ListAsync(client, "status=Draft&page=1&pageSize=100", cancellationToken);
-        var published = await ListAsync(client, "status=Published&page=1&pageSize=100", cancellationToken);
+        // The fixture's database is shared by every test of the run, so the new draft may sort past the first page
+        // (by title, and a newer Guid sorts later): every page is read, as a client would.
+        var drafts = await ListAllAsync(client, "Draft", cancellationToken);
+        var published = await ListAllAsync(client, "Published", cancellationToken);
+        var firstPage = await ListAsync(client, "status=Draft&page=1&pageSize=100", cancellationToken);
         var onePerPage = await ListAsync(client, "status=Draft&page=1&pageSize=1", cancellationToken);
 
-        var listed = drafts.Items.Where(version => version.Id == id).ShouldHaveSingleItem();
+        var listed = drafts.Where(version => version.Id == id).ShouldHaveSingleItem();
         listed.ShouldBe(new Summary(id, listed.CourseId, 1, title, "Draft"));
-        drafts.PageSize.ShouldBe(100);
-        drafts.Items.ShouldAllBe(version => version.Status == "Draft");
-        published.Items.ShouldNotContain(version => version.Id == id);
-        published.Items.ShouldAllBe(version => version.Status == "Published");
+        firstPage.PageSize.ShouldBe(100);
+        drafts.ShouldAllBe(version => version.Status == "Draft");
+        published.ShouldNotContain(version => version.Id == id);
+        published.ShouldAllBe(version => version.Status == "Published");
         onePerPage.Items.Count.ShouldBe(1);
         onePerPage.PageSize.ShouldBe(1);
         onePerPage.TotalCount.ShouldBeGreaterThanOrEqualTo(1);
@@ -515,6 +518,20 @@ public class EditorialCourseVersionsTests(AspireFixture aspire)
         var version = await response.Content.ReadFromJsonAsync<CourseVersion>(cancellationToken);
         version.ShouldNotBeNull();
         return version;
+    }
+
+    private static async Task<IReadOnlyList<Summary>> ListAllAsync(HttpClient client, string status, CancellationToken cancellationToken)
+    {
+        List<Summary> all = [];
+        for (var page = 1; ; page++)
+        {
+            var listed = await ListAsync(client, $"status={status}&page={page}&pageSize=100", cancellationToken);
+            all.AddRange(listed.Items);
+            if (listed.Items.Count == 0 || all.Count >= listed.TotalCount)
+            {
+                return all;
+            }
+        }
     }
 
     private static async Task<SummaryPage> ListAsync(HttpClient client, string query, CancellationToken cancellationToken)

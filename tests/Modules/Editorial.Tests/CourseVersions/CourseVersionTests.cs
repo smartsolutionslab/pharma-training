@@ -94,7 +94,7 @@ public class CourseVersionTests
         version.SetBlueprint(Blueprint(questions: 2));
         version.AddQuestion(NewQuestion(), Single(chapter), NewOption);
 
-        version.SubmitForReview(Author).Error.ShouldBeOfType<TestIncomplete>();
+        version.SubmitForReview(Author).Error.Value.ShouldBeOfType<TestIncomplete>();
     }
 
     [Fact]
@@ -102,7 +102,7 @@ public class CourseVersionTests
     {
         var version = Submitted(approveAll: false);
 
-        version.Publish(Reviewer, ReviewPolicy.SingleEditor, Now).Error.ShouldBeOfType<QuestionNotApproved>();
+        version.Publish(Reviewer, ReviewPolicy.SingleEditor, Now).Error.Value.ShouldBeOfType<QuestionNotApproved>();
     }
 
     [Fact]
@@ -110,7 +110,7 @@ public class CourseVersionTests
     {
         var version = Submitted(approveAll: true);
 
-        version.Publish(Author, ReviewPolicy.FourEyes, Now).Error.ShouldBeOfType<FourEyesRequired>();
+        version.Publish(Author, ReviewPolicy.FourEyes, Now).Error.Value.ShouldBeOfType<FourEyesRequired>();
         version.Publish(Reviewer, ReviewPolicy.FourEyes, Now).IsSuccess.ShouldBeTrue();
     }
 

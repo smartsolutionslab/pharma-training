@@ -29,9 +29,8 @@ public sealed class WorkflowEndpoints : IEndpoint
             ByEditorAsync(id, user, editor => dispatcher.SendAsync(new SubmitForReview(CourseVersionId.From(id), editor), cancellationToken)))
             .RequireAuthorization(EditorialPolicyNames.Edit);
 
-        // Who returned the version is not recorded, but a caller without a person is refused here as on every other step.
         endpoints.MapPost("/course-versions/{id:guid}/return", (Guid id, ClaimsPrincipal user, IDispatcher dispatcher, CancellationToken cancellationToken) =>
-            ByEditorAsync(id, user, _ => dispatcher.SendAsync(new ReturnToDraft(CourseVersionId.From(id)), cancellationToken)))
+            ByEditorAsync(id, user, editor => dispatcher.SendAsync(new ReturnToDraft(CourseVersionId.From(id), editor), cancellationToken)))
             .RequireAuthorization(EditorialPolicyNames.Edit);
 
         endpoints.MapPost("/course-versions/{id:guid}/publish", (Guid id, ClaimsPrincipal user, IDispatcher dispatcher, CancellationToken cancellationToken) =>

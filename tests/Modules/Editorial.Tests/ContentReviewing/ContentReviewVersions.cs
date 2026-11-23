@@ -48,7 +48,7 @@ internal static class ContentReviewVersions
     private static CourseVersion Retired()
     {
         var version = Published();
-        version.Retire(Author).IsSuccess.ShouldBeTrue();
+        version.Retire(Author, Now).IsSuccess.ShouldBeTrue();
         return version;
     }
 }
