@@ -144,12 +144,13 @@ public class LearningMembershipTests(AspireFixture aspire)
         using var started = await StartAsync(member, published.CourseVersionId, cancellationToken);
         started.StatusCode.ShouldBe(HttpStatusCode.Created, await started.Content.ReadAsStringAsync(cancellationToken));
         var session = await BodyOfAsync(started, cancellationToken);
-        var film = ChapterOf(published, "Video");
+        // A text chapter, which is not paced (ADR 0024), so the report does not wait for a video's playback time.
+        var text = ChapterOf(published, "Text");
 
-        using var reported = await ReportProgressAsync(member, session.Id, film, 60, cancellationToken);
+        using var reported = await ReportProgressAsync(member, session.Id, text, 100, cancellationToken);
 
         reported.StatusCode.ShouldBe(HttpStatusCode.OK, await reported.Content.ReadAsStringAsync(cancellationToken));
-        (await BodyOfAsync(reported, cancellationToken)).Chapters.Single(chapter => chapter.ChapterId == film).ProgressPercent.ShouldBe(60);
+        (await BodyOfAsync(reported, cancellationToken)).Chapters.Single(chapter => chapter.ChapterId == text).ProgressPercent.ShouldBe(100);
     }
 
     [Fact]

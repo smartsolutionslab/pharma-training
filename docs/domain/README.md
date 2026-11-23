@@ -191,7 +191,7 @@ Status: `Open` → `InProgress` → `Completed`, außerdem `Cancelled`. `Overdue
 | `ChangeDueDate` | Apothekenleiter | Nur wenn aktiv; neue Frist nicht in der Vergangenheit; Eintrag in der Historie |
 | `Cancel` | Apothekenleiter, `MembershipEnded` | Nur wenn aktiv; terminal |
 | `MarkStarted` | `LearningSessionStarted` | Nur aus `Open`; sonst ignorieren; entsperrt nicht; der früheste Start gilt, auch einer von vor der Zuweisung |
-| `MarkLocked` / `Unlock` | `AttemptsExhausted` / `ContentCompleted` | Nur wenn aktiv; das später geschehene Ereignis (`OccurredAt`) gewinnt, bei Gleichstand die Sperre; Ereignisse vor der Zuweisung zählen nicht (ADR 0019) |
+| `MarkLocked` / `Unlock` | `AttemptsExhausted` / `ContentCompleted` | Nur wenn aktiv; das später geschehene Ereignis (`OccurredAt`) gewinnt, bei Gleichstand die Sperre; Ereignisse vor der Zuweisung zählen nicht (ADR 0023) |
 | `Complete` | `CertificateIssued` | Aus `Open` oder `InProgress` (Events können überholen); gleiche CertificateId erneut = No-op; terminal |
 
 Nach `Complete` mit Wiederholung legt ein Handler eine neue Zuweisung an: Frist = Abschlussdatum + Intervall. Eine Bestätigung von vor der Zuweisung erfüllt sie nicht.
@@ -211,7 +211,7 @@ Ein Stream pro Person × Schulungsversion und Durchlauf. Die Kapitelstruktur wir
 | `ProgressReset` | Nach `AttemptsExhausted`; die Kapitel der falsch beantworteten Fragen sind wieder offen |
 | `SessionFinished` | Nach `TestPassed` (Learning konsumiert es zusätzlich zu Certification); danach keine Änderungen |
 
-Invarianten: Fortschritt pro Kapitel wächst nur; `ContentCompleted` erst, wenn jedes Pflichtkapitel erfüllt ist; höchstens eine nicht beendete Session pro Person × Version. Der Client meldet Fortschritt gebündelt (beim Pausieren, am Kapitelende, spätestens alle 30 s), damit der Stream klein bleibt.
+Invarianten: Fortschritt pro Kapitel wächst nur; `ContentCompleted` erst, wenn jedes Pflichtkapitel erfüllt ist; höchstens eine nicht beendete Session pro Person × Version; Videofortschritt wächst höchstens so schnell, wie die Zeit seit dem letzten gespeicherten Fortschritt der Session es bei 1,25-facher Wiedergabe der Dauer aus der lokalen Kopie erlaubt (ADR 0024); sonst 422 `learning.progress-too-fast`, nichts wird gespeichert. Der Client meldet Fortschritt gebündelt (beim Pausieren, am Kapitelende, spätestens alle 30 s), damit der Stream klein bleibt.
 
 Auf einer zurückgezogenen Version (`CourseVersionRetired`) beginnt kein neuer Durchlauf (409 `learning.course-version-retired`); ein nicht beendeter wird weiter fortgesetzt, gelesen und fortgeschrieben. Eine nur abgelöste Version bleibt startbar.
 

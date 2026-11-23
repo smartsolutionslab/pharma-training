@@ -592,6 +592,7 @@ export const en: MessageSchema = {
         errors: {
           modelNotConfigured: "No language model is set up for AI drafts. Contact the platform's operators.",
           tooManyRequests: 'You have asked for too many AI drafts in a short time. Try again later.',
+          limitReached: 'You have reached your limit for AI drafts. Try again later.',
           malformed: "The AI's answer could not be used; nothing was changed. Try again.",
           tooMuchContent:
             'The text chapters are too long for an AI draft. Shorten them or write the questions by hand.',

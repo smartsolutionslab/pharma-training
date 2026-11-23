@@ -19,10 +19,14 @@ public static class LearningSessionFailures
     /// <summary>A report that lost the append race on its session's stream.</summary>
     public static ApiError Changed(Guid id) => new LearningSessionChanged(id);
 
-    /// <summary>A refused progress report: a finished session conflicts with it, a chapter it does not hold is a semantic error of the request.</summary>
+    /// <summary>
+    /// A refused progress report: a finished session conflicts with it; a chapter it does not hold, or video progress
+    /// faster than playback (ADR 0024), is a semantic error of the request.
+    /// </summary>
     public static ApiError From(RecordProgressError error) => error switch
     {
         SessionFinishedAlready finished => ApiError.From(finished, HttpStatusCode.Conflict),
         ChapterNotInCourse outside => ApiError.From(outside, HttpStatusCode.UnprocessableEntity),
+        ProgressTooFast tooFast => ApiError.From(tooFast, HttpStatusCode.UnprocessableEntity),
     };
 }
