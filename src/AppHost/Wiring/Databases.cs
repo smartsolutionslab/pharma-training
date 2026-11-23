@@ -54,7 +54,7 @@ public static class Databases
         var userName = builder.AddParameter($"{Name}-username");
         var password = secrets.Secret($"{Name}-password");
         // Every role's password is guid(database_roles_key, '<module>'): the key is all that stands between a guess and every
-        // role, so publishing refuses one under 32 characters.
+        // role, so publishing refuses one under 32 characters, and main.bicep and the server's module declare @minLength(32).
         var rolesKey = secrets.Secret(RolesKey).RequireMinimumLength(RolesKeyMinimumLength);
         var server = builder.AddAzurePostgresFlexibleServer(Name)
             .WithPasswordAuthentication(secrets.Vault, userName, password)
@@ -161,7 +161,8 @@ public static class Databases
     {
         var server = (AzurePostgresFlexibleServerResource)infrastructure.AspireResource;
         var vault = infrastructure.GetProvisionableResources().OfType<KeyVaultService>().Single();
-        var rolesKey = new ProvisioningParameter(Infrastructure.NormalizeBicepIdentifier(RolesKey), typeof(string)) { IsSecure = true };
+        // The same floor as main.bicep's (RequireMinimumLength), which Azure enforces however the key arrives.
+        var rolesKey = new MinimumLengthParameter(Infrastructure.NormalizeBicepIdentifier(RolesKey), RolesKeyMinimumLength) { IsSecure = true };
         infrastructure.Add(rolesKey);
 
         foreach (var (resourceName, databaseName) in server.Databases)
