@@ -508,6 +508,63 @@
         }
       }
     },
+    "/compliance/pharmacies/{id}/members": {
+      "get": {
+        "tags": [
+          "MemberEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "maximum": 21474837,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "jobFunction",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/ComplianceJobFunction"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedResultOfComplianceMemberDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/compliance/samples": {
       "post": {
         "tags": [
@@ -2481,6 +2538,35 @@
           }
         }
       },
+      "ComplianceJobFunction": {
+        "enum": [
+          "Pharmacist",
+          "Pta",
+          "Pka",
+          "Trainee",
+          "Other"
+        ]
+      },
+      "ComplianceMemberDto": {
+        "required": [
+          "personId",
+          "name",
+          "jobFunction"
+        ],
+        "type": "object",
+        "properties": {
+          "personId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "jobFunction": {
+            "$ref": "#/components/schemas/ComplianceJobFunction"
+          }
+        }
+      },
       "ComplianceRefusedLearnerDto": {
         "required": [
           "personId",
@@ -3568,6 +3654,47 @@
           }
         }
       },
+      "PagedResultOfComplianceMemberDto": {
+        "required": [
+          "items",
+          "totalCount",
+          "page",
+          "pageSize"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComplianceMemberDto"
+            }
+          },
+          "totalCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "page": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "pageSize": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "PagedResultOfComplianceSampleDto": {
         "required": [
           "items",
@@ -3940,6 +4067,9 @@
     },
     {
       "name": "AssignmentEndpoints"
+    },
+    {
+      "name": "MemberEndpoints"
     },
     {
       "name": "LearningSessionEndpoints"
