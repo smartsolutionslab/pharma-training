@@ -28,7 +28,7 @@ public class ApplyAiTestDraftTests
         var version = TestDraftVersions.WithTextChapters(4, "Händehygiene", "Flächen");
         var chapter = TestDraftVersions.TextChapterIds(version)[0];
         var approved = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
-        version.ApproveQuestion(approved, Author, Now).IsSuccess.ShouldBeTrue();
+        version.ApproveQuestion(approved, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
         var earlierAi = QuestionId.New();
         version.ApplyAiTestDraft([SingleChoice(chapter)], () => earlierAi, AnswerOptionId.New).IsSuccess.ShouldBeTrue();
         var handWritten = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;

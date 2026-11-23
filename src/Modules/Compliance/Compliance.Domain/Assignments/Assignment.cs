@@ -1,0 +1,247 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Domain;
+using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Assignments.Events;
+using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Courses;
+using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Members;
+
+namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Assignments;
+
+/// <summary>
+/// A course a learner must complete in a pharmacy by a due date, perhaps again and again. Which state it shows on a day
+/// follows from its stored status and the due date (<see cref="StateOn"/>).
+/// </summary>
+public sealed class Assignment : AggregateRoot<AssignmentId>
+{
+    private readonly List<AssignmentChange> history = [];
+
+    private Assignment(
+        AssignmentId id,
+        PersonId learner,
+        PharmacyId pharmacy,
+        CourseId course,
+        DueDate dueDate,
+        RecurrenceInterval? recurrence,
+        PersonId assignedBy,
+        Timestamp assignedAt)
+        : this(id)
+    {
+        Learner = learner;
+        Pharmacy = pharmacy;
+        Course = course;
+        DueDate = dueDate;
+        Recurrence = recurrence;
+        AssignedBy = assignedBy;
+        AssignedAt = assignedAt;
+        Status = AssignmentStatus.Open;
+        TestAccess = TestAccess.Available;
+    }
+
+    /// <summary>For EF Core, which sets the rest through the backing fields.</summary>
+    private Assignment(AssignmentId id)
+        : base(id)
+    {
+    }
+
+    public PersonId Learner { get; } = default!;
+
+    public PharmacyId Pharmacy { get; } = default!;
+
+    public CourseId Course { get; } = default!;
+
+    public DueDate DueDate { get; private set; } = default!;
+
+    public RecurrenceInterval? Recurrence { get; }
+
+    public PersonId AssignedBy { get; } = default!;
+
+    public Timestamp AssignedAt { get; } = default!;
+
+    public AssignmentStatus Status { get; private set; }
+
+    public TestAccess TestAccess { get; private set; }
+
+    public Timestamp? StartedAt { get; private set; }
+
+    public Timestamp? CompletedAt { get; private set; }
+
+    public CertificateId? Certificate { get; private set; }
+
+    /// <summary>A read-only view: a cast does not lead back to the list behind it.</summary>
+    public IReadOnlyList<AssignmentChange> History => history.AsReadOnly();
+
+    private bool IsActive => Status is AssignmentStatus.Open or AssignmentStatus.InProgress;
+
+    /// <summary>
+    /// Creates an assignment. "At most one active assignment per learner, pharmacy and course" spans aggregates:
+    /// the Application checks it through the store and a unique index backs it up.
+    /// </summary>
+    public static Result<Assignment, AssignmentError> Assign(
+        AssignmentId id,
+        PersonId learner,
+        PharmacyId pharmacy,
+        CourseId course,
+        DueDate dueDate,
+        RecurrenceInterval? recurrence,
+        PersonId assignedBy,
+        Timestamp now)
+    {
+        Ensure.That(id).IsNotNull();
+        Ensure.That(learner).IsNotNull();
+        Ensure.That(pharmacy).IsNotNull();
+        Ensure.That(course).IsNotNull();
+        Ensure.That(dueDate).IsNotNull();
+        Ensure.That(assignedBy).IsNotNull();
+        Ensure.That(now).IsNotNull();
+
+        if (dueDate.AsDate() < now.DayInGermany())
+        {
+            return Failure(AssignmentErrors.DueDateInThePast(dueDate));
+        }
+
+        var assignment = new Assignment(id, learner, pharmacy, course, dueDate, recurrence, assignedBy, now);
+        assignment.Raise(new CourseAssigned(id, learner, pharmacy, course, dueDate));
+        return Success(assignment);
+    }
+
+    public Result<Unit, AssignmentError> ChangeDueDate(DueDate newDueDate, PersonId changedBy, ChangeReason? reason, Timestamp now)
+    {
+        Ensure.That(newDueDate).IsNotNull();
+        Ensure.That(changedBy).IsNotNull();
+        Ensure.That(now).IsNotNull();
+
+        if (!IsActive)
+        {
+            return Failure(AssignmentErrors.NotActive(Id, Status));
+        }
+
+        if (newDueDate.AsDate() < now.DayInGermany())
+        {
+            return Failure(AssignmentErrors.DueDateInThePast(newDueDate));
+        }
+
+        if (newDueDate == DueDate)
+        {
+            return Success(Unit.Value);
+        }
+
+        history.Add(new AssignmentChange(AssignmentChangeKind.DueDateChanged, changedBy, now, DueDate, newDueDate, reason));
+        DueDate = newDueDate;
+        Raise(new AssignmentDueDateChanged(Id, newDueDate));
+        return Success(Unit.Value);
+    }
+
+    public Result<Unit, AssignmentError> Cancel(PersonId cancelledBy, ChangeReason reason, Timestamp now)
+    {
+        Ensure.That(cancelledBy).IsNotNull();
+        Ensure.That(reason).IsNotNull();
+        Ensure.That(now).IsNotNull();
+
+        if (Status == AssignmentStatus.Cancelled)
+        {
+            // MembershipEnded may arrive twice.
+            return Success(Unit.Value);
+        }
+
+        if (!IsActive)
+        {
+            return Failure(AssignmentErrors.NotActive(Id, Status));
+        }
+
+        history.Add(new AssignmentChange(AssignmentChangeKind.Cancelled, cancelledBy, now, null, null, reason));
+        Status = AssignmentStatus.Cancelled;
+        Raise(new AssignmentCancelled(Id, Learner, Pharmacy));
+        return Success(Unit.Value);
+    }
+
+    /// <summary>The learner opened the course (LearningSessionStarted). Late or repeated events change nothing.</summary>
+    public void MarkStarted(Timestamp at)
+    {
+        Ensure.That(at).IsNotNull();
+
+        if (Status == AssignmentStatus.Open)
+        {
+            Status = AssignmentStatus.InProgress;
+            StartedAt = at;
+        }
+
+        // A new session after a lock unlocks the test.
+        TestAccess = TestAccess.Available;
+    }
+
+    /// <summary>Three failed attempts (AttemptsExhausted).</summary>
+    public void MarkLocked()
+    {
+        if (Status == AssignmentStatus.InProgress)
+        {
+            TestAccess = TestAccess.LockedAfterFailedAttempts;
+        }
+    }
+
+    /// <summary>
+    /// A certificate for this course was issued (CertificateIssued). Allowed from Open too, because the certificate
+    /// can overtake LearningSessionStarted on the bus. The same certificate twice is a no-op.
+    /// </summary>
+    public Result<Unit, AssignmentError> Complete(CertificateId certificate, Timestamp issuedAt)
+    {
+        Ensure.That(certificate).IsNotNull();
+        Ensure.That(issuedAt).IsNotNull();
+
+        if (Status == AssignmentStatus.Completed && Certificate == certificate)
+        {
+            return Success(Unit.Value);
+        }
+
+        if (!IsActive)
+        {
+            return Failure(AssignmentErrors.NotActive(Id, Status));
+        }
+
+        if (issuedAt < AssignedAt)
+        {
+            return Failure(AssignmentErrors.CertificatePredatesAssignment(Id, certificate));
+        }
+
+        Status = AssignmentStatus.Completed;
+        TestAccess = TestAccess.Available;
+        CompletedAt = issuedAt;
+        Certificate = certificate;
+        Raise(new AssignmentCompleted(Id, Learner, Pharmacy, Course, certificate, issuedAt, DueDate));
+        return Success(Unit.Value);
+    }
+
+    /// <summary>
+    /// The next assignment of a recurring one: due one interval after completion, which is the day the certificate
+    /// runs out. Called by the reaction to AssignmentCompleted.
+    /// </summary>
+    public Option<Assignment> FollowUp(AssignmentId id, Timestamp now)
+    {
+        Ensure.That(id).IsNotNull();
+        Ensure.That(now).IsNotNull();
+
+        if (Status != AssignmentStatus.Completed || Recurrence is null || CompletedAt is null)
+        {
+            return Option<Assignment>.None;
+        }
+
+        var dueDate = DueDate.On(CompletedAt.DayInGermany().Plus(Recurrence));
+        var next = new Assignment(id, Learner, Pharmacy, Course, dueDate, Recurrence, AssignedBy, now);
+        next.Raise(new CourseAssigned(id, Learner, Pharmacy, Course, dueDate));
+        return Option<Assignment>.Some(next);
+    }
+
+    /// <summary>What the dashboard shows on that day.</summary>
+    public AssignmentState StateOn(CalendarDate today)
+    {
+        Ensure.That(today).IsNotNull();
+
+        return Status switch
+        {
+            AssignmentStatus.Cancelled => AssignmentState.Cancelled,
+            AssignmentStatus.Completed when CompletedAt is not null && CompletedAt.DayInGermany() > DueDate.AsDate() => AssignmentState.CompletedLate,
+            AssignmentStatus.Completed => AssignmentState.Completed,
+            _ when today > DueDate.AsDate() => AssignmentState.Overdue,
+            AssignmentStatus.InProgress when TestAccess == TestAccess.LockedAfterFailedAttempts => AssignmentState.Locked,
+            AssignmentStatus.InProgress => AssignmentState.InProgress,
+            _ => AssignmentState.Open,
+        };
+    }
+}

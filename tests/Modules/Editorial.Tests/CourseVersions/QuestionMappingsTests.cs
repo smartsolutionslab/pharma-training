@@ -52,6 +52,30 @@ public class QuestionMappingsTests
         dto.ReviewedAt.ShouldBeNull();
     }
 
+    /// <summary>The name is the one the token carried at approval time; the approval time is the review time (#205).</summary>
+    [Fact]
+    public void An_approved_question_carries_the_reviewers_name_and_the_time_of_its_approval()
+    {
+        var version = DraftWithApprovedQuestion(out _, out _);
+
+        var dto = version.Questions.ShouldHaveSingleItem().ToDto(1);
+
+        dto.ApprovedByName.ShouldBe(AuthorsName.Value);
+        dto.ApprovedAt.ShouldBe(Now.Value);
+        dto.ApprovedAt.ShouldBe(dto.ReviewedAt);
+    }
+
+    [Fact]
+    public void An_unreviewed_question_has_no_reviewers_name_and_no_approval_time()
+    {
+        var version = DraftWithQuestion(out _, out _);
+
+        var dto = version.Questions.ShouldHaveSingleItem().ToDto(1);
+
+        dto.ApprovedByName.ShouldBeNull();
+        dto.ApprovedAt.ShouldBeNull();
+    }
+
     [Fact]
     public void An_ai_drafted_question_says_so()
     {

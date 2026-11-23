@@ -38,5 +38,20 @@ public sealed class CourseVersionModelTests : IDisposable
             .ShouldBeEmpty();
     }
 
+    /// <summary>Approvals recorded before #205 have no name, so the column is nullable; its limit is the value object's.</summary>
+    [Fact]
+    public void The_reviewers_name_is_stored_in_a_nullable_column_of_its_own_of_at_most_100_characters()
+    {
+        var question = context.Model.FindEntityType(typeof(Question));
+        question.ShouldNotBeNull();
+
+        var name = question.FindProperty(nameof(Question.ReviewedByName));
+
+        name.ShouldNotBeNull("Question.ReviewedByName is not mapped");
+        name.GetColumnName().ShouldBe("reviewed_by_name");
+        name.IsNullable.ShouldBeTrue();
+        name.GetMaxLength().ShouldBe(100);
+    }
+
     public void Dispose() => context.Dispose();
 }

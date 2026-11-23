@@ -288,7 +288,7 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
     /// Creates an assignment. "At most one active assignment per learner, pharmacy and course" spans aggregates:
     /// the Application checks it through the repository and a unique index backs it up.
     /// </summary>
-    public static Result<Assignment, DomainError> Assign(
+    public static Result<Assignment, AssignmentError> Assign(
         AssignmentId id,
         PersonId learner,
         PharmacyId pharmacy,
@@ -300,7 +300,7 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
     {
         if (dueDate.AsDate() < now.DayInGermany())
         {
-            return Failure(new DueDateInThePast(dueDate));
+            return Failure(AssignmentErrors.DueDateInThePast(dueDate));
         }
 
         var assignment = new Assignment(id, learner, pharmacy, course, dueDate, recurrence, assignedBy, now);
@@ -308,16 +308,16 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
         return Success(assignment);
     }
 
-    public Result<Unit, DomainError> ChangeDueDate(DueDate newDueDate, PersonId changedBy, ChangeReason? reason, Timestamp now)
+    public Result<Unit, AssignmentError> ChangeDueDate(DueDate newDueDate, PersonId changedBy, ChangeReason? reason, Timestamp now)
     {
         if (!IsActive)
         {
-            return Failure(new AssignmentNotActive(Id, Status));
+            return Failure(AssignmentErrors.NotActive(Id, Status));
         }
 
         if (newDueDate.AsDate() < now.DayInGermany())
         {
-            return Failure(new DueDateInThePast(newDueDate));
+            return Failure(AssignmentErrors.DueDateInThePast(newDueDate));
         }
 
         if (newDueDate == DueDate)
@@ -331,7 +331,7 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
         return Success(Unit.Value);
     }
 
-    public Result<Unit, DomainError> Cancel(PersonId cancelledBy, ChangeReason reason, Timestamp now)
+    public Result<Unit, AssignmentError> Cancel(PersonId cancelledBy, ChangeReason reason, Timestamp now)
     {
         if (Status == AssignmentStatus.Cancelled)
         {
@@ -340,7 +340,7 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
 
         if (!IsActive)
         {
-            return Failure(new AssignmentNotActive(Id, Status));
+            return Failure(AssignmentErrors.NotActive(Id, Status));
         }
 
         history.Add(new AssignmentChange(AssignmentChangeKind.Cancelled, cancelledBy, now, null, null, reason));
@@ -374,7 +374,7 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
     /// A certificate for this course was issued (CertificateIssued). Allowed from Open too, because the certificate
     /// can overtake LearningSessionStarted on the bus. The same certificate twice is a no-op.
     /// </summary>
-    public Result<Unit, DomainError> Complete(CertificateId certificate, Timestamp issuedAt)
+    public Result<Unit, AssignmentError> Complete(CertificateId certificate, Timestamp issuedAt)
     {
         if (Status == AssignmentStatus.Completed && Certificate == certificate)
         {
@@ -383,12 +383,12 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
 
         if (!IsActive)
         {
-            return Failure(new AssignmentNotActive(Id, Status));
+            return Failure(AssignmentErrors.NotActive(Id, Status));
         }
 
         if (issuedAt.CompareTo(AssignedAt) < 0)
         {
-            return Failure(new CertificatePredatesAssignment(Id, certificate));
+            return Failure(AssignmentErrors.CertificatePredatesAssignment(Id, certificate));
         }
 
         Status = AssignmentStatus.Completed;
@@ -433,6 +433,7 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
 // ───────────────────────────── Domain events ─────────────────────────────
 // Turned into integration events (CourseAssignedV1, AssignmentCompletedV1) by the Application through the outbox.
 
+[DeliberatelyUnhandled("The command that assigns announces it to other modules as CourseAssignedV1; nothing in Compliance reacts.")]
 public sealed record CourseAssigned(AssignmentId Assignment, PersonId Learner, PharmacyId Pharmacy, CourseId Course, DueDate DueDate) : IDomainEvent;
 
 [DeliberatelyUnhandled("Only the dashboard read model cares; no integration event in MVP 1.")]
@@ -441,6 +442,7 @@ public sealed record AssignmentDueDateChanged(AssignmentId Assignment, DueDate N
 [DeliberatelyUnhandled("Nobody outside Compliance reacts in MVP 1.")]
 public sealed record AssignmentCancelled(AssignmentId Assignment, PersonId Learner, PharmacyId Pharmacy) : IDomainEvent;
 
+[DeliberatelyUnhandled("Nothing completes an assignment before #33; #31 replaces this with the follow-up reaction.")]
 public sealed record AssignmentCompleted(
     AssignmentId Assignment,
     PersonId Learner,
@@ -451,6 +453,25 @@ public sealed record AssignmentCompleted(
     DueDate DueDate) : IDomainEvent;
 
 // ───────────────────────────── Domain errors ─────────────────────────────
+
+/// <summary>Every way an assignment's own steps (Assign, ChangeDueDate, Cancel, Complete) refuse; a new one fails the build until it is mapped.</summary>
+public union AssignmentError(DueDateInThePast, AssignmentNotActive, CertificatePredatesAssignment);
+
+/// <summary>
+/// The factories of the assignment's errors. The steps' errors return the union; AlreadyActive returns DomainError, since
+/// no aggregate method returns it: the Application checks it across aggregates.
+/// </summary>
+public static class AssignmentErrors
+{
+    public static AssignmentError DueDateInThePast(DueDate dueDate) => new DueDateInThePast(dueDate);
+
+    public static AssignmentError NotActive(AssignmentId assignment, AssignmentStatus status) => new AssignmentNotActive(assignment, status);
+
+    public static AssignmentError CertificatePredatesAssignment(AssignmentId assignment, CertificateId certificate) =>
+        new CertificatePredatesAssignment(assignment, certificate);
+
+    public static DomainError AlreadyActive(PersonId learner, CourseId course) => new AssignmentAlreadyActive(learner, course);
+}
 
 public sealed record DueDateInThePast(DueDate DueDate)
     : DomainError("compliance.due-date-in-the-past", $"Die Frist {DueDate.Value:dd.MM.yyyy} liegt in der Vergangenheit.");

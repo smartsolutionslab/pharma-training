@@ -21,6 +21,8 @@ public class AppHostBrokerUsersTests(AspireFixture aspire)
 
     private const string TestDefinitionPublished = Contracts + "Editorial.TestDefinitionPublishedV1";
 
+    private const string MembershipChanged = Contracts + "Organisation.MembershipChangedV1";
+
     private const string MembershipEnded = Contracts + "Organisation.MembershipEndedV1";
 
     private const string MembershipStarted = Contracts + "Organisation.MembershipStartedV1";
@@ -43,9 +45,9 @@ public class AppHostBrokerUsersTests(AspireFixture aspire)
         },
         {
             "compliance",
-            ["compliance", Contracts + "Compliance.AssignmentCompletedV1", Contracts + "Compliance.CourseAssignedV1", CourseVersionPublished, CourseVersionRetired, MembershipEnded, MembershipStarted],
+            ["compliance", Contracts + "Compliance.AssignmentCompletedV1", Contracts + "Compliance.CourseAssignedV1", CourseVersionPublished, CourseVersionRetired, MembershipChanged, MembershipEnded, MembershipStarted],
             ["compliance", Contracts + "Compliance.AssignmentCompletedV1", Contracts + "Compliance.CourseAssignedV1"],
-            ["compliance", CourseVersionPublished, CourseVersionRetired, MembershipEnded, MembershipStarted]
+            ["compliance", CourseVersionPublished, CourseVersionRetired, MembershipChanged, MembershipEnded, MembershipStarted]
         },
         {
             "editorial",
@@ -61,8 +63,8 @@ public class AppHostBrokerUsersTests(AspireFixture aspire)
         },
         {
             "organisation",
-            ["organisation", MembershipEnded, MembershipStarted, Contracts + "Organisation.PharmacyRegisteredV1"],
-            ["organisation", MembershipEnded, MembershipStarted, Contracts + "Organisation.PharmacyRegisteredV1"],
+            ["organisation", MembershipChanged, MembershipEnded, MembershipStarted, Contracts + "Organisation.PharmacyRegisteredV1"],
+            ["organisation", MembershipChanged, MembershipEnded, MembershipStarted, Contracts + "Organisation.PharmacyRegisteredV1"],
             ["organisation"]
         },
     };

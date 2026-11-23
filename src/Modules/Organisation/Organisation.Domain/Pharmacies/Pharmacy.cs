@@ -272,7 +272,7 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
         }
 
         active.Change(jobFunction, role);
-        Raise(new MembershipChanged(Id, membership, active.Person!, jobFunction, role));
+        Raise(new MembershipChanged(Id, membership, active.Person!, active.Name!, jobFunction, role, active.Version));
         return Success(Unit.Value);
     }
 

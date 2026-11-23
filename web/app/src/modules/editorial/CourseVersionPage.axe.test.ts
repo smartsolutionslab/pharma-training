@@ -110,6 +110,10 @@ async function renderPage() {
   if (shownVersion !== undefined) {
     expect(screen.getByRole('heading', { level: 1, name: shownVersion.title })).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 2, name: t('editorial.chapters.title') })).toBeInTheDocument();
+    // Both examples are drafts: the workflow section shows with its checklist and Submit (#26), and axe checks them.
+    expect(screen.getByRole('heading', { level: 2, name: t('editorial.workflow.title') })).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: t('editorial.workflow.checklist.title') })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: t('editorial.workflow.submit') })).toBeInTheDocument();
   }
   return container;
 }

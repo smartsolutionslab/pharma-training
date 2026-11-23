@@ -33,4 +33,21 @@ public class GetCourseVersionQuestionsTests
         questions[1].ReviewedBy.ShouldBeNull();
         questions.ShouldAllBe(question => question.Provenance == EditorialQuestionProvenance.Human);
     }
+
+    [Fact]
+    public async Task A_version_is_read_with_each_questions_reviewer_name_and_approval_time()
+    {
+        var store = new InMemoryCourseVersionStore();
+        var version = DraftWithApprovedQuestion(out var chapter, out _);
+        version.AddQuestion(QuestionId.New(), MultipleChoice(chapter), AnswerOptionId.New).IsSuccess.ShouldBeTrue();
+        store.Stored.Add(version);
+
+        var read = await new GetCourseVersionHandler(store).HandleAsync(new GetCourseVersion(version.Id.Value), TestContext.Current.CancellationToken);
+
+        read.Value.Questions.Select(question => (question.ApprovedByName, question.ApprovedAt)).ShouldBe(
+        [
+            (AuthorsName.Value, Now.Value),
+            (null, null),
+        ]);
+    }
 }

@@ -304,7 +304,7 @@ public class ReplaceFileChapterTests
         first.AddChapter(Chapter.OfPdf(chapter, ChapterTitle.From("Hygieneplan"), file)).IsSuccess.ShouldBeTrue();
         first.SetBlueprint(new TestBlueprint(QuestionCount.From(1), ScorePercent.From(80), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
         var question = first.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
-        first.ApproveQuestion(question, Author, Now).IsSuccess.ShouldBeTrue();
+        first.ApproveQuestion(question, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
         first.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
         first.Publish(Reviewer, ReviewPolicy.FourEyes, Now).IsSuccess.ShouldBeTrue();
         var next = first.DraftNext(CourseVersionId.New(), Author, ChapterId.New, QuestionId.New, AnswerOptionId.New).Value;
