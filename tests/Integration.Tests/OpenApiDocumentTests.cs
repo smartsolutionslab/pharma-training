@@ -7,6 +7,9 @@ public class OpenApiDocumentTests(AspireFixture aspire)
 {
     private const string ComponentSchemas = "#/components/schemas/";
 
+    /// <summary>A property whose name contains one of these, ignoring case, names a solution.</summary>
+    private static readonly string[] SolutionWords = ["correct", "solution", "answerkey"];
+
     private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
 
     /// <summary>The frontend's client is generated from web/app/openapi.json; it must describe the API the host serves.</summary>
@@ -89,32 +92,33 @@ public class OpenApiDocumentTests(AspireFixture aspire)
 
     /// <summary>
     /// The solutions go to Assessment and never to the frontend (docs/domain/README.md): no schema an assessment path
-    /// answers or takes, and no component schema of Assessment's, has a property that names correctness, however deep.
+    /// answers or takes, and no component schema of Assessment's, has a property that names correctness, a solution or an
+    /// answer key, however deep.
     /// It catches an inline or anonymous type that the architecture rule AssessmentResponsesCarryNoSolutions might miss.
     /// </summary>
     [Fact]
-    public async Task No_assessment_schema_has_a_correctness_property()
+    public async Task No_assessment_schema_names_a_solution_or_correctness()
     {
         var served = await ServedAsync();
         var schemas = served["components"]?["schemas"]?.AsObject();
         var paths = served["paths"]?.AsObject();
         paths.ShouldNotBeNull("the document has paths");
-        List<string> correctness = [];
+        List<string> solutionNames = [];
         HashSet<string> visited = [];
 
         var assessmentPaths = paths.Where(path => path.Key.StartsWith("/assessment/", StringComparison.Ordinal)).ToList();
         foreach (var (name, path) in assessmentPaths)
         {
-            CollectSolutionNames(served, path, $"paths{name}", correctness, visited);
+            CollectSolutionNames(served, path, $"paths{name}", solutionNames, visited);
         }
 
         foreach (var (name, schema) in schemas?.Where(schema => schema.Key.StartsWith("Assessment", StringComparison.Ordinal)) ?? [])
         {
-            CollectSolutionNames(served, schema, $"{ComponentSchemas}{name}", correctness, visited);
+            CollectSolutionNames(served, schema, $"{ComponentSchemas}{name}", solutionNames, visited);
         }
 
         assessmentPaths.ShouldNotBeEmpty("the document describes Assessment's endpoints");
-        correctness.ShouldBeEmpty();
+        solutionNames.ShouldBeEmpty();
     }
 
     private async Task<JsonObject> ServedAsync()
@@ -159,7 +163,10 @@ public class OpenApiDocumentTests(AspireFixture aspire)
         }
     }
 
-    /// <summary>Every property whose name contains "correct", ignoring case, in the node and what its <c>$ref</c>s name, each component once.</summary>
+    /// <summary>
+    /// Every property whose name contains "correct", "solution" or "answerkey", ignoring case, in the node and what its
+    /// <c>$ref</c>s name, each component once.
+    /// </summary>
     internal static void CollectSolutionNames(JsonObject document, JsonNode? node, string path, List<string> found, HashSet<string> visited)
     {
         if (node is JsonObject schema)
@@ -176,7 +183,7 @@ public class OpenApiDocumentTests(AspireFixture aspire)
             if (schema["properties"] is JsonObject properties)
             {
                 found.AddRange(properties
-                    .Where(property => property.Key.Contains("correct", StringComparison.OrdinalIgnoreCase))
+                    .Where(property => SolutionWords.Any(word => property.Key.Contains(word, StringComparison.OrdinalIgnoreCase)))
                     .Select(property => $"{path}/properties/{property.Key}"));
             }
 
