@@ -79,7 +79,7 @@ public class CertificationCertificatesTests(AspireFixture aspire)
         await DeliverAsync(PublishedType, published, cancellationToken);
 
         // A warm-up certificate, so Certification has sent an announcement and Wolverine has declared its exchange,
-        // which no consumer declares yet.
+        // whether or not Compliance's consumer has declared it yet.
         await IssueAsync(published, cancellationToken);
         await using var connection = await Broker.ConnectAsync(aspire, cancellationToken);
         await Broker.WaitForExchangeAsync(connection, CertificateIssuedExchange, cancellationToken);
