@@ -337,7 +337,7 @@ export const en: MessageSchema = {
         identityIncomplete: 'Your account gives no name or valid email address. Complete your profile.',
         invitationRenewedTooSoon: 'This invitation was only just sent. You can send it again in a few minutes.',
         tooManyInvitationsToday:
-          'Your pharmacy has reached the maximum number of invitation emails for today. Try again tomorrow.',
+          'Your pharmacy has reached the maximum number of invitation emails for today. Try again later.',
       },
     },
   },

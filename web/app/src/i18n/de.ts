@@ -348,7 +348,7 @@ export const de = {
         invitationRenewedTooSoon:
           'Diese Einladung wurde gerade erst gesendet. Sie können sie in einigen Minuten erneut senden.',
         tooManyInvitationsToday:
-          'Ihre Apotheke hat heute die Höchstzahl an Einladungs-E-Mails erreicht. Versuchen Sie es morgen erneut.',
+          'Ihre Apotheke hat die Höchstzahl an Einladungs-E-Mails für heute erreicht. Versuchen Sie es später erneut.',
       },
     },
   },
