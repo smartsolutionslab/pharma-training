@@ -61,11 +61,13 @@ await using (await MigrationGate.EnterAsync(administrator, host.Services.GetRequ
 
     // Wolverine's inbox, outbox and dead letters, with the service hosts' own configuration, owned by the administrator;
     // the role's grants below cover it like every schema the administrator owns. A schema of that name some other role
-    // owns, or holds an object of, fails the run.
+    // owns, or holds an object of, fails the run, as does a trigger, rule, policy or SECURITY DEFINER function there that
+    // Wolverine does not make.
     await ModuleMessageStorage.BuildAsync(administrator, CancellationToken.None);
 
     // After every migration of the run, so the role's grants cover what they made and it never keeps write access to a
-    // migration history table they made.
+    // migration history table they made. The run fails, naming the object and the role, if the role owns anything in the
+    // database, and takes back any CREATE it holds on a schema.
     if (!string.IsNullOrWhiteSpace(application))
     {
         await ModuleDatabaseRole.EnsureAsync(administrator, application, host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("MigrationRunner"), CancellationToken.None);
