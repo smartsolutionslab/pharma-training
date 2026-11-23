@@ -41,7 +41,8 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
 
     public IReadOnlyList<Chapter> Chapters => chapters;
 
-    public IReadOnlyList<Question> Questions => questions;
+    /// <summary>A read-only view: a cast does not lead back to the list behind it.</summary>
+    public IReadOnlyList<Question> Questions => questions.AsReadOnly();
 
     public PersonId CreatedBy { get; } = default!;
 
@@ -50,6 +51,15 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
     public PersonId? PublishedBy { get; private set; }
 
     public Timestamp? PublishedAt { get; private set; }
+
+    /// <summary>The editor who last returned the version from review to draft; a later return overwrites it.</summary>
+    public PersonId? ReturnedBy { get; private set; }
+
+    public Timestamp? ReturnedAt { get; private set; }
+
+    public PersonId? RetiredBy { get; private set; }
+
+    public Timestamp? RetiredAt { get; private set; }
 
     private bool IsDraft => Status == CourseVersionStatus.Draft;
 
@@ -344,9 +354,15 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
             return Failure(CourseVersionErrors.QuestionNotFound(Id, id));
         }
 
-        if (question.Defect(id) is { HasValue: true } defect)
+        if (question.Review == ReviewState.Approved)
         {
-            return Failure(defect.Value);
+            return Failure(CourseVersionErrors.QuestionAlreadyApproved(Id, id));
+        }
+
+        // Every case of the workflow union is a DomainError, so the pattern always matches a defect.
+        if (question.Defect(id) is { HasValue: true } defect && defect.Value.Value is DomainError refusal)
+        {
+            return Failure(refusal);
         }
 
         question.Approve(editor, now);
@@ -355,26 +371,26 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
 
     // ── Workflow ──
 
-    public Result<Unit, DomainError> SubmitForReview(PersonId editor)
+    public Result<Unit, CourseVersionWorkflowError> SubmitForReview(PersonId editor)
     {
         if (!IsDraft)
         {
-            return Failure(CourseVersionErrors.NotADraft(Id, Status));
+            return Failure(CourseVersionErrors.Workflow.NotADraft(Id, Status));
         }
 
         if (chapters.Count == 0)
         {
-            return Failure(CourseVersionErrors.NoChapters(Id));
+            return Failure(CourseVersionErrors.Workflow.NoChapters(Id));
         }
 
         if (questions.Count > QuestionCount.Maximum)
         {
-            return Failure(CourseVersionErrors.TooManyQuestions(Id));
+            return Failure(CourseVersionErrors.Workflow.TooManyQuestions(Id));
         }
 
         if (questions.Count != Blueprint.Questions.Value)
         {
-            return Failure(CourseVersionErrors.TestIncomplete(Id, Blueprint.Questions, QuestionCount.From(questions.Count)));
+            return Failure(CourseVersionErrors.Workflow.TestIncomplete(Id, Blueprint.Questions, QuestionCount.From(questions.Count)));
         }
 
         SubmittedBy = editor;
@@ -383,14 +399,18 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         return Success(Unit.Value);
     }
 
-    public Result<Unit, DomainError> ReturnToDraft()
+    /// <summary>Sends the version back to its editors; records who did and when, and a later return overwrites both.</summary>
+    public Result<Unit, CourseVersionWorkflowError> ReturnToDraft(PersonId editor, Timestamp now)
     {
         if (Status != CourseVersionStatus.InReview)
         {
-            return Failure(CourseVersionErrors.NotInReview(Id, Status));
+            return Failure(CourseVersionErrors.Workflow.NotInReview(Id, Status));
         }
 
         Status = CourseVersionStatus.Draft;
+        ReturnedBy = editor;
+        ReturnedAt = now;
+        Raise(new CourseVersionReturned(Id, editor));
         return Success(Unit.Value);
     }
 
@@ -399,26 +419,37 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
     /// publishing editor is neither the one who submitted it nor one who approved any of its questions, a question copied
     /// from the previous version included. The Application supersedes the course's previous version.
     /// </summary>
-    public Result<Unit, DomainError> Publish(PersonId editor, ReviewPolicy policy, Timestamp now)
+    public Result<Unit, CourseVersionWorkflowError> Publish(PersonId editor, ReviewPolicy policy, Timestamp now)
     {
         if (Status != CourseVersionStatus.InReview)
         {
-            return Failure(CourseVersionErrors.NotInReview(Id, Status));
+            return Failure(CourseVersionErrors.Workflow.NotInReview(Id, Status));
+        }
+
+        // Checked here too, not left to SubmitForReview: a version loaded in review may hold rows its rules never took.
+        if (questions.Count > QuestionCount.Maximum)
+        {
+            return Failure(CourseVersionErrors.Workflow.TooManyQuestions(Id));
+        }
+
+        if (questions.Count != Blueprint.Questions.Value)
+        {
+            return Failure(CourseVersionErrors.Workflow.TestIncomplete(Id, Blueprint.Questions, QuestionCount.From(questions.Count)));
         }
 
         if (policy == ReviewPolicy.FourEyes && editor == SubmittedBy)
         {
-            return Failure(CourseVersionErrors.FourEyesRequired(Id));
+            return Failure(CourseVersionErrors.Workflow.FourEyesRequired(Id));
         }
 
         if (policy == ReviewPolicy.FourEyes && questions.Any(question => question.ReviewedBy == editor))
         {
-            return Failure(CourseVersionErrors.PublisherApprovedQuestions(Id));
+            return Failure(CourseVersionErrors.Workflow.PublisherApprovedQuestions(Id));
         }
 
         if (questions.FirstOrDefault(question => question.Review != ReviewState.Approved) is { } unreviewed)
         {
-            return Failure(CourseVersionErrors.QuestionNotApproved(Id, unreviewed.Id));
+            return Failure(CourseVersionErrors.Workflow.QuestionNotApproved(Id, unreviewed.Id));
         }
 
         foreach (var question in questions)
@@ -445,16 +476,30 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         }
     }
 
-    public Result<Unit, DomainError> Retire(PersonId editor)
+    /// <summary>Retires a published or superseded version, alone under any review policy, and records who did and when.</summary>
+    public Result<Unit, CourseVersionWorkflowError> Retire(PersonId editor, Timestamp now)
     {
         if (Status is not (CourseVersionStatus.Published or CourseVersionStatus.Superseded))
         {
-            return Failure(CourseVersionErrors.NotPublished(Id, Status));
+            return Failure(CourseVersionErrors.Workflow.NotPublished(Id, Status));
         }
 
         Status = CourseVersionStatus.Retired;
+        RetiredBy = editor;
+        RetiredAt = now;
         Raise(new CourseVersionRetired(Id, Course, editor));
         return Success(Unit.Value);
+    }
+
+    /// <summary>
+    /// Appends questions past every rule. No route and no load calls it: it is an internal seam that lets tests reach a
+    /// version no route can produce, such as one holding more questions than the limit or a question that breaks its shape.
+    /// </summary>
+    internal void LoadQuestions(IEnumerable<Question> loaded)
+    {
+        Ensure.That(loaded).IsNotNull();
+
+        questions.AddRange(loaded);
     }
 
     /// <summary>Whether a chapter of the version other than <paramref name="chapter"/> holds the file: one file, one chapter.</summary>

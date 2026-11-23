@@ -64,25 +64,25 @@ public sealed class Question : Entity<QuestionId>
     }
 
     /// <summary>Single choice: exactly one correct option. Multiple choice: at least one. Always at least two options.</summary>
-    internal Option<DomainError> Defect(QuestionId id)
+    internal Option<CourseVersionWorkflowError> Defect(QuestionId id)
     {
         var correct = options.Count(option => option.Correctness == Correctness.Correct);
         if (options.Count < 2)
         {
-            return Option<DomainError>.Some(CourseVersionErrors.TooFewOptions(id));
+            return Option<CourseVersionWorkflowError>.Some(CourseVersionErrors.Workflow.TooFewOptions(id));
         }
 
         if (Type == QuestionType.SingleChoice && correct != 1)
         {
-            return Option<DomainError>.Some(CourseVersionErrors.SingleChoiceNeedsOneCorrect(id));
+            return Option<CourseVersionWorkflowError>.Some(CourseVersionErrors.Workflow.SingleChoiceNeedsOneCorrect(id));
         }
 
         if (Type == QuestionType.MultipleChoice && correct == 0)
         {
-            return Option<DomainError>.Some(CourseVersionErrors.MultipleChoiceNeedsACorrect(id));
+            return Option<CourseVersionWorkflowError>.Some(CourseVersionErrors.Workflow.MultipleChoiceNeedsACorrect(id));
         }
 
-        return Option<DomainError>.None;
+        return Option<CourseVersionWorkflowError>.None;
     }
 
     internal Question CopyFor(QuestionId id, ChapterId chapter, Func<AnswerOptionId> newOptionId)

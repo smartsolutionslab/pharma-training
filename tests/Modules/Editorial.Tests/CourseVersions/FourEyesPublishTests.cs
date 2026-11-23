@@ -1,3 +1,4 @@
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions.Events;
 using static SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersions.CourseVersionBuilder;
@@ -25,7 +26,7 @@ public class FourEyesPublishTests
         var published = version.Publish(Approver, ReviewPolicy.FourEyes, Now);
 
         published.IsFailure.ShouldBeTrue("an editor who approved one of the version's questions published it under four eyes");
-        published.Error.Code.ShouldBe(PublisherApprovedQuestions);
+        CourseVersionFailures.From(published.Error).Code.ShouldBe(PublisherApprovedQuestions);
         version.Status.ShouldBe(CourseVersionStatus.InReview);
         version.PublishedBy.ShouldBeNull();
         version.DomainEvents.OfType<CourseVersionPublished>().ShouldBeEmpty();
@@ -38,7 +39,7 @@ public class FourEyesPublishTests
 
         var published = version.Publish(Author, ReviewPolicy.FourEyes, Now);
 
-        published.Error.ShouldBeOfType<FourEyesRequired>();
+        published.Error.Value.ShouldBeOfType<FourEyesRequired>();
         version.Status.ShouldBe(CourseVersionStatus.InReview);
     }
 
@@ -50,8 +51,7 @@ public class FourEyesPublishTests
 
         var published = version.Publish(Author, ReviewPolicy.FourEyes, Now);
 
-        published.Error.ShouldBeOfType<FourEyesRequired>();
-        published.Error.Code.ShouldBe(FourEyes);
+        published.Error.Value.ShouldBeOfType<FourEyesRequired>().Code.ShouldBe(FourEyes);
         version.Status.ShouldBe(CourseVersionStatus.InReview);
     }
 
