@@ -1,6 +1,4 @@
 using System.Net;
-using Aspire.Hosting.Testing;
-using Npgsql;
 using static SmartSolutionsLab.PharmaTraining.Integration.Tests.EditorialDatabase;
 using static SmartSolutionsLab.PharmaTraining.Integration.Tests.EditorialWorkflow;
 using static SmartSolutionsLab.PharmaTraining.Integration.Tests.LearningDatabase;
@@ -11,16 +9,15 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// <summary>
 /// A running session across the life of its course version, with Editorial's real publish, supersede and retire
 /// (README: "Begonnene Durchläufe bleiben auf der alten Version, nicht begonnene wechseln auf die neue"; Retire:
-/// "laufende Durchläufe bleiben gültig"). Learning changes nothing when its version is superseded or retired: resuming
-/// answers the same session on its own version, and the newer version starts a session of its own. The learner is made
-/// a member of a pharmacy first, since only an active member may learn (#194).
+/// "laufende Durchläufe bleiben gültig"). A session already started on a version is left alone when its version is
+/// superseded or retired: resuming answers the same session on its own version, and it can still be read. A retired
+/// version starts no new session (#195), with 409 <c>learning.course-version-retired</c>; a version only superseded still
+/// starts one, since an assignment may name it, and the newer version starts a session of its own.
+/// Every learner is made a member of a pharmacy first, since only an active member may learn (#194).
 /// </summary>
 [Collection(EditorialDrafts.Name)]
 public class LearningCourseVersionLifecycleTests(AspireFixture aspire)
 {
-    private static readonly TimeSpan WaitTimeout = TimeSpan.FromSeconds(30);
-    private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(250);
-
     [Fact]
     public async Task A_session_on_a_retired_version_resumes_unchanged()
     {
@@ -39,8 +36,9 @@ public class LearningCourseVersionLifecycleTests(AspireFixture aspire)
             retired.StatusCode.ShouldBe(HttpStatusCode.OK, await retired.Content.ReadAsStringAsync(cancellationToken));
         }
 
-        // A barrier that CourseVersionRetiredV1 went out and was delivered; Learning does not consume it.
-        await WaitUntilCatalogHoldsRetirementAsync(v1.Id, cancellationToken);
+        // A barrier that Learning stored the retirement: a start that resumes an unfinished run is no new session, so
+        // the retirement does not refuse it.
+        await WaitUntilRetiredAsync(aspire, v1.Id, cancellationToken);
 
         using var resumed = await StartAsync(learner, v1.Id, cancellationToken);
         resumed.StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -96,25 +94,63 @@ public class LearningCourseVersionLifecycleTests(AspireFixture aspire)
         stillOnV1.Status.ShouldBe("InProgress");
     }
 
-    /// <summary>Polls Catalog's database until it holds the version's retirement, which only Editorial's <c>CourseVersionRetiredV1</c> puts there.</summary>
-    private async Task WaitUntilCatalogHoldsRetirementAsync(Guid versionId, CancellationToken cancellationToken)
+    [Fact]
+    public async Task A_new_session_on_a_retired_version_answers_409_while_the_running_session_resumes_with_200()
     {
-        var connectionString = await aspire.App.GetConnectionStringAsync("catalog-database", cancellationToken)
-            ?? throw new InvalidOperationException("Catalog's database has no connection string.");
-        await using var connection = new NpgsqlConnection(connectionString);
-        await connection.OpenAsync(cancellationToken);
-        var started = TimeProvider.System.GetTimestamp();
-        while (true)
-        {
-            await using var command = new NpgsqlCommand("select count(*) from catalog.course_version_retirements where course_version_id = @id", connection);
-            command.Parameters.AddWithValue("id", versionId);
-            if ((long)(await command.ExecuteScalarAsync(cancellationToken))! > 0)
-            {
-                return;
-            }
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var editor = await aspire.CreateHostClientAsync("editor");
+        using var learner = await aspire.CreateHostClientAsync("employee-a");
+        using var latecomer = await aspire.CreateHostClientAsync("employee-b");
+        await MemberAsync(aspire, SubjectOf(learner), cancellationToken);
+        await MemberAsync(aspire, SubjectOf(latecomer), cancellationToken);
+        var v1 = await PublishedAsync(editor, cancellationToken);
+        await WaitUntilHeldAsync(aspire, v1.Id, cancellationToken);
+        using var started = await StartAsync(learner, v1.Id, cancellationToken);
+        started.StatusCode.ShouldBe(HttpStatusCode.Created, await started.Content.ReadAsStringAsync(cancellationToken));
+        var s1 = await BodyOfAsync(started, cancellationToken);
 
-            TimeProvider.System.GetElapsedTime(started).ShouldBeLessThan(WaitTimeout, $"Catalog never heard that version {versionId} was retired.");
-            await Task.Delay(PollInterval, cancellationToken);
+        using (var retired = await StepAsync(editor, v1.Id, "retire", cancellationToken))
+        {
+            retired.StatusCode.ShouldBe(HttpStatusCode.OK, await retired.Content.ReadAsStringAsync(cancellationToken));
         }
+
+        await WaitUntilRetiredAsync(aspire, v1.Id, cancellationToken);
+
+        using var refused = await StartAsync(latecomer, v1.Id, cancellationToken);
+        refused.StatusCode.ShouldBe(HttpStatusCode.Conflict, await refused.Content.ReadAsStringAsync(cancellationToken));
+        (await CodeOfAsync(refused, cancellationToken)).ShouldBe("learning.course-version-retired");
+        (await CountSessionsAsync(aspire, SubjectOf(latecomer), v1.Id, cancellationToken)).ShouldBe(0);
+
+        using var resumed = await StartAsync(learner, v1.Id, cancellationToken);
+        resumed.StatusCode.ShouldBe(HttpStatusCode.OK, await resumed.Content.ReadAsStringAsync(cancellationToken));
+        (await BodyOfAsync(resumed, cancellationToken)).Id.ShouldBe(s1.Id);
+        using var read = await ReadSessionAsync(learner, s1.Id, cancellationToken);
+        read.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await BodyOfAsync(read, cancellationToken)).Status.ShouldBe("InProgress");
+    }
+
+    /// <summary>
+    /// Learning holds no superseded state: only a retirement refuses a new session, so a version that a newer one
+    /// superseded still starts one, since an assignment may name it.
+    /// </summary>
+    [Fact]
+    public async Task A_new_session_on_a_superseded_version_still_starts()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var editor = await aspire.CreateHostClientAsync("editor");
+        using var latecomer = await aspire.CreateHostClientAsync("employee-b");
+        await MemberAsync(aspire, SubjectOf(latecomer), cancellationToken);
+        var v1 = await PublishedAsync(editor, cancellationToken);
+        await WaitUntilHeldAsync(aspire, v1.Id, cancellationToken);
+
+        var v2 = await DraftNextAsync(editor, v1.Id, cancellationToken);
+        await SubmitAsync(editor, v2, cancellationToken);
+        await PublishAsync(editor, v2, cancellationToken);
+        (await ReadAsync(editor, v1.Id, cancellationToken)).Status.ShouldBe("Superseded");
+        await WaitUntilHeldAsync(aspire, v2, cancellationToken);
+
+        using var started = await StartAsync(latecomer, v1.Id, cancellationToken);
+        started.StatusCode.ShouldBe(HttpStatusCode.Created, await started.Content.ReadAsStringAsync(cancellationToken));
+        (await BodyOfAsync(started, cancellationToken)).CourseVersionId.ShouldBe(v1.Id);
     }
 }

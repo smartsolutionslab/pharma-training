@@ -22,6 +22,10 @@ public class MessagingTopologyTests
 
     private const string InvitationMailRequested = Contracts + "Organisation.InvitationMailRequestedV1";
 
+    private const string ContentCompleted = Contracts + "Learning.ContentCompletedV1";
+
+    private const string LearningSessionStarted = Contracts + "Learning.LearningSessionStartedV1";
+
     [Fact]
     public void Catalog_consumes_the_two_course_version_exchanges_and_publishes_none()
     {
@@ -54,18 +58,19 @@ public class MessagingTopologyTests
     }
 
     [Fact]
-    public void Compliance_consumes_the_course_versions_the_memberships_and_the_learning_progress()
+    public void Compliance_consumes_the_course_versions_the_memberships_the_learning_progress_and_the_certificates()
     {
         var (consumed, _) = MessagingTopology.Of("compliance");
 
         consumed.ShouldBe(
-            [Contracts + "Assessment.AttemptsExhaustedV1", CourseVersionPublished, CourseVersionRetired, Contracts + "Learning.ContentCompletedV1", Contracts + "Learning.LearningSessionStartedV1", Contracts + "Organisation.MembershipChangedV1", Contracts + "Organisation.MembershipEndedV1", Contracts + "Organisation.MembershipStartedV1"],
+            [Contracts + "Assessment.AttemptsExhaustedV1", Contracts + "Certification.CertificateIssuedV1", CourseVersionPublished, CourseVersionRetired, Contracts + "Learning.ContentCompletedV1", Contracts + "Learning.LearningSessionStartedV1", Contracts + "Organisation.MembershipChangedV1", Contracts + "Organisation.MembershipEndedV1", Contracts + "Organisation.MembershipStartedV1"],
             ignoreOrder: false);
     }
 
     /// <summary>
     /// #41: Learning copies the files Editorial releases, so its queue is bound to their exchange too; #194: it keeps a
-    /// copy of the memberships, so it is bound to Organisation's three membership exchanges.
+    /// copy of the memberships, so it is bound to Organisation's three membership exchanges; #195: it keeps the
+    /// retirements, so it is bound to the retirement's exchange.
     /// </summary>
     [Fact]
     public void Learning_consumes_the_course_versions_the_released_files_and_the_memberships_and_publishes_its_session_events()
@@ -73,9 +78,19 @@ public class MessagingTopologyTests
         var (consumed, published) = MessagingTopology.Of("learning");
 
         consumed.ShouldBe(
-            [ChapterFilesReleased, CourseVersionPublished, Contracts + "Organisation.MembershipChangedV1", Contracts + "Organisation.MembershipEndedV1", Contracts + "Organisation.MembershipStartedV1"],
+            [ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired, Contracts + "Organisation.MembershipChangedV1", Contracts + "Organisation.MembershipEndedV1", Contracts + "Organisation.MembershipStartedV1"],
             ignoreOrder: false);
         published.ShouldBe([Contracts + "Learning.ContentCompletedV1", Contracts + "Learning.LearningSessionStartedV1"], ignoreOrder: false);
+    }
+
+    [Fact]
+    public void Learning_consumes_the_two_course_version_exchanges_and_publishes_its_session_events()
+    {
+        var (consumed, published) = MessagingTopology.Of("learning");
+
+        consumed.ShouldContain(CourseVersionPublished);
+        consumed.ShouldContain(CourseVersionRetired);
+        published.ShouldBe([ContentCompleted, LearningSessionStarted], ignoreOrder: false);
     }
 
     [Fact]

@@ -22,6 +22,7 @@ import {
   writesOf,
   you,
 } from './teamFixtures';
+import { titleKey } from './titleKey';
 
 // Changing a membership's job function and role (#12): a dialog preset from the row, which PATCHes both. The last
 // active manager cannot be made an employee (409 last-manager): the dialog then stays open, says so inside it and in a
@@ -201,6 +202,30 @@ test('changing the caller’s own membership reads their memberships again', asy
     expect(notify.success).toHaveBeenCalledWith(t('organisation.team.change.changed', { name: you.name })),
   );
   await waitFor(() => expect(mineReads()).toBeGreaterThan(before));
+});
+
+// Demoted, the caller may no longer manage members: the sections and the dialog go, and the focus, rather than falling
+// to the body, goes to the page's heading, above the words that say why.
+test('demoting oneself while another manager remains moves the focus to the page’s heading', async () => {
+  host.members = [
+    you,
+    anna,
+    { ...anna, membershipId: '0198c1a0-0000-7000-8000-0000000000b5', name: 'Bea Brandt', role: 'Manager' },
+  ];
+  const change = host.change;
+  host.change = async (membershipId, body) => {
+    const answer = await change(membershipId, body);
+    host.memberships = host.memberships.map((membership) => ({ ...membership, canManageMembers: false }));
+    return answer;
+  };
+  const { user, role, submit } = await openChange(you);
+
+  await user.selectOptions(role, t('glossary.membershipRole.Employee'));
+  await user.click(submit);
+
+  expect(await screen.findByText(t('organisation.team.notAllowed', { pharmacy: markt.name }))).toBeInTheDocument();
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: t(titleKey) })).toHaveFocus());
 });
 
 test('cancelled, sends nothing', async () => {

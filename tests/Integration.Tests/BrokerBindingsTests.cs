@@ -33,6 +33,9 @@ public partial class BrokerBindingsTests(AspireFixture aspire)
 
     private const string LearningQueue = "learning";
 
+    // Learning consumes Editorial's retirement (#195), so Learning's queue is bound to its exchange.
+    private const string CourseVersionRetired = "SmartSolutionsLab.PharmaTraining.Contracts.Editorial.CourseVersionRetiredV1";
+
     private static readonly TimeSpan WaitTimeout = TimeSpan.FromSeconds(30);
 
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(250);
@@ -138,6 +141,18 @@ public partial class BrokerBindingsTests(AspireFixture aspire)
         {
             bindings.ShouldContain(binding => binding.Source == exchange && binding.Destination == LearningQueue && binding.DestinationType == "queue", $"{exchange} is not bound to Learning's queue.");
         }
+    }
+
+    [Fact]
+    public async Task Learnings_queue_is_bound_to_the_course_version_retirement()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var management = await ManagementClientAsync(cancellationToken);
+
+        await WaitForBindingAsync(management, CourseVersionRetired, LearningQueue, cancellationToken);
+
+        (await BindingsAsync(management, cancellationToken))
+            .ShouldContain(binding => binding.Source == CourseVersionRetired && binding.Destination == LearningQueue && binding.DestinationType == "queue");
     }
 
     /// <summary>

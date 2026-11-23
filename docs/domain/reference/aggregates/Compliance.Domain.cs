@@ -132,6 +132,9 @@ public sealed record DueDate : IValueObject<DateOnly>
     public static DueDate On(CalendarDate date) => new(date.Value);
 
     public CalendarDate AsDate() => CalendarDate.From(Value);
+
+    /// <summary>Whether a completion at that instant is late: its day in Germany lies after the due date.</summary>
+    public bool IsMissedBy(Timestamp completedAt) => completedAt.DayInGermany() > AsDate();
 }
 
 /// <summary>How often an assignment repeats, in months: 12 for the yearly briefing, 24 for first aid.</summary>
@@ -456,7 +459,7 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
         Status switch
         {
             AssignmentStatus.Cancelled => AssignmentState.Cancelled,
-            AssignmentStatus.Completed when CompletedAt!.DayInGermany() > DueDate.AsDate() => AssignmentState.CompletedLate,
+            AssignmentStatus.Completed when DueDate.IsMissedBy(CompletedAt!) => AssignmentState.CompletedLate,
             AssignmentStatus.Completed => AssignmentState.Completed,
             _ when today > DueDate.AsDate() => AssignmentState.Overdue,
             AssignmentStatus.InProgress when TestAccess == TestAccess.LockedAfterFailedAttempts => AssignmentState.Locked,
@@ -477,7 +480,7 @@ public sealed record AssignmentDueDateChanged(AssignmentId Assignment, DueDate N
 [DeliberatelyUnhandled("Nobody outside Compliance reacts in MVP 1.")]
 public sealed record AssignmentCancelled(AssignmentId Assignment, PersonId Learner, PharmacyId Pharmacy) : IDomainEvent;
 
-[DeliberatelyUnhandled("Nothing completes an assignment before #33; #31 replaces this with the follow-up reaction.")]
+[DeliberatelyUnhandled("The CertificateIssuedV1 consumer announces it as AssignmentCompletedV1 in the completing commit; #31 replaces this with the follow-up reaction.")]
 public sealed record AssignmentCompleted(
     AssignmentId Assignment,
     PersonId Learner,

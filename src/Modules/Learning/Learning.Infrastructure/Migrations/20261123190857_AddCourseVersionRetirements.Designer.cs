@@ -12,8 +12,8 @@ using SmartSolutionsLab.PharmaTraining.Modules.Learning.Infrastructure.Persisten
 namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Infrastructure.Migrations;
 
 [DbContext(typeof(LearningDbContext))]
-[Migration("20261123134657_AddMembershipCopies")]
-partial class _20261123134657_AddMembershipCopies
+[Migration("20261123190857_AddCourseVersionRetirements")]
+partial class _20261123190857_AddCourseVersionRetirements
 {
     /// <inheritdoc />
     protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -53,6 +53,9 @@ partial class _20261123134657_AddMembershipCopies
                 b.HasKey("CourseVersionId", "ChapterId")
                     .HasName("pk_course_version_chapters");
 
+                b.HasIndex("ChapterId")
+                    .HasDatabaseName("ix_course_version_chapters_chapter_id");
+
                 b.ToTable("course_version_chapters", "learning");
             });
 
@@ -76,77 +79,20 @@ partial class _20261123134657_AddMembershipCopies
                 b.ToTable("course_versions", "learning");
             });
 
-        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.ReadModels.MemberCopy", b =>
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.ReadModels.CourseVersionRetirement", b =>
             {
-                b.Property<Guid>("Id")
+                b.Property<Guid>("CourseVersionId")
                     .HasColumnType("uuid")
-                    .HasColumnName("id");
+                    .HasColumnName("course_version_id");
 
-                b.Property<Guid>("PersonId")
+                b.Property<Guid>("CourseId")
                     .HasColumnType("uuid")
-                    .HasColumnName("person_id");
+                    .HasColumnName("course_id");
 
-                b.Property<Guid>("PharmacyId")
-                    .HasColumnType("uuid")
-                    .HasColumnName("pharmacy_id");
+                b.HasKey("CourseVersionId")
+                    .HasName("pk_course_version_retirements");
 
-                b.HasKey("Id")
-                    .HasName("pk_members");
-
-                b.HasIndex("PersonId")
-                    .HasDatabaseName("ix_members_person_id");
-
-                b.ToTable("members", "learning");
-            });
-
-        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.ReadModels.MembershipChangeCopy", b =>
-            {
-                b.Property<Guid>("MembershipId")
-                    .HasColumnType("uuid")
-                    .HasColumnName("membership_id");
-
-                b.Property<int>("Version")
-                    .HasColumnType("integer")
-                    .HasColumnName("version");
-
-                b.Property<Guid>("PersonId")
-                    .HasColumnType("uuid")
-                    .HasColumnName("person_id");
-
-                b.Property<Guid>("PharmacyId")
-                    .HasColumnType("uuid")
-                    .HasColumnName("pharmacy_id");
-
-                b.HasKey("MembershipId", "Version")
-                    .HasName("pk_membership_changes");
-
-                b.HasIndex("PersonId")
-                    .HasDatabaseName("ix_membership_changes_person_id");
-
-                b.ToTable("membership_changes", "learning");
-            });
-
-        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.ReadModels.MembershipEndingCopy", b =>
-            {
-                b.Property<Guid>("Id")
-                    .HasColumnType("uuid")
-                    .HasColumnName("id");
-
-                b.Property<Guid>("PersonId")
-                    .HasColumnType("uuid")
-                    .HasColumnName("person_id");
-
-                b.Property<Guid>("PharmacyId")
-                    .HasColumnType("uuid")
-                    .HasColumnName("pharmacy_id");
-
-                b.HasKey("Id")
-                    .HasName("pk_membership_endings");
-
-                b.HasIndex("PersonId")
-                    .HasDatabaseName("ix_membership_endings_person_id");
-
-                b.ToTable("membership_endings", "learning");
+                b.ToTable("course_version_retirements", "learning");
             });
 
         modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.ReadModels.SampleSummary", b =>

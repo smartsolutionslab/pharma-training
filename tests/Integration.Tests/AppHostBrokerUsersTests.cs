@@ -29,6 +29,10 @@ public class AppHostBrokerUsersTests(AspireFixture aspire)
 
     private const string MembershipStarted = Contracts + "Organisation.MembershipStartedV1";
 
+    private const string ContentCompleted = Contracts + "Learning.ContentCompletedV1";
+
+    private const string LearningSessionStarted = Contracts + "Learning.LearningSessionStartedV1";
+
     /// <summary>The default exchange's name in RabbitMQ's permissions.</summary>
     private const string DefaultExchange = "amq.default";
 
@@ -43,9 +47,9 @@ public class AppHostBrokerUsersTests(AspireFixture aspire)
         },
         {
             "compliance",
-            ["compliance", Contracts + "Assessment.AttemptsExhaustedV1", Contracts + "Compliance.AssignmentCompletedV1", Contracts + "Compliance.CourseAssignedV1", CourseVersionPublished, CourseVersionRetired, Contracts + "Learning.ContentCompletedV1", Contracts + "Learning.LearningSessionStartedV1", MembershipChanged, MembershipEnded, MembershipStarted],
+            ["compliance", Contracts + "Assessment.AttemptsExhaustedV1", Contracts + "Certification.CertificateIssuedV1", Contracts + "Compliance.AssignmentCompletedV1", Contracts + "Compliance.CourseAssignedV1", CourseVersionPublished, CourseVersionRetired, Contracts + "Learning.ContentCompletedV1", Contracts + "Learning.LearningSessionStartedV1", MembershipChanged, MembershipEnded, MembershipStarted],
             ["compliance", Contracts + "Compliance.AssignmentCompletedV1", Contracts + "Compliance.CourseAssignedV1"],
-            ["compliance", Contracts + "Assessment.AttemptsExhaustedV1", CourseVersionPublished, CourseVersionRetired, Contracts + "Learning.ContentCompletedV1", Contracts + "Learning.LearningSessionStartedV1", MembershipChanged, MembershipEnded, MembershipStarted]
+            ["compliance", Contracts + "Assessment.AttemptsExhaustedV1", Contracts + "Certification.CertificateIssuedV1", CourseVersionPublished, CourseVersionRetired, Contracts + "Learning.ContentCompletedV1", Contracts + "Learning.LearningSessionStartedV1", MembershipChanged, MembershipEnded, MembershipStarted]
         },
         {
             "editorial",
@@ -55,9 +59,9 @@ public class AppHostBrokerUsersTests(AspireFixture aspire)
         },
         {
             "learning",
-            ["learning", Contracts + "Learning.ContentCompletedV1", Contracts + "Learning.LearningSessionStartedV1", ChapterFilesReleased, CourseVersionPublished, MembershipChanged, MembershipEnded, MembershipStarted],
-            ["learning", Contracts + "Learning.ContentCompletedV1", Contracts + "Learning.LearningSessionStartedV1"],
-            ["learning", ChapterFilesReleased, CourseVersionPublished, MembershipChanged, MembershipEnded, MembershipStarted]
+            ["learning", ContentCompleted, LearningSessionStarted, ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired, MembershipChanged, MembershipEnded, MembershipStarted],
+            ["learning", ContentCompleted, LearningSessionStarted],
+            ["learning", ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired, MembershipChanged, MembershipEnded, MembershipStarted]
         },
         {
             "organisation",

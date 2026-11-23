@@ -13,6 +13,9 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.Commands
 /// session per learner and course version: a run not finished yet is resumed, and otherwise the next run starts with the
 /// chapters of Learning's copy of the version. The new run's id is derived from learner, version and run, so of two
 /// concurrent first starts the second stream is refused by the store (409 already-exists).
+/// A retired version starts no new run; a run not finished yet is still resumed. A start that read the version as not
+/// retired just before its retirement was stored still starts: that session began before the retirement, and no lock
+/// is taken against it.
 /// A created session is announced as LearningSessionStartedV1 once its stream is stored; a resume announces nothing,
 /// and the losing concurrent start is refused before it publishes.
 /// </summary>
@@ -49,6 +52,11 @@ public sealed class StartLearningSessionHandler(
         if (unfinished is not null)
         {
             return Success(new LearningSessionStart(unfinished.Id, Created: false));
+        }
+
+        if (await versions.IsRetiredAsync(command.Version, cancellationToken))
+        {
+            return Failure(LearningSessionFailures.CourseVersionRetired(command.Version.Value));
         }
 
         var session = Start(command, copy.Value, SessionRun.From(runs.Count + 1));
