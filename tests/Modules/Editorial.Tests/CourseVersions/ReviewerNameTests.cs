@@ -28,15 +28,29 @@ public class ReviewerNameTests
 
     [Theory]
     [MemberData(nameof(Refused))]
-    public void A_blank_or_too_long_reviewer_name_or_one_holding_a_nul_character_is_refused(string value) =>
+    public void A_blank_or_too_long_reviewer_name_or_one_holding_an_unseen_or_reversing_character_is_refused(string value) =>
         Should.Throw<GuardException>(() => ReviewerName.From(value));
 
     [Theory]
     [MemberData(nameof(NoName))]
-    public void TryFrom_finds_no_reviewer_name_in_a_missing_blank_too_long_or_nul_value(string? value)
+    public void TryFrom_finds_no_reviewer_name_in_a_missing_blank_too_long_or_unseen_or_reversing_value(string? value)
     {
         ReviewerName.TryFrom(value, out var name).ShouldBeFalse();
         name.ShouldBeNull();
+    }
+
+    /// <summary>
+    /// The zero-width non-joiner and joiner are part of how Persian and Indic names are written ("MohammadReza", "Indu"),
+    /// so they are kept, while the bidi controls around them stay refused.
+    /// </summary>
+    [Theory]
+    [InlineData("Mohammad\u200CReza")]
+    [InlineData("\u0928\u093F\u0930\u094D\u200D\u092E\u0932\u093E")]
+    public void A_name_joined_with_zero_width_non_joiner_or_joiner_is_kept(string value)
+    {
+        ReviewerName.From(value).Value.ShouldBe(value);
+        ReviewerName.TryFrom(value, out var name).ShouldBeTrue();
+        name.Value.ShouldBe(value);
     }
 
     [Fact]
