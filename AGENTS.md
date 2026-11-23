@@ -106,6 +106,7 @@ Agents coordinate through GitHub only: issues, labels, branches and the board. T
 - Local runs need the broker and database from Aspire: `dotnet run --project src/AppHost`.
 - An event one module of the host publishes and another consumes goes through a durable local queue in the host, not the broker: it is saved with the publisher's changes, survives a restart, and is retried and dead-lettered like any other. The broker carries only what another service sends or receives, and an event a module of the host consumes is never sent to it. Do not route events through the broker by hand; that is a decision, not a fix.
 - A consumer that throws is retried with backoff (1, 2, 4 … 32 seconds), then dead-lettered in `wolverine.wolverine_dead_letters`, whichever way it arrived, never in a dead-letter queue of the broker's; `replayable = true` on its row delivers it again. Throw for a failure worth retrying; do not catch and swallow it. Because a retry runs the consumer again, it must be idempotent.
+- An exception that implements `IPermanentMessageFailure` (`src/BuildingBlocks/Messaging`) is dead-lettered on its first failure, without a retry: throw one only when no retry can succeed until someone changes something by hand, never for a dropped connection or a lost race.
 
 ## Mediator: hand-rolled
 
