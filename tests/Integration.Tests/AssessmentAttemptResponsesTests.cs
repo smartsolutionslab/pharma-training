@@ -49,7 +49,7 @@ public partial class AssessmentAttemptResponsesTests(AspireFixture aspire)
         }
 
         violations.ShouldBeEmpty();
-        bodies.Count.ShouldBe(9);
+        bodies.Count.ShouldBe(10, "six reads, two starts and two submits answer a body; the four answers are 204 without one");
         questions.ShouldBeGreaterThan(0, "the bodies showed no question");
         options.ShouldBeGreaterThan(0, "the bodies showed no option");
 
