@@ -22,6 +22,9 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Api.Endpoints;
 /// </summary>
 public sealed class AssignmentEndpoints : IEndpoint
 {
+    /// <summary>The most person ids, repeats included, a body may carry before it is refused unread.</summary>
+    private const int MaximumPersonIds = 10 * AssignCourse.MaximumLearners;
+
     public void Map(IEndpointRouteBuilder endpoints)
     {
         Ensure.That(endpoints).IsNotNull();
@@ -40,6 +43,13 @@ public sealed class AssignmentEndpoints : IEndpoint
         if (!caller.HasValue)
         {
             return Refused(AssignmentFailures.IdentityIncomplete());
+        }
+
+        // A body far beyond the cap is refused before anything else reads it or maps its ids one by one. Repeats count
+        // here, as they are read; the handler's own cap counts distinct people.
+        if (request.PersonIds is { Count: > MaximumPersonIds })
+        {
+            return Refused(AssignmentFailures.TooManyLearners(AssignCourse.MaximumLearners));
         }
 
         // The empty Guid is no pharmacy and no course Compliance holds; each is not found like any other.
@@ -64,6 +74,12 @@ public sealed class AssignmentEndpoints : IEndpoint
             return Refused(AssignmentFailures.InvalidPerson());
         }
 
+        // A body without a due date is not read as 0001-01-01 and then told the date is past.
+        if (request.DueDate is not { } dueDate)
+        {
+            return Refused(AssignmentFailures.DueDateMissing());
+        }
+
         RecurrenceInterval? recurrence = null;
         if (request.RecurrenceMonths is { } months && !RecurrenceInterval.TryFrom(months, out recurrence))
         {
@@ -74,7 +90,7 @@ public sealed class AssignmentEndpoints : IEndpoint
             PharmacyId.From(id),
             CourseId.From(request.CourseId),
             [.. request.PersonIds.Select(PersonId.From)],
-            DueDate.From(request.DueDate),
+            DueDate.From(dueDate),
             recurrence,
             caller.Value);
         return (await dispatcher.SendAsync(command, cancellationToken)).ToHttpResult();

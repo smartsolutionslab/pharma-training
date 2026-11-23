@@ -22,6 +22,8 @@ public static class AssignmentFailures
 
     public static ApiError InvalidPerson() => new InvalidPerson();
 
+    public static ApiError DueDateMissing() => new DueDateMissing();
+
     public static ApiError InvalidRecurrence() => new InvalidRecurrence(RecurrenceInterval.MinimumMonths, RecurrenceInterval.MaximumMonths);
 
     public static ApiError LearnerNotAMember(Guid person) => new LearnerNotAMember(person);

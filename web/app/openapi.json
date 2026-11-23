@@ -2234,7 +2234,10 @@
             }
           },
           "dueDate": {
-            "type": "string",
+            "type": [
+              "null",
+              "string"
+            ],
             "format": "date"
           },
           "recurrenceMonths": {
