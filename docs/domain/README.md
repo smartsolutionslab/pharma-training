@@ -195,6 +195,8 @@ Status: `Open` → `InProgress` → `Completed`, außerdem `Cancelled`. `Overdue
 
 Nach `Complete` mit Wiederholung legt ein Handler eine neue Zuweisung an: Frist = Abschlussdatum + Intervall. Eine Bestätigung von vor der Zuweisung erfüllt sie nicht.
 
+`CertificateIssued` schließt jede aktive Zuweisung der Person für die `CourseId` in jeder Apotheke ab, jede Version zählt; eine Bestätigung, die vor der Zuweisung ausgestellt wurde, lässt sie offen. Verspätet (`Late` in `AssignmentCompletedV1`, `CompletedLate` im Dashboard) heißt: der Ausstellungstag in deutscher Zeit liegt nach der Frist; maßgeblich ist `IssuedAt`, nicht die Verarbeitung. Dieselbe Bestätigung erneut findet keine aktive Zuweisung mehr und ändert nichts.
+
 ### LearningSession (Learning, event-sourced)
 
 Ein Stream pro Person × Schulungsversion und Durchlauf. Die Kapitelstruktur wird beim Start aus der lokalen Kopie von `CourseVersionPublished` übernommen.
