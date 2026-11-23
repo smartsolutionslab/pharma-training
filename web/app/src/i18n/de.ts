@@ -135,6 +135,9 @@ export const de = {
       loadFailed: 'Die Version konnte nicht geladen werden.',
       notFound: 'Diese Version gibt es nicht.',
       backToInbox: 'Zurück zum Eingang',
+      newVersion: 'Neue Version anlegen',
+      newVersionCreated: 'Version {number} wurde als Entwurf angelegt.',
+      newVersionFailed: 'Die neue Version konnte nicht angelegt werden. Versuchen Sie es erneut.',
       readOnly: {
         InReview: 'Diese Version ist in Prüfung und kann nicht bearbeitet werden.',
         Published:

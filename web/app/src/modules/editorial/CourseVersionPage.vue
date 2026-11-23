@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { BookOpen } from '@lucide/vue';
-import { computed, ref } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { RouterLink, useRoute } from 'vue-router';
+import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { z } from 'zod';
 import {
   type EditorialChapterDto,
@@ -14,18 +14,20 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
-import { t as translate } from '@/i18n';
+import { i18n, t as translate } from '@/i18n';
 import { notify } from '@/lib/notify';
 import ChapterForm from './ChapterForm.vue';
 import ChapterList from './ChapterList.vue';
 import { inboxStatuses } from './inboxQuery';
 import RemoveChapterDialog from './RemoveChapterDialog.vue';
 import { useChapterMutations } from './useChapterMutations';
+import { useDraftNextVersion } from './useDraftNextVersion';
 import { useReorderChapters } from './useReorderChapters';
 
 // A course version (/editorial/versions/:id): its title, number and status, the way back to its inbox tab, and its
 // chapters. Only a draft can be changed; any other status says why not and shows its chapters read-only.
 const route = useRoute();
+const router = useRouter();
 const id = computed(() => String(route.params.id ?? ''));
 /** The id goes into the requests' paths: one that is no UUID names no version, and is never sent. */
 const validId = computed(() => z.uuid().safeParse(id.value).success);
@@ -37,6 +39,7 @@ const {
 } = useGetEditorialCourseVersionsId(id, { query: { enabled: validId } });
 const { add, replace, remove, isSaving } = useChapterMutations(id);
 const { reorder } = useReorderChapters(id);
+const { draftNext, isDrafting } = useDraftNextVersion(id);
 const { t } = useI18n();
 
 /** The chapter form while it is open: with the chapter it replaces, or none to add one. */
@@ -46,6 +49,13 @@ const removing = ref<EditorialChapterDto>();
 const isRemoving = ref(false);
 /** Whether the chapter form's file is on its way to storage: the dialog stays open until it is there or cancelled. */
 const chapterUploading = ref(false);
+
+/** Set from the first press until the host has answered, so a second press drafts nothing. */
+const draftingNext = ref(false);
+/** The drafted version whose heading takes the focus once it shows. */
+const focusHeadingOf = ref<string>();
+const headingId = 'course-version-title';
+const newVersionId = 'course-version-new-version';
 
 const notFound = computed(() => error.value instanceof ApiError && error.value.status === 404);
 const editable = computed(() => version.value?.status === 'Draft');
@@ -67,6 +77,55 @@ async function save(request: EditorialChapterRequest) {
   form.value = undefined;
   return true;
 }
+
+/**
+ * Drafts the published version's successor and opens it; a refusal is reported and the page stays, the version read
+ * again. Without a module's words, the button takes the focus back, ready to try again.
+ */
+async function draftNextVersion() {
+  const published = version.value;
+  if (draftingNext.value || published === undefined) {
+    return;
+  }
+  draftingNext.value = true;
+  const next = Number(published.number) + 1;
+  const result = await draftNext();
+  draftingNext.value = false;
+  if (result.ok) {
+    focusHeadingOf.value = result.id;
+    await router.push(`/editorial/versions/${result.id}`);
+    notify.success(
+      translate('editorial.version.newVersionCreated', {
+        number: Number.isFinite(next) ? i18n.global.n(next, 'integer') : String(published.number),
+      }),
+    );
+    return;
+  }
+  if (result.serverMessage !== undefined) {
+    notify.failure(result.serverMessage);
+    return;
+  }
+  notify.failure(translate('editorial.version.newVersionFailed'));
+  await nextTick();
+  document.getElementById(newVersionId)?.focus();
+}
+
+// The drafted version's heading takes the focus once it shows: the button that had it is gone.
+watch(
+  () => version.value?.id,
+  async (shown) => {
+    if (shown === undefined || shown !== focusHeadingOf.value) {
+      return;
+    }
+    await nextTick();
+    const heading = document.getElementById(headingId);
+    if (heading !== null) {
+      focusHeadingOf.value = undefined;
+      heading.focus();
+    }
+  },
+  { flush: 'post' },
+);
 
 /** Deletes the chapter asked about, and reports how that went. */
 async function confirmRemove(chapter: EditorialChapterDto) {
@@ -103,7 +162,7 @@ async function confirmRemove(chapter: EditorialChapterDto) {
         <RouterLink :to="inbox" class="text-caption text-primary underline-offset-4 hover:underline">
           {{ t('editorial.version.backToInbox') }}
         </RouterLink>
-        <h1 class="text-title">{{ version.title }}</h1>
+        <h1 :id="headingId" tabindex="-1" class="text-title outline-none">{{ version.title }}</h1>
         <div class="text-caption text-muted-foreground flex flex-wrap items-center gap-3">
           <span class="tabular-nums">{{ t('editorial.version.number', { number: version.number }) }}</span>
           <span class="bg-secondary text-secondary-foreground rounded-md px-2 py-0.5">{{
@@ -114,6 +173,17 @@ async function confirmRemove(chapter: EditorialChapterDto) {
       <p v-if="version.status !== 'Draft'" class="text-body bg-muted rounded-md p-3">
         {{ t(`editorial.version.readOnly.${version.status}`) }}
       </p>
+      <div v-if="version.status === 'Published'">
+        <Button
+          :id="newVersionId"
+          type="button"
+          :disabled="draftingNext || isDrafting"
+          :aria-busy="draftingNext || isDrafting"
+          @click="draftNextVersion"
+        >
+          {{ t('editorial.version.newVersion') }}
+        </Button>
+      </div>
       <section aria-labelledby="course-version-chapters" class="flex flex-col gap-4">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <h2 id="course-version-chapters">{{ t('editorial.chapters.title') }}</h2>
