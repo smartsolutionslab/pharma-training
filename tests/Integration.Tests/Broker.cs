@@ -102,6 +102,43 @@ public static class Broker
     }
 
     /// <summary>
+    /// The first message on the queue that is the one wanted, with the AMQP <c>message-id</c> it arrived under; the
+    /// ones before it are taken off the queue. Wolverine puts the envelope id there (see <see cref="SendAsync"/>), so a
+    /// fanout copy on a queue of the test's own carries the id that a consuming service's inbox stores for its copy.
+    /// </summary>
+    public static async Task<(Guid MessageId, JsonElement Body)> ReceiveWithMessageIdAsync(IChannel channel, string queue, Func<JsonElement, bool> wanted, CancellationToken cancellationToken)
+    {
+        Ensure.That(channel).IsNotNull();
+        Ensure.That(wanted).IsNotNull();
+
+        var received = 0;
+        var started = TimeProvider.System.GetTimestamp();
+        while (true)
+        {
+            var delivery = await channel.BasicGetAsync(queue, autoAck: true, cancellationToken);
+            if (delivery is null)
+            {
+                if (TimeProvider.System.GetElapsedTime(started) >= WaitTimeout)
+                {
+                    throw new TimeoutException($"The wanted message did not reach the queue within {WaitTimeout.TotalSeconds} s; {received} others did.");
+                }
+
+                await Task.Delay(PollInterval, cancellationToken);
+                continue;
+            }
+
+            received++;
+            var body = JsonSerializer.Deserialize<JsonElement>(delivery.Body.Span, JsonSerializerOptions.Web);
+            if (wanted(body))
+            {
+                var messageId = delivery.BasicProperties.MessageId
+                    ?? throw new InvalidOperationException($"The wanted message arrived without a message-id: {body.GetRawText()}");
+                return (Guid.Parse(messageId), body);
+            }
+        }
+    }
+
+    /// <summary>
     /// Sends an event as a publishing service's Wolverine does: with the credentials of the service whose module declares
     /// the event (<c>Contracts.&lt;Module&gt;</c>), to the fanout exchange named after its type, which its consumer's
     /// Wolverine declares, with the type, the envelope id and that service's user as <c>user_id</c> in the message's

@@ -27,4 +27,10 @@ public interface IPharmacyStore
 
     /// <summary>One page of the pharmacies where the person is an active member, by name, with their memberships.</summary>
     Task<PagedResult<Pharmacy>> ListWithActiveMemberAsync(PersonId person, Page page, PageSize pageSize, CancellationToken cancellationToken);
+
+    /// <summary>One page of the pharmacy's Active memberships, by name, then id, with how many it has; as stored, for a query.</summary>
+    Task<PagedResult<Membership>> ListActiveMembershipsAsync(PharmacyId pharmacy, Page page, PageSize pageSize, CancellationToken cancellationToken);
+
+    /// <summary>One page of the pharmacy's Invited memberships, open or run out, by expiry, then id, with how many it has; as stored, for a query.</summary>
+    Task<PagedResult<Membership>> ListInvitedMembershipsAsync(PharmacyId pharmacy, Page page, PageSize pageSize, CancellationToken cancellationToken);
 }

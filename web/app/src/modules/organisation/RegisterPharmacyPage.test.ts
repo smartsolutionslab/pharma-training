@@ -294,6 +294,38 @@ test.each([
   },
 );
 
+// The host's words for this code are not the page's: it tells the user, in its own words, to verify the address first.
+test('a registration refused because the e-mail address is not verified tells the user to verify it, and they stay with what they entered', async () => {
+  setLanguage('de-DE', { remember: false });
+  const user = userEvent.setup();
+  registration = async () =>
+    new Response(
+      JSON.stringify({
+        title: 'Your e-mail address has not been verified. Verify it, then try again.',
+        status: 403,
+        code: 'organisation.email-not-verified',
+      }),
+      { status: 403, headers: { 'Content-Type': 'application/problem+json' } },
+    );
+  const { router } = await renderPage();
+  await fillIn(user, 'Apotheke am Markt', t('glossary.jobFunction.Pharmacist'));
+
+  await user.click(submit());
+
+  await waitFor(() =>
+    expect(notify.failure).toHaveBeenCalledWith(
+      'Ihre E-Mail-Adresse ist noch nicht bestätigt. Bestätigen Sie sie über den Link in der Bestätigungs-E-Mail, und registrieren Sie die Apotheke dann erneut.',
+    ),
+  );
+  expect(notify.failure).toHaveBeenCalledOnce();
+  expect(notify.success).not.toHaveBeenCalled();
+  expect(router.currentRoute.value.path).toBe('/organisation/register');
+  expect(nameField()).toHaveValue('Apotheke am Markt');
+  expect(jobFunctionField()).toHaveValue('Pharmacist');
+  expect(submit()).toBeEnabled();
+  expect(localStorage.getItem('pharmacy')).toBeNull();
+});
+
 test('the button is disabled while the registration is on its way', async () => {
   const user = userEvent.setup();
   let answer: (response: Response) => void = () => undefined;

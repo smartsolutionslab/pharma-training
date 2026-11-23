@@ -2,13 +2,16 @@ import { cleanup, screen, waitFor, within } from '@testing-library/vue';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { t } from '@/i18n';
+import { useSelectedPharmacyStore } from '@/stores/selectedPharmacy';
 import {
   anna,
   ben,
+  assignedAll,
   carla,
   catalogPath,
   chooseButton,
   david,
+  dom,
   dueDateField,
   type Fetch,
   hostFrom,
@@ -204,6 +207,67 @@ describe('the result', () => {
   });
 });
 
+// Follow-ups of #37 (#239): an answer that comes after the user switched the pharmacy is the old pharmacy's.
+describe('switching the pharmacy while the assignment is on its way', () => {
+  test("drops the old pharmacy's answer: the new pharmacy's wizard stays on the course step, without a result or a toast", async () => {
+    const user = userEvent.setup();
+    let answer: (response: Response) => void = () => undefined;
+    state.memberships = [markt, dom];
+    state.assignment = () => new Promise<Response>((resolve) => (answer = resolve));
+    localStorage.setItem('pharmacy', markt.id);
+    const { pinia, queryClient } = await renderAssignPage();
+    await toReview(user, { members: [anna, ben] });
+    await user.click(submitButton());
+    await waitFor(() => expect(postsOf(host)).toHaveLength(1));
+
+    useSelectedPharmacyStore(pinia).choose(dom.id);
+    await stepHeading('compliance.assign.course.title');
+    answer(
+      Response.json({
+        assigned: [{ personId: anna.personId, assignmentId: '0198c1a0-0000-7000-8000-0000000000f1' }],
+        refused: [{ personId: ben.personId, code: 'compliance.assignment-already-active', message: 'bereits aktiv' }],
+      }),
+    );
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0));
+
+    await expect(stepHeading('compliance.assign.result.title')).rejects.toThrow();
+    expect(screen.getByRole('heading', { level: 2, name: t('compliance.assign.course.title') })).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(ben.personId);
+    expect(notify.success).not.toHaveBeenCalled();
+    expect(notify.failure).not.toHaveBeenCalled();
+  });
+
+  test("the new pharmacy's wizard can be sent while the old pharmacy's answer is still on its way", async () => {
+    const user = userEvent.setup();
+    let answer: (response: Response) => void = () => undefined;
+    state.memberships = [markt, dom];
+    state.members[dom.id] = [carla];
+    let first = true;
+    state.assignment = (body) => {
+      if (first) {
+        first = false;
+        return new Promise<Response>((resolve) => (answer = resolve));
+      }
+      return assignedAll(body);
+    };
+    localStorage.setItem('pharmacy', markt.id);
+    const { pinia } = await renderAssignPage();
+    await toReview(user, { members: [anna, ben] });
+    await user.click(submitButton());
+    await waitFor(() => expect(postsOf(host)).toHaveLength(1));
+
+    useSelectedPharmacyStore(pinia).choose(dom.id);
+    await stepHeading('compliance.assign.course.title');
+    await toReview(user, { members: [carla] });
+
+    expect(submitButton()).toBeEnabled();
+    await user.click(submitButton());
+    await stepHeading('compliance.assign.result.title');
+    expect(postsOf(host)).toHaveLength(2);
+    answer(Response.json({ assigned: [], refused: [] }));
+  });
+});
+
 describe('a refusal of the whole request', () => {
   test.each([
     [422, 'compliance.due-date-in-the-past', 'compliance.assign.due.inThePast'],
@@ -256,6 +320,24 @@ describe('a refusal of the whole request', () => {
     expect(
       screen.getByRole('heading', { level: 1, name: t('modules.compliance.pages.assign.title') }),
     ).toBeInTheDocument();
+  });
+
+  // Follow-ups of #37 (#239): the section that held the focused Submit button is gone, so the alert takes the focus.
+  test.each([
+    [403, 'compliance.capability-missing', 'Sie dürfen in dieser Apotheke keine Schulungen zuweisen.'],
+    [404, 'compliance.pharmacy-not-found', 'Die Apotheke wurde nicht gefunden.'],
+  ])("%i %s gives the host's message the focus", async (status, code, message) => {
+    const user = userEvent.setup();
+    state.assignment = async () => problem(status, code, message);
+    await renderAssignPage();
+    await toReview(user);
+
+    await user.click(submitButton());
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(message);
+    expect(alert).toHaveAttribute('tabindex', '-1');
+    await waitFor(() => expect(alert).toHaveFocus());
   });
 
   test.each([

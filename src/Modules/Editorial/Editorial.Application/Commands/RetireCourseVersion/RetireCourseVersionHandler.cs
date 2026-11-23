@@ -1,5 +1,6 @@
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.Contracts.Editorial;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.IntegrationEvents;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.RetireCourseVersion;
@@ -28,7 +29,7 @@ public sealed class RetireCourseVersionHandler(ICourseVersionStore versions, IEd
             return Failure(CourseVersionFailures.From(retired.Error));
         }
 
-        await unitOfWork.PublishAsync(new CourseVersionRetiredV1(version.Course.Value, version.Id.Value));
+        await unitOfWork.PublishAsync(version.ToCourseVersionRetiredV1());
 
         if (!await unitOfWork.TryCommitAsync(cancellationToken))
         {
