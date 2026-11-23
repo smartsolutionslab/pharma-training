@@ -1,8 +1,8 @@
 namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Mail;
 
 /// <summary>
-/// The send's bound fired: the bound's own cancellation, with no inner exception and no server text, which says whether
-/// the mail was already being handed to the server when it fired.
+/// The send's bound fired, or the caller had cancelled before the send began: a cancellation with no inner exception and
+/// no server text, which says whether the mail was already being handed to the server when it came.
 /// </summary>
 public sealed class MailSendTimedOutException : OperationCanceledException
 {

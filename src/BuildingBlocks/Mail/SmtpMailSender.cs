@@ -74,17 +74,24 @@ public sealed partial class SmtpMailSender : IMailSender
     /// Sends the mail within <see cref="Bound"/>. The caller's token is honoured only before the send starts: a mail half
     /// handed to the server is finished or fails on the bound, never abandoned because the request went away. A failure
     /// says whether the mail may have reached the server (<see cref="MailNotSentException.MayHaveBeenDelivered"/>,
-    /// <see cref="MailSendTimedOutException.MayHaveBeenDelivered"/>): only one before the client's send started cannot. Once the
+    /// <see cref="MailSendTimedOutException.MayHaveBeenDelivered"/>): one before the client's send started (a missing
+    /// setting, the caller's cancellation, connect, TLS, login) cannot, and nor can the server's own refusal at any step;
+    /// a transport, protocol or timeout failure once the send started may. Once the
     /// client's send has returned, the server has taken the mail: a failure while disconnecting afterwards, the bound
     /// firing included, is logged and the mail counts as sent, so nothing retries a mail the recipient already has.
     /// </summary>
     public async Task SendAsync(OutgoingMail mail, CancellationToken cancellationToken)
     {
         Ensure.That(mail).IsNotNull();
-        cancellationToken.ThrowIfCancellationRequested();
 
-        using var message = Compose(mail, From(configuration));
-        var settings = SmtpSettings.From(configuration);
+        // Nothing has reached a server yet: each failure here says the mail cannot have been delivered.
+        if (cancellationToken.IsCancellationRequested)
+        {
+            throw new MailSendTimedOutException(mayHaveBeenDelivered: false, cancellationToken);
+        }
+
+        var (from, settings) = Configured(configuration);
+        using var message = Compose(mail, from);
         using var bound = new CancellationTokenSource(Bound, time);
         using var client = clients();
         client.Timeout = (int)Bound.TotalMilliseconds;
@@ -110,8 +117,9 @@ public sealed partial class SmtpMailSender : IMailSender
         }
         catch (SmtpCommandException refused)
         {
+            // The server answered with a refusal, at whichever step: it says it did not take the mail.
             // The server's text (550 5.1.1 <anna@example.org>: ...) stays out of the exception, its logs and dead letters.
-            throw new MailNotSentException($"The SMTP server refused the mail at {refused.ErrorCode} with {(int)refused.StatusCode} {refused.StatusCode}.", handingOver);
+            throw new MailNotSentException($"The SMTP server refused the mail at {refused.ErrorCode} with {(int)refused.StatusCode} {refused.StatusCode}.", mayHaveBeenDelivered: false);
         }
         catch (Exception failed)
         {
@@ -140,6 +148,22 @@ public sealed partial class SmtpMailSender : IMailSender
         message.Subject = mail.Subject;
         message.Body = new TextPart(MimeKit.Text.TextFormat.Plain) { Text = mail.Text };
         return message;
+    }
+
+    /// <summary>
+    /// The sender address and the server, read at each send. A missing or unusable one fails before anything is handed to
+    /// a server, so it is a mail that cannot have been delivered, with the message that names the setting.
+    /// </summary>
+    private static (MailboxAddress From, SmtpSettings Settings) Configured(IConfiguration configuration)
+    {
+        try
+        {
+            return (From(configuration), SmtpSettings.From(configuration));
+        }
+        catch (InvalidOperationException missing)
+        {
+            throw new MailNotSentException(missing.Message, mayHaveBeenDelivered: false);
+        }
     }
 
     /// <summary>
