@@ -1612,6 +1612,36 @@
         }
       }
     },
+    "/learning/media/{chapterId}": {
+      "get": {
+        "tags": [
+          "LearningMediaEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "chapterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningMediaUrlDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/learning/sessions": {
       "post": {
         "tags": [
@@ -1667,6 +1697,46 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningSessionDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/learning/sessions/{id}/progress": {
+      "post": {
+        "tags": [
+          "LearningSessionEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportLearningProgressRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "OK",
@@ -3328,6 +3398,31 @@
           "Video"
         ]
       },
+      "LearningMediaUrlDto": {
+        "required": [
+          "url",
+          "expiresAt",
+          "contentType",
+          "kind"
+        ],
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "contentType": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/LearningChapterKind"
+          }
+        }
+      },
       "LearningSampleDto": {
         "required": [
           "id",
@@ -4033,6 +4128,28 @@
           }
         }
       },
+      "ReportLearningProgressRequest": {
+        "required": [
+          "chapterId",
+          "percent"
+        ],
+        "type": "object",
+        "properties": {
+          "chapterId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "percent": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "ReturnEditorialCourseVersionRequest": {
         "required": [
           "reason"
@@ -4070,6 +4187,9 @@
     },
     {
       "name": "MemberEndpoints"
+    },
+    {
+      "name": "LearningMediaEndpoints"
     },
     {
       "name": "LearningSessionEndpoints"

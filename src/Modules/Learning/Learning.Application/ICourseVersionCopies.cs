@@ -13,4 +13,7 @@ public interface ICourseVersionCopies
 
     /// <summary>The copy with its chapters, or none while Learning has not received the version.</summary>
     Task<Option<CourseVersionCopy>> FindAsync(CourseVersionId version, CancellationToken cancellationToken);
+
+    /// <summary>Every version Learning holds with the chapter, with its number and the chapter's kind there; none when it holds the chapter in no version.</summary>
+    Task<IReadOnlyList<ChapterPlacement>> ListPlacementsAsync(ChapterId chapter, CancellationToken cancellationToken);
 }

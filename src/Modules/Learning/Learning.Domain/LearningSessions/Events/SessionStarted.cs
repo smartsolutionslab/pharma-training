@@ -2,7 +2,7 @@ using SmartSolutionsLab.PharmaTraining.BuildingBlocks.EventSourcing;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Domain.LearningSessions.Events;
 
-/// <summary>A learner started a session on a course version, with its chapters by kind. Becomes LearningSessionStartedV1 (#40).</summary>
+/// <summary>A learner started a session on a course version, with its chapters by kind. Becomes LearningSessionStartedV1 when the session is created.</summary>
 public sealed record SessionStarted(
     LearningSessionId Session,
     PersonId Learner,
