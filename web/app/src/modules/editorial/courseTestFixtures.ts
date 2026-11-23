@@ -31,7 +31,7 @@ export const handout: EditorialChapterDto = {
   durationSeconds: null,
 };
 
-/** Approved by another editor; who it was is T8's, pending a decision. */
+/** Approved by another editor, Emma Editor, on 20 November 2026. */
 export const approvedAi: EditorialQuestionDto = {
   id: '0198c1a0-0000-7000-8000-0000000000a1',
   position: 1,
