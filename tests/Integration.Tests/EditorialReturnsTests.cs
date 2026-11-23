@@ -75,6 +75,41 @@ public class EditorialReturnsTests(AspireFixture aspire)
         }
     }
 
+    /// <summary>
+    /// Two returns of one version in review at once: one wins, the other loses the race or finds the version back in
+    /// draft, and only the winner's record is kept, since the record shares the version's save (ADR 0002).
+    /// </summary>
+    [Fact]
+    public async Task Returns_survive_a_lost_race_only_once()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var draft = await ReadyToSubmitAsync(client, cancellationToken);
+        await SubmitAsync(client, draft.Id, cancellationToken);
+        var path = new Uri($"/editorial/course-versions/{draft.Id}/return", UriKind.Relative);
+
+        var responses = await Task.WhenAll(
+            client.PostAsJsonAsync(path, new { reason = FirstReason }, cancellationToken),
+            client.PostAsJsonAsync(path, new { reason = SecondReason }, cancellationToken));
+
+        try
+        {
+            responses.Select(response => response.StatusCode).Order().ShouldBe([HttpStatusCode.OK, HttpStatusCode.Conflict]);
+            var loser = responses.Single(response => response.StatusCode == HttpStatusCode.Conflict);
+            (await CodeOfAsync(loser, cancellationToken)).ShouldBeOneOf("editorial.course-version-changed", "editorial.not-in-review");
+            var listed = await ReturnsAsync(client, draft.Id, string.Empty, cancellationToken);
+            listed.TotalCount.ShouldBe(1);
+            listed.Items.ShouldHaveSingleItem();
+        }
+        finally
+        {
+            foreach (var response in responses)
+            {
+                response.Dispose();
+            }
+        }
+    }
+
     private static Uri ReturnsPath(Guid id, string query) => new($"/editorial/course-versions/{id}/returns{query}", UriKind.Relative);
 
     /// <summary>A new course's first version, submitted and returned, submitted and returned again, by the calling editor.</summary>
