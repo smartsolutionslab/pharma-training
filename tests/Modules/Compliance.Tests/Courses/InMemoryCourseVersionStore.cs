@@ -42,6 +42,21 @@ internal sealed class InMemoryCourseVersionStore : ICourseVersionStore, IComplia
         return Task.FromResult(PublishedCourse.Of(course, versions, retirements));
     }
 
+    public async Task<IReadOnlyList<PublishedCourse>> FindCoursesAsync(IReadOnlyCollection<CourseId> courses, CancellationToken cancellationToken)
+    {
+        List<PublishedCourse> found = [];
+        foreach (var course in courses)
+        {
+            var published = await FindCourseAsync(course, cancellationToken);
+            if (published.HasValue)
+            {
+                found.Add(published.Value);
+            }
+        }
+
+        return found;
+    }
+
     public Task PublishAsync(IntegrationEvent integrationEvent) => Task.CompletedTask;
 
     public Task CommitAsync(CancellationToken cancellationToken)

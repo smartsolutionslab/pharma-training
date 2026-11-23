@@ -17,6 +17,9 @@ internal sealed class InMemoryHandledContentCompletions : IHandledContentComplet
     /// <summary>The next commit fails, as a crash or a lost connection would, and what was added is lost with its scope.</summary>
     public void ThrowOnNextCommit() => throwOnNextCommit = true;
 
+    /// <summary>Removes the identifier's marker, as a marker whose commit failed on every retry.</summary>
+    public void Forget(Guid eventIdentifier) => Handled.RemoveAll(row => row.EventIdentifier == eventIdentifier);
+
     public Task<bool> ContainsAsync(Guid eventIdentifier, CancellationToken cancellationToken) =>
         Task.FromResult(Handled.Any(handled => handled.EventIdentifier == eventIdentifier));
 

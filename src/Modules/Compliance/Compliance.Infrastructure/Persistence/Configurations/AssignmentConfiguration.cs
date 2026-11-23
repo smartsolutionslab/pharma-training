@@ -31,6 +31,7 @@ public sealed class AssignmentConfiguration : IEntityTypeConfiguration<Assignmen
         builder.Property(assignment => assignment.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(StatusLength).IsRequired();
         builder.Property(assignment => assignment.TestAccess).HasColumnName("test_access").HasConversion<string>().HasMaxLength(TestAccessLength).IsRequired();
         builder.Property(assignment => assignment.StartedAt).HasColumnName("started_at");
+        builder.Property(assignment => assignment.TestAccessChangedAt).HasColumnName("test_access_changed_at");
         builder.Property(assignment => assignment.CompletedAt).HasColumnName("completed_at");
         builder.Property(assignment => assignment.Certificate).HasColumnName("certificate_id");
 

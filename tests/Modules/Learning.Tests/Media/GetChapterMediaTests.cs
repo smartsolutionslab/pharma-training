@@ -7,6 +7,7 @@ using SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.Queries.GetC
 using SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.ReadModels;
 using SmartSolutionsLab.PharmaTraining.Modules.Learning.Domain.LearningSessions;
 using SmartSolutionsLab.PharmaTraining.Modules.Learning.Tests.Consumers;
+using SmartSolutionsLab.PharmaTraining.Modules.Learning.Tests.Memberships;
 using SmartSolutionsLab.PharmaTraining.Modules.Learning.Tests.Sessions;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Tests.Media;
@@ -21,14 +22,17 @@ public class GetChapterMediaTests
     private static readonly DateTimeOffset Now = new(2027, 3, 1, 9, 0, 0, TimeSpan.Zero);
 
     private readonly InMemoryCourseVersionCopies copies = new();
+    private readonly InMemoryMembershipCopies memberships = new();
     private readonly InMemoryLearningSessions sessions = new();
     private readonly IStoredBlobs stored = Substitute.For<IStoredBlobs>();
     private readonly IBlobUrls urls = Substitute.For<IBlobUrls>();
     private readonly FakeTimeProvider time = new(Now);
     private readonly PersonId learner = PersonId.From(Guid.CreateVersion7());
 
+    /// <summary>The learner is an active member, so they may start the sessions the tests arrange (#194).</summary>
     public GetChapterMediaTests()
     {
+        memberships.Hold(MembershipCopyRows.Started(learner));
         stored.FindAsync(Arg.Any<BlobName>(), Arg.Any<CancellationToken>())
             .Returns(call => Option<StoredBlob>.Some(new StoredBlob(call.Arg<BlobName>(), "application/octet-stream", 1024, true, "\"0x8DC\"", IsCopy: true)));
         urls.CreateReadUrlAsync(Arg.Any<BlobName>(), Arg.Any<BlobUrlLifetime>(), Arg.Any<BlobReadHeaders>(), Arg.Any<CancellationToken>())
@@ -214,7 +218,7 @@ public class GetChapterMediaTests
 
     private async Task StartAsync(CourseVersionCopy version)
     {
-        var started = await new StartLearningSessionHandler(copies, sessions, sessions, sessions, time)
+        var started = await new StartLearningSessionHandler(copies, memberships, sessions, sessions, sessions, time)
             .HandleAsync(new StartLearningSession(learner, CourseVersionId.From(version.Id)), TestContext.Current.CancellationToken);
         started.IsSuccess.ShouldBeTrue();
     }

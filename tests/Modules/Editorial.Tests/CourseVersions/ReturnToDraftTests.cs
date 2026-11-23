@@ -27,7 +27,7 @@ public class ReturnToDraftTests
         var version = InReview();
         store.Stored.Add(version);
 
-        var returned = await Handler().HandleAsync(new ReturnToDraft(version.Id, Reviewer, Reason), TestContext.Current.CancellationToken);
+        var returned = await Handler().HandleAsync(new ReturnToDraft(version.Id, Reviewer, ReviewersName, Reason), TestContext.Current.CancellationToken);
 
         returned.IsSuccess.ShouldBeTrue();
         version.Status.ShouldBe(CourseVersionStatus.Draft);
@@ -40,7 +40,7 @@ public class ReturnToDraftTests
         var version = InReview();
         store.Stored.Add(version);
 
-        var returned = await Handler().HandleAsync(new ReturnToDraft(version.Id, Approver, Reason), TestContext.Current.CancellationToken);
+        var returned = await Handler().HandleAsync(new ReturnToDraft(version.Id, Approver, ApproversName, Reason), TestContext.Current.CancellationToken);
 
         returned.IsSuccess.ShouldBeTrue();
         version.ReturnedBy.ShouldBe(Approver);
@@ -55,7 +55,7 @@ public class ReturnToDraftTests
         var version = InReview();
         store.Stored.Add(version);
 
-        var returned = await Handler().HandleAsync(new ReturnToDraft(version.Id, Approver, Reason), TestContext.Current.CancellationToken);
+        var returned = await Handler().HandleAsync(new ReturnToDraft(version.Id, Approver, ApproversName, Reason), TestContext.Current.CancellationToken);
 
         returned.IsSuccess.ShouldBeTrue();
         var record = store.Returns.ShouldHaveSingleItem();
@@ -67,21 +67,38 @@ public class ReturnToDraftTests
     }
 
     [Fact]
+    public async Task A_return_stores_the_returners_name_with_its_record()
+    {
+        var version = InReview();
+        store.Stored.Add(version);
+
+        var returned = await Handler().HandleAsync(new ReturnToDraft(version.Id, Reviewer, ReviewersName, Reason), TestContext.Current.CancellationToken);
+
+        returned.IsSuccess.ShouldBeTrue();
+        var record = store.Returns.ShouldHaveSingleItem();
+        record.ReturnedBy.ShouldBe(Reviewer);
+        record.ReturnedByName.ShouldBe(ReviewersName);
+        store.Commits.ShouldBe(1);
+    }
+
+    [Fact]
     public async Task A_second_return_adds_a_record_and_replaces_none()
     {
         var version = InReview();
         store.Stored.Add(version);
-        (await Handler().HandleAsync(new ReturnToDraft(version.Id, Reviewer, Reason), TestContext.Current.CancellationToken)).IsSuccess.ShouldBeTrue();
+        (await Handler().HandleAsync(new ReturnToDraft(version.Id, Reviewer, ReviewersName, Reason), TestContext.Current.CancellationToken)).IsSuccess.ShouldBeTrue();
         version.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
         time.Advance(TimeSpan.FromHours(1));
 
-        (await Handler().HandleAsync(new ReturnToDraft(version.Id, Approver, OtherReason), TestContext.Current.CancellationToken)).IsSuccess.ShouldBeTrue();
+        (await Handler().HandleAsync(new ReturnToDraft(version.Id, Approver, ApproversName, OtherReason), TestContext.Current.CancellationToken)).IsSuccess.ShouldBeTrue();
 
         store.Returns.Count.ShouldBe(2);
         store.Returns[0].ReturnedBy.ShouldBe(Reviewer);
+        store.Returns[0].ReturnedByName.ShouldBe(ReviewersName);
         store.Returns[0].Reason.ShouldBe(Reason);
         store.Returns[0].ReturnedAt.ShouldBe(Timestamp.From(Start));
         store.Returns[1].ReturnedBy.ShouldBe(Approver);
+        store.Returns[1].ReturnedByName.ShouldBe(ApproversName);
         store.Returns[1].Reason.ShouldBe(OtherReason);
         store.Returns[1].ReturnedAt.ShouldBe(Timestamp.From(Start.AddHours(1)));
         store.Returns[1].Id.ShouldNotBe(store.Returns[0].Id);
@@ -93,7 +110,7 @@ public class ReturnToDraftTests
         var version = DraftWithChapter(out _);
         store.Stored.Add(version);
 
-        var returned = await Handler().HandleAsync(new ReturnToDraft(version.Id, Reviewer, Reason), TestContext.Current.CancellationToken);
+        var returned = await Handler().HandleAsync(new ReturnToDraft(version.Id, Reviewer, ReviewersName, Reason), TestContext.Current.CancellationToken);
 
         returned.Error.Code.ShouldBe("editorial.not-in-review");
         returned.Error.Status.ShouldBe(HttpStatusCode.Conflict);
@@ -105,7 +122,7 @@ public class ReturnToDraftTests
     [Fact]
     public async Task A_version_that_does_not_exist_is_not_found()
     {
-        var returned = await Handler().HandleAsync(new ReturnToDraft(CourseVersionId.New(), Reviewer, Reason), TestContext.Current.CancellationToken);
+        var returned = await Handler().HandleAsync(new ReturnToDraft(CourseVersionId.New(), Reviewer, ReviewersName, Reason), TestContext.Current.CancellationToken);
 
         returned.Error.Code.ShouldBe("editorial.course-version-not-found");
         returned.Error.Status.ShouldBe(HttpStatusCode.NotFound);
@@ -121,7 +138,7 @@ public class ReturnToDraftTests
         var lostRace = Substitute.For<IEditorialUnitOfWork>();
         lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(false);
 
-        var returned = await new ReturnToDraftHandler(store, lostRace, time).HandleAsync(new ReturnToDraft(version.Id, Reviewer, Reason), TestContext.Current.CancellationToken);
+        var returned = await new ReturnToDraftHandler(store, lostRace, time).HandleAsync(new ReturnToDraft(version.Id, Reviewer, ReviewersName, Reason), TestContext.Current.CancellationToken);
 
         returned.Error.ShouldBe(new CourseVersionChanged(version.Id.Value));
         returned.Error.Code.ShouldBe("editorial.course-version-changed");

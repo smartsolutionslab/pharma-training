@@ -132,6 +132,9 @@ public sealed record DueDate : IValueObject<DateOnly>
     public static DueDate On(CalendarDate date) => new(date.Value);
 
     public CalendarDate AsDate() => CalendarDate.From(Value);
+
+    /// <summary>Whether a completion at that instant is late: its day in Germany lies after the due date.</summary>
+    public bool IsMissedBy(Timestamp completedAt) => completedAt.DayInGermany() > AsDate();
 }
 
 /// <summary>How often an assignment repeats, in months: 12 for the yearly briefing, 24 for first aid.</summary>
@@ -276,6 +279,9 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
 
     public Timestamp? StartedAt { get; private set; }
 
+    /// <summary>When the lock or unlock last applied happened; null until the first (ADR 0019).</summary>
+    public Timestamp? TestAccessChangedAt { get; private set; }
+
     public Timestamp? CompletedAt { get; private set; }
 
     public CertificateId? Certificate { get; private set; }
@@ -349,25 +355,57 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
         return Success(Unit.Value);
     }
 
-    /// <summary>The learner opened the course (LearningSessionStarted). Late or repeated events change nothing.</summary>
+    /// <summary>
+    /// The learner opened the course (LearningSessionStarted): an open assignment goes in progress. The earliest start
+    /// wins, also one before the assignment (owner decision on #247); a start of a completed or cancelled one changes
+    /// nothing. A start does not unlock the test: only relearned content does (owner decision on #32, ADR 0019).
+    /// </summary>
     public void MarkStarted(Timestamp at)
     {
+        if (!IsActive)
+        {
+            return;
+        }
+
         if (Status == AssignmentStatus.Open)
         {
             Status = AssignmentStatus.InProgress;
             StartedAt = at;
         }
-
-        TestAccess = TestAccess.Available; // a new session after a lock unlocks the test
+        else if (StartedAt is null || at < StartedAt)
+        {
+            StartedAt = at;
+        }
     }
 
-    /// <summary>Three failed attempts (AttemptsExhausted).</summary>
-    public void MarkLocked()
+    /// <summary>
+    /// Three failed attempts (AttemptsExhausted) lock the test unless a later lock or unlock was applied; on the same
+    /// instant the lock wins (ADR 0019). A lock while open is kept and shows once in progress.
+    /// </summary>
+    public void MarkLocked(Timestamp at)
     {
-        if (Status == AssignmentStatus.InProgress)
+        if (!IsActive || at < AssignedAt || (TestAccessChangedAt is not null && at < TestAccessChangedAt))
         {
-            TestAccess = TestAccess.LockedAfterFailedAttempts;
+            return;
         }
+
+        TestAccess = TestAccess.LockedAfterFailedAttempts;
+        TestAccessChangedAt = at;
+    }
+
+    /// <summary>
+    /// The content was worked through again (ContentCompleted): the test is available unless a lock or unlock at the
+    /// same instant or later was applied (ADR 0019). It never changes the status.
+    /// </summary>
+    public void Unlock(Timestamp at)
+    {
+        if (!IsActive || at < AssignedAt || (TestAccessChangedAt is not null && at <= TestAccessChangedAt))
+        {
+            return;
+        }
+
+        TestAccess = TestAccess.Available;
+        TestAccessChangedAt = at;
     }
 
     /// <summary>
@@ -421,7 +459,7 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
         Status switch
         {
             AssignmentStatus.Cancelled => AssignmentState.Cancelled,
-            AssignmentStatus.Completed when CompletedAt!.DayInGermany() > DueDate.AsDate() => AssignmentState.CompletedLate,
+            AssignmentStatus.Completed when DueDate.IsMissedBy(CompletedAt!) => AssignmentState.CompletedLate,
             AssignmentStatus.Completed => AssignmentState.Completed,
             _ when today > DueDate.AsDate() => AssignmentState.Overdue,
             AssignmentStatus.InProgress when TestAccess == TestAccess.LockedAfterFailedAttempts => AssignmentState.Locked,
@@ -442,7 +480,7 @@ public sealed record AssignmentDueDateChanged(AssignmentId Assignment, DueDate N
 [DeliberatelyUnhandled("Nobody outside Compliance reacts in MVP 1.")]
 public sealed record AssignmentCancelled(AssignmentId Assignment, PersonId Learner, PharmacyId Pharmacy) : IDomainEvent;
 
-[DeliberatelyUnhandled("Nothing completes an assignment before #33; #31 replaces this with the follow-up reaction.")]
+[DeliberatelyUnhandled("The CertificateIssuedV1 consumer announces it as AssignmentCompletedV1 in the completing commit; #31 replaces this with the follow-up reaction.")]
 public sealed record AssignmentCompleted(
     AssignmentId Assignment,
     PersonId Learner,
