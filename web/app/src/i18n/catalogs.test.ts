@@ -69,12 +69,13 @@ test.each([
   expect([catalogs.de.get(key), catalogs.en.get(key)]).toEqual([text, text]);
 });
 
-// What vue-i18n makes of a message is the message itself, its placeholders aside: a | (plural), @: or @. (a linked
-// message), $ or a brace that is no placeholder would change what the user reads, or fail to compile.
+// What vue-i18n makes of a message is the message itself, its placeholders aside: a stray | (plural), @: or @. (a
+// linked message), $ or a brace that is no placeholder would change what the user reads, or fail to compile. A
+// deliberate plural is checked choice by choice below.
 const translate = i18n.global.t as unknown as (
   key: string,
   named: Record<string, string>,
-  options: { locale: Language },
+  options: { locale: Language; plural?: number },
 ) => string;
 
 describe.each([
@@ -85,8 +86,19 @@ describe.each([
     '%s reads as written once its placeholders are filled in',
     (key, message) => {
       const named = Object.fromEntries(placeholders(message).map((name) => [name, `{${name}}`]));
+      // A deliberate plural lists its choices separated by " | ": two (one, several) or three (none, one, several).
+      // Each choice must read as written for its count; any other "|" is a slip of vue-i18n's syntax.
+      const choices = String(message).split(' | ');
+      if (choices.length === 1) {
+        expect(translate(String(key), named, { locale })).toBe(message);
+        return;
+      }
 
-      expect(translate(String(key), named, { locale })).toBe(message);
+      expect([2, 3]).toContain(choices.length);
+      const counts = choices.length === 2 ? [1, 2] : [0, 1, 2];
+      choices.forEach((choice, index) => {
+        expect(translate(String(key), named, { locale, plural: counts[index] })).toBe(choice);
+      });
     },
   );
 });

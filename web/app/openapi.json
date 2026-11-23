@@ -449,6 +449,46 @@
         }
       }
     },
+    "/compliance/pharmacies/{id}/assignments": {
+      "post": {
+        "tags": [
+          "AssignmentEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignComplianceCourseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComplianceCourseAssignmentDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/compliance/permissions/manage": {
       "get": {
         "tags": [
@@ -461,6 +501,63 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PermissionDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/compliance/pharmacies/{id}/members": {
+      "get": {
+        "tags": [
+          "MemberEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "maximum": 21474837,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "jobFunction",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/ComplianceJobFunction"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedResultOfComplianceMemberDto"
                 }
               }
             }
@@ -812,6 +909,36 @@
         }
       }
     },
+    "/editorial/course-versions/{id}/content-review": {
+      "post": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorialContentReviewDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/editorial/courses": {
       "post": {
         "tags": [
@@ -827,6 +954,37 @@
           },
           "required": true
         },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/editorial/course-versions/{id}/next": {
+      "post": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": "Created",
@@ -913,6 +1071,56 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/EditorialCourseVersionDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/editorial/course-versions/{id}/returns": {
+      "get": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "maximum": 21474837,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedResultOfEditorialCourseVersionReturnDto"
                 }
               }
             }
@@ -1185,6 +1393,36 @@
         }
       }
     },
+    "/editorial/course-versions/{id}/test-draft": {
+      "post": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorialTestDraftDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/editorial/course-versions/{id}/uploads": {
       "post": {
         "tags": [
@@ -1225,6 +1463,136 @@
         }
       }
     },
+    "/editorial/course-versions/{id}/submit": {
+      "post": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Unit"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/editorial/course-versions/{id}/return": {
+      "post": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReturnEditorialCourseVersionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Unit"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/editorial/course-versions/{id}/publish": {
+      "post": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Unit"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/editorial/course-versions/{id}/retire": {
+      "post": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Unit"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/learning/permissions/manage": {
       "get": {
         "tags": [
@@ -1237,6 +1605,145 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PermissionDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/learning/media/{chapterId}": {
+      "get": {
+        "tags": [
+          "LearningMediaEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "chapterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningMediaUrlDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/learning/sessions": {
+      "post": {
+        "tags": [
+          "LearningSessionEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartLearningSessionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningSessionDto"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningSessionDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/learning/sessions/{id}": {
+      "get": {
+        "tags": [
+          "LearningSessionEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningSessionDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/learning/sessions/{id}/progress": {
+      "post": {
+        "tags": [
+          "LearningSessionEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportLearningProgressRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningSessionDto"
                 }
               }
             }
@@ -1363,6 +1870,54 @@
       }
     },
     "/organisation/pharmacies/{id}/invitations": {
+      "get": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "maximum": 21474837,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedResultOfPharmacyInvitationDto"
+                }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "tags": [
           "Host"
@@ -1474,6 +2029,86 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Unit"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organisation/invitations/accept": {
+      "post": {
+        "tags": [
+          "Host"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptOrganisationInvitationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organisation/pharmacies/{id}/members": {
+      "get": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "maximum": 21474837,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedResultOfPharmacyMemberDto"
                 }
               }
             }
@@ -1770,6 +2405,20 @@
   },
   "components": {
     "schemas": {
+      "AcceptOrganisationInvitationRequest": {
+        "required": [
+          "token"
+        ],
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "AssessmentSampleDto": {
         "required": [
           "id",
@@ -1783,6 +2432,50 @@
           },
           "name": {
             "type": "string"
+          }
+        }
+      },
+      "AssignComplianceCourseRequest": {
+        "required": [
+          "courseId",
+          "personIds",
+          "dueDate",
+          "recurrenceMonths"
+        ],
+        "type": "object",
+        "properties": {
+          "courseId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "personIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "dueDate": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date"
+          },
+          "recurrenceMonths": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           }
         }
       },
@@ -1972,6 +2665,93 @@
           },
           "role": {
             "$ref": "#/components/schemas/OrganisationMembershipRole"
+          }
+        }
+      },
+      "ComplianceAssignedLearnerDto": {
+        "required": [
+          "personId",
+          "assignmentId"
+        ],
+        "type": "object",
+        "properties": {
+          "personId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "assignmentId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "ComplianceCourseAssignmentDto": {
+        "required": [
+          "assigned",
+          "refused"
+        ],
+        "type": "object",
+        "properties": {
+          "assigned": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComplianceAssignedLearnerDto"
+            }
+          },
+          "refused": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComplianceRefusedLearnerDto"
+            }
+          }
+        }
+      },
+      "ComplianceJobFunction": {
+        "enum": [
+          "Pharmacist",
+          "Pta",
+          "Pka",
+          "Trainee",
+          "Other"
+        ]
+      },
+      "ComplianceMemberDto": {
+        "required": [
+          "personId",
+          "name",
+          "jobFunction"
+        ],
+        "type": "object",
+        "properties": {
+          "personId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "jobFunction": {
+            "$ref": "#/components/schemas/ComplianceJobFunction"
+          }
+        }
+      },
+      "ComplianceRefusedLearnerDto": {
+        "required": [
+          "personId",
+          "code",
+          "message"
+        ],
+        "type": "object",
+        "properties": {
+          "personId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
           }
         }
       },
@@ -2227,11 +3007,7 @@
       },
       "EditorialChapterRequest": {
         "required": [
-          "title",
-          "kind",
-          "text",
-          "file",
-          "durationSeconds"
+          "title"
         ],
         "type": "object",
         "properties": {
@@ -2269,7 +3045,8 @@
           "Text",
           "Pdf",
           "Video"
-        ]
+        ],
+        "default": "Text"
       },
       "EditorialChapterUploadDto": {
         "required": [
@@ -2302,6 +3079,55 @@
               "string"
             ],
             "format": "int64"
+          }
+        }
+      },
+      "EditorialContentHintDto": {
+        "required": [
+          "chapterId",
+          "kind",
+          "text"
+        ],
+        "type": "object",
+        "properties": {
+          "chapterId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/EditorialContentHintKind"
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "EditorialContentHintKind": {
+        "enum": [
+          "Gap",
+          "Contradiction",
+          "Readability"
+        ]
+      },
+      "EditorialContentReviewDto": {
+        "required": [
+          "reviewedChapterIds",
+          "hints"
+        ],
+        "type": "object",
+        "properties": {
+          "reviewedChapterIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "hints": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorialContentHintDto"
+            }
           }
         }
       },
@@ -2354,6 +3180,32 @@
           },
           "blueprint": {
             "$ref": "#/components/schemas/EditorialTestBlueprintDto"
+          }
+        }
+      },
+      "EditorialCourseVersionReturnDto": {
+        "required": [
+          "id",
+          "returnedBy",
+          "returnedAt",
+          "reason"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "returnedBy": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "returnedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reason": {
+            "type": "string"
           }
         }
       },
@@ -2411,7 +3263,9 @@
           "provenance",
           "review",
           "reviewedBy",
-          "reviewedAt"
+          "reviewedAt",
+          "approvedByName",
+          "approvedAt"
         ],
         "type": "object",
         "properties": {
@@ -2457,6 +3311,19 @@
             "format": "uuid"
           },
           "reviewedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "approvedByName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "approvedAt": {
             "type": [
               "null",
               "string"
@@ -2560,6 +3427,35 @@
           }
         }
       },
+      "EditorialTestDraftDto": {
+        "required": [
+          "draftedQuestionIds",
+          "leftOutChapterIds"
+        ],
+        "type": "object",
+        "properties": {
+          "draftedQuestionIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "leftOutChapterIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        }
+      },
+      "EditorialUploadKind": {
+        "enum": [
+          "Pdf",
+          "Video"
+        ]
+      },
       "EditorialUploadRequest": {
         "required": [
           "kind"
@@ -2567,7 +3463,7 @@
         "type": "object",
         "properties": {
           "kind": {
-            "$ref": "#/components/schemas/EditorialChapterRequestKind"
+            "$ref": "#/components/schemas/EditorialUploadKind"
           }
         }
       },
@@ -2593,6 +3489,38 @@
           }
         }
       },
+      "LearningChapterKind": {
+        "enum": [
+          "Text",
+          "Pdf",
+          "Video"
+        ]
+      },
+      "LearningMediaUrlDto": {
+        "required": [
+          "url",
+          "expiresAt",
+          "contentType",
+          "kind"
+        ],
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "contentType": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/LearningChapterKind"
+          }
+        }
+      },
       "LearningSampleDto": {
         "required": [
           "id",
@@ -2608,6 +3536,84 @@
             "type": "string"
           }
         }
+      },
+      "LearningSessionChapterDto": {
+        "required": [
+          "chapterId",
+          "position",
+          "kind",
+          "progressPercent",
+          "completed"
+        ],
+        "type": "object",
+        "properties": {
+          "chapterId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "position": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/LearningChapterKind"
+          },
+          "progressPercent": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "completed": {
+            "type": "boolean"
+          }
+        }
+      },
+      "LearningSessionDto": {
+        "required": [
+          "id",
+          "courseId",
+          "courseVersionId",
+          "status",
+          "chapters"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "courseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "courseVersionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "$ref": "#/components/schemas/LearningSessionStatus"
+          },
+          "chapters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LearningSessionChapterDto"
+            }
+          }
+        }
+      },
+      "LearningSessionStatus": {
+        "enum": [
+          "InProgress",
+          "ContentCompleted",
+          "Finished"
+        ]
       },
       "MyPharmacyDto": {
         "required": [
@@ -2841,6 +3847,47 @@
           }
         }
       },
+      "PagedResultOfComplianceMemberDto": {
+        "required": [
+          "items",
+          "totalCount",
+          "page",
+          "pageSize"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComplianceMemberDto"
+            }
+          },
+          "totalCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "page": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "pageSize": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "PagedResultOfComplianceSampleDto": {
         "required": [
           "items",
@@ -2854,6 +3901,47 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ComplianceSampleDto"
+            }
+          },
+          "totalCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "page": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "pageSize": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "PagedResultOfEditorialCourseVersionReturnDto": {
+        "required": [
+          "items",
+          "totalCount",
+          "page",
+          "pageSize"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorialCourseVersionReturnDto"
             }
           },
           "totalCount": {
@@ -3087,6 +4175,88 @@
           }
         }
       },
+      "PagedResultOfPharmacyInvitationDto": {
+        "required": [
+          "items",
+          "totalCount",
+          "page",
+          "pageSize"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PharmacyInvitationDto"
+            }
+          },
+          "totalCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "page": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "pageSize": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "PagedResultOfPharmacyMemberDto": {
+        "required": [
+          "items",
+          "totalCount",
+          "page",
+          "pageSize"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PharmacyMemberDto"
+            }
+          },
+          "totalCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "page": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "pageSize": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "PermissionDto": {
         "required": [
           "name"
@@ -3095,6 +4265,69 @@
         "properties": {
           "name": {
             "type": "string"
+          }
+        }
+      },
+      "PharmacyInvitationDto": {
+        "required": [
+          "membershipId",
+          "email",
+          "jobFunction",
+          "role",
+          "expiresAt"
+        ],
+        "type": "object",
+        "properties": {
+          "membershipId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "email": {
+            "type": "string"
+          },
+          "jobFunction": {
+            "$ref": "#/components/schemas/OrganisationJobFunction"
+          },
+          "role": {
+            "$ref": "#/components/schemas/OrganisationMembershipRole"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PharmacyMemberDto": {
+        "required": [
+          "membershipId",
+          "personId",
+          "name",
+          "jobFunction",
+          "role",
+          "since"
+        ],
+        "type": "object",
+        "properties": {
+          "membershipId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "personId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "jobFunction": {
+            "$ref": "#/components/schemas/OrganisationJobFunction"
+          },
+          "role": {
+            "$ref": "#/components/schemas/OrganisationMembershipRole"
+          },
+          "since": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
@@ -3138,6 +4371,51 @@
           }
         }
       },
+      "ReportLearningProgressRequest": {
+        "required": [
+          "chapterId",
+          "percent"
+        ],
+        "type": "object",
+        "properties": {
+          "chapterId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "percent": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "ReturnEditorialCourseVersionRequest": {
+        "required": [
+          "reason"
+        ],
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
+      "StartLearningSessionRequest": {
+        "required": [
+          "courseVersionId"
+        ],
+        "type": "object",
+        "properties": {
+          "courseVersionId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
       "Unit": {
         "type": "object"
       }
@@ -3146,6 +4424,18 @@
   "tags": [
     {
       "name": "Host"
+    },
+    {
+      "name": "AssignmentEndpoints"
+    },
+    {
+      "name": "MemberEndpoints"
+    },
+    {
+      "name": "LearningMediaEndpoints"
+    },
+    {
+      "name": "LearningSessionEndpoints"
     }
   ]
 }

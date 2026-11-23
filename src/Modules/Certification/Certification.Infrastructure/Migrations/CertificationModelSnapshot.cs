@@ -16,7 +16,7 @@ partial class CertificationModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261118000000_CreateSamples";
+    public override string LastMigrationId => "20261123135451_IssueCertificates";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -27,6 +27,166 @@ partial class CertificationModelSnapshot : ModelSnapshot
             .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
         NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Certificates.Certificate", b =>
+            {
+                b.Property<Guid>("Id")
+                    .HasColumnType("uuid")
+                    .HasColumnName("id");
+
+                b.Property<Guid>("Attempt")
+                    .HasColumnType("uuid")
+                    .HasColumnName("attempt_id");
+
+                b.Property<Guid>("Course")
+                    .HasColumnType("uuid")
+                    .HasColumnName("course_id");
+
+                b.Property<string>("CourseTitle")
+                    .IsRequired()
+                    .HasMaxLength(150)
+                    .HasColumnType("character varying(150)")
+                    .HasColumnName("course_title");
+
+                b.Property<Guid>("CourseVersion")
+                    .HasColumnType("uuid")
+                    .HasColumnName("course_version_id");
+
+                b.Property<string>("Document")
+                    .IsRequired()
+                    .HasMaxLength(16)
+                    .HasColumnType("character varying(16)")
+                    .HasColumnName("document_state");
+
+                b.Property<string>("DocumentLocation")
+                    .HasMaxLength(1024)
+                    .HasColumnType("character varying(1024)")
+                    .HasColumnName("document_location");
+
+                b.Property<Guid>("Holder")
+                    .HasColumnType("uuid")
+                    .HasColumnName("holder_id");
+
+                b.Property<string>("HolderName")
+                    .IsRequired()
+                    .HasMaxLength(100)
+                    .HasColumnType("character varying(100)")
+                    .HasColumnName("holder_name");
+
+                b.Property<DateTimeOffset>("IssuedAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("issued_at");
+
+                b.Property<int>("Score")
+                    .HasColumnType("integer")
+                    .HasColumnName("score_percent");
+
+                b.Property<DateOnly>("ValidUntil")
+                    .HasColumnType("date")
+                    .HasColumnName("valid_until");
+
+                b.Property<string>("VerificationCode")
+                    .IsRequired()
+                    .HasMaxLength(64)
+                    .HasColumnType("character varying(64)")
+                    .HasColumnName("verification_code");
+
+                b.HasKey("Id")
+                    .HasName("pk_certificates");
+
+                b.HasIndex("Attempt")
+                    .IsUnique()
+                    .HasDatabaseName("ix_certificates_attempt_id");
+
+                b.HasIndex("VerificationCode")
+                    .IsUnique()
+                    .HasDatabaseName("ix_certificates_verification_code");
+
+                b.ToTable("certificates", "certification");
+            });
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Courses.CourseVersion", b =>
+            {
+                b.Property<Guid>("Id")
+                    .HasColumnType("uuid")
+                    .HasColumnName("id");
+
+                b.Property<Guid>("Course")
+                    .HasColumnType("uuid")
+                    .HasColumnName("course_id");
+
+                b.Property<string>("Title")
+                    .IsRequired()
+                    .HasMaxLength(150)
+                    .HasColumnType("character varying(150)")
+                    .HasColumnName("title");
+
+                b.Property<int>("Validity")
+                    .HasColumnType("integer")
+                    .HasColumnName("validity_months");
+
+                b.HasKey("Id")
+                    .HasName("pk_course_versions");
+
+                b.ToTable("course_versions", "certification");
+            });
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Memberships.Membership", b =>
+            {
+                b.Property<Guid>("Id")
+                    .HasColumnType("uuid")
+                    .HasColumnName("id");
+
+                b.Property<string>("HolderName")
+                    .IsRequired()
+                    .HasMaxLength(100)
+                    .HasColumnType("character varying(100)")
+                    .HasColumnName("holder_name");
+
+                b.Property<Guid>("Person")
+                    .HasColumnType("uuid")
+                    .HasColumnName("person_id");
+
+                b.Property<Guid>("Pharmacy")
+                    .HasColumnType("uuid")
+                    .HasColumnName("pharmacy_id");
+
+                b.Property<DateTimeOffset>("StartedAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("started_at");
+
+                b.HasKey("Id")
+                    .HasName("pk_memberships");
+
+                b.HasIndex("Person")
+                    .HasDatabaseName("ix_memberships_person_id");
+
+                b.ToTable("memberships", "certification");
+            });
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Memberships.MembershipEnding", b =>
+            {
+                b.Property<Guid>("Id")
+                    .HasColumnType("uuid")
+                    .HasColumnName("id");
+
+                b.Property<DateTimeOffset>("EndedAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("ended_at");
+
+                b.Property<Guid>("Person")
+                    .HasColumnType("uuid")
+                    .HasColumnName("person_id");
+
+                b.Property<Guid>("Pharmacy")
+                    .HasColumnType("uuid")
+                    .HasColumnName("pharmacy_id");
+
+                b.HasKey("Id")
+                    .HasName("pk_membership_endings");
+
+                b.ToTable("membership_endings", "certification");
+            });
 
         modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Samples.Sample", b =>
             {

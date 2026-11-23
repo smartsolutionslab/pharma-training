@@ -83,6 +83,36 @@ public class PublishedCourseTests
     }
 
     [Fact]
+    public void A_retirement_that_arrived_before_its_version_retires_it_once_it_arrives()
+    {
+        var first = Version(1, "Kühlkette 1");
+        var second = Version(2, "Kühlkette 2");
+        var retirementOfSecond = Retirement(second.Id);
+
+        var beforeItArrived = PublishedCourse.Of(course, [first], [retirementOfSecond]).Value;
+        var onceItArrived = PublishedCourse.Of(course, [first, second], [retirementOfSecond]).Value;
+
+        beforeItArrived.State.ShouldBe(PublishedCourseState.Available);
+        beforeItArrived.CurrentVersion().Value.ShouldBeSameAs(first);
+        onceItArrived.State.ShouldBe(PublishedCourseState.Retired);
+        onceItArrived.CurrentVersion().HasValue.ShouldBeFalse();
+        onceItArrived.Latest.ShouldBeSameAs(second);
+    }
+
+    [Fact]
+    public void A_retirement_of_an_older_version_that_arrived_first_leaves_the_highest_current()
+    {
+        var first = Version(1, "Kühlkette 1");
+        var second = Version(2, "Kühlkette 2");
+        var retirementOfFirst = Retirement(first.Id);
+
+        var published = PublishedCourse.Of(course, [first, second], [retirementOfFirst]).Value;
+
+        published.State.ShouldBe(PublishedCourseState.Available);
+        published.CurrentVersion().Value.ShouldBeSameAs(second);
+    }
+
+    [Fact]
     public void A_version_of_another_course_is_refused()
     {
         var other = CourseVersion.Published(CourseVersionId.From(Guid.CreateVersion7()), CourseId.From(Guid.CreateVersion7()), VersionNumber.From(1), CourseTitle.From("Hygiene"), ValidityMonths.From(12));

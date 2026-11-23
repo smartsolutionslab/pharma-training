@@ -76,6 +76,60 @@ public class ReplaceFileChapterTests
     }
 
     [Fact]
+    public async Task A_chapter_given_the_file_another_chapter_of_the_version_holds_is_refused_as_in_use()
+    {
+        var version = DraftWithChapter(out var text);
+        store.Stored.Add(version);
+        var file = IssuedName(version.Id, ".pdf");
+        blobs.Upload(file, "application/pdf", 1024);
+        var pdf = ChapterId.New();
+        version.AddChapter(Chapter.OfPdf(pdf, ChapterTitle.From("Hygieneplan"), BlobReference.From(file))).IsSuccess.ShouldBeTrue();
+
+        var replaced = await Handler().HandleAsync(Command(version.Id, text, ChapterKind.Pdf, file), TestContext.Current.CancellationToken);
+
+        ShouldBeRefused(replaced.IsFailure ? replaced.Error : null, "editorial.file-in-use", HttpStatusCode.Conflict, "one blob is the file of one chapter of a version");
+        version.Chapters.Single(chapter => chapter.Id == text).Kind.ShouldBe(ChapterKind.Text);
+        version.Chapters.Single(chapter => chapter.Id == pdf).File.ShouldBe(BlobReference.From(file));
+        store.Commits.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task A_chapter_that_keeps_its_own_uploaded_file_is_replaced_although_it_holds_that_file()
+    {
+        var version = Draft();
+        store.Stored.Add(version);
+        var file = IssuedName(version.Id, ".pdf");
+        blobs.Upload(file, "application/pdf", 1024);
+        var pdf = ChapterId.New();
+        version.AddChapter(Chapter.OfPdf(pdf, ChapterTitle.From("Hygieneplan"), BlobReference.From(file))).IsSuccess.ShouldBeTrue();
+
+        var replaced = await Handler().HandleAsync(
+            new ReplaceFileChapter(version.Id, pdf, ChapterTitle.From("Hygieneplan 2028"), ChapterKind.Pdf, BlobReference.From(file), null),
+            TestContext.Current.CancellationToken);
+
+        replaced.IsSuccess.ShouldBeTrue(replaced.IsFailure ? replaced.Error.Code : string.Empty);
+        var stored = version.Chapters.ShouldHaveSingleItem();
+        stored.Title.ShouldBe(ChapterTitle.From("Hygieneplan 2028"));
+        stored.File.ShouldBe(BlobReference.From(file));
+        store.Commits.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task Html_declared_as_a_pdf_is_refused_and_the_chapter_stays_as_it_was()
+    {
+        var version = DraftWithChapter(out var chapter);
+        store.Stored.Add(version);
+        var file = IssuedName(version.Id, ".pdf");
+        blobs.Upload(file, "application/pdf", 1024, content: InMemoryStoredBlobs.HtmlStart);
+
+        var replaced = await Handler().HandleAsync(Command(version.Id, chapter, ChapterKind.Pdf, file), TestContext.Current.CancellationToken);
+
+        ShouldBeRefused(replaced.IsFailure ? replaced.Error : null, "editorial.upload-not-accepted", HttpStatusCode.BadRequest, "the declared content type is the uploader's word, not the file's");
+        version.Chapters.Single().Kind.ShouldBe(ChapterKind.Text);
+        store.Commits.ShouldBe(0);
+    }
+
+    [Fact]
     public async Task A_name_issued_for_another_version_than_the_chapters_current_file_is_refused()
     {
         var (next, chapter, _) = NextOfPublishedWithPdf();
@@ -204,8 +258,45 @@ public class ReplaceFileChapterTests
         store.Commits.ShouldBe(0);
     }
 
+    [Fact]
+    public async Task A_file_a_chapter_copied_into_the_version_holds_is_in_use_without_asking_the_storage()
+    {
+        var (next, copied, file) = NextOfPublishedWithPdf();
+        var text = ChapterId.New();
+        next.AddChapter(TextChapter(text, "Flächendesinfektion", "Wischen.")).IsSuccess.ShouldBeTrue();
+        store.Stored.Add(next);
+
+        var replaced = await Handler().HandleAsync(Command(next.Id, text, ChapterKind.Pdf, file.Value), TestContext.Current.CancellationToken);
+
+        ShouldBeRefused(replaced.IsFailure ? replaced.Error : null, "editorial.file-in-use", HttpStatusCode.Conflict, "the copied chapter holds the file, which sits under the version it was copied from");
+        blobs.Lookups.ShouldBe(0, "a file the version already holds is in use whatever the storage would say");
+        blobs.StartReads.ShouldBe(0);
+        next.Chapters.Select(chapter => (chapter.Id, chapter.Kind)).ShouldBe([(copied, ChapterKind.Pdf), (text, ChapterKind.Text)]);
+        store.Commits.ShouldBe(0);
+    }
+
+    [Theory]
+    [InlineData(ChapterKind.Pdf, ".pdf")]
+    [InlineData(ChapterKind.Video, ".mp4")]
+    public async Task A_file_another_chapter_holds_is_in_use_even_when_the_storage_has_no_such_blob(ChapterKind kind, string extension)
+    {
+        var version = DraftWithChapter(out var text);
+        var holder = ChapterId.New();
+        var file = BlobReference.From(IssuedName(version.Id, extension));
+        version.AddChapter(FileChapter(holder, kind, file)).IsSuccess.ShouldBeTrue();
+        store.Stored.Add(version);
+
+        var replaced = await Handler().HandleAsync(Command(version.Id, text, kind, file.Value, Duration(kind)), TestContext.Current.CancellationToken);
+
+        ShouldBeRefused(replaced.IsFailure ? replaced.Error : null, "editorial.file-in-use", HttpStatusCode.Conflict, "another chapter of the version holds the file; the in-use check comes before the storage's");
+        blobs.Lookups.ShouldBe(0);
+        blobs.StartReads.ShouldBe(0);
+        version.Chapters.Select(chapter => (chapter.Id, chapter.Kind)).ShouldBe([(text, ChapterKind.Text), (holder, kind)]);
+        store.Commits.ShouldBe(0);
+    }
+
     /// <summary>The next draft of a published version whose one chapter is a PDF, named under the published version.</summary>
-    private static (CourseVersion Next, ChapterId Chapter, BlobReference File) NextOfPublishedWithPdf()
+    internal static (CourseVersion Next, ChapterId Chapter, BlobReference File) NextOfPublishedWithPdf()
     {
         var first = Draft();
         var chapter = ChapterId.New();
@@ -213,7 +304,7 @@ public class ReplaceFileChapterTests
         first.AddChapter(Chapter.OfPdf(chapter, ChapterTitle.From("Hygieneplan"), file)).IsSuccess.ShouldBeTrue();
         first.SetBlueprint(new TestBlueprint(QuestionCount.From(1), ScorePercent.From(80), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
         var question = first.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
-        first.ApproveQuestion(question, Author, Now).IsSuccess.ShouldBeTrue();
+        first.ApproveQuestion(question, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
         first.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
         first.Publish(Reviewer, ReviewPolicy.FourEyes, Now).IsSuccess.ShouldBeTrue();
         var next = first.DraftNext(CourseVersionId.New(), Author, ChapterId.New, QuestionId.New, AnswerOptionId.New).Value;

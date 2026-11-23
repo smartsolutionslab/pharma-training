@@ -41,6 +41,31 @@ public class CourseVersionFailuresTests
     }
 
     [Fact]
+    public void A_refused_upload_says_what_it_is_not_without_naming_the_signatures_checked()
+    {
+        string[] checkedDetails = ["%PDF", "ftyp", "byte", "isom", "iso2", "mp41", "mp42", "avc1", "M4V", "dash"];
+
+        var refused = CourseVersionFailures.UploadNotAccepted();
+
+        refused.Code.ShouldBe("editorial.upload-not-accepted");
+        refused.Status.ShouldBe(HttpStatusCode.BadRequest);
+        refused.Message.ShouldNotBeNullOrWhiteSpace();
+        checkedDetails
+            .Where(detail => refused.Message.Contains(detail, StringComparison.OrdinalIgnoreCase))
+            .ShouldBeEmpty($"the message tells the uploader the file was refused, not how to forge one that passes: \"{refused.Message}\"");
+    }
+
+    [Fact]
+    public void What_a_caller_gets_wrong_about_a_return_is_a_bad_request_with_its_own_code()
+    {
+        var refused = CourseVersionFailures.InvalidReturnReason();
+
+        refused.Code.ShouldBe("editorial.invalid-return-reason");
+        refused.Status.ShouldBe(HttpStatusCode.BadRequest);
+        refused.Message.ShouldBe("A return's reason is 1 to 1000 characters after trimming, and holds no control or format characters but line breaks and tabs.");
+    }
+
+    [Fact]
     public void A_file_not_uploaded_yet_is_a_conflict_the_caller_may_retry()
     {
         CourseVersionFailures.UploadNotFound().Code.ShouldBe("editorial.upload-not-found");
@@ -52,6 +77,17 @@ public class CourseVersionFailuresTests
     {
         CourseVersionFailures.IdentityIncomplete().Code.ShouldBe("editorial.identity-incomplete");
         CourseVersionFailures.IdentityIncomplete().Status.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    /// <summary>The token is incomplete, not the request wrong: forbidden, like a caller without a subject (#205).</summary>
+    [Fact]
+    public void A_caller_whose_token_names_no_reviewer_is_forbidden()
+    {
+        var refused = CourseVersionFailures.ReviewerNameMissing();
+
+        refused.Code.ShouldBe("editorial.reviewer-name-missing");
+        refused.Status.ShouldBe(HttpStatusCode.Forbidden);
+        refused.Message.ShouldBe("The access token names no usable display name (claim `name`): it is missing, longer than 100 characters, or holds characters that cannot be shown.");
     }
 
     [Fact]
@@ -114,6 +150,40 @@ public class CourseVersionFailuresTests
         failure.ShouldBeOfType<DomainFailure>().Error.ShouldBe(error);
     }
 
+    [Fact]
+    public void A_question_beyond_the_maximum_is_a_conflict()
+    {
+        var error = new TooManyQuestions(Version);
+
+        var failure = CourseVersionFailures.From(error);
+
+        failure.Code.ShouldBe("editorial.too-many-questions");
+        failure.Status.ShouldBe(HttpStatusCode.Conflict);
+        failure.ShouldBeOfType<DomainFailure>().Error.ShouldBe(error);
+    }
+
+    [Fact]
+    public void A_blueprint_asking_for_too_few_questions_is_a_bad_request_with_the_question_count_code()
+    {
+        var error = new TooFewQuestions(QuestionCount.From(0));
+
+        var failure = CourseVersionFailures.From(error);
+
+        failure.Code.ShouldBe("editorial.invalid-question-count");
+        failure.Status.ShouldBe(HttpStatusCode.BadRequest);
+        failure.ShouldBeOfType<DomainFailure>().Error.ShouldBe(error);
+    }
+
+    [Fact]
+    public void A_question_count_out_of_range_reads_the_same_whether_the_endpoint_or_the_domain_refuses_it()
+    {
+        var fromEndpoint = CourseVersionFailures.InvalidQuestionCount();
+        var fromDomain = CourseVersionErrors.TooFewQuestions(QuestionCount.From(0));
+
+        fromEndpoint.Code.ShouldBe(fromDomain.Code);
+        fromEndpoint.Message.ShouldBe(fromDomain.Message);
+    }
+
     [Theory]
     [InlineData(nameof(TooFewOptions), "editorial.too-few-options")]
     [InlineData(nameof(SingleChoiceNeedsOneCorrect), "editorial.single-choice-one-correct")]
@@ -137,13 +207,25 @@ public class CourseVersionFailuresTests
     [InlineData(nameof(NoChapters), "editorial.no-chapters")]
     [InlineData(nameof(TestIncomplete), "editorial.test-incomplete")]
     [InlineData(nameof(QuestionNotApproved), "editorial.question-not-approved")]
-    [InlineData(nameof(FourEyesRequired), "editorial.four-eyes")]
     public void The_versions_state_rules_stay_a_conflict(string rule, string code)
     {
         var failure = CourseVersionFailures.From(Rule(rule));
 
         failure.Code.ShouldBe(code);
         failure.Status.ShouldBe(HttpStatusCode.Conflict);
+    }
+
+    /// <summary>The version is in the right state, only this caller may not publish it: forbidden, with its own code.</summary>
+    [Fact]
+    public void Four_eyes_answers_forbidden()
+    {
+        var error = CourseVersionErrors.FourEyesRequired(Version);
+
+        var failure = CourseVersionFailures.From(error);
+
+        failure.Code.ShouldBe("editorial.four-eyes");
+        failure.Status.ShouldBe(HttpStatusCode.Forbidden);
+        failure.ShouldBeOfType<DomainFailure>().Error.ShouldBe(error);
     }
 
     private static DomainError Rule(string rule) => rule switch

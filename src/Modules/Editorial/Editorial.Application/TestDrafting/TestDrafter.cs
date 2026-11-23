@@ -15,11 +15,20 @@ public static class TestDrafter
 {
     public const string SchemaName = "test_draft";
 
+    /// <summary>
+    /// The answer's output tokens allowed per question asked for, so a runaway answer is cut off rather than billed in
+    /// full. A sound question with four options is some 150 to 250 tokens of JSON, and gpt-5-mini counts its reasoning
+    /// against the same limit, so 1,280 leaves ample room; at <see cref="QuestionCount.Maximum"/> questions it is 64,000,
+    /// half the model's own output ceiling.
+    /// </summary>
+    public const int MaxOutputTokensPerQuestion = 1_280;
+
     private static readonly JsonSerializerOptions AnswerJson = new(JsonSerializerDefaults.Web)
     {
         RespectNullableAnnotations = true,
         RespectRequiredConstructorParameters = true,
         TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+        NumberHandling = JsonNumberHandling.Strict,
         Converters = { new JsonStringEnumConverter<TestDraftAnswerType>(namingPolicy: null, allowIntegerValues: false) },
     };
 
@@ -32,16 +41,20 @@ public static class TestDrafter
         Ensure.That(model).IsNotNull();
         Ensure.That(request).IsNotNull();
 
-        var options = new ChatOptions { ResponseFormat = ResponseFormat };
+        var options = new ChatOptions
+        {
+            ResponseFormat = ResponseFormat,
+            MaxOutputTokens = request.Questions.Value * MaxOutputTokensPerQuestion,
+        };
         var response = await model.GetResponseAsync(TestDraftPrompt.Messages(request), options, cancellationToken);
         return Read(response.Text);
     }
 
     /// <summary>
     /// The whole draft: the request from the version (refused before the model is called when it cannot be drafted),
-    /// the model's answer, and the drafted questions it maps onto. A failure returns no questions at all.
+    /// the model's answer, the drafted questions it maps onto and the chapters left out. A failure returns no questions at all.
     /// </summary>
-    public static async Task<Result<IReadOnlyList<DraftedQuestion>, ApiError>> DraftAsync(IChatClient model, CourseVersion version, CancellationToken cancellationToken)
+    public static async Task<Result<TestDraft, ApiError>> DraftAsync(IChatClient model, CourseVersion version, CancellationToken cancellationToken)
     {
         Ensure.That(model).IsNotNull();
         Ensure.That(version).IsNotNull();
@@ -58,7 +71,13 @@ public static class TestDrafter
             return Failure(answer.Error);
         }
 
-        return answer.Value.ToDraftedQuestions(request.Value);
+        var drafted = answer.Value.ToDraftedQuestions(request.Value);
+        if (drafted.IsFailure)
+        {
+            return Failure(drafted.Error);
+        }
+
+        return Success(new TestDraft(drafted.Value, request.Value.LeftOutChapters));
     }
 
     private static Result<TestDraftAnswer, ApiError> Read(string text)

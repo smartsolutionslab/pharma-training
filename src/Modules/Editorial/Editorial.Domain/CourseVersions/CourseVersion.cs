@@ -41,7 +41,8 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
 
     public IReadOnlyList<Chapter> Chapters => chapters;
 
-    public IReadOnlyList<Question> Questions => questions;
+    /// <summary>A read-only view: a cast does not lead back to the list behind it.</summary>
+    public IReadOnlyList<Question> Questions => questions.AsReadOnly();
 
     public PersonId CreatedBy { get; } = default!;
 
@@ -50,6 +51,15 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
     public PersonId? PublishedBy { get; private set; }
 
     public Timestamp? PublishedAt { get; private set; }
+
+    /// <summary>The editor who last returned the version; every return, with its reason, is a <see cref="CourseVersionReturn"/>.</summary>
+    public PersonId? ReturnedBy { get; private set; }
+
+    public Timestamp? ReturnedAt { get; private set; }
+
+    public PersonId? RetiredBy { get; private set; }
+
+    public Timestamp? RetiredAt { get; private set; }
 
     private bool IsDraft => Status == CourseVersionStatus.Draft;
 
@@ -101,6 +111,28 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         return Success(Unit.Value);
     }
 
+    /// <summary>
+    /// Whether the file may become the chapter's, before the storage is asked about it: the version is a draft and no
+    /// other chapter of it holds the file, whether an earlier add recorded it or a copy brought it from the version before.
+    /// </summary>
+    public Result<Unit, DomainError> AcceptsFile(ChapterId chapter, BlobReference file)
+    {
+        Ensure.That(file).IsNotNull();
+
+        var accepts = AcceptsUploads();
+        if (accepts.IsFailure)
+        {
+            return accepts;
+        }
+
+        if (IsHeldByAnotherChapter(file, chapter))
+        {
+            return Failure(CourseVersionErrors.FileInUse(Id, file));
+        }
+
+        return Success(Unit.Value);
+    }
+
     public Result<ChapterId, DomainError> AddChapter(Chapter chapter)
     {
         Ensure.That(chapter).IsNotNull();
@@ -108,6 +140,11 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         if (!IsDraft)
         {
             return Failure(CourseVersionErrors.NotADraft(Id, Status));
+        }
+
+        if (chapter.File is { } file && IsHeldByAnotherChapter(file, chapter.Id))
+        {
+            return Failure(CourseVersionErrors.FileInUse(Id, file));
         }
 
         chapters.Add(chapter);
@@ -127,6 +164,12 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         if (chapters.SingleOrDefault(chapter => chapter.Id == replacement.Id) is not { } stored)
         {
             return Failure(CourseVersionErrors.ChapterNotFound(Id, replacement.Id));
+        }
+
+        // The chapter's own file is no other's: a replacement that keeps it is no conflict.
+        if (replacement.File is { } file && IsHeldByAnotherChapter(file, replacement.Id))
+        {
+            return Failure(CourseVersionErrors.FileInUse(Id, file));
         }
 
         stored.Take(replacement);
@@ -205,9 +248,9 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
 
     /// <summary>
     /// Takes the LLM's draft of the whole test. Approved questions stay; the unreviewed ones are replaced, so a new
-    /// draft never throws away work an editor has signed off.
+    /// draft never throws away work an editor has signed off. Answers the drafted questions' new ids, in the draft's order.
     /// </summary>
-    public Result<Unit, DomainError> ApplyAiTestDraft(IReadOnlyList<DraftedQuestion> drafted, Func<QuestionId> newQuestionId, Func<AnswerOptionId> newOptionId)
+    public Result<IReadOnlyList<QuestionId>, DomainError> ApplyAiTestDraft(IReadOnlyList<DraftedQuestion> drafted, Func<QuestionId> newQuestionId, Func<AnswerOptionId> newOptionId)
     {
         Ensure.That(drafted).IsNotNull();
         Ensure.That(newQuestionId).IsNotNull();
@@ -227,10 +270,12 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
             return Failure(CourseVersionErrors.TooManyQuestions(Id));
         }
 
+        List<Question> added = [.. drafted.Select(draft => Question.From(newQuestionId(), draft, Provenance.AiDrafted, newOptionId))];
         questions.RemoveAll(question => question.Review == ReviewState.Unreviewed);
-        questions.AddRange(drafted.Select(draft => Question.From(newQuestionId(), draft, Provenance.AiDrafted, newOptionId)));
+        questions.AddRange(added);
         Raise(new AiTestDraftApplied(Id, QuestionCount.From(drafted.Count)));
-        return Success(Unit.Value);
+        IReadOnlyList<QuestionId> ids = [.. added.Select(question => question.Id)];
+        return Success(ids);
     }
 
     public Result<QuestionId, DomainError> AddQuestion(QuestionId id, DraftedQuestion draft, Func<AnswerOptionId> newOptionId)
@@ -296,8 +341,8 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         return Success(Unit.Value);
     }
 
-    /// <summary>An editor signs off a question: recorded with who and when, shown to auditors (story E7).</summary>
-    public Result<Unit, DomainError> ApproveQuestion(QuestionId id, PersonId editor, Timestamp now)
+    /// <summary>An editor signs off a question: recorded with who, under which display name, and when, shown to auditors (story E7, #205).</summary>
+    public Result<Unit, DomainError> ApproveQuestion(QuestionId id, PersonId editor, ReviewerName name, Timestamp now)
     {
         if (Status is not (CourseVersionStatus.Draft or CourseVersionStatus.InReview))
         {
@@ -309,32 +354,43 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
             return Failure(CourseVersionErrors.QuestionNotFound(Id, id));
         }
 
-        if (question.Defect(id) is { HasValue: true } defect)
+        if (question.Review == ReviewState.Approved)
         {
-            return Failure(defect.Value);
+            return Failure(CourseVersionErrors.QuestionAlreadyApproved(Id, id));
         }
 
-        question.Approve(editor, now);
+        // Every case of the workflow union is a DomainError, so the pattern always matches a defect.
+        if (question.Defect(id) is { HasValue: true } defect && defect.Value.Value is DomainError refusal)
+        {
+            return Failure(refusal);
+        }
+
+        question.Approve(editor, name, now);
         return Success(Unit.Value);
     }
 
     // ── Workflow ──
 
-    public Result<Unit, DomainError> SubmitForReview(PersonId editor)
+    public Result<Unit, CourseVersionWorkflowError> SubmitForReview(PersonId editor)
     {
         if (!IsDraft)
         {
-            return Failure(CourseVersionErrors.NotADraft(Id, Status));
+            return Failure(CourseVersionErrors.Workflow.NotADraft(Id, Status));
         }
 
         if (chapters.Count == 0)
         {
-            return Failure(CourseVersionErrors.NoChapters(Id));
+            return Failure(CourseVersionErrors.Workflow.NoChapters(Id));
+        }
+
+        if (questions.Count > QuestionCount.Maximum)
+        {
+            return Failure(CourseVersionErrors.Workflow.TooManyQuestions(Id));
         }
 
         if (questions.Count != Blueprint.Questions.Value)
         {
-            return Failure(CourseVersionErrors.TestIncomplete(Id, Blueprint.Questions, QuestionCount.From(questions.Count)));
+            return Failure(CourseVersionErrors.Workflow.TestIncomplete(Id, Blueprint.Questions, QuestionCount.From(questions.Count)));
         }
 
         SubmittedBy = editor;
@@ -343,36 +399,62 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         return Success(Unit.Value);
     }
 
-    public Result<Unit, DomainError> ReturnToDraft()
+    /// <summary>
+    /// Sends the version back to its editors and hands back the record of who did, when and why, which the caller stores
+    /// in the same save; the version keeps the latest editor and time. Returning is not bound by four eyes.
+    /// </summary>
+    public Result<CourseVersionReturn, CourseVersionWorkflowError> ReturnToDraft(PersonId editor, ReturnReason reason, Timestamp now)
     {
+        Ensure.That(reason).IsNotNull();
+
         if (Status != CourseVersionStatus.InReview)
         {
-            return Failure(CourseVersionErrors.NotInReview(Id, Status));
+            return Failure(CourseVersionErrors.Workflow.NotInReview(Id, Status));
         }
 
         Status = CourseVersionStatus.Draft;
-        return Success(Unit.Value);
+        ReturnedBy = editor;
+        ReturnedAt = now;
+        Raise(new CourseVersionReturned(Id, editor, reason));
+        return Success(new CourseVersionReturn(CourseVersionReturnId.New(), Id, editor, now, reason));
     }
 
     /// <summary>
     /// Publishes the version. Every question is approved and sound, and with <see cref="ReviewPolicy.FourEyes"/> the
-    /// publishing editor is not the one who submitted it. The Application supersedes the course's previous version.
+    /// publishing editor is neither the one who submitted it nor one who approved any of its questions, a question copied
+    /// from the previous version included. The Application supersedes the course's previous version.
     /// </summary>
-    public Result<Unit, DomainError> Publish(PersonId editor, ReviewPolicy policy, Timestamp now)
+    public Result<Unit, CourseVersionWorkflowError> Publish(PersonId editor, ReviewPolicy policy, Timestamp now)
     {
         if (Status != CourseVersionStatus.InReview)
         {
-            return Failure(CourseVersionErrors.NotInReview(Id, Status));
+            return Failure(CourseVersionErrors.Workflow.NotInReview(Id, Status));
+        }
+
+        // Checked here too, not left to SubmitForReview: a version loaded in review may hold rows its rules never took.
+        if (questions.Count > QuestionCount.Maximum)
+        {
+            return Failure(CourseVersionErrors.Workflow.TooManyQuestions(Id));
+        }
+
+        if (questions.Count != Blueprint.Questions.Value)
+        {
+            return Failure(CourseVersionErrors.Workflow.TestIncomplete(Id, Blueprint.Questions, QuestionCount.From(questions.Count)));
         }
 
         if (policy == ReviewPolicy.FourEyes && editor == SubmittedBy)
         {
-            return Failure(CourseVersionErrors.FourEyesRequired(Id));
+            return Failure(CourseVersionErrors.Workflow.FourEyesRequired(Id));
+        }
+
+        if (policy == ReviewPolicy.FourEyes && questions.Any(question => question.ReviewedBy == editor))
+        {
+            return Failure(CourseVersionErrors.Workflow.PublisherApprovedQuestions(Id));
         }
 
         if (questions.FirstOrDefault(question => question.Review != ReviewState.Approved) is { } unreviewed)
         {
-            return Failure(CourseVersionErrors.QuestionNotApproved(Id, unreviewed.Id));
+            return Failure(CourseVersionErrors.Workflow.QuestionNotApproved(Id, unreviewed.Id));
         }
 
         foreach (var question in questions)
@@ -399,15 +481,33 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         }
     }
 
-    public Result<Unit, DomainError> Retire(PersonId editor)
+    /// <summary>Retires a published or superseded version, alone under any review policy, and records who did and when.</summary>
+    public Result<Unit, CourseVersionWorkflowError> Retire(PersonId editor, Timestamp now)
     {
         if (Status is not (CourseVersionStatus.Published or CourseVersionStatus.Superseded))
         {
-            return Failure(CourseVersionErrors.NotPublished(Id, Status));
+            return Failure(CourseVersionErrors.Workflow.NotPublished(Id, Status));
         }
 
         Status = CourseVersionStatus.Retired;
+        RetiredBy = editor;
+        RetiredAt = now;
         Raise(new CourseVersionRetired(Id, Course, editor));
         return Success(Unit.Value);
     }
+
+    /// <summary>
+    /// Appends questions past every rule. No route and no load calls it: it is an internal seam that lets tests reach a
+    /// version no route can produce, such as one holding more questions than the limit or a question that breaks its shape.
+    /// </summary>
+    internal void LoadQuestions(IEnumerable<Question> loaded)
+    {
+        Ensure.That(loaded).IsNotNull();
+
+        questions.AddRange(loaded);
+    }
+
+    /// <summary>Whether a chapter of the version other than <paramref name="chapter"/> holds the file: one file, one chapter.</summary>
+    private bool IsHeldByAnotherChapter(BlobReference file, ChapterId chapter) =>
+        chapters.Any(other => other.Id != chapter && other.File == file);
 }

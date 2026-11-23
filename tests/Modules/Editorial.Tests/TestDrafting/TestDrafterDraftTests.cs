@@ -20,7 +20,7 @@ public class TestDrafterDraftTests
     [InlineData("too much content", "editorial.too-much-content-to-draft")]
     public async Task Draft_refuses_before_asking_the_model_when_the_version_cannot_be_drafted(string state, string code)
     {
-        var version = Undraftable(state);
+        var version = TestDraftVersions.Undraftable(state);
         using var model = new FakeChatClient(Sound(1));
 
         var result = await TestDrafter.DraftAsync(model, version, TestContext.Current.CancellationToken);
@@ -40,8 +40,37 @@ public class TestDrafterDraftTests
         var result = await TestDrafter.DraftAsync(model, version, TestContext.Current.CancellationToken);
 
         result.IsSuccess.ShouldBeTrue();
-        result.Value.Select(question => question.Chapter).ShouldBe([chapters[0], chapters[1], chapters[0]]);
+        result.Value.Questions.Select(question => question.Chapter).ShouldBe([chapters[0], chapters[1], chapters[0]]);
         model.Requests.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task Draft_names_the_pdf_and_video_chapters_it_left_out_in_the_versions_order()
+    {
+        var version = TestDraftVersions.WithTextPdfAndVideoChapters(2, out var leftOutInOrder);
+        var texts = TestDraftVersions.TextChapterIds(version);
+        using var model = new FakeChatClient(Sound(1, 2));
+
+        var result = await TestDrafter.DraftAsync(model, version, TestContext.Current.CancellationToken);
+
+        result.IsSuccess.ShouldBeTrue();
+        var draft = result.Value.ShouldBeOfType<TestDraft>();
+        draft.Questions.Select(question => question.Chapter).ShouldBe([texts[0], texts[1]]);
+        draft.LeftOutChapters.ShouldBe(leftOutInOrder);
+        leftOutInOrder.Count.ShouldBe(3);
+    }
+
+    [Fact]
+    public async Task Draft_of_a_version_with_text_chapters_only_leaves_no_chapter_out()
+    {
+        var version = TestDraftVersions.WithTextChapters(2, "Händehygiene", "Flächen");
+        using var model = new FakeChatClient(Sound(1, 2));
+
+        var result = await TestDrafter.DraftAsync(model, version, TestContext.Current.CancellationToken);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.Questions.Count.ShouldBe(2);
+        result.Value.LeftOutChapters.ShouldBeEmpty();
     }
 
     [Theory]
@@ -59,6 +88,20 @@ public class TestDrafterDraftTests
     }
 
     [Fact]
+    public async Task Draft_refuses_a_chapter_number_written_as_a_string_as_malformed_and_returns_no_questions()
+    {
+        var version = TestDraftVersions.WithTextChapters(2, "Händehygiene", "Flächen");
+        var quoted = SingleChoice(2);
+        quoted["chapter"] = "2";
+        using var model = new FakeChatClient(Answer(SingleChoice(1), quoted));
+
+        var result = await TestDrafter.DraftAsync(model, version, TestContext.Current.CancellationToken);
+
+        Malformed(result, TestDraftDefect.Unreadable);
+        version.Questions.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task The_drafted_questions_apply_to_their_version_and_fill_its_blueprint()
     {
         var version = TestDraftVersions.WithTextChapters(5, "Händehygiene", "Flächen");
@@ -66,12 +109,12 @@ public class TestDrafterDraftTests
         var approved = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
         var otherApproved = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
         var unreviewed = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
-        version.ApproveQuestion(approved, Author, Now).IsSuccess.ShouldBeTrue();
-        version.ApproveQuestion(otherApproved, Author, Now).IsSuccess.ShouldBeTrue();
+        version.ApproveQuestion(approved, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
+        version.ApproveQuestion(otherApproved, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
         using var model = new FakeChatClient(DraftAnswers.Sound(1, 1, 2));
 
         var drafted = (await TestDrafter.DraftAsync(model, version, TestContext.Current.CancellationToken)).Value;
-        var applied = version.ApplyAiTestDraft(drafted, QuestionId.New, AnswerOptionId.New);
+        var applied = version.ApplyAiTestDraft(drafted.Questions, QuestionId.New, AnswerOptionId.New);
 
         applied.IsSuccess.ShouldBeTrue();
         version.Questions.Count.ShouldBe(version.Blueprint.Questions.Value);
@@ -80,31 +123,5 @@ public class TestDrafterDraftTests
         var added = version.Questions.Where(question => question.Id != approved && question.Id != otherApproved).ToList();
         added.Count.ShouldBe(3);
         added.ShouldAllBe(question => question.Provenance == Provenance.AiDrafted && question.Review == ReviewState.Unreviewed);
-    }
-
-    private static CourseVersion Undraftable(string state) => state switch
-    {
-        "not a draft" => InReview(),
-        "no text chapters" => Draft(),
-        "nothing to draft" => Full(),
-        "too much content" => TooLong(),
-        _ => throw new System.Diagnostics.UnreachableException(state),
-    };
-
-    private static CourseVersion Full()
-    {
-        var version = TestDraftVersions.WithTextChapters(1, "Händehygiene");
-        var chapter = TestDraftVersions.TextChapterIds(version)[0];
-        var question = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
-        version.ApproveQuestion(question, Author, Now).IsSuccess.ShouldBeTrue();
-        return version;
-    }
-
-    private static CourseVersion TooLong()
-    {
-        var version = Draft();
-        version.AddChapter(TextChapter(ChapterId.New(), "A", new string('a', MarkdownText.MaxLength))).IsSuccess.ShouldBeTrue();
-        version.AddChapter(TextChapter(ChapterId.New(), "B", new string('b', MarkdownText.MaxLength))).IsSuccess.ShouldBeTrue();
-        return version;
     }
 }

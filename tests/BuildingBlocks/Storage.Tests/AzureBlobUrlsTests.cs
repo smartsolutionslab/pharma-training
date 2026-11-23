@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Web;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
 
 namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Storage.Tests;
@@ -19,6 +20,8 @@ public class AzureBlobUrlsTests
     private static readonly DateTimeOffset Noon = new(2026, 11, 21, 12, 0, 0, TimeSpan.Zero);
 
     private static readonly BlobUrlLifetime FiveMinutes = BlobUrlLifetime.From(TimeSpan.FromMinutes(5));
+
+    private static readonly BlobReadHeaders InlinePdf = BlobReadHeaders.Inline("application/pdf");
 
     [Fact]
     public async Task An_upload_url_creates_only_its_blob_until_the_lifetime_ends()
@@ -42,7 +45,7 @@ public class AzureBlobUrlsTests
     {
         var urls = new AzureBlobUrls(Configuration(ConnectionString()), new FakeTimeProvider(Noon));
 
-        var read = await urls.CreateReadUrlAsync(BlobName.From("courses/2026/handout.pdf"), FiveMinutes, TestContext.Current.CancellationToken);
+        var read = await urls.CreateReadUrlAsync(BlobName.From("courses/2026/handout.pdf"), FiveMinutes, InlinePdf, TestContext.Current.CancellationToken);
 
         read.Url.AbsolutePath.ShouldBe($"/{Account}/{Container}/courses/2026/handout.pdf");
         var query = HttpUtility.ParseQueryString(read.Url.Query);
@@ -52,6 +55,48 @@ public class AzureBlobUrlsTests
         query["sig"].ShouldNotBeNullOrWhiteSpace();
         Expiry(query).ShouldBe(Noon.AddMinutes(5));
         read.ExpiresAt.ShouldBe(Noon.AddMinutes(5));
+    }
+
+    [Fact]
+    public async Task A_read_url_carries_the_content_type_and_inline_disposition_it_was_signed_with()
+    {
+        var urls = new AzureBlobUrls(Configuration(ConnectionString()), new FakeTimeProvider(Noon));
+
+        var read = await urls.CreateReadUrlAsync(BlobName.From("courses/2026/handout.pdf"), FiveMinutes, BlobReadHeaders.Inline("application/pdf"), TestContext.Current.CancellationToken);
+
+        var query = HttpUtility.ParseQueryString(read.Url.Query);
+        query["rsct"].ShouldBe("application/pdf");
+        query["rscd"].ShouldBe("inline");
+        query["sp"].ShouldBe("r");
+    }
+
+    [Fact]
+    public async Task An_attachment_read_url_carries_rscd_attachment()
+    {
+        var urls = new AzureBlobUrls(Configuration(ConnectionString()), new FakeTimeProvider(Noon));
+
+        var read = await urls.CreateReadUrlAsync(BlobName.From("exports/report.csv"), FiveMinutes, BlobReadHeaders.Attachment("text/csv"), TestContext.Current.CancellationToken);
+
+        var query = HttpUtility.ParseQueryString(read.Url.Query);
+        query["rsct"].ShouldBe("text/csv");
+        query["rscd"].ShouldBe("attachment");
+        query["sp"].ShouldBe("r");
+    }
+
+    [Fact]
+    public async Task The_overrides_are_part_of_the_signature()
+    {
+        // One key, one instant, one name: the URLs differ only in the content type they were signed with.
+        var urls = new AzureBlobUrls(Configuration(ConnectionString()), new FakeTimeProvider(Noon));
+        var name = BlobName.From("courses/2026/handout.pdf");
+
+        var asPdf = await urls.CreateReadUrlAsync(name, FiveMinutes, BlobReadHeaders.Inline("application/pdf"), TestContext.Current.CancellationToken);
+        var asVideo = await urls.CreateReadUrlAsync(name, FiveMinutes, BlobReadHeaders.Inline("video/mp4"), TestContext.Current.CancellationToken);
+
+        var pdfQuery = HttpUtility.ParseQueryString(asPdf.Url.Query);
+        var videoQuery = HttpUtility.ParseQueryString(asVideo.Url.Query);
+        pdfQuery["se"].ShouldBe(videoQuery["se"]);
+        pdfQuery["sig"].ShouldNotBe(videoQuery["sig"], "a URL whose rsct was changed must not carry a valid signature");
     }
 
     [Fact]
@@ -68,11 +113,46 @@ public class AzureBlobUrlsTests
     }
 
     [Fact]
+    public async Task An_upload_url_for_an_https_endpoint_may_be_used_only_over_https()
+    {
+        var https = $"DefaultEndpointsProtocol=https;AccountName={Account};AccountKey={Key()};EndpointSuffix=core.windows.net;ContainerName={Container}";
+        var urls = new AzureBlobUrls(Configuration(https), new FakeTimeProvider(Noon));
+
+        var upload = await urls.CreateUploadUrlAsync(BlobName.From("handout.pdf"), FiveMinutes, TestContext.Current.CancellationToken);
+
+        upload.Url.Scheme.ShouldBe(Uri.UriSchemeHttps);
+        HttpUtility.ParseQueryString(upload.Url.Query)["spr"].ShouldBe("https", "a signature for an https endpoint must not work over plain http");
+    }
+
+    [Fact]
+    public async Task A_read_url_for_an_https_endpoint_may_be_used_only_over_https()
+    {
+        var https = $"BlobEndpoint=https://{Account}.blob.core.windows.net;AccountName={Account};AccountKey={Key()};ContainerName={Container}";
+        var urls = new AzureBlobUrls(Configuration(https), new FakeTimeProvider(Noon));
+
+        var read = await urls.CreateReadUrlAsync(BlobName.From("handout.pdf"), FiveMinutes, InlinePdf, TestContext.Current.CancellationToken);
+
+        read.Url.Scheme.ShouldBe(Uri.UriSchemeHttps);
+        HttpUtility.ParseQueryString(read.Url.Query)["spr"].ShouldBe("https", "a signature for an https endpoint must not work over plain http");
+    }
+
+    [Fact]
+    public async Task A_url_for_the_emulators_http_endpoint_names_no_protocol()
+    {
+        var urls = new AzureBlobUrls(Configuration(ConnectionString()), new FakeTimeProvider(Noon));
+
+        var upload = await urls.CreateUploadUrlAsync(BlobName.From("handout.pdf"), FiveMinutes, TestContext.Current.CancellationToken);
+
+        upload.Url.Scheme.ShouldBe(Uri.UriSchemeHttp);
+        HttpUtility.ParseQueryString(upload.Url.Query)["spr"].ShouldBeNull("Azurite serves http, which spr=https would refuse");
+    }
+
+    [Fact]
     public async Task A_name_with_spaces_is_escaped_in_the_url()
     {
         var urls = new AzureBlobUrls(Configuration(ConnectionString()), new FakeTimeProvider(Noon));
 
-        var read = await urls.CreateReadUrlAsync(BlobName.From("courses/hand out.pdf"), FiveMinutes, TestContext.Current.CancellationToken);
+        var read = await urls.CreateReadUrlAsync(BlobName.From("courses/hand out.pdf"), FiveMinutes, InlinePdf, TestContext.Current.CancellationToken);
 
         read.Url.AbsoluteUri.ShouldNotContain(" ");
         read.Url.AbsolutePath.ShouldBe($"/{Account}/{Container}/courses/hand%20out.pdf");
@@ -96,22 +176,28 @@ public class AzureBlobUrlsTests
         var urls = new AzureBlobUrls(Configuration(withoutContainer), new FakeTimeProvider(Noon));
 
         var failure = await Should.ThrowAsync<InvalidOperationException>(() =>
-            urls.CreateReadUrlAsync(BlobName.From("handout.pdf"), FiveMinutes, TestContext.Current.CancellationToken));
+            urls.CreateReadUrlAsync(BlobName.From("handout.pdf"), FiveMinutes, InlinePdf, TestContext.Current.CancellationToken));
 
         failure.Message.ShouldContain("ContainerName");
     }
 
     [Fact]
-    public async Task A_connection_string_without_an_account_key_says_keyless_signing_is_a_separate_decision()
+    public async Task Without_an_account_key_or_a_managed_identity_it_fails_when_a_url_is_first_created_naming_both()
     {
-        var withoutKey = $"BlobEndpoint=https://{Account}.blob.core.windows.net;ContainerName={Container}";
-        var urls = new AzureBlobUrls(Configuration(withoutKey), new FakeTimeProvider(Noon));
+        // As published: the account's endpoint and the container, no key; and no AZURE_CLIENT_ID to sign keyless with.
+        var withoutKey = $"Endpoint=https://{Account}.blob.core.windows.net/;ContainerName={Container}";
+        var services = new ServiceCollection();
+        services.AddSingleton<TimeProvider>(new FakeTimeProvider(Noon));
+        services.AddModuleBlobStorage(Configuration(withoutKey));
+        using var provider = services.BuildServiceProvider();
+        var urls = provider.GetRequiredService<IBlobUrls>();
 
         var failure = await Should.ThrowAsync<InvalidOperationException>(() =>
             urls.CreateUploadUrlAsync(BlobName.From("handout.pdf"), FiveMinutes, TestContext.Current.CancellationToken));
 
-        failure.Message.ShouldContain("keyless", Case.Insensitive);
-        failure.Message.ShouldContain("decision", Case.Insensitive);
+        failure.Message.ShouldContain("AZURE_CLIENT_ID");
+        failure.Message.ShouldContain("AccountKey");
+        failure.Message.ShouldNotContain("separate decision", Case.Insensitive);
     }
 
     /// <summary>An account key made up for this run, as the emulator's connection string carries one.</summary>

@@ -28,7 +28,7 @@ public class QuestionLimitTests
 
         var submitted = version.SubmitForReview(Author);
 
-        var incomplete = submitted.Error.ShouldBeOfType<TestIncomplete>();
+        var incomplete = submitted.Error.Value.ShouldBeOfType<TestIncomplete>();
         incomplete.Expected.ShouldBe(TestBlueprint.Default.Questions);
         incomplete.Actual.ShouldBe(QuestionCount.From(QuestionCount.Maximum));
     }
@@ -52,7 +52,26 @@ public class QuestionLimitTests
 
         var submitted = Should.NotThrow(() => version.SubmitForReview(Author));
 
-        submitted.Error.ShouldBeOfType<TestIncomplete>().Actual.ShouldBe(QuestionCount.From(QuestionCount.Maximum));
+        submitted.Error.Value.ShouldBeOfType<TestIncomplete>().Actual.ShouldBe(QuestionCount.From(QuestionCount.Maximum));
+    }
+
+    [Fact]
+    public void Submitting_a_draft_loaded_with_more_than_the_maximum_fails_with_too_many_questions_and_never_throws()
+    {
+        var version = AtTheMaximum(out _);
+        var stray = DraftWithChapter(out var strayChapter);
+        stray.AddQuestion(QuestionId.New(), SingleChoice(strayChapter), AnswerOptionId.New).IsSuccess.ShouldBeTrue();
+
+        // Rows written before the cap, or by hand, are loaded by EF Core through the backing list, past AddQuestion's
+        // check. The internal LoadQuestions stands in for such a load; Questions itself is read-only.
+        version.LoadQuestions([stray.Questions[0]]);
+        version.Questions.Count.ShouldBe(QuestionCount.Maximum + 1);
+
+        var submitted = Should.NotThrow(() => version.SubmitForReview(Author));
+
+        submitted.IsFailure.ShouldBeTrue();
+        submitted.Error.Value.ShouldBeOfType<TooManyQuestions>().Code.ShouldBe("editorial.too-many-questions");
+        version.Status.ShouldBe(CourseVersionStatus.Draft);
     }
 
     /// <summary>A draft with one chapter and exactly <see cref="QuestionCount.Maximum"/> questions, its blueprint the default.</summary>

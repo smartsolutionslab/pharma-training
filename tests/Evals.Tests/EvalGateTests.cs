@@ -22,8 +22,9 @@ public sealed class EvalGateTests : IDisposable
     private readonly DirectoryInfo results = Directory.CreateTempSubdirectory("evals-");
 
     /// <summary>
-    /// Runs the fixture: the stand-in's answer is an invoice, which the AI test draft reads as no draft at all, so its
-    /// draft metrics score 1 by design. The draft's own pass case is TestDraftEvalTests' sound draft.
+    /// Runs the fixture use case alone, never <see cref="UseCases.All"/>: neither the AI test draft nor the AI content
+    /// review is run, so none of their metrics is produced and this pass case does not cover the project's use cases.
+    /// Each use case's own pass case is in its own eval tests (TestDraftEvalTests, ContentReviewEvalTests).
     /// </summary>
     [Fact]
     public async Task High_scores_pass_and_the_run_writes_its_results_for_the_report()

@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Mail;
 
@@ -19,7 +21,10 @@ public static class MailRegistration
         Ensure.That(services).IsNotNull();
         Ensure.That(configuration).IsNotNull();
 
-        services.TryAddSingleton<IMailSender>(provider => new SmtpMailSender(configuration, provider.GetService<TimeProvider>() ?? TimeProvider.System));
+        services.TryAddSingleton<IMailSender>(provider => new SmtpMailSender(
+            configuration,
+            provider.GetService<TimeProvider>() ?? TimeProvider.System,
+            provider.GetService<ILogger<SmtpMailSender>>() ?? NullLogger<SmtpMailSender>.Instance));
         services.TryAddSingleton<IFrontendLinks>(_ => new FrontendLinks(configuration));
 
         // Outside Development a host without usable mail settings does not start (MailSettingsValidation). Both calls

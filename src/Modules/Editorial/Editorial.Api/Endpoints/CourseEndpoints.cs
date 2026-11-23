@@ -3,6 +3,7 @@ using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Api;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.CreateCourse;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.DraftNextVersion;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -10,7 +11,7 @@ using Microsoft.AspNetCore.Routing;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Api.Endpoints;
 
-/// <summary>An editor starts a course: its first version, a draft, whose id the answer carries.</summary>
+/// <summary>An editor starts a course, or the next version of a published one: a draft, whose id the answer carries.</summary>
 public sealed class CourseEndpoints : IEndpoint
 {
     public void Map(IEndpointRouteBuilder endpoints)
@@ -32,6 +33,22 @@ public sealed class CourseEndpoints : IEndpoint
             }
 
             return (await dispatcher.SendAsync(new CreateCourse(title, editor.Value), cancellationToken)).ToCreatedHttpResult(CourseVersionEndpoints.Location);
+        }).RequireAuthorization(EditorialPolicyNames.Edit);
+
+        endpoints.MapPost("/course-versions/{id:guid}/next", async (Guid id, ClaimsPrincipal user, IDispatcher dispatcher, CancellationToken cancellationToken) =>
+        {
+            if (id == Guid.Empty)
+            {
+                return Result<Guid, ApiError>.Failure(CourseVersionFailures.NotFound(id)).ToCreatedHttpResult(CourseVersionEndpoints.Location);
+            }
+
+            var editor = EditorialCaller.PersonOf(user);
+            if (!editor.HasValue)
+            {
+                return Result<Guid, ApiError>.Failure(CourseVersionFailures.IdentityIncomplete()).ToCreatedHttpResult(CourseVersionEndpoints.Location);
+            }
+
+            return (await dispatcher.SendAsync(new DraftNextVersion(CourseVersionId.From(id), editor.Value), cancellationToken)).ToCreatedHttpResult(CourseVersionEndpoints.Location);
         }).RequireAuthorization(EditorialPolicyNames.Edit);
     }
 }

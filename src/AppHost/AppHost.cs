@@ -27,11 +27,12 @@ if (builder.ExecutionContext.IsRunMode)
     keycloak.WithBindMount("./realms", "/opt/keycloak/data/import", isReadOnly: true);
     keycloak.WithVolume(VolumeNameGenerator.Generate(keycloak, "data"), "/opt/keycloak/data");
 }
-
-// Blob storage on Azurite: one account, a container per module in the services' loop (docs/adr/0002). Each service signs
-// short-lived upload and read URLs for its own container only, with the account key.
-var storage = builder.AddAzureStorage("storage")
-    .RunAsEmulator(emulator => emulator.WithDataVolume());
+// Blob storage: one account, a container per module in the services' loop (docs/adr/0002). Each service signs short-lived
+// upload and read URLs for its own container only: with Azurite's account key in run mode; published, with a user
+// delegation key under its own identity, which may use its own container alone (Wiring/BlobContainerAccess.cs).
+var storage = builder.AddBlobStorage();
+// The broker, with a user of its own for every service, who may use its own queue, publish its own module's events and
+// bind to the events it consumes alone (Wiring/Messaging.cs, docs/adr/0011).
 var messaging = builder.AddMessaging(secrets);
 // Models deployed in your own Azure OpenAI resource in an EU region, through its OpenAI v1 endpoint; nothing is
 // provisioned (docs/adr/0001). Set the endpoint (https://<resource>.openai.azure.com) and the key with dotnet user-secrets
@@ -102,9 +103,8 @@ foreach (var (module, project) in builder.ServiceHosts())
         .WithReference(keycloak.GetEndpoint("http"))
         .WaitFor(keycloak)
         .WithEnvironment("Authentication__Authority", ReferenceExpression.Create($"{keycloak.GetEndpoint("http")}/realms/pharma-training"))
-        .WithMessaging(messaging, secrets)
-        .WithEnvironment("Messaging__Queue", module)
-        .WithReference(blobs, "blobs")
+        .WithMessaging(messaging, secrets, module)
+        .WithBlobContainer(blobs, "blobs")
         .WithEnvironment("AzureOpenAI__Endpoint", azureOpenAIEndpoint)
         .WithEnvironment("AzureOpenAI__Deployment", azureOpenAIDeployment)
         .WithSecret("AzureOpenAI__ApiKey", azureOpenAIApiKey, secrets)
@@ -116,5 +116,10 @@ foreach (var (module, project) in builder.ServiceHosts())
         .WithEnvironment($"Edge__Modules__{module}", module)
         .WaitFor(service);
 }
+
+// Published, the browser uses the signed URLs from the edge's origin, which serves the web app (docs/adr/0002).
+storage.AllowBrowserAccessFromEdge(host);
+// Published, each app reads the Key Vault secrets it references alone; run once every resource is added (docs/adr/0005).
+await secrets.GrantEachAppTheSecretsItReadsAsync(builder);
 
 builder.Build().Run();

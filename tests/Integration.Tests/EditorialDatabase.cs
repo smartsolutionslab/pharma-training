@@ -196,6 +196,67 @@ internal static class EditorialDatabase
         (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1);
     }
 
+    /// <summary>
+    /// Clears the reviewer's name of an approved question, as an approval recorded before #205 kept none: the question
+    /// stays approved, by its person and at its time.
+    /// </summary>
+    public static async Task ForgetReviewerNameAsync(string connectionString, Guid question, CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("UPDATE editorial.course_version_questions SET reviewed_by_name = NULL WHERE id = @id", connection);
+        command.Parameters.AddWithValue("id", question);
+
+        (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1);
+    }
+
+    /// <summary>
+    /// A writer that has taken the number but not committed: the handler's check does not see it, and an INSERT of the
+    /// same number waits on it. It inserts a bare draft of the course with that number in a transaction it leaves
+    /// open; committing the gate keeps the row, disposing it uncommitted drops it.
+    /// </summary>
+    public static async Task<VersionLock> HoldVersionNumberAsync(string connectionString, Guid courseId, int number, CancellationToken cancellationToken)
+    {
+        var connection = new NpgsqlConnection(connectionString);
+        try
+        {
+            await connection.OpenAsync(cancellationToken);
+            var transaction = await connection.BeginTransactionAsync(cancellationToken);
+            await using (var insert = new NpgsqlCommand(
+                """
+                INSERT INTO editorial.course_versions (id, course_id, number, title, status, created_by, blueprint_questions, blueprint_passing_score, blueprint_validity_months)
+                VALUES (@id, @course, @number, 'Gate', 'Draft', @person, 1, 80, 12)
+                """,
+                connection,
+                transaction))
+            {
+                insert.Parameters.AddWithValue("id", Guid.CreateVersion7());
+                insert.Parameters.AddWithValue("course", courseId);
+                insert.Parameters.AddWithValue("number", number);
+                insert.Parameters.AddWithValue("person", Guid.CreateVersion7());
+                (await insert.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1);
+            }
+
+            return new VersionLock(connection, transaction);
+        }
+        catch
+        {
+            await connection.DisposeAsync();
+            throw;
+        }
+    }
+
+    /// <summary>How many of the course's versions carry the number, committed.</summary>
+    public static async Task<long> CountVersionsNumberedAsync(string connectionString, Guid courseId, int number, CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("SELECT count(*) FROM editorial.course_versions WHERE course_id = @course AND number = @number", connection);
+        command.Parameters.AddWithValue("course", courseId);
+        command.Parameters.AddWithValue("number", number);
+        return (long)(await command.ExecuteScalarAsync(cancellationToken) ?? 0L);
+    }
+
     private static async Task<VersionLock> LockAsync(string connectionString, Guid id, string versionLock, string[] beneath, CancellationToken cancellationToken)
     {
         var connection = new NpgsqlConnection(connectionString);

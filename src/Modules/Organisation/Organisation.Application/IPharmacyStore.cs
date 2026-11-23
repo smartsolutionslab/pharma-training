@@ -19,6 +19,18 @@ public interface IPharmacyStore
     /// <summary>The pharmacy with its memberships, for a command: what it changes is saved when the unit of work commits.</summary>
     Task<Option<Pharmacy>> LoadAsync(PharmacyId id, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// The one pharmacy, of all, whose memberships hold the hash, with its memberships, for a command: what it changes
+    /// is saved when the unit of work commits. Only an open invitation holds a hash.
+    /// </summary>
+    Task<Option<Pharmacy>> LoadByInvitationAsync(InvitationTokenHash hash, CancellationToken cancellationToken);
+
     /// <summary>One page of the pharmacies where the person is an active member, by name, with their memberships.</summary>
     Task<PagedResult<Pharmacy>> ListWithActiveMemberAsync(PersonId person, Page page, PageSize pageSize, CancellationToken cancellationToken);
+
+    /// <summary>One page of the pharmacy's Active memberships, by name, then id, with how many it has; as stored, for a query.</summary>
+    Task<PagedResult<Membership>> ListActiveMembershipsAsync(PharmacyId pharmacy, Page page, PageSize pageSize, CancellationToken cancellationToken);
+
+    /// <summary>One page of the pharmacy's Invited memberships, open or run out, by expiry, then id, with how many it has; as stored, for a query.</summary>
+    Task<PagedResult<Membership>> ListInvitedMembershipsAsync(PharmacyId pharmacy, Page page, PageSize pageSize, CancellationToken cancellationToken);
 }

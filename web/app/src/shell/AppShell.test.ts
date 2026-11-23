@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/vue';
+import { cleanup, render, screen, within } from '@testing-library/vue';
 import userEvent from '@testing-library/user-event';
 import type { User } from 'oidc-client-ts';
 import { createPinia } from 'pinia';
@@ -18,7 +18,7 @@ vi.mock('@/auth/UserMenu.vue', async () => {
   return { default: { render: () => h('p', 'The user menu') } };
 });
 
-// Each module's page, and each page below it, stands in as its title in the language shown, as a module's page heads
+// Each module's page, each page below it and each entry page, stands in as its title in the language shown, as a module's page heads
 // itself with t(route.titleKey), and beside the app's modules is one of the tests' own, with a page below it for every
 // signed-in user and one for editors: a real module's page needs the host, which these tests do not have. The audiences
 // are the modules' own.
@@ -46,6 +46,15 @@ vi.mock('@/modules', async (importOriginal) => {
         component: page('modules.reports.pages.review.title'),
       },
     ],
+    // A detail page with a parameter, for editors though its module is for employees.
+    details: [
+      {
+        path: 'entries/:id',
+        titleKey: 'modules.reports.details.entry.title',
+        audience: 'editor' as const,
+        component: page('modules.reports.details.entry.title'),
+      },
+    ],
   };
   return {
     ...modules,
@@ -54,6 +63,8 @@ vi.mock('@/modules', async (importOriginal) => {
         ...route,
         component: page(route.titleKey),
         pages: route.pages?.map((below) => ({ ...below, component: page(below.titleKey) })),
+        details: route.details?.map((detail) => ({ ...detail, component: page(detail.titleKey) })),
+        entries: route.entries?.map((entry) => ({ ...entry, component: page(entry.titleKey) })),
       })),
       reports,
     ],
@@ -64,12 +75,20 @@ vi.mock('@/modules', async (importOriginal) => {
 // its route names.
 i18n.global.mergeLocaleMessage('de-DE', {
   modules: {
-    reports: { title: 'Berichte', pages: { new: { title: 'Neuer Bericht' }, review: { title: 'Berichte prüfen' } } },
+    reports: {
+      title: 'Berichte',
+      pages: { new: { title: 'Neuer Bericht' }, review: { title: 'Berichte prüfen' } },
+      details: { entry: { title: 'Berichtseintrag' } },
+    },
   },
 });
 i18n.global.mergeLocaleMessage('en-GB', {
   modules: {
-    reports: { title: 'Reports', pages: { new: { title: 'New report' }, review: { title: 'Review reports' } } },
+    reports: {
+      title: 'Reports',
+      pages: { new: { title: 'New report' }, review: { title: 'Review reports' } },
+      details: { entry: { title: 'Report entry' } },
+    },
   },
 });
 
@@ -84,6 +103,9 @@ const newReport = () => t('modules.reports.pages.new.title');
 const reviewReports = () => t('modules.reports.pages.review.title');
 const registerPage = () => t('modules.organisation.pages.register.title');
 const palette = () => t('shell.palette.title');
+const courseVersion = () => t('modules.editorial.details.version.title');
+const reportEntry = () => t('modules.reports.details.entry.title');
+const courseTest = () => t('modules.editorial.details.test.title');
 
 // GET /organisation/pharmacies/mine as useMyPharmacies answers it: TanStack Query's refs, which a test sets.
 const pharmacies = await vi.hoisted(async () => {
@@ -181,6 +203,8 @@ test('the sidebar lists the start page and every module the user may see, from t
 // the tests' new report are for every signed-in user, the tests' review for editors, whatever their module's audience.
 const forEveryone = ['modules.organisation.pages.register.title', 'modules.reports.pages.new.title'];
 const forEditors = [...forEveryone, 'modules.reports.pages.review.title'];
+// Assigning a course (#37) is for a member who may manage the pharmacy, listed with its module, before registering.
+const forManagers = ['modules.compliance.pages.assign.title', ...forEveryone];
 
 const audiences = [
   {
@@ -211,7 +235,7 @@ const audiences = [
       'modules.organisation.title',
       'modules.reports.title',
     ],
-    below: forEveryone,
+    below: forManagers,
   },
   {
     who: 'an editor of no pharmacy',
@@ -284,6 +308,27 @@ test("an employee who opens a manager's page is told it is not available, and le
   expect(main.getByText(t('shell.gate.notInPharmacy', { name: 'Apotheke am Dom' }))).toBeInTheDocument();
   expect(main.getByRole('link', { name: t('shell.gate.goHome') })).toHaveAttribute('href', '/');
   expect(screen.queryByRole('heading', { name: organisation() })).not.toBeInTheDocument();
+});
+
+test('an employee who opens the page to assign a course is told it is not available, though the module is theirs', async () => {
+  answer([dom]);
+
+  await renderAt('/compliance/assign', { roles: [] });
+
+  const main = within(await screen.findByRole('main'));
+  expect(main.getByRole('heading', { name: t('shell.gate.notAvailable'), level: 1 })).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: t('modules.compliance.pages.assign.title') })).not.toBeInTheDocument();
+});
+
+test('a member who may manage the pharmacy opens the page to assign a course', async () => {
+  answer([markt]);
+
+  await renderAt('/compliance/assign', { roles: [] });
+
+  expect(
+    await screen.findByRole('heading', { name: t('modules.compliance.pages.assign.title'), level: 1 }),
+  ).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: t('shell.gate.notAvailable') })).not.toBeInTheDocument();
 });
 
 test('with several pharmacies and none chosen a pharmacy page asks the user to choose one', async () => {
@@ -470,7 +515,12 @@ test.each([
     within(dialog)
       .getAllByRole('option')
       .map((option) => option.textContent.trim()),
-  ).toEqual([home(), ...moduleRoutes.map((module) => t(module.titleKey)), ...titles(forEditors)]);
+  ).toEqual([
+    home(),
+    ...moduleRoutes.map((module) => t(module.titleKey)),
+    // renderAt's user also manages a pharmacy, so assigning a course (#37) is theirs too, listed with its module.
+    ...titles(['modules.compliance.pages.assign.title', ...forEditors]),
+  ]);
 
   await user.keyboard('{Escape}');
   await vi.waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
@@ -759,4 +809,179 @@ test('the pharmacy switcher in the sidebar speaks German by default', async () =
   const pharmacy = within(screen.getByRole('region', { name: 'Apotheke' }));
   expect(pharmacy.getByRole('button', { name: 'Apotheke: Apotheke am Markt' })).toHaveTextContent('Apothekenleiter');
   expect(pharmacy.getByRole('link', { name: 'Apotheke registrieren' })).toBeInTheDocument();
+});
+
+// A detail page below a module (its routes.ts's details): an address with a parameter, governed by its own audience,
+// named by its title in the breadcrumbs and listed neither in the sidebar nor in the palette.
+const version = '0198c1a0-0000-7000-8000-0000000000c1';
+
+test("at a course version's address the breadcrumbs lead home, to the editorial page and name the version page", async () => {
+  await renderAt(`/editorial/versions/${version}`);
+
+  const breadcrumbs = within(screen.getByRole('navigation', { name: t('ui.breadcrumb.label') }));
+  expect(breadcrumbs.getByRole('link', { name: 'Startseite' })).toHaveAttribute('href', '/');
+  expect(breadcrumbs.getByRole('link', { name: 'Redaktion' })).toHaveAttribute('href', '/editorial');
+  expect(breadcrumbs.getByText('Schulungsversion')).toHaveAttribute('aria-current', 'page');
+  expect(breadcrumbs.getByText(courseVersion())).toHaveAttribute('aria-current', 'page');
+  // The detail's own segments get no crumbs: three steps, Home, the module and the detail.
+  expect(breadcrumbs.getAllByRole('listitem').map((item) => item.textContent.trim())).toEqual([
+    home(),
+    editorial(),
+    courseVersion(),
+  ]);
+  expect(breadcrumbs.queryByText('versions')).not.toBeInTheDocument();
+  expect(breadcrumbs.queryByText(version)).not.toBeInTheDocument();
+});
+
+// The test page of a version (#25) is a detail of three segments, versions/:id/test, beside the version's own.
+test('the breadcrumbs name the test page by its title', async () => {
+  await renderAt(`/editorial/versions/${version}/test`);
+
+  const breadcrumbs = within(screen.getByRole('navigation', { name: t('ui.breadcrumb.label') }));
+  expect(breadcrumbs.getByRole('link', { name: 'Startseite' })).toHaveAttribute('href', '/');
+  expect(breadcrumbs.getByRole('link', { name: 'Redaktion' })).toHaveAttribute('href', '/editorial');
+  expect(breadcrumbs.getByText('Test')).toHaveAttribute('aria-current', 'page');
+  expect(breadcrumbs.getAllByRole('listitem').map((item) => item.textContent.trim())).toEqual([
+    home(),
+    editorial(),
+    courseTest(),
+  ]);
+  expect(breadcrumbs.queryByText(courseVersion())).not.toBeInTheDocument();
+  expect(breadcrumbs.queryByText('versions')).not.toBeInTheDocument();
+  expect(breadcrumbs.queryByText(version)).not.toBeInTheDocument();
+});
+
+test("a course version's page is there for an editor and listed neither in the sidebar nor in the palette", async () => {
+  const user = userEvent.setup();
+  answer([]);
+  await renderAt(`/editorial/versions/${version}`, { roles: ['editor'] });
+
+  expect(await screen.findByRole('heading', { name: courseVersion(), level: 1 })).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: t('shell.gate.notAvailable') })).not.toBeInTheDocument();
+  expect(sidebarLinks()).toEqual([home(), editorial()]);
+  const navigation = within(screen.getByRole('navigation', { name: t('shell.navigation.label') }));
+  for (const link of navigation.getAllByRole('link')) {
+    expect(link.getAttribute('href')).not.toMatch(/^\/editorial\/versions/);
+  }
+
+  await user.keyboard('{Control>}k{/Control}');
+  const dialog = await screen.findByRole('dialog', { name: palette() });
+  const options = within(dialog)
+    .getAllByRole('option')
+    .map((option) => option.textContent.trim());
+  expect(options).toEqual(titles(['shell.home', 'modules.editorial.title', ...forEditors]));
+  expect(options).not.toContain(courseVersion());
+  expect(options).not.toContain(reportEntry());
+});
+
+test("a course version's page is refused to a signed-in user who is no editor", async () => {
+  answer([markt]);
+  await renderAt(`/editorial/versions/${version}`, { roles: ['editor'] });
+  expect(await screen.findByRole('heading', { name: courseVersion(), level: 1 })).toBeInTheDocument();
+  cleanup();
+
+  await renderAt(`/editorial/versions/${version}`, { roles: [] });
+
+  const main = within(await screen.findByRole('main'));
+  expect(main.getByRole('heading', { name: 'Nicht verfügbar', level: 1 })).toBeInTheDocument();
+  expect(main.getByText('Diese Seite steht Ihnen nicht zur Verfügung.')).toBeInTheDocument();
+  expect(main.getByText(t('shell.gate.notForYou'))).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: courseVersion() })).not.toBeInTheDocument();
+});
+
+// A detail is governed by its own audience, not its module's: the tests' report entry is for editors, though reports
+// are for employees.
+test('a detail page for editors is refused to an employee, though its module is theirs, and shown to an editor', async () => {
+  answer([dom]);
+  await renderAt(`/reports/entries/${version}`, { roles: [] });
+
+  const main = within(await screen.findByRole('main'));
+  expect(main.getByRole('heading', { name: t('shell.gate.notAvailable'), level: 1 })).toBeInTheDocument();
+  expect(main.getByText(t('shell.gate.notForYou'))).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: reportEntry() })).not.toBeInTheDocument();
+  cleanup();
+
+  await renderAt(`/reports/entries/${version}`, { roles: ['editor'] });
+
+  expect(await screen.findByRole('heading', { name: reportEntry(), level: 1 })).toBeInTheDocument();
+  const breadcrumbs = within(screen.getByRole('navigation', { name: t('ui.breadcrumb.label') }));
+  expect(breadcrumbs.getByRole('link', { name: reportsTitle() })).toHaveAttribute('href', '/reports');
+  expect(breadcrumbs.getByText(reportEntry())).toHaveAttribute('aria-current', 'page');
+});
+
+test("switched to English, the breadcrumbs name a course version's page in English", async () => {
+  await renderAt(`/editorial/versions/${version}`);
+
+  setLanguage('en-GB', { remember: false });
+
+  const breadcrumbs = within(await screen.findByRole('navigation', { name: 'Breadcrumb' }));
+  expect(await breadcrumbs.findByText('Course version')).toHaveAttribute('aria-current', 'page');
+  expect(breadcrumbs.getByRole('link', { name: 'Editorial' })).toHaveAttribute('href', '/editorial');
+});
+
+// The invitation mail's link opens the organisation module's entry page at an address of its own (its routes.ts's
+// entries): for every signed-in user, with or without a pharmacy, named by its title in the breadcrumbs after Home, and
+// listed neither in the sidebar nor in the palette.
+const acceptInvitation = () => t('modules.organisation.entries.acceptInvitation.title');
+
+test('the page that accepts an invitation is there for a user of no pharmacy and no role', async () => {
+  answer([]);
+
+  await renderAt('/invitations/accept', { roles: [] });
+
+  expect(await screen.findByRole('heading', { name: acceptInvitation(), level: 1 })).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: t('shell.gate.notAvailable') })).not.toBeInTheDocument();
+});
+
+test('while the memberships load the page that accepts an invitation shows at once, without a skeleton', async () => {
+  await renderLoadingAt('/invitations/accept', []);
+
+  expect(screen.getByRole('heading', { name: acceptInvitation(), level: 1 })).toBeInTheDocument();
+  expect(document.querySelector('[data-slot="sidebar-inset"] [data-slot="skeleton"]')).toBeNull();
+  expect(screen.queryByRole('heading', { name: t('shell.gate.notAvailable') })).not.toBeInTheDocument();
+});
+
+test('at the invitation link the breadcrumbs lead home and name the page, Startseite › Einladung annehmen', async () => {
+  answer([]);
+  await renderAt('/invitations/accept', { roles: [] });
+
+  const breadcrumbs = within(await screen.findByRole('navigation', { name: t('ui.breadcrumb.label') }));
+  expect(breadcrumbs.getByRole('link', { name: 'Startseite' })).toHaveAttribute('href', '/');
+  expect(breadcrumbs.getByText('Einladung annehmen')).toHaveAttribute('aria-current', 'page');
+  expect(breadcrumbs.getAllByRole('listitem').map((item) => item.textContent.trim())).toEqual([
+    home(),
+    acceptInvitation(),
+  ]);
+  expect(breadcrumbs.queryByText('invitations')).not.toBeInTheDocument();
+  expect(breadcrumbs.queryByText('accept')).not.toBeInTheDocument();
+});
+
+test("switched to English, the breadcrumbs name the invitation link's page in English", async () => {
+  await renderAt('/invitations/accept');
+
+  setLanguage('en-GB', { remember: false });
+
+  const breadcrumbs = within(await screen.findByRole('navigation', { name: 'Breadcrumb' }));
+  expect(await breadcrumbs.findByText('Accept an invitation')).toHaveAttribute('aria-current', 'page');
+});
+
+test('the page that accepts an invitation is listed neither in the sidebar nor in the palette', async () => {
+  const user = userEvent.setup();
+  answer([markt]);
+  await renderAt('/invitations/accept', { roles: ['editor'] });
+  expect(await screen.findByRole('heading', { name: acceptInvitation(), level: 1 })).toBeInTheDocument();
+
+  const navigation = within(screen.getByRole('navigation', { name: t('shell.navigation.label') }));
+  for (const link of navigation.getAllByRole('link')) {
+    expect(link.getAttribute('href')).not.toMatch(/^\/invitations/);
+  }
+  expect(sidebarLinks()).not.toContain(acceptInvitation());
+
+  await user.keyboard('{Control>}k{/Control}');
+  const dialog = await screen.findByRole('dialog', { name: palette() });
+  expect(
+    within(dialog)
+      .getAllByRole('option')
+      .map((option) => option.textContent.trim()),
+  ).not.toContain(acceptInvitation());
 });

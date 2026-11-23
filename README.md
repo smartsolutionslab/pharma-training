@@ -59,7 +59,11 @@ Starting the AppHost builds every project it runs, once; the edge, the services 
 
 ### Blob storage
 
-The AppHost runs Azurite, the Azure Storage emulator, as the resource `storage`, with a container per module (`<module>-blobs`, named after the module); each service reads only its own, as the connection string `blobs`, and signs short-lived upload and read URLs for it with the emulator's account key (`IBlobUrls`, docs/adr/0002). The web app's origin, `http://localhost:5173`, may `PUT` and `GET` with those URLs straight from the browser: the AppHost sets that CORS rule on the emulator when it starts. Signing in a deployed account, where Aspire disables the account key, is a separate decision (keyless signing).
+The AppHost runs Azurite, the Azure Storage emulator, as the resource `storage`, with a container per module (`<module>-blobs`, named after the module); each service reads only its own, as the connection string `blobs`, and signs short-lived upload and read URLs for it with the emulator's account key (`IBlobUrls`, docs/adr/0002). The web app's origin, `http://localhost:5173`, may `PUT` and `GET` with those URLs straight from the browser: the AppHost sets that CORS rule on the emulator when it starts. Deployed, the account has no key (shared-key access is off): each service signs with a user delegation key under its own managed identity, which may use its own container alone, and the account allows the edge's origin with the same rule.
+
+### Editorial settings
+
+Four eyes (a version is published by an editor other than the one who submitted it) is off by default; `Editorial__FourEyes=true` in the editorial service's environment turns it on (docs/adr/0007).
 
 ### Local users
 
@@ -70,7 +74,9 @@ Keycloak imports these from `src/AppHost/realms/realm.json`, development only. E
 - `editor`: the realm role `editor`, the platform's editors (the Redaktion), which `editorial.edit` requires.
 - `owner`, `employee-a`, `employee-b`: no realm role; their pharmacy roles (owner, employee) come from the Organisation module, not from Keycloak.
 
-Keycloak imports the realm only when it does not exist yet, and keeps it in a data volume. After `realm.json` gains a role or a user, an existing local Keycloak keeps the old realm: stop the AppHost, find the volume with `docker volume ls` (its name contains `keycloak`), remove it with `docker volume rm <name>`, and start the AppHost again.
+The development realm allows self-registration: Keycloak's login page has a Register link, and an account created there (or through the admin API) must verify its address before it can sign in. Keycloak mails the verification link to Mailpit (http://localhost:8025). The imported users are not asked to verify, `unverified` (whose address Keycloak has not verified) included. The published realm (#114) keeps registration closed (`registrationAllowed: false`) until #158 (limits on invitation mail) is merged, brute-force detection and bot protection on the registration form are on, and account enumeration on register has been considered ([ADR 0014](docs/adr/0014-the-invitation-links-token-crosses-the-sign-in-in-session-storage.md)).
+
+Keycloak imports the realm only when it does not exist yet, and keeps it in a data volume. After `realm.json` changes (a role, a user, a realm setting such as registration), an existing local Keycloak keeps the old realm: stop the AppHost, find the volume with `docker volume ls` (its name contains `keycloak`), remove it with `docker volume rm <name>`, and start the AppHost again.
 
 ## Test
 

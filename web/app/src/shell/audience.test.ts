@@ -72,6 +72,16 @@ test("pageOf finds the module's page by the address's second segment", () => {
   });
 });
 
+// Assigning a course (#37) is for managers, though the compliance module is for every employee.
+test("pageOf finds the compliance module's page to assign a course, for managers", () => {
+  expect(pageOf('/compliance/assign')).toMatchObject({
+    path: 'assign',
+    titleKey: 'modules.compliance.pages.assign.title',
+    audience: 'manager',
+  });
+  expect(pageOf('/compliance')).toMatchObject({ path: 'compliance', audience: 'employee' });
+});
+
 test('pageOf finds the module for an address in it that is none of its pages', () => {
   expect(pageOf('/organisation')).toMatchObject({
     path: 'organisation',
@@ -86,4 +96,33 @@ test('pageOf finds nothing for the start page or an address no module has', () =
   expect(pageOf('/')).toBeUndefined();
   expect(pageOf('/nowhere')).toBeUndefined();
   expect(pageOf('/nowhere/register')).toBeUndefined();
+});
+
+// A detail page below a module (its routes.ts's details) has segments that may hold a parameter, `versions/:id`: a
+// static segment is equal, a parameter matches one segment that is not empty. A detail governs its address before the
+// module's pages and the module.
+const version = '0198c1a0-0000-7000-8000-0000000000c1';
+
+test("pageOf finds a module's detail page by its pattern, a parameter matching one segment and no more", () => {
+  expect(pageOf(`/editorial/versions/${version}`)).toMatchObject({
+    path: 'versions/:id',
+    titleKey: 'modules.editorial.details.version.title',
+    audience: 'editor',
+  });
+  expect(pageOf(`/editorial/versions/${version}/`)).toMatchObject({ path: 'versions/:id', audience: 'editor' });
+
+  // An address in the module that matches no detail's pattern is the module's.
+  expect(pageOf('/editorial/versions')).toMatchObject({ path: 'editorial', titleKey: 'modules.editorial.title' });
+  expect(pageOf(`/editorial/versions/${version}/chapters`)).toMatchObject({ path: 'editorial' });
+  expect(pageOf(`/editorial/courses/${version}`)).toMatchObject({ path: 'editorial' });
+});
+
+// An entry page (a module's routes.ts's entries) is at an address of its own, outside its module's: no module owns the
+// segment invitations. It governs its exact address by its own audience, before any module's.
+test('pageOf finds an entry page by its exact address, governed by its own audience', () => {
+  expect(pageOf('/invitations/accept')).toMatchObject({
+    path: '/invitations/accept',
+    titleKey: 'modules.organisation.entries.acceptInvitation.title',
+    audience: 'signed-in',
+  });
 });

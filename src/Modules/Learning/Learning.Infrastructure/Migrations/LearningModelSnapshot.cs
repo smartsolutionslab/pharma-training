@@ -16,7 +16,7 @@ partial class LearningModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261118000000_CreateSamples";
+    public override string LastMigrationId => "20261123141707_IndexCourseVersionChaptersByChapter";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -27,6 +27,59 @@ partial class LearningModelSnapshot : ModelSnapshot
             .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
         NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.ReadModels.CourseVersionChapterCopy", b =>
+            {
+                b.Property<Guid>("CourseVersionId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("course_version_id");
+
+                b.Property<Guid>("ChapterId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("chapter_id");
+
+                b.Property<string>("Kind")
+                    .IsRequired()
+                    .HasMaxLength(16)
+                    .HasColumnType("character varying(16)")
+                    .HasColumnName("kind");
+
+                b.Property<int>("Position")
+                    .HasColumnType("integer")
+                    .HasColumnName("position");
+
+                b.Property<int?>("VideoDurationSeconds")
+                    .HasColumnType("integer")
+                    .HasColumnName("video_duration_seconds");
+
+                b.HasKey("CourseVersionId", "ChapterId")
+                    .HasName("pk_course_version_chapters");
+
+                b.HasIndex("ChapterId")
+                    .HasDatabaseName("ix_course_version_chapters_chapter_id");
+
+                b.ToTable("course_version_chapters", "learning");
+            });
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.ReadModels.CourseVersionCopy", b =>
+            {
+                b.Property<Guid>("Id")
+                    .HasColumnType("uuid")
+                    .HasColumnName("id");
+
+                b.Property<Guid>("CourseId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("course_id");
+
+                b.Property<int>("VersionNumber")
+                    .HasColumnType("integer")
+                    .HasColumnName("version_number");
+
+                b.HasKey("Id")
+                    .HasName("pk_course_versions");
+
+                b.ToTable("course_versions", "learning");
+            });
 
         modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.ReadModels.SampleSummary", b =>
             {
@@ -43,6 +96,21 @@ partial class LearningModelSnapshot : ModelSnapshot
                 b.HasKey("Id");
 
                 b.ToTable("sample_summaries", "learning");
+            });
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.ReadModels.CourseVersionChapterCopy", b =>
+            {
+                b.HasOne("SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.ReadModels.CourseVersionCopy", null)
+                    .WithMany("Chapters")
+                    .HasForeignKey("CourseVersionId")
+                    .OnDelete(DeleteBehavior.Cascade)
+                    .IsRequired()
+                    .HasConstraintName("fk_course_version_chapters_course_versions_course_version_id");
+            });
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.ReadModels.CourseVersionCopy", b =>
+            {
+                b.Navigation("Chapters");
             });
 #pragma warning restore 612, 618
     }

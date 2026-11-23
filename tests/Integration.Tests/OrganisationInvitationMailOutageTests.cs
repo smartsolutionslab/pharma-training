@@ -43,7 +43,7 @@ public partial class OrganisationInvitationMailOutageTests(AspireFixture aspire)
             await StartMailpitAsync(cancellationToken);
 
             var mail = (await mailpit.MessagesToAsync(address, 1, cancellationToken)).ShouldHaveSingleItem();
-            (await database.TokenHashAsync(membership, cancellationToken)).ShouldBe(HashOf(TokenIn(mail)));
+            (await database.TokenHashesAsync(membership, cancellationToken)).ShouldBe([HashOf(TokenIn(mail))]);
         }
         finally
         {
@@ -79,7 +79,7 @@ public partial class OrganisationInvitationMailOutageTests(AspireFixture aspire)
             await database.ReplayAsync(deadLetter.Id, cancellationToken);
 
             var mail = (await mailpit.MessagesToAsync(address, 1, cancellationToken)).ShouldHaveSingleItem();
-            (await database.TokenHashAsync(membership, cancellationToken)).ShouldBe(HashOf(TokenIn(mail)));
+            (await database.TokenHashesAsync(membership, cancellationToken)).ShouldBe([HashOf(TokenIn(mail))]);
         }
         finally
         {

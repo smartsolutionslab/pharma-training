@@ -13,14 +13,22 @@ defineOptions({
 });
 
 const props = withDefaults(
-  defineProps<DialogContentProps & { class?: HTMLAttributes['class']; showCloseButton?: boolean }>(),
+  defineProps<
+    DialogContentProps & {
+      class?: HTMLAttributes['class'];
+      showCloseButton?: boolean;
+      /** Disables the close button, while the dialog must stay open (such as during an upload). */
+      closeDisabled?: boolean;
+    }
+  >(),
   {
     showCloseButton: true,
+    closeDisabled: false,
   },
 );
 const emits = defineEmits<DialogContentEmits>();
 
-const delegatedProps = reactiveOmit(props, 'class');
+const delegatedProps = reactiveOmit(props, 'class', 'closeDisabled');
 
 const forwarded = useForwardPropsEmits(delegatedProps, emits);
 const { t } = useI18n();
@@ -43,6 +51,7 @@ const { t } = useI18n();
 
       <DialogClose
         v-if="showCloseButton"
+        :disabled="closeDisabled"
         data-slot="dialog-close"
         class="ring-offset-background focus:ring-ring data-[state=open]:bg-accent data-[state=open]:text-muted-foreground absolute top-4 right-4 rounded-xs opacity-70 motion-safe:transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
       >

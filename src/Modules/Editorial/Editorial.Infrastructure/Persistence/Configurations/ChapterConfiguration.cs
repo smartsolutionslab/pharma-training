@@ -35,5 +35,10 @@ public sealed class ChapterConfiguration : IEntityTypeConfiguration<Chapter>
         builder.Property(chapter => chapter.Duration).HasColumnName("duration_seconds");
 
         builder.HasIndex(CourseVersionId);
+
+        // One file, one chapter of a version: CourseVersion refuses it, and this backs it (FileInUse). A text chapter has
+        // no file, and PostgreSQL holds nulls distinct, so any number of them pass. A chapter copied into the next
+        // version keeps its file under another version, so the rule is per version.
+        builder.HasIndex(CourseVersionId, nameof(Chapter.File)).IsUnique();
     }
 }

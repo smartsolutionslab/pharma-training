@@ -85,16 +85,19 @@ public partial class BrokerBindingsTests(AspireFixture aspire)
         {
             var address = Invitee();
             var membership = await InviteAsync(owner, pharmacy, address, cancellationToken);
-            var hash = await database.TokenHashAsync(membership, cancellationToken);
-            hash.ShouldNotBeNull("the invitation's own mail issued no link");
+            var hash = await database.TokenHashesAsync(membership, cancellationToken);
+            hash.ShouldNotBeEmpty("the invitation's own mail issued no link");
 
+            // Unmarked, a forged request that reached the consumer would mail and issue a link again, instead of being
+            // skipped as already mailed, so the wait below sees it.
+            await database.ClearInvitationMailedAsync(membership, cancellationToken);
             await PublishForgedMailRequestAsync(channel, queue, membership, pharmacy, cancellationToken);
 
             var (hashAfter, mails) = await WaitForAForgedRunAsync(membership, hash, address, cancellationToken);
-            TestContext.Current.TestOutputHelper?.WriteLine($"{queue}: token hash {(hashAfter == hash ? "unchanged" : "changed")}, {mails} mail(s) to the invitee");
-            if (hashAfter != hash || mails != 1)
+            TestContext.Current.TestOutputHelper?.WriteLine($"{queue}: token hash {(hashAfter.SequenceEqual(hash) ? "unchanged" : "changed")}, {mails} mail(s) to the invitee");
+            if (!hashAfter.SequenceEqual(hash) || mails != 1)
             {
-                handled.Add($"{queue}: token hash {(hashAfter == hash ? "unchanged" : "changed")}, {mails} mail(s) to the invitee");
+                handled.Add($"{queue}: token hash {(hashAfter.SequenceEqual(hash) ? "unchanged" : "changed")}, {mails} mail(s) to the invitee");
             }
         }
 
@@ -200,14 +203,14 @@ public partial class BrokerBindingsTests(AspireFixture aspire)
     /// Waits up to <see cref="ForgeryWait"/> for a run of the consumer the forged request would cause, a new token hash
     /// or a second mail, and answers the membership's token hash and the invitee's mails as they are then.
     /// </summary>
-    private async Task<(string? Hash, int Mails)> WaitForAForgedRunAsync(Guid membership, string hash, string address, CancellationToken cancellationToken)
+    private async Task<(List<string> Hash, int Mails)> WaitForAForgedRunAsync(Guid membership, List<string> hash, string address, CancellationToken cancellationToken)
     {
         var started = TimeProvider.System.GetTimestamp();
         while (true)
         {
-            var current = await database.TokenHashAsync(membership, cancellationToken);
+            var current = await database.TokenHashesAsync(membership, cancellationToken);
             var mails = await mailpit.CountToAsync(address, cancellationToken);
-            if ((current != hash && mails > 1) || TimeProvider.System.GetElapsedTime(started) >= ForgeryWait)
+            if ((!current.SequenceEqual(hash) && mails > 1) || TimeProvider.System.GetElapsedTime(started) >= ForgeryWait)
             {
                 return (current, mails);
             }
