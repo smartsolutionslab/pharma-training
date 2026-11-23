@@ -85,6 +85,7 @@ public static class Messaging
 
             return new MessagingBroker(
                 broker,
+                UserNames(users),
                 users.ToDictionary(
                     user => user.Module,
                     user => ReferenceExpression.Create($"amqp://{user.UserName.Resource:uri}:{user.Password.Resource:uri}@{address}"),
@@ -120,7 +121,7 @@ public static class Messaging
             secrets.Store($"{Name}-{user.Module}-connection-string", ReferenceExpression.Create($"amqp://{user.UserName.Resource}:{user.Password.Resource}@{publishedAddress}"));
         }
 
-        return new MessagingBroker(published, []);
+        return new MessagingBroker(published, UserNames(publishedUsers), []);
     }
 
     /// <summary>
@@ -136,6 +137,14 @@ public static class Messaging
         ArgumentException.ThrowIfNullOrWhiteSpace(module);
 
         service.WithEnvironment("Messaging__Queue", module).WaitFor(broker.Resource);
+        // Every module's user name, so the service knows whose events a message's user_id vouches for (docs/adr/0011):
+        // RabbitMQ refuses a user_id other than the connection's, and the service refuses an event of a module other than
+        // the one whose user sent it. User names are no secret.
+        foreach (var (publisher, userName) in broker.UserNames)
+        {
+            service.WithEnvironment($"Messaging__Publishers__{publisher}", userName);
+        }
+
         if (!secrets.IsPublishing)
         {
             return service.WithEnvironment($"ConnectionStrings__{Name}", broker.ConnectionStringOf(module));
@@ -144,6 +153,9 @@ public static class Messaging
         IAzureKeyVaultSecretReference connectionString = secrets.Stored($"{Name}-{module}-connection-string").Resource;
         return service.WithEnvironment($"ConnectionStrings__{Name}", connectionString);
     }
+
+    private static SortedDictionary<string, IResourceBuilder<ParameterResource>> UserNames(List<BrokerUser> users) =>
+        new(users.ToDictionary(user => user.Module, user => user.UserName, StringComparer.Ordinal), StringComparer.Ordinal);
 
     /// <summary>A user per service host, named after its module unless the deployment says otherwise, in ordinal order.</summary>
     private static List<BrokerUser> Users(IDistributedApplicationBuilder builder, Func<string, IResourceBuilder<ParameterResource>> password) =>
