@@ -168,6 +168,7 @@ test('selecting everyone with a job function stops reading at the page that pass
 
   const alert = await screen.findByRole('alert');
   expect(alert).toHaveTextContent(t('compliance.assign.learners.tooMany', { max: 100 }));
+  await waitFor(() => expect(alert).toHaveFocus());
   expect(membersReads().filter((read) => read.jobFunction === 'Trainee')).toEqual([
     { page: '1', pageSize: '100', jobFunction: 'Trainee' },
     { page: '2', pageSize: '100', jobFunction: 'Trainee' },

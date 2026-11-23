@@ -99,7 +99,7 @@ describe('refuses', () => {
 });
 
 test('today follows the clock it is given', () => {
-  const later = createAssignSchema(() => new Date(2027, 0, 10, 8, 0, 0));
+  const later = createAssignSchema(() => new Date('2027-01-10T07:00:00Z'));
 
   expect(later.safeParse({ ...valid, dueDate: '2027-01-09' }).success).toBe(false);
   expect(later.safeParse({ ...valid, dueDate: '2027-01-10' }).success).toBe(true);

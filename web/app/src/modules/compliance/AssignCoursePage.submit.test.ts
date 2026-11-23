@@ -6,6 +6,7 @@ import { useSelectedPharmacyStore } from '@/stores/selectedPharmacy';
 import {
   anna,
   ben,
+  assignedAll,
   carla,
   catalogPath,
   chooseButton,
@@ -234,6 +235,36 @@ describe('switching the pharmacy while the assignment is on its way', () => {
     expect(document.body).not.toHaveTextContent(ben.personId);
     expect(notify.success).not.toHaveBeenCalled();
     expect(notify.failure).not.toHaveBeenCalled();
+  });
+
+  test("the new pharmacy's wizard can be sent while the old pharmacy's answer is still on its way", async () => {
+    const user = userEvent.setup();
+    let answer: (response: Response) => void = () => undefined;
+    state.memberships = [markt, dom];
+    state.members[dom.id] = [carla];
+    let first = true;
+    state.assignment = (body) => {
+      if (first) {
+        first = false;
+        return new Promise<Response>((resolve) => (answer = resolve));
+      }
+      return assignedAll(body);
+    };
+    localStorage.setItem('pharmacy', markt.id);
+    const { pinia } = await renderAssignPage();
+    await toReview(user, { members: [anna, ben] });
+    await user.click(submitButton());
+    await waitFor(() => expect(postsOf(host)).toHaveLength(1));
+
+    useSelectedPharmacyStore(pinia).choose(dom.id);
+    await stepHeading('compliance.assign.course.title');
+    await toReview(user, { members: [carla] });
+
+    expect(submitButton()).toBeEnabled();
+    await user.click(submitButton());
+    await stepHeading('compliance.assign.result.title');
+    expect(postsOf(host)).toHaveLength(2);
+    answer(Response.json({ assigned: [], refused: [] }));
   });
 });
 
