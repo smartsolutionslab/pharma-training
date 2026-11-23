@@ -5,6 +5,8 @@ public static class LearningSessionFailures
 {
     public static ApiError CourseVersionNotFound(Guid id) => new CourseVersionNotFound(id);
 
+    public static ApiError CourseVersionRetired(Guid id) => new CourseVersionRetired(id);
+
     public static ApiError SessionNotFound(Guid id) => new LearningSessionNotFound(id);
 
     public static ApiError IdentityIncomplete() => new IdentityIncomplete();
