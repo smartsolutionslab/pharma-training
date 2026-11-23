@@ -129,10 +129,12 @@ foreach (var (module, project) in builder.ServiceHosts())
 }
 
 // Published, the browser uses the signed URLs from the edge's origin, which serves the web app, and from the web app's
-// public address, frontend-url, alone (docs/adr/0002).
+// public address, frontend-url, alone (docs/adr/0002); index.html's Content-Security-Policy lets the page call blob
+// storage's origin, Edge:BlobEndpoint, and none other but the edge's and the identity provider's (docs/adr/0005).
 if (frontendUrlParameter is not null)
 {
     storage.AllowBrowserAccessFromEdge(host, frontendUrlParameter);
+    host.WithEnvironment("Edge__BlobEndpoint", storage.Resource.BlobEndpoint);
 }
 
 builder.Build().Run();

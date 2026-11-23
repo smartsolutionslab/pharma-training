@@ -5,6 +5,9 @@
   "verifyEmail": true,
   "sslRequired": "external",
   "bruteForceProtected": true,
+  "failureFactor": 10,
+  "eventsEnabled": true,
+  "adminEventsEnabled": true,
   "requiredActions": [
     { "alias": "CONFIGURE_TOTP", "name": "Configure OTP", "providerId": "CONFIGURE_TOTP", "enabled": true, "defaultAction": false, "priority": 10 },
     { "alias": "TERMS_AND_CONDITIONS", "name": "Terms and Conditions", "providerId": "TERMS_AND_CONDITIONS", "enabled": false, "defaultAction": false, "priority": 20 },
@@ -39,6 +42,11 @@
     ]
   },
   "clients": [
+    {
+      "clientId": "admin-cli",
+      "publicClient": true,
+      "directAccessGrantsEnabled": false
+    },
     {
       "clientId": "pharma-training-api",
       "enabled": true,

@@ -21,6 +21,13 @@ public static class KeycloakPublishing
 
     public const string Tag = "26.6";
 
+    /// <summary>
+    /// The published build's base, by tag and digest (the security review of #114): a tag can be moved to an image nobody
+    /// reviewed. Run mode keeps the tag alone. Dependabot cannot see an image named in C#, so a new Keycloak is pinned here by
+    /// hand, with <see cref="Tag"/>, from <c>docker buildx imagetools inspect quay.io/keycloak/keycloak:&lt;tag&gt;</c>.
+    /// </summary>
+    public const string PinnedImage = $"{Image}:{Tag}@sha256:0aae0de7fca85525f727d3354df17896092de8bb26ae4c12d89c77e5df8cbce4";
+
     // The schema Keycloak's tables live in (X3), owned by its role.
     private const string Schema = "keycloak";
 
@@ -90,10 +97,10 @@ public static class KeycloakPublishing
     /// </summary>
     private static string Dockerfile() =>
         $"""
-        FROM {Image}:{Tag} AS builder
+        FROM {PinnedImage} AS builder
         RUN /opt/keycloak/bin/kc.sh build --db=postgres --health-enabled=true
 
-        FROM {Image}:{Tag}
+        FROM {PinnedImage}
         COPY --from=builder /opt/keycloak/ /opt/keycloak/
         COPY realm.json {RealmImport}/realm.json
 

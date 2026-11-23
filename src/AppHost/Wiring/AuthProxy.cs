@@ -20,6 +20,13 @@ public static class AuthProxy
 
     private const string Realm = "pharma-training";
 
+    // YARP's image (mcr.microsoft.com/dotnet/nightly/yarp) by tag and digest (the security review of #114): Aspire's default
+    // tag, 2.3-preview, moves with every nightly build. Dependabot cannot see an image named in C#, so a new one is pinned
+    // here by hand, tag and digest together, from `docker buildx imagetools inspect mcr.microsoft.com/dotnet/nightly/yarp:<tag>`.
+    private const string ImageTag = "2.3.0-preview.5";
+
+    private const string ImageDigest = "540266215e741cebd0152343f8a6018ee7ebc34f7caaa4022e3a93ff2f778b58";
+
     // The paths the browser needs: the realm's endpoints and login pages, and the themes' static files.
     private static readonly string[] Paths = [$"/realms/{Realm}/{{**catch-all}}", "/resources/{**catch-all}"];
 
@@ -36,6 +43,8 @@ public static class AuthProxy
 
         var endpoint = keycloak.GetEndpoint("http");
         var auth = builder.AddYarp(Name)
+            .WithImageTag(ImageTag)
+            .WithImageSHA256(ImageDigest)
             .WithExternalHttpEndpoints()
             .WithEnvironment("ASPNETCORE_FORWARDEDHEADERS_ENABLED", "true")
             .WithConfiguration(yarp =>
