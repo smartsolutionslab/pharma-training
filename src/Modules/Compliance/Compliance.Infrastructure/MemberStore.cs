@@ -26,16 +26,11 @@ public sealed class MemberStore(ComplianceDbContext context) : IMemberStore
 
     public void Add(MembershipChange change) => context.Add(change);
 
-    public async Task<IReadOnlyList<CurrentMembership>> ActiveMembershipsAsync(PersonId person, PharmacyId pharmacy, CancellationToken cancellationToken)
-    {
-        var active = Active().Where(member => member.Person == person && member.Pharmacy == pharmacy);
-        var members = await active.ToListAsync(cancellationToken);
-        var changes = await context.Set<MembershipChange>()
-            .AsNoTracking()
-            .Where(change => active.Any(member => member.Id == change.Membership))
-            .ToListAsync(cancellationToken);
-        return [.. members.Select(member => CurrentMembership.Of(member, [.. changes.Where(change => change.Membership == member.Id)]))];
-    }
+    public Task<IReadOnlyList<CurrentMembership>> ActiveMembershipsAsync(PersonId person, PharmacyId pharmacy, CancellationToken cancellationToken) =>
+        CurrentAsync(Active().Where(member => member.Person == person && member.Pharmacy == pharmacy), cancellationToken);
+
+    public Task<IReadOnlyList<CurrentMembership>> ActiveMembershipsInPharmacyAsync(PharmacyId pharmacy, CancellationToken cancellationToken) =>
+        CurrentAsync(Active().Where(member => member.Pharmacy == pharmacy), cancellationToken);
 
     public async Task<IReadOnlySet<PersonId>> ActiveMembersAsync(PharmacyId pharmacy, IReadOnlyCollection<PersonId> persons, CancellationToken cancellationToken)
     {
@@ -47,6 +42,17 @@ public sealed class MemberStore(ComplianceDbContext context) : IMemberStore
             .Select(member => member.Person)
             .ToListAsync(cancellationToken);
         return found.ToHashSet();
+    }
+
+    /// <summary>The members, each with its changes, as they stand now.</summary>
+    private async Task<IReadOnlyList<CurrentMembership>> CurrentAsync(IQueryable<Member> active, CancellationToken cancellationToken)
+    {
+        var members = await active.ToListAsync(cancellationToken);
+        var changes = await context.Set<MembershipChange>()
+            .AsNoTracking()
+            .Where(change => active.Any(member => member.Id == change.Membership))
+            .ToListAsync(cancellationToken);
+        return [.. members.Select(member => CurrentMembership.Of(member, [.. changes.Where(change => change.Membership == member.Id)]))];
     }
 
     /// <summary>The members whose membership has not ended, read without tracking.</summary>
