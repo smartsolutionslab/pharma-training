@@ -88,7 +88,7 @@ public class PharmacyCoverageTests
 
         var revoked = pharmacy.Memberships.Single(m => m.Id == membership);
         revoked.Status.ShouldBe(MembershipStatus.Revoked);
-        revoked.TokenHash.ShouldBeNull();
+        revoked.InvitationLinks.ShouldBeEmpty();
         pharmacy.DomainEvents.OfType<InvitationRevoked>().ShouldHaveSingleItem().ShouldBe(new InvitationRevoked(pharmacy.Id, membership));
         pharmacy.AcceptInvitation(token, Anna, AnnaName, AnnaMail, Now).Error.Value.ShouldBeOfType<InvitationNotFound>();
     }

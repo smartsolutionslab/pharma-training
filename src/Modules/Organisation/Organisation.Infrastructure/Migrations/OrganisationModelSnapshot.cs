@@ -16,7 +16,7 @@ partial class OrganisationModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261122174344_AddUniqueActivePersonPerPharmacy";
+    public override string LastMigrationId => "20261123005950_InvitationLinksPerVersion";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -47,6 +47,16 @@ partial class OrganisationModelSnapshot : ModelSnapshot
                 b.Property<DateTimeOffset?>("InvitationExpiresAt")
                     .HasColumnType("timestamp with time zone")
                     .HasColumnName("invitation_expires_at");
+
+                b.Property<int?>("InvitationMailedFor")
+                    .HasColumnType("integer")
+                    .HasColumnName("invitation_mailed_for");
+
+                b.Property<int>("InvitationVersion")
+                    .ValueGeneratedOnAdd()
+                    .HasColumnType("integer")
+                    .HasDefaultValue(1)
+                    .HasColumnName("invitation_version");
 
                 b.Property<string>("JobFunction")
                     .IsRequired()
@@ -83,19 +93,11 @@ partial class OrganisationModelSnapshot : ModelSnapshot
                     .HasColumnType("character varying(20)")
                     .HasColumnName("status");
 
-                b.Property<string>("TokenHash")
-                    .HasMaxLength(64)
-                    .HasColumnType("character varying(64)")
-                    .HasColumnName("token_hash");
-
                 b.HasKey("Id");
 
                 b.HasIndex("Person");
 
                 b.HasIndex("PharmacyId");
-
-                b.HasIndex("TokenHash")
-                    .IsUnique();
 
                 b.HasIndex("PharmacyId", "Email")
                     .IsUnique()
@@ -159,6 +161,30 @@ partial class OrganisationModelSnapshot : ModelSnapshot
                     .HasForeignKey("PharmacyId")
                     .OnDelete(DeleteBehavior.Cascade)
                     .IsRequired();
+
+                b.OwnsMany("SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies.InvitationLink", "InvitationLinks", b1 =>
+                    {
+                        b1.Property<Guid>("MembershipId")
+                            .HasColumnType("uuid")
+                            .HasColumnName("membership_id");
+
+                        b1.Property<string>("Hash")
+                            .HasMaxLength(64)
+                            .HasColumnType("character varying(64)")
+                            .HasColumnName("token_hash");
+
+                        b1.HasKey("MembershipId", "Hash");
+
+                        b1.HasIndex("Hash")
+                            .IsUnique();
+
+                        b1.ToTable("invitation_links", "organisation");
+
+                        b1.WithOwner()
+                            .HasForeignKey("MembershipId");
+                    });
+
+                b.Navigation("InvitationLinks");
             });
 
         modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies.Pharmacy", b =>

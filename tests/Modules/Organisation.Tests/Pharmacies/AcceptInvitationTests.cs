@@ -49,7 +49,7 @@ public class AcceptInvitationTests
         membership.Person.ShouldBe(Anna);
         membership.Name.ShouldBe(AnnaName);
         membership.StartedAt.ShouldBe(Timestamp.From(now));
-        membership.TokenHash.ShouldBeNull();
+        membership.InvitationLinks.ShouldBeEmpty();
         store.Commits.ShouldBe(1);
         var started = store.Published.ShouldHaveSingleItem().ShouldBeOfType<MembershipStartedV1>();
         started.MembershipId.ShouldBe(invitation.Value);
@@ -98,7 +98,7 @@ public class AcceptInvitationTests
         var open = pharmacy.Membership(invitation);
         open.Status.ShouldBe(MembershipStatus.Invited);
         open.Person.ShouldBeNull();
-        open.TokenHash.ShouldBe(InvitationTokenHash.Of(token));
+        open.InvitationLinks.Select(link => link.Hash).ShouldBe([InvitationTokenHash.Of(token)]);
         pharmacy.DomainEvents.ShouldBeEmpty();
         store.Commits.ShouldBe(0);
         store.Published.ShouldBeEmpty();
@@ -207,7 +207,7 @@ public class AcceptInvitationTests
         forwarded.Error.Status.ShouldBe(HttpStatusCode.Forbidden);
         var open = pharmacy.Membership(invitation);
         open.Status.ShouldBe(MembershipStatus.Invited);
-        open.TokenHash.ShouldBe(InvitationTokenHash.Of(token));
+        open.InvitationLinks.Select(link => link.Hash).ShouldBe([InvitationTokenHash.Of(token)]);
         store.Commits.ShouldBe(0);
         store.Published.ShouldBeEmpty();
 
@@ -233,7 +233,7 @@ public class AcceptInvitationTests
         accepted.Error.Status.ShouldBe(HttpStatusCode.Conflict);
         var open = pharmacy.Membership(invitation);
         open.Status.ShouldBe(MembershipStatus.Invited);
-        open.TokenHash.ShouldBe(InvitationTokenHash.Of(token));
+        open.InvitationLinks.Select(link => link.Hash).ShouldBe([InvitationTokenHash.Of(token)]);
         store.Commits.ShouldBe(0);
         store.Published.ShouldBeEmpty();
     }

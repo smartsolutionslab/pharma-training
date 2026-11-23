@@ -5,6 +5,8 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacie
 /// <summary>A person's place in one pharmacy, from the invitation to the day they leave.</summary>
 public sealed class Membership : Entity<MembershipId>
 {
+    private readonly List<InvitationLink> invitationLinks = [];
+
     private Membership(MembershipId id)
         : base(id)
     {
@@ -12,8 +14,17 @@ public sealed class Membership : Entity<MembershipId>
 
     public EmailAddress Email { get; private set; } = default!;
 
-    /// <summary>The hash of the open invitation's token; the token itself is never kept.</summary>
-    public InvitationTokenHash? TokenHash { get; private set; }
+    /// <summary>
+    /// The links issued for the open invitation's current version, by their tokens' hashes; the tokens themselves are
+    /// never kept. Each of them opens the invitation, since the invitee may hold any of their mails.
+    /// </summary>
+    public IReadOnlyList<InvitationLink> InvitationLinks => invitationLinks;
+
+    /// <summary>The invitation's version: 1 at the invite, the next at each renewal. A founder, never invited, keeps 1, never mailed.</summary>
+    public InvitationVersion InvitationVersion { get; private set; } = InvitationVersion.First;
+
+    /// <summary>The invitation version whose mail was sent, if any; a version that is mailed is not mailed again.</summary>
+    public InvitationVersion? InvitationMailedFor { get; private set; }
 
     public Timestamp? InvitationExpiresAt { get; private set; }
 
@@ -45,14 +56,14 @@ public sealed class Membership : Entity<MembershipId>
         Name = name;
         Status = MembershipStatus.Active;
         StartedAt = now;
-        TokenHash = null; // a used link never works again
+        invitationLinks.Clear(); // a used invitation's links never work again
         InvitationExpiresAt = null;
     }
 
     internal void Revoke()
     {
         Status = MembershipStatus.Revoked;
-        TokenHash = null;
+        invitationLinks.Clear();
     }
 
     internal void End(Timestamp now)
@@ -67,12 +78,24 @@ public sealed class Membership : Entity<MembershipId>
         Role = role;
     }
 
-    /// <summary>The link mailed now; an earlier link's hash matches nothing any more.</summary>
-    internal void IssueLink(InvitationTokenHash tokenHash) => TokenHash = tokenHash;
+    /// <summary>Whether one of the current version's links has this hash.</summary>
+    internal bool Holds(InvitationTokenHash tokenHash) => invitationLinks.Any(link => link.Hash == tokenHash);
+
+    /// <summary>Whether the current version holds as many links as it may (<see cref="Pharmacy.MaxInvitationLinksPerVersion"/>).</summary>
+    internal bool HoldsMostLinks() => invitationLinks.Count >= Pharmacy.MaxInvitationLinksPerVersion;
+
+    /// <summary>A link mailed now, beside the version's earlier ones, which keep working.</summary>
+    internal void IssueLink(InvitationTokenHash tokenHash) => invitationLinks.Add(InvitationLink.Of(tokenHash));
+
+    /// <summary>Takes back the link with this hash, whose mail never left; answers whether the version held it.</summary>
+    internal bool WithdrawLink(InvitationTokenHash tokenHash) => invitationLinks.RemoveAll(link => link.Hash == tokenHash) > 0;
+
+    internal void RecordMailed(InvitationVersion version) => InvitationMailedFor = version;
 
     internal void RenewInvitation(Timestamp expiresAt)
     {
-        TokenHash = null; // the old link stops working at once; the renewal's mail issues the new one
+        invitationLinks.Clear(); // the old links stop working at once; the renewal's mail issues the new one
         InvitationExpiresAt = expiresAt;
+        InvitationVersion = InvitationVersion.Next();
     }
 }

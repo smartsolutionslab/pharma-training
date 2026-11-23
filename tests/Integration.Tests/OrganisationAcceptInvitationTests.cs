@@ -66,7 +66,7 @@ public partial class OrganisationAcceptInvitationTests(AspireFixture aspire)
         stored.Status.ShouldBe("Active");
         stored.Person.ShouldBe(await database.SubjectOfAsync("employee-a"));
         stored.Name.ShouldBe("Anna Employee");
-        stored.TokenHash.ShouldBeNull();
+        stored.TokenHashes.ShouldBeEmpty();
         var mine = await employee.GetFromJsonAsync<MyPharmacy>(new Uri($"/organisation/pharmacies/{pharmacy}", UriKind.Relative), cancellationToken);
         mine.ShouldNotBeNull().MembershipId.ShouldBe(membership);
     }
@@ -126,7 +126,7 @@ public partial class OrganisationAcceptInvitationTests(AspireFixture aspire)
         stored.Status.ShouldBe("Active");
         stored.Person.ShouldBe(await database.SubjectOfAsync("employee-b"));
         stored.Name.ShouldBe("Ben Employee");
-        stored.TokenHash.ShouldBeNull();
+        stored.TokenHashes.ShouldBeEmpty();
         var mine = await employee.GetFromJsonAsync<MyPharmacyPage>(Mine, cancellationToken);
         mine.ShouldNotBeNull().Items.Select(item => item.Id).ShouldContain(pharmacy);
     }
@@ -176,7 +176,7 @@ public partial class OrganisationAcceptInvitationTests(AspireFixture aspire)
         await ShouldBeRefusedAsync(refused, HttpStatusCode.Gone, "organisation.invitation-expired", cancellationToken);
         var stored = await database.MemberAsync(membership, cancellationToken);
         stored.Status.ShouldBe("Invited");
-        stored.TokenHash.ShouldBe(HashOf(token));
+        stored.TokenHashes.ShouldBe([HashOf(token)]);
     }
 
     [Fact]
@@ -193,7 +193,7 @@ public partial class OrganisationAcceptInvitationTests(AspireFixture aspire)
         var stored = await database.MemberAsync(membership, cancellationToken);
         stored.Status.ShouldBe("Invited");
         stored.Person.ShouldBeNull();
-        stored.TokenHash.ShouldBe(HashOf(token));
+        stored.TokenHashes.ShouldBe([HashOf(token)]);
         using var accepted = await AcceptAsync(invitee, token, cancellationToken);
         await ShouldAnswerAsync(accepted, HttpStatusCode.OK, cancellationToken);
         (await accepted.Content.ReadFromJsonAsync<Guid>(cancellationToken)).ShouldBe(pharmacy);
@@ -254,7 +254,7 @@ public partial class OrganisationAcceptInvitationTests(AspireFixture aspire)
         var stored = await database.MemberAsync(membership, cancellationToken);
         stored.Status.ShouldBe("Invited");
         stored.Person.ShouldBeNull();
-        stored.TokenHash.ShouldBe(HashOf(token));
+        stored.TokenHashes.ShouldBe([HashOf(token)]);
     }
 
     [Fact]
@@ -292,7 +292,7 @@ public partial class OrganisationAcceptInvitationTests(AspireFixture aspire)
         await ShouldBeRefusedAsync(refused, HttpStatusCode.Conflict, "organisation.person-already-member", cancellationToken);
         var stored = await database.MemberAsync(membership, cancellationToken);
         stored.Status.ShouldBe("Invited");
-        stored.TokenHash.ShouldBe(HashOf(token));
+        stored.TokenHashes.ShouldBe([HashOf(token)]);
     }
 
     [Fact]

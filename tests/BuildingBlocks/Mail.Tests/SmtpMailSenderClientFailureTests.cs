@@ -140,6 +140,51 @@ public class SmtpMailSenderClientFailureTests
         ShouldNameNeitherTheServersTextNorTheRecipient(failed);
     }
 
+    /// <summary>
+    /// Once the client's <c>SendAsync</c> has returned, the server has taken the mail: a failure while disconnecting
+    /// afterwards counts as sent, so the send completes and nothing retries a mail the invitee already has.
+    /// </summary>
+    [Theory]
+    [InlineData("a dropped connection")]
+    [InlineData("a refused QUIT")]
+    [InlineData("a timeout")]
+    public async Task A_failure_while_disconnecting_after_the_mail_was_sent_counts_as_sent(string failure)
+    {
+        var client = Substitute.For<ISmtpClient>();
+        client.DisconnectAsync(Arg.Any<bool>(), Arg.Any<CancellationToken>()).ThrowsAsync(DisconnectFailure(failure));
+        var sender = Sender(client, new FakeTimeProvider());
+
+        // Awaited directly, not through Should.NotThrowAsync, which lets a cancelled task pass.
+        await sender.SendAsync(Invitation, TestContext.Current.CancellationToken);
+
+        await client.Received(1).SendAsync(Arg.Any<MimeKit.MimeMessage>(), Arg.Any<CancellationToken>(), Arg.Any<ITransferProgress>());
+    }
+
+    /// <summary>The bound that fires while disconnecting, after the mail was sent, does not undo the send either.</summary>
+    [Fact]
+    public async Task The_bound_firing_while_disconnecting_after_the_mail_was_sent_counts_as_sent()
+    {
+        var time = new FakeTimeProvider();
+        var client = Substitute.For<ISmtpClient>();
+        client.DisconnectAsync(Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            time.Advance(TimeSpan.FromSeconds(11));
+            return Task.FromException(new IOException(ServerText + " " + Recipient));
+        });
+        var sender = Sender(client, time);
+
+        // Awaited directly, not through Should.NotThrowAsync, which lets a cancelled task pass.
+        await sender.SendAsync(Invitation, TestContext.Current.CancellationToken);
+    }
+
+    private static Exception DisconnectFailure(string failure) => failure switch
+    {
+        "a dropped connection" => new IOException($"{ServerAddress} answered {ServerText} for {Recipient}"),
+        "a refused QUIT" => new SmtpCommandException(SmtpErrorCode.UnexpectedStatusCode, SmtpStatusCode.ServiceNotAvailable, $"{ServerText} for {Recipient}"),
+        "a timeout" => new TimeoutException($"{ServerAddress} answered {ServerText} for {Recipient}"),
+        _ => throw new InvalidOperationException($"No failure named '{failure}'."),
+    };
+
     private static SmtpMailSender Sender(ISmtpClient client, TimeProvider time) =>
         new(Settings.Of((ServerKey, "smtp://127.0.0.1:25"), (FromKey, "noreply@example.com")), time, () => client);
 
