@@ -276,7 +276,7 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
 
     public Timestamp? StartedAt { get; private set; }
 
-    /// <summary>When the lock or unlock last applied happened; null until the first (ADR 0019).</summary>
+    /// <summary>When the lock or unlock last applied happened; null until the first (ADR 0023).</summary>
     public Timestamp? TestAccessChangedAt { get; private set; }
 
     public Timestamp? CompletedAt { get; private set; }
@@ -355,7 +355,7 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
     /// <summary>
     /// The learner opened the course (LearningSessionStarted): an open assignment goes in progress. The earliest start
     /// wins, also one before the assignment (owner decision on #247); a start of a completed or cancelled one changes
-    /// nothing. A start does not unlock the test: only relearned content does (owner decision on #32, ADR 0019).
+    /// nothing. A start does not unlock the test: only relearned content does (owner decision on #32, ADR 0023).
     /// </summary>
     public void MarkStarted(Timestamp at)
     {
@@ -377,7 +377,7 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
 
     /// <summary>
     /// Three failed attempts (AttemptsExhausted) lock the test unless a later lock or unlock was applied; on the same
-    /// instant the lock wins (ADR 0019). A lock while open is kept and shows once in progress.
+    /// instant the lock wins (ADR 0023). A lock while open is kept and shows once in progress.
     /// </summary>
     public void MarkLocked(Timestamp at)
     {
@@ -392,7 +392,7 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
 
     /// <summary>
     /// The content was worked through again (ContentCompleted): the test is available unless a lock or unlock at the
-    /// same instant or later was applied (ADR 0019). It never changes the status.
+    /// same instant or later was applied (ADR 0023). It never changes the status.
     /// </summary>
     public void Unlock(Timestamp at)
     {
