@@ -12,6 +12,8 @@ public class MessagingTopologyTests
 {
     private const string Contracts = "SmartSolutionsLab.PharmaTraining.Contracts.";
 
+    private const string ChapterFilesReleased = Contracts + "Editorial.ChapterFilesReleasedV1";
+
     private const string CourseVersionPublished = Contracts + "Editorial.CourseVersionPublishedV1";
 
     private const string CourseVersionRetired = Contracts + "Editorial.CourseVersionRetiredV1";
@@ -43,12 +45,22 @@ public class MessagingTopologyTests
     }
 
     [Fact]
-    public void Editorial_publishes_the_test_definition_beside_the_course_versions()
+    public void Editorial_publishes_the_test_definition_and_the_released_files_beside_the_course_versions()
     {
         var (consumed, published) = MessagingTopology.Of("editorial");
 
         consumed.ShouldBeEmpty();
-        published.ShouldBe([CourseVersionPublished, CourseVersionRetired, TestDefinitionPublished], ignoreOrder: false);
+        published.ShouldBe([ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired, TestDefinitionPublished], ignoreOrder: false);
+    }
+
+    /// <summary>#41: Learning copies the files Editorial releases, so its queue is bound to their exchange too.</summary>
+    [Fact]
+    public void Learning_consumes_the_course_versions_and_the_released_files()
+    {
+        var (consumed, _) = MessagingTopology.Of("learning");
+
+        consumed.ShouldContain(ChapterFilesReleased);
+        consumed.ShouldContain(CourseVersionPublished);
     }
 
     [Fact]
@@ -67,7 +79,7 @@ public class MessagingTopologyTests
         var (consumed, published) = MessagingTopology.Of("learning");
 
         consumed.ShouldBe(
-            [Contracts + "Assessment.AttemptsExhaustedV1", Contracts + "Assessment.TestPassedV1", CourseVersionPublished],
+            [Contracts + "Assessment.AttemptsExhaustedV1", Contracts + "Assessment.TestPassedV1", ChapterFilesReleased, CourseVersionPublished],
             ignoreOrder: false);
         published.ShouldBe([Contracts + "Learning.ContentCompletedV1", Contracts + "Learning.LearningSessionStartedV1"], ignoreOrder: false);
     }

@@ -269,3 +269,43 @@ test('a refusal without a server message is told in the language of the moment',
     i18n.global.t('organisation.register.failed', {}, { locale: 'de-DE' }),
   );
 });
+
+// The host's words for this code speak of a refusal it shares with accepting an invitation; the page has words of its
+// own for it, in the language of the moment, which tell the user what to do before registering again.
+test.each([
+  [
+    'de-DE',
+    'Ihre E-Mail-Adresse ist noch nicht bestätigt. Bestätigen Sie sie über den Link in der Bestätigungs-E-Mail, und registrieren Sie die Apotheke dann erneut.',
+  ],
+  [
+    'en-GB',
+    'Your e-mail address has not been verified yet. Verify it with the link in the verification e-mail, then register the pharmacy again.',
+  ],
+] as const)(
+  "a registration refused because the e-mail address is not verified is told in %s in the catalog's words, not the host's",
+  async (language, said) => {
+    setLanguage(language, { remember: false });
+    host.mockImplementation(async (_input, init) =>
+      init?.method === 'POST'
+        ? new Response(
+            JSON.stringify({
+              title: 'Your e-mail address has not been verified. Verify it, then try again.',
+              status: 403,
+              code: 'organisation.email-not-verified',
+            }),
+            { status: 403, headers: { 'Content-Type': 'application/problem+json' } },
+          )
+        : Response.json({ items: [markt], totalCount: 1, page: 1, pageSize: 100 }),
+    );
+    const pinia = createPinia();
+    const choices = choicesOf(pinia);
+    const { router } = await renderInShell(pinia);
+
+    await registerNeueApotheke();
+
+    await waitFor(() => expect(notify.failure).toHaveBeenCalledExactlyOnceWith(said));
+    expect(notify.success).not.toHaveBeenCalled();
+    expect(router.currentRoute.value.path).toBe('/organisation/register');
+    expect(choices).not.toContain(founded.id);
+  },
+);

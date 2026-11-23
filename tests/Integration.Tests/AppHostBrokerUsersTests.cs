@@ -15,6 +15,8 @@ public class AppHostBrokerUsersTests(AspireFixture aspire)
 {
     private const string Contracts = "SmartSolutionsLab.PharmaTraining.Contracts.";
 
+    private const string ChapterFilesReleased = Contracts + "Editorial.ChapterFilesReleasedV1";
+
     private const string CourseVersionPublished = Contracts + "Editorial.CourseVersionPublishedV1";
 
     private const string CourseVersionRetired = Contracts + "Editorial.CourseVersionRetiredV1";
@@ -55,15 +57,15 @@ public class AppHostBrokerUsersTests(AspireFixture aspire)
         },
         {
             "editorial",
-            ["editorial", CourseVersionPublished, CourseVersionRetired, TestDefinitionPublished],
-            ["editorial", CourseVersionPublished, CourseVersionRetired, TestDefinitionPublished],
+            ["editorial", ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired, TestDefinitionPublished],
+            ["editorial", ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired, TestDefinitionPublished],
             ["editorial"]
         },
         {
             "learning",
-            ["learning", ContentCompleted, LearningSessionStarted, AttemptsExhausted, TestPassed, CourseVersionPublished],
+            ["learning", ContentCompleted, LearningSessionStarted, AttemptsExhausted, TestPassed, ChapterFilesReleased, CourseVersionPublished],
             ["learning", ContentCompleted, LearningSessionStarted],
-            ["learning", AttemptsExhausted, TestPassed, CourseVersionPublished]
+            ["learning", AttemptsExhausted, TestPassed, ChapterFilesReleased, CourseVersionPublished]
         },
         {
             "organisation",
