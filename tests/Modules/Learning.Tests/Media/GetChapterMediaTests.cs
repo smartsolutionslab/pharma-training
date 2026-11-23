@@ -214,7 +214,7 @@ public class GetChapterMediaTests
 
     private async Task StartAsync(CourseVersionCopy version)
     {
-        var started = await new StartLearningSessionHandler(copies, sessions, sessions, time)
+        var started = await new StartLearningSessionHandler(copies, sessions, sessions, sessions, time)
             .HandleAsync(new StartLearningSession(learner, CourseVersionId.From(version.Id)), TestContext.Current.CancellationToken);
         started.IsSuccess.ShouldBeTrue();
     }
