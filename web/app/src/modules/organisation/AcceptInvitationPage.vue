@@ -7,15 +7,16 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { captureFrom } from './invitationLink';
 import { useAcceptInvitation } from './useAcceptInvitation';
 
-// The invitation mail's link: the page shows the token its route kept for this tab ready to accept, and accepts it only
-// when the user presses the button. It names no pharmacy before that. Who accepts comes from the access token; the page
-// never shows the token.
+// The invitation mail's link: the page shows the token its route kept for this tab ready to accept, and accepts it
+// only when the user presses the button. It names no pharmacy before that. Who accepts comes from the access token;
+// the page never shows the token.
 const { t } = useI18n();
 const { state, confirm, retry, start } = useAcceptInvitation();
 
 // A second link opened while the page is shown changes only the address's fragment: the route's beforeEnter does not
 // run, so the page takes the token out of the address itself and shows it ready to accept. The address without the
-// fragment is the one already shown, so the redirect may end as a duplicate navigation; the fragment is gone either way.
+// fragment is the one already shown, so the redirect may end as a duplicate navigation; the fragment is gone either
+// way.
 onBeforeRouteUpdate((to) => {
   const answer = captureFrom(to);
   if (answer !== true) {
@@ -94,8 +95,10 @@ watch(
       <Button @click="confirm">{{ t('organisation.accept.ready.accept') }}</Button>
     </template>
     <template v-else-if="state.kind === 'accepting'">
-      <h1 ref="heading" tabindex="-1" class="text-title focus:outline-none">{{ t('organisation.accept.title') }}</h1>
-      <span class="sr-only">{{ t('organisation.accept.accepting') }}</span>
+      <!-- Its own words, not the button's again, so a screen reader announces what the click started. -->
+      <h1 ref="heading" tabindex="-1" class="text-title focus:outline-none">
+        {{ t('organisation.accept.accepting.title') }}
+      </h1>
       <Skeleton class="h-4 w-2/3" />
       <Skeleton class="h-4 w-1/2" />
     </template>

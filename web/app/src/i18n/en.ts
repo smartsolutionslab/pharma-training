@@ -96,8 +96,9 @@ export const en: MessageSchema = {
       failed: 'The pharmacy could not be registered. Try again.',
     },
     accept: {
-      title: 'Accept an invitation',
-      accepting: 'Accepting the invitation …',
+      accepting: {
+        title: 'Accepting the invitation',
+      },
       accepted: 'You are now a member of {name}.',
       acceptedUnnamed: 'You have accepted the invitation.',
       acceptedNotOpened:
@@ -144,7 +145,7 @@ export const en: MessageSchema = {
         title: 'Invitation not accepted',
         text: 'The invitation could not be accepted. Try again.',
       },
-      invitationChanged: 'The invitation was changed just now. Open the link from the e-mail again.',
+      invitationChanged: 'The invitation was changed at the same moment. Please try again.',
       retryNotFound:
         'The invitation is no longer valid. If you have just accepted it, you will find the pharmacy under “My courses”.',
     },

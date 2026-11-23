@@ -102,8 +102,9 @@ export const de = {
       failed: 'Die Apotheke konnte nicht registriert werden. Versuchen Sie es erneut.',
     },
     accept: {
-      title: 'Einladung annehmen',
-      accepting: 'Die Einladung wird angenommen …',
+      accepting: {
+        title: 'Die Einladung wird angenommen',
+      },
       accepted: 'Sie sind jetzt Mitglied der Apotheke {name}.',
       acceptedUnnamed: 'Sie haben die Einladung angenommen.',
       acceptedNotOpened:
@@ -150,7 +151,7 @@ export const de = {
         title: 'Einladung nicht angenommen',
         text: 'Die Einladung konnte nicht angenommen werden. Versuchen Sie es erneut.',
       },
-      invitationChanged: 'Die Einladung wurde gerade geändert. Öffnen Sie den Link aus der E-Mail erneut.',
+      invitationChanged: 'Die Einladung wurde gerade gleichzeitig geändert. Versuchen Sie es erneut.',
       retryNotFound:
         'Die Einladung ist nicht mehr gültig. Wenn Sie sie eben schon angenommen haben, finden Sie die Apotheke unter „Meine Schulungen“.',
     },

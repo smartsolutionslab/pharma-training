@@ -28,8 +28,9 @@ export type AcceptRefusal =
   | 'notFoundAfterRetry';
 
 /**
- * What the page shows: a kept token ready to be accepted when the user presses the button, the invitation on its way (or accepted and the page not moved on yet), or why it was not, with
- * the module's own words for a refusal the page has no text of its own for, and whether trying again can succeed.
+ * What the page shows: a kept token ready to be accepted when the user presses the button, the invitation on its way
+ * (or accepted and the page not moved on yet), or why it was not, with the module's own words for a refusal the page
+ * has no text of its own for, and whether trying again can succeed.
  */
 export type AcceptState =
   | { kind: 'ready' }
@@ -91,8 +92,9 @@ const startPage = '/';
  * Accepts the invitation whose token the link's route kept for this tab. The token is taken out of storage once, as
  * the page is set up (and again by start, when a second link was opened while the page is shown), and kept in memory
  * for the button and a retry only; it is posted once, when the user presses the button (confirm), never as the page
- * opens. Nothing about the pharmacy is read before that. Once accepted, the pharmacy is opened (useOpenPharmacy), the user told where
- * they now belong and led to Meine Schulungen, the address replaced so Back does not return to the page.
+ * opens. Nothing about the pharmacy is read before that. Once accepted, the pharmacy is opened (useOpenPharmacy), the
+ * user told where they now belong and led to Meine Schulungen, the address replaced so Back does not return to the
+ * page; unless a second link was opened meanwhile, which then stays ready and wins.
  */
 export function useAcceptInvitation() {
   const queryClient = useQueryClient();
@@ -122,7 +124,7 @@ export function useAcceptInvitation() {
       return;
     }
     if (current === attempt) {
-      await moveOn(answer);
+      await moveOn(answer, current);
     }
   }
 
@@ -144,18 +146,36 @@ export function useAcceptInvitation() {
     void accept(false);
   }
 
-  async function moveOn(answer: unknown) {
+  /** Retry's press: posts the kept token again once, and only from a refusal that trying again can turn round. */
+  function retry() {
+    if (state.value.kind !== 'refused' || state.value.retryable !== true) {
+      return;
+    }
+    void accept(true);
+  }
+
+  /**
+   * Opens the pharmacy joined and leads on. A second link opened while this awaits (attempt no longer current) wins:
+   * the page stays at its ready state and neither announces nor leaves for the first.
+   */
+  async function moveOn(answer: unknown, current: number) {
     // 200 says the invitation was accepted, whatever the body: without the pharmacy's id it cannot be opened.
     const id = z.uuid().safeParse(answer);
     if (!id.success) {
       await queryClient.invalidateQueries({ queryKey: getGetOrganisationPharmaciesMineQueryKey() });
     }
     if (!id.success || !(await open(id.data))) {
-      notify.success(t('organisation.accept.acceptedNotOpened'));
-      await router.replace(startPage);
+      if (current === attempt) {
+        notify.success(t('organisation.accept.acceptedNotOpened'));
+        await router.replace(startPage);
+      }
       return;
     }
-    notify.success(await acceptedIn(id.data));
+    const told = await acceptedIn(id.data);
+    if (current !== attempt) {
+      return;
+    }
+    notify.success(told);
     await router.replace(coursesPage);
   }
 
@@ -171,5 +191,5 @@ export function useAcceptInvitation() {
 
   start();
 
-  return { state, confirm, retry: () => accept(true), start };
+  return { state, confirm, retry, start };
 }
