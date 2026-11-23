@@ -132,6 +132,45 @@ public partial class AppHostSecretAccessTests
             .ShouldBeEmpty("Only an init stage's migrations identity, and Keycloak's, may read an administrator connection string.");
     }
 
+    /// <summary>
+    /// A service's own identity reads its module role's connection string, <c>connectionstrings--&lt;module&gt;-database-app</c>,
+    /// and the administrator's not at all; its migrations identity reads exactly the administrator's and the role's, which
+    /// the init container creates the role from (M6 on #114, docs/adr/0005). Every service host is covered.
+    /// </summary>
+    [Fact]
+    public async Task Each_service_and_its_migrations_read_the_modules_role_connection_string()
+    {
+        var bicep = await PublishedAppHost.PublishAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
+        await using var builder = await PublishedAppHost.ModelAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
+        var modules = PublishedAppHost.Services(builder).Select(service => service.Name).ToList();
+
+        modules.ShouldNotBeEmpty();
+        List<string> problems = [];
+        foreach (var module in modules)
+        {
+            var administrator = $"connectionstrings--{module}-database";
+            var role = $"connectionstrings--{module}-database-app";
+            var own = Granted(bicep, module);
+            if (!own.Contains(role, StringComparer.Ordinal))
+            {
+                problems.Add($"{module}-identity is no Key Vault Secrets User on {role}. It holds: {string.Join(", ", own)}");
+            }
+
+            if (own.Contains(administrator, StringComparer.Ordinal))
+            {
+                problems.Add($"{module}-identity is a Key Vault Secrets User on the administrator's {administrator}.");
+            }
+
+            var migrations = Granted(bicep, $"{module}-migrations");
+            if (!migrations.SequenceEqual([administrator, role], StringComparer.Ordinal))
+            {
+                problems.Add($"{module}-migrations-identity should be a Key Vault Secrets User on exactly {administrator} and {role}. It holds: {string.Join(", ", migrations)}");
+            }
+        }
+
+        problems.ShouldBeEmpty();
+    }
+
     [Fact]
     public async Task No_identity_holds_a_role_on_the_whole_vault()
     {

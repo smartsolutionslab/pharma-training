@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Azure;
@@ -32,6 +33,7 @@ public class AppHostPublishParametersTests
     [InlineData("azure-openai-api-key")]
     [InlineData("smtp-username")]
     [InlineData("smtp-password")]
+    [InlineData("database-roles-key")]
     public async Task Every_publish_secret_is_an_explicit_parameter_in_key_vault(string name)
     {
         await using var builder = await PublishedAppHost.ModelAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
@@ -103,6 +105,27 @@ public class AppHostPublishParametersTests
             parameter.Secret.ShouldBeFalse($"{name} is not a secret.");
             parameter.Default.ShouldNotBeNull($"{name} has no default.").GetDefaultValue().ShouldBe(service.Name);
         }
+    }
+
+    /// <summary>
+    /// The key every module role's password is derived from, <c>guid(database_roles_key, '&lt;module&gt;')</c>, is a secure
+    /// parameter of main.bicep that the deployment sets, handed to the Flexible Server's module, which writes the roles'
+    /// connection strings (Q1 on #114, docs/adr/0005).
+    /// </summary>
+    [Fact]
+    public async Task The_database_roles_key_is_a_secure_parameter_the_server_receives()
+    {
+        var bicep = await PublishedAppHost.PublishAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
+        var main = bicep.Files["main.bicep"];
+
+        Regex.IsMatch(main, @"(?m)^@secure\(\)\s*\r?\n\s*param\s+database_roles_key\s+string\s*$", RegexOptions.None, TimeSpan.FromSeconds(1))
+            .ShouldBeTrue("main.bicep declares no @secure() parameter database_roles_key without a default.");
+        var postgres = main.IndexOf("module postgres 'postgres/postgres.bicep' = {", StringComparison.Ordinal);
+        postgres.ShouldBeGreaterThanOrEqualTo(0, "main.bicep declares no module postgres.");
+        var parameters = PublishedBicep.Block(main[postgres..], "params");
+        Regex.IsMatch(parameters, @"(?m)^\s*database_roles_key:\s*database_roles_key\s*$", RegexOptions.None, TimeSpan.FromSeconds(1))
+            .ShouldBeTrue($"main.bicep does not hand database_roles_key to the postgres module. It passes: {parameters}");
+        PublishedBicep.SecureParameters(bicep.Module("postgres")).ShouldContain("database_roles_key", "postgres/postgres.bicep does not receive database_roles_key as a @secure() parameter.");
     }
 
     [Fact]

@@ -8,6 +8,8 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// </summary>
 public sealed partial class PublishedBicep
 {
+    private const string VaultSecretType = "Microsoft.KeyVault/vaults/secrets";
+
     private PublishedBicep(IReadOnlyDictionary<string, string> files) => Files = files;
 
     /// <summary>Every file written, by its path relative to the output directory with '/' between folders.</summary>
@@ -116,6 +118,23 @@ public sealed partial class PublishedBicep
             .Distinct(StringComparer.Ordinal)
             .Order(StringComparer.Ordinal)];
     }
+
+    /// <summary>
+    /// The value a Bicep file writes into a Key Vault secret it declares (not an <c>existing</c> one) by the secret's name,
+    /// <c>properties.value</c> as written, quotes taken off; empty where the file writes no such secret.
+    /// </summary>
+    public static string VaultSecretValue(string bicep, string secret) =>
+        Resources(bicep).Values
+            .Where(resource => resource.Type == VaultSecretType && resource.Name == secret)
+            .Select(resource => Property(Block(resource.Body, "properties"), "value"))
+            .FirstOrDefault(value => value.Length > 0) ?? string.Empty;
+
+    /// <summary>The names of the Key Vault secrets a Bicep file writes (declares with a value, not as <c>existing</c>).</summary>
+    public static IReadOnlyList<string> VaultSecretsWritten(string bicep) =>
+        [.. Resources(bicep).Values
+            .Where(resource => resource.Type == VaultSecretType && Property(Block(resource.Body, "properties"), "value").Length > 0)
+            .Select(resource => resource.Name)
+            .Order(StringComparer.Ordinal)];
 
     /// <summary>The array that follows <c>&lt;property&gt;: [</c>, up to its closing bracket, or empty where there is none.</summary>
     public static string Array(string bicep, string property)

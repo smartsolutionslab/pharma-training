@@ -16,6 +16,8 @@ public class AppHostMigrationsTests
 {
     private const string Migrations = "migrations";
 
+    private const string ApplicationVariable = "ConnectionStrings__application";
+
     private const string RegistryIdentity = "aca_outputs_azure_container_registry_managed_identity_id";
 
     private static readonly TimeSpan ModelTimeout = TimeSpan.FromMinutes(1);
@@ -145,6 +147,18 @@ public class AppHostMigrationsTests
             {
                 problems.Add($"{module}'s init container reads ConnectionStrings__database from '{secret.VaultSecret}' under '{secret.Identity}', not from 'connectionstrings--{module}-database' under '{module}-migrations-identity'.");
             }
+
+            // The module's role, which the runner creates and grants: the same secret the service's main container logs in with.
+            var application = environment.SingleOrDefault(entry => entry.Name == ApplicationVariable);
+            var applicationSecret = secrets.SingleOrDefault(entry => entry.Name == application?.SecretRef);
+            if (application is null || application.SecretRef.Length == 0 || applicationSecret is null)
+            {
+                problems.Add($"{module}'s init container does not read {ApplicationVariable} from a secret of the app.");
+            }
+            else if (applicationSecret.VaultSecret != RoleSecret(module) || applicationSecret.Identity != $"{module}-migrations-identity")
+            {
+                problems.Add($"{module}'s init container reads {ApplicationVariable} from '{applicationSecret.VaultSecret}' under '{applicationSecret.Identity}', not from '{RoleSecret(module)}' under '{module}-migrations-identity'.");
+            }
         }
 
         problems.ShouldBeEmpty();
@@ -200,6 +214,94 @@ public class AppHostMigrationsTests
         problems.ShouldBeEmpty();
     }
 
+    /// <summary>
+    /// Published, a service's own container logs in as its module's role, <c>&lt;module&gt;_app</c>, never as the server's
+    /// administrator (OQ8 c and Q1 on #114, docs/adr/0005). The Flexible Server's own module writes the role's connection
+    /// string into the vault as <c>connectionstrings--&lt;module&gt;-database-app</c>, next to Aspire's administrator ones,
+    /// with the password <c>guid(database_roles_key, '&lt;module&gt;')</c> derived from the deployment secret
+    /// <c>database-roles-key</c>. Every service host is covered, found as the AppHost finds them; Keycloak's database is not
+    /// a module's and gets no role here.
+    /// </summary>
+    [Fact]
+    public async Task Every_service_logs_in_with_its_own_role()
+    {
+        await using var builder = await PublishedAppHost.ModelAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
+        var modules = PublishedAppHost.Services(builder).Select(service => service.Name).ToList();
+
+        var bicep = await PublishedAppHost.PublishAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
+
+        modules.ShouldNotBeEmpty();
+        var server = bicep.Module("postgres");
+        List<string> problems = [];
+        foreach (var module in modules)
+        {
+            var role = $"{module.Replace('-', '_')}_app";
+            var secretName = RoleSecret(module);
+
+            bicep.ContainerApps.ShouldContainKey(module);
+            var app = bicep.ContainerApps[module];
+            var secrets = PublishedBicep.SecretEntries(app);
+            var main = PublishedBicep.Objects(PublishedBicep.Array(app, "containers")).SingleOrDefault(container => PublishedBicep.Property(container, "name") == module);
+            var login = main is null ? null : PublishedBicep.EnvironmentOf(main).SingleOrDefault(entry => entry.Name == "ConnectionStrings__database");
+            var secret = secrets.SingleOrDefault(entry => entry.Name == login?.SecretRef);
+            if (login is null || login.SecretRef.Length == 0 || secret is null)
+            {
+                problems.Add($"{module}'s main container does not read ConnectionStrings__database from a secret of the app.");
+            }
+            else if (secret.VaultSecret != secretName || secret.Identity != $"{module}-identity")
+            {
+                problems.Add($"{module}'s main container reads ConnectionStrings__database from '{secret.VaultSecret}' under '{secret.Identity}', not from '{secretName}' under '{module}-identity'.");
+            }
+
+            var value = PublishedBicep.VaultSecretValue(server, secretName);
+            if (value.Length == 0)
+            {
+                problems.Add($"postgres/postgres.bicep writes no Key Vault secret '{secretName}'.");
+                continue;
+            }
+
+            var parts = value.Split(';');
+            if (!parts.Contains("Host=${postgres.properties.fullyQualifiedDomainName}", StringComparer.Ordinal))
+            {
+                problems.Add($"'{secretName}' does not name the server as Host=${{postgres.properties.fullyQualifiedDomainName}}: {value}");
+            }
+
+            if (!parts.Contains($"Username={role}", StringComparer.Ordinal))
+            {
+                problems.Add($"'{secretName}' does not log in as Username={role}: {value}");
+            }
+
+            if (!parts.Contains($"Database={module}", StringComparer.Ordinal))
+            {
+                problems.Add($"'{secretName}' does not name Database={module}: {value}");
+            }
+
+            if (!Regex.IsMatch(value, $@"(^|;)Password=\$\{{guid\(database_roles_key,\s*'{Regex.Escape(module)}'\)\}}(;|$)", RegexOptions.None, TimeSpan.FromSeconds(1)))
+            {
+                problems.Add($"'{secretName}''s password is not ${{guid(database_roles_key, '{module}')}}: {value}");
+            }
+
+            if (value.Contains("administratorLogin", StringComparison.Ordinal))
+            {
+                problems.Add($"'{secretName}' logs in with the server's administrator login or password: {value}");
+            }
+        }
+
+        if (!Regex.IsMatch(server, @"(?m)^@secure\(\)\s*\r?\n\s*param\s+database_roles_key\s+string\s*$", RegexOptions.None, TimeSpan.FromSeconds(1)))
+        {
+            problems.Add("postgres/postgres.bicep declares no @secure() parameter database_roles_key for the roles' passwords.");
+        }
+
+        var expected = modules.Select(RoleSecret).Order(StringComparer.Ordinal).ToList();
+        var written = PublishedBicep.VaultSecretsWritten(server).Where(name => name.EndsWith("-database-app", StringComparison.Ordinal)).ToList();
+        if (!written.SequenceEqual(expected, StringComparer.Ordinal))
+        {
+            problems.Add($"postgres/postgres.bicep should write a role's connection string for each service's module and no other database, Keycloak's included: {string.Join(", ", expected)}. It writes: {string.Join(", ", written)}");
+        }
+
+        problems.ShouldBeEmpty();
+    }
+
     [Fact]
     public async Task Every_service_deploys_after_the_migrations_image()
     {
@@ -235,6 +337,9 @@ public class AppHostMigrationsTests
         IResourceWithConnectionString resource => resource.Name,
         _ => string.Empty,
     };
+
+    /// <summary>The Key Vault secret holding a module's role's connection string, which the Flexible Server's module writes.</summary>
+    private static string RoleSecret(string module) => $"connectionstrings--{module}-database-app";
 
     /// <summary>The user-assigned identities a module's resource runs under, as the parameters naming their ids.</summary>
     private static List<string> UserAssignedIdentities(string bicep) =>
