@@ -314,7 +314,10 @@ describe.each([
       [],
     );
     expect(screen.queryByTitle(t('editorial.chapters.dragHint'))).not.toBeInTheDocument();
-    expect(container.querySelector('form, input, textarea, select, [draggable="true"]')).toBeNull();
+    // The return history's table (#201) has a column chooser: it changes the table's view, not the version.
+    const history = screen.getByRole('region', { name: t('editorial.returns.title') });
+    const controls = [...container.querySelectorAll('form, input, textarea, select, [draggable="true"]')];
+    expect(controls.filter((control) => !history.contains(control))).toEqual([]);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
