@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/vue-query';
-import { getCurrentScope, type MaybeRefOrGetter, onScopeDispose, type Ref, ref, toValue } from 'vue';
+import { getCurrentScope, type MaybeRefOrGetter, onScopeDispose, type Ref, ref, toValue, watch } from 'vue';
 import { ApiError } from '@/api/baseApi';
 import {
   getGetLearningSessionsIdQueryKey,
@@ -35,7 +35,9 @@ const trackingInterval = 30_000;
  * Reports a learner's progress on the session's chapters to POST /learning/sessions/{id}/progress (#44). The server is
  * the only record: nothing is kept in the browser's storage. Only a percent above the one the host acknowledged is
  * sent (read from the session's cached answer, which every 200 replaces), one request at a time, and while one is on
- * its way only the highest percent per chapter waits. Hiding or leaving the page sends what waits with keepalive.
+ * its way only the highest percent per chapter waits. Hiding or leaving the page sends what waits with keepalive, and
+ * the report on its way too, which the page may cut off: it counts as sent only once the host has answered. What waits
+ * belongs to its session: when the session changes (another course version), it is dropped.
  */
 export function useProgressReporter(
   sessionId: MaybeRefOrGetter<string>,
@@ -46,14 +48,16 @@ export function useProgressReporter(
   const finished = ref(false);
   /** The highest percent per chapter not yet sent, or sent and not stored. */
   const pending = new Map<string, number>();
+  /** The percent per chapter on its way, until the host has answered it. */
+  const inFlight = new Map<string, number>();
   let timer: ReturnType<typeof setTimeout> | undefined;
   /** Whether a loop is sending what waits; it clears the moment the loop ends, not a tick later. */
   let draining = false;
   let run: Promise<void> = Promise.resolve();
   let disposed = false;
 
-  const sessionKey = () => getGetLearningSessionsIdQueryKey(toValue(sessionId));
-  const cached = () => queryClient.getQueryData<LearningSessionDto>(sessionKey());
+  const sessionKey = (id = toValue(sessionId)) => getGetLearningSessionsIdQueryKey(id);
+  const cached = (id = toValue(sessionId)) => queryClient.getQueryData<LearningSessionDto>(sessionKey(id));
   const acknowledged = (chapterId: string) =>
     Number(cached()?.chapters.find((chapter) => chapter.chapterId === chapterId)?.progressPercent ?? 0);
 
@@ -75,14 +79,17 @@ export function useProgressReporter(
     return undefined;
   }
 
-  /** The host's answer is the stored session: it goes into the cache, and what became done is announced. */
-  function stored(answer: LearningSessionDto) {
-    const before = cached();
-    queryClient.setQueryData(sessionKey(), answer);
-    failed.value = false;
-    if (disposed) {
+  /**
+   * The host's answer is the stored session: it goes into the cache under its own session's key, and what became done
+   * is announced, while that session is still the one reported on.
+   */
+  function stored(id: string, answer: LearningSessionDto) {
+    const before = cached(id);
+    queryClient.setQueryData(sessionKey(id), answer);
+    if (disposed || id !== toValue(sessionId)) {
       return;
     }
+    failed.value = false;
     const doneBefore = new Set(
       (before?.chapters ?? []).filter((chapter) => chapter.completed).map((chapter) => chapter.chapterId),
     );
@@ -98,15 +105,23 @@ export function useProgressReporter(
 
   /** Sends one percent; whether the host stored it. A session that changed meanwhile is read again and sent once more. */
   async function send(chapterId: string, percent: number, keepalive: boolean, attempt = 1): Promise<boolean> {
+    const id = toValue(sessionId);
+    if (!keepalive) {
+      inFlight.set(chapterId, percent);
+    }
     try {
       const answer = await postLearningSessionsIdProgress(
-        toValue(sessionId),
+        id,
         { chapterId, percent },
         keepalive ? { keepalive: true } : undefined,
       );
-      stored(answer);
+      stored(id, answer);
       return true;
     } catch (error) {
+      if (id !== toValue(sessionId)) {
+        // The session changed meanwhile: what this one answered is not the current one's to show.
+        return false;
+      }
       const code = error instanceof ApiError ? (error.code ?? error.failureCode) : undefined;
       if (code === 'learning.session-finished') {
         finished.value = true;
@@ -115,8 +130,8 @@ export function useProgressReporter(
         return false;
       }
       if (code === 'learning.session-changed' && attempt === 1) {
-        await queryClient.invalidateQueries({ queryKey: sessionKey() });
-        if (percent > acknowledged(chapterId)) {
+        await queryClient.invalidateQueries({ queryKey: sessionKey(id) });
+        if (id === toValue(sessionId) && percent > acknowledged(chapterId)) {
           return send(chapterId, percent, keepalive, attempt + 1);
         }
         return true;
@@ -124,6 +139,10 @@ export function useProgressReporter(
       pending.set(chapterId, Math.max(pending.get(chapterId) ?? 0, percent));
       failed.value = true;
       return false;
+    } finally {
+      if (!keepalive && inFlight.get(chapterId) === percent) {
+        inFlight.delete(chapterId);
+      }
     }
   }
 
@@ -152,15 +171,35 @@ export function useProgressReporter(
     return run;
   }
 
-  /** Sends everything that waits at once with keepalive, so the request outlives the page. */
+  /**
+   * Sends everything that waits at once with keepalive, so the request outlives the page, and the report on its way
+   * again: a request without keepalive may be cut off with the page.
+   */
   function sendWithKeepalive() {
     if (finished.value) {
       return;
+    }
+    for (const [chapterId, percent] of inFlight) {
+      keep(chapterId, percent);
     }
     for (let next = takeNext(); next !== undefined; next = takeNext()) {
       void send(next[0], next[1], true);
     }
   }
+
+  // What waits was meant for the session it was reported on; another session (another course version) starts empty.
+  watch(
+    () => toValue(sessionId),
+    () => {
+      pending.clear();
+      inFlight.clear();
+      failed.value = false;
+      if (timer !== undefined) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
+    },
+  );
 
   function report(chapterId: string, percent: number) {
     if (finished.value) {

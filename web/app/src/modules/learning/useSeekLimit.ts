@@ -20,9 +20,10 @@ export interface SeekLimit {
 
 /**
  * The seek limit of a video chapter (#44): skipping ahead stops at what was watched. The watched maximum rises on
- * timeupdate only while the time moves on by at most 2 s from the last one and stays within 2 s of the maximum, so a
- * leap without a seek counts for nothing. A seek more than 0.5 s past it is sent back to it; backwards is free, and so
- * is everything while `free` (a chapter done).
+ * timeupdate only while the time moves on by at most 2 s from the last one, so a leap without a seek counts for
+ * nothing; the steps after it are measured from where it landed, so a gap in timeupdates (a stalled or throttled tab)
+ * never stops the maximum rising. A seek more than 0.5 s past it is sent back to it; backwards is free, and so is
+ * everything while `free` (a chapter done).
  */
 export function useSeekLimit(free: MaybeRefOrGetter<boolean>): SeekLimit {
   let maximum = 0;
@@ -38,7 +39,7 @@ export function useSeekLimit(free: MaybeRefOrGetter<boolean>): SeekLimit {
     },
     played(seconds) {
       const step = seconds - last;
-      if (step >= 0 && step <= playingStep && seconds <= maximum + playingStep) {
+      if (step >= 0 && step <= playingStep) {
         maximum = Math.max(maximum, seconds);
       }
       last = seconds;

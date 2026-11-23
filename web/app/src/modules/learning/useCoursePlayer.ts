@@ -80,27 +80,39 @@ export function useCoursePlayer() {
     }
   }
 
-  /** Starts or resumes the session; its answer goes under the session's key, where the session is read from. */
+  /**
+   * Starts or resumes the session; its answer goes under the session's key, where the session is read from. A failure
+   * counts only while its version is still the one shown: a start for a version left meanwhile says nothing.
+   */
   async function start() {
     if (!validVersion.value) {
       return;
     }
+    const requested = versionId.value;
     startError.value = undefined;
     try {
       const answer = await startOnce();
       queryClient.setQueryData(getGetLearningSessionsIdQueryKey(answer.id), answer);
     } catch (error) {
-      startError.value = error;
+      if (versionId.value === requested) {
+        startError.value = error;
+      }
     }
   }
 
   watch(versionId, () => void start(), { immediate: true });
 
-  const sessionId = computed(() => started.value?.id ?? '');
+  /** The started session, while it is on the version shown: never one of a version left meanwhile. */
+  const startedOnVersion = computed(() =>
+    started.value?.courseVersionId === versionId.value ? started.value : undefined,
+  );
+  const sessionId = computed(() => startedOnVersion.value?.id ?? '');
   const sessionQuery = useGetLearningSessionsId(sessionId, {
-    query: { enabled: computed(() => started.value !== undefined), refetchOnWindowFocus: true },
+    query: { enabled: computed(() => startedOnVersion.value !== undefined), refetchOnWindowFocus: true },
   });
-  const session = computed(() => sessionQuery.data.value ?? started.value);
+  const session = computed(() =>
+    startedOnVersion.value === undefined ? undefined : (sessionQuery.data.value ?? startedOnVersion.value),
+  );
   const version = computed(() => catalog.data.value);
 
   const failure = computed((): PlayerFailure | undefined => {
@@ -154,8 +166,14 @@ export function useCoursePlayer() {
       });
   });
 
-  /** The chapter ?chapter= names, when it is in the course; else the first not done, else the first. */
+  /**
+   * The chapter ?chapter= names, when it is in the course; else the first not done, else the first. None until the
+   * session is there: which chapters are done is the session's to say, and the catalog may answer first.
+   */
   const current = computed((): PlayerChapter | undefined => {
+    if (session.value === undefined) {
+      return undefined;
+    }
     const requested = route.query.chapter;
     const named = isId(requested) ? chapters.value.find((chapter) => chapter.chapterId === requested) : undefined;
     return named ?? chapters.value.find((chapter) => !chapter.completed) ?? chapters.value[0];

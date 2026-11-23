@@ -22,6 +22,8 @@ interface VideoChapterProps {
 // rate stays 1) and without auto-play. Skipping ahead stops at what was watched (useSeekLimit). It emits the percent
 // watched at once at a pause and at the end (`progress`), on every timeupdate while playing (`tracking`, which the
 // reporter sends at most every 30 s), and what the learner should hear in the page's polite status region (`announce`).
+// The signed URL is read again when the media fails (an expired URL fails once the browser asks storage for more), and
+// the new one picks up where the old one was.
 const { chapterId, durationSeconds, progressPercent, completed } = defineProps<VideoChapterProps>();
 const emit = defineEmits<{ progress: [percent: number]; tracking: [percent: number]; announce: [text: string] }>();
 const { t } = useI18n();
@@ -31,7 +33,7 @@ const nearTheEnd = 1;
 /** The end reached by playing this close to the editor's duration is the whole video. */
 const endTolerance = 2;
 
-const { url, failure, reload } = useChapterMedia(() => chapterId, { renew: true });
+const { url, failure, reload } = useChapterMedia(() => chapterId);
 const video = useTemplateRef<HTMLVideoElement>('video');
 const limit = useSeekLimit(() => completed);
 const hintId = useId();
@@ -47,7 +49,7 @@ watch(
 const percentWatched = () =>
   durationSeconds > 0 ? Math.min(100, Math.floor((limit.maximum() / durationSeconds) * 100)) : 0;
 
-/** Where a new source (a renewed URL, a reload after an error) picks up, and whether it plays on. */
+/** Where a new source (the URL read again after an error, or Retry) picks up, and whether it plays on. */
 let pickUp: { at: number; playing: boolean } | undefined;
 let resumed = false;
 /** Whether a media error has read the URL once more already; the next one is shown. */

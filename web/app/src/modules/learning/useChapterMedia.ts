@@ -1,50 +1,30 @@
-import type { Query } from '@tanstack/vue-query';
 import { computed, type MaybeRefOrGetter, toValue } from 'vue';
 import { ApiError } from '@/api/baseApi';
-import { type LearningMediaUrlDto, useGetLearningMediaChapterId } from '@/api/generated';
+import { useGetLearningMediaChapterId } from '@/api/generated';
 
 /** How often a file not ready yet is asked for again, and how far apart. */
 const notReadyRetries = 5;
 const notReadyDelay = 2_000;
-/** A signed URL is read again this long before it expires, so a playing video never holds an expired one. */
-const renewAhead = 60_000;
-/** The shortest wait before a renewal, so a URL that is (nearly) expired already is not asked for in a loop. */
-const shortestRenewal = 1_000;
-
-export interface ChapterMediaOptions {
-  /**
-   * Whether the URL is read again a minute before it expires: a video streams for as long as it plays. A PDF is read
-   * once, whole, and keeps the URL it was opened with.
-   */
-  renew: boolean;
-}
 
 /** The refusal that says the file is still being prepared (409 learning.media-not-ready). */
 export const isMediaNotReady = (error: unknown) =>
   error instanceof ApiError && error.code === 'learning.media-not-ready';
 
-/** Milliseconds until the URL the query holds is to be read again; none while it holds none. */
-function untilRenewal(query: Query<LearningMediaUrlDto, unknown, LearningMediaUrlDto, readonly unknown[]>) {
-  const expiresAt = query.state.data?.expiresAt;
-  if (expiresAt === undefined) {
-    return 0;
-  }
-  return Math.max(shortestRenewal, Date.parse(expiresAt) - renewAhead - Date.now());
-}
-
 /**
  * The signed read URL of a chapter's file (GET /learning/media/{chapterId}, #44). A file not ready yet (409
  * learning.media-not-ready) is asked for 5 more times 2 s apart before it counts as failed; any other refusal fails at
- * once. With `renew`, the URL stays fresh until a minute before it expires and is read again then.
+ * once.
+ *
+ * The URL is kept until the file fails to load with it, and the chapter then reads it again (`reload`): a URL lives
+ * 15 minutes, and storage refuses it once it has expired. It is never renewed by the browser's clock, which may run
+ * ahead of or behind the server's that signed `expiresAt`; a clock running ahead would read it again every second.
  */
-export function useChapterMedia(chapterId: MaybeRefOrGetter<string>, { renew }: ChapterMediaOptions) {
+export function useChapterMedia(chapterId: MaybeRefOrGetter<string>) {
   const query = useGetLearningMediaChapterId(() => toValue(chapterId), {
     query: {
       retry: (failures, error) => isMediaNotReady(error) && failures < notReadyRetries,
       retryDelay: notReadyDelay,
-      staleTime: renew ? untilRenewal : Number.POSITIVE_INFINITY,
-      refetchInterval: renew ? (current) => (current.state.data === undefined ? false : untilRenewal(current)) : false,
-      refetchIntervalInBackground: renew,
+      staleTime: Number.POSITIVE_INFINITY,
     },
   });
 

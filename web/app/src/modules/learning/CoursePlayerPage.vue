@@ -18,10 +18,15 @@ const { t, n } = useI18n();
 const { version, sessionId, chapters, current, contentCompleted, failure, retryable, loading, retry } =
   useCoursePlayer();
 
-/** What the polite status region says: the latest few, so two in a row are both heard. */
-const announcements = ref<string[]>([]);
+/**
+ * What the polite status region says: the latest few, so two in a row are both heard. Each keeps an id of its own, so
+ * a message stays the element it was while newer ones come and older ones go, and is never heard again.
+ */
+const announcements = ref<{ id: number; text: string }[]>([]);
+let announced = 0;
 function announce(text: string) {
-  announcements.value = [...announcements.value.slice(-2), text];
+  announced += 1;
+  announcements.value = [...announcements.value.slice(-2), { id: announced, text }];
 }
 const reporter = useProgressReporter(sessionId, {
   titleOf: (chapterId) => chapters.value.find((chapter) => chapter.chapterId === chapterId)?.title ?? '',
@@ -150,7 +155,7 @@ const chapterHeadingId = 'course-player-chapter';
       <h1 :id="headingId" ref="heading" tabindex="-1" class="text-title focus:outline-none">{{ version.title }}</h1>
 
       <div role="status" class="sr-only">
-        <p v-for="(announcement, index) in announcements" :key="index">{{ announcement }}</p>
+        <p v-for="announcement in announcements" :key="announcement.id">{{ announcement.text }}</p>
       </div>
 
       <div v-if="sessionFinished" role="alert" class="text-body">{{ t('learning.player.progress.finished') }}</div>
@@ -159,9 +164,10 @@ const chapterHeadingId = 'course-player-chapter';
         <Button variant="outline" @click="reporter.flush()">{{ t('learning.player.progress.saveNow') }}</Button>
       </div>
 
-      <div v-if="contentCompleted" role="status" class="bg-card text-body shadow-elevation-1 rounded-md p-4">
-        {{ t('learning.player.contentCompleted') }}
-      </div>
+      <!-- A lasting panel, no second status region: the polite region above has said it once already. -->
+      <section v-if="contentCompleted" class="bg-card text-body shadow-elevation-1 rounded-md p-4">
+        <p>{{ t('learning.player.contentCompleted') }}</p>
+      </section>
 
       <EmptyState v-if="chapters.length === 0">
         <template #icon><BookOpen /></template>
@@ -201,7 +207,12 @@ const chapterHeadingId = 'course-player-chapter';
 
         <section v-if="current !== undefined" :aria-labelledby="chapterHeadingId" class="flex flex-col gap-4">
           <div class="flex flex-wrap items-center gap-3">
-            <h2 :id="chapterHeadingId" ref="chapterHeading" tabindex="-1" class="text-title focus:outline-none">
+            <h2
+              :id="chapterHeadingId"
+              ref="chapterHeading"
+              tabindex="-1"
+              class="text-body font-semibold focus:outline-none"
+            >
               {{ current.title }}
             </h2>
             <span
