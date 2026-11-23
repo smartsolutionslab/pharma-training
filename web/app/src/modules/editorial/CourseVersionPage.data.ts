@@ -62,21 +62,46 @@ const draft = {
   blueprint: { questions: 10, passingScorePercent: 80, validityMonths: 12 },
 };
 
+// Its return history (GET /editorial/course-versions/{id}/returns, #201), newest first: a two-line reason by the
+// signed-in user's colleague and a reason that looks like markup, shown as the characters it is.
+const returns = {
+  items: [
+    {
+      id: '0198c1a0-0000-7000-8000-0000000000a9',
+      returnedBy: '0198c1a0-0000-7000-8000-0000000000ea',
+      returnedAt: '2026-11-21T14:05:00Z',
+      reason: 'Kapitel 2 braucht eine Quelle.\nDie Tabelle in Kapitel 3 ist veraltet.',
+    },
+    {
+      id: '0198c1a0-0000-7000-8000-0000000000a8',
+      returnedBy: '0198c1a0-0000-7000-8000-0000000000ea',
+      returnedAt: '2026-11-19T08:30:00Z',
+      reason: 'Frage 1: <b>30 Sekunden</b> ist zu kurz.',
+    },
+  ],
+  totalCount: 2,
+  page: 1,
+  pageSize: 20,
+};
+
 export const examples: Record<string, unknown> = {
   useGetEditorialCourseVersionsId: draft,
+  useGetEditorialCourseVersionsIdReturns: returns,
 };
 
 // The same version in review (#26): the checklist, Publish and Return, no dialog open.
 export const inReviewExamples: Record<string, unknown> = {
   useGetEditorialCourseVersionsId: { ...draft, status: 'InReview' },
+  useGetEditorialCourseVersionsIdReturns: returns,
 };
 
 // The same version published (#26): Retire beside "Neue Version anlegen", no dialog open.
 export const publishedExamples: Record<string, unknown> = {
   useGetEditorialCourseVersionsId: { ...draft, status: 'Published' },
+  useGetEditorialCourseVersionsIdReturns: returns,
 };
 
-// A draft with no chapters yet: the page shows its empty state.
+// A draft with no chapters yet and no returns: the page shows its empty states.
 export const emptyExamples: Record<string, unknown> = {
   useGetEditorialCourseVersionsId: {
     id: versionId,
@@ -88,4 +113,6 @@ export const emptyExamples: Record<string, unknown> = {
     questions: [],
     blueprint: { questions: 10, passingScorePercent: 80, validityMonths: 12 },
   },
+  // Never returned: the history shows its empty state.
+  useGetEditorialCourseVersionsIdReturns: { items: [], totalCount: 0, page: 1, pageSize: 20 },
 };

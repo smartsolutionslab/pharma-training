@@ -62,7 +62,8 @@ function showing(version: EditorialCourseVersionDto) {
 const renderPage = () => renderVersionPage(versionId, title);
 
 const posts = () => requestsOf(fetch).filter(({ method }) => method === 'POST');
-const reads = () => requestsOf(fetch).filter(({ method }) => method === 'GET');
+/** The version's reads: its return history (#201) is read beside it, and left out here. */
+const reads = () => requestsOf(fetch).filter(({ method, path }) => method === 'GET' && !path.endsWith('/returns'));
 
 const workflowSection = () => screen.getByRole('region', { name: t('editorial.workflow.title') });
 const checklist = () => screen.queryByRole('list', { name: t('editorial.workflow.checklist.title') });
