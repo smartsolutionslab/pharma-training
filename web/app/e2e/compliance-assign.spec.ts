@@ -20,6 +20,16 @@ function courseTitle() {
   return `0 E2E Zuweisung ${countdown}`;
 }
 
+/**
+ * A pharmacy name the shell's switcher (one page of 100 memberships, by name) lists before every pharmacy an earlier
+ * run registered: it starts with a digit, and its number shrinks as time goes on, as the course title's does.
+ */
+function pharmacyName(kind: string) {
+  const countdown = String(9_999_999_999_999 - Date.now()).padStart(13, '0');
+  // The countdown before the kind: by name, the newest of every kind comes first.
+  return `0 E2E Zuweisung ${countdown} ${kind}`;
+}
+
 /** The access token Keycloak issues to a local user, whose password is their name (direct access grants are on). */
 async function accessToken(request: APIRequestContext, user: string) {
   const response = await request.post(`${keycloak}/realms/pharma-training/protocol/openid-connect/token`, {
@@ -204,7 +214,7 @@ test('the developer assigns a published course to themself, and assigning it aga
   page,
 }) => {
   const course = courseTitle();
-  const pharmacy = `E2E Zuweisung Apotheke ${Date.now()}`;
+  const pharmacy = pharmacyName('Apotheke');
   await publishCourse(page.request, course);
   await registerPharmacy(page.request, pharmacy);
   await signInTo(page, pharmacy);
@@ -232,7 +242,7 @@ test.describe('on a tablet held upright', () => {
 
   test('the developer assigns a published course to themself, repeated yearly', async ({ page }) => {
     const course = courseTitle();
-    const pharmacy = `E2E Zuweisung Tablet ${Date.now()}`;
+    const pharmacy = pharmacyName('Tablet');
     await publishCourse(page.request, course);
     await registerPharmacy(page.request, pharmacy);
     await signInTo(page, pharmacy);

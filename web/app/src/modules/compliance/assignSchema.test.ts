@@ -1,12 +1,13 @@
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test } from 'vitest';
 import { createAssignSchema } from './assignSchema';
 
 // The assignment wizard's schema (#37, T3): a course by its uuid, 1 to 100 people by theirs, a due date (yyyy-mm-dd)
-// from today to ten years ahead, and whether it repeats yearly. Today comes from the clock it is given, in local time,
-// so the tests do not depend on the day they run. Each message is a key, rendered with t where shown.
+// from today to ten years ahead, and whether it repeats yearly. Today comes from the clock it is given, as the day in
+// Germany (Europe/Berlin), the host's day (DayInGermany()), whatever the browser's zone, so the tests do not depend on
+// the day they run. Each message is a key, rendered with t where shown.
 
-/** 23 November 2026, 23:30 local time: late, so a clock read in UTC would be another day east of Greenwich. */
-const clock = () => new Date(2026, 10, 23, 23, 30, 0);
+/** 23 November 2026 at noon in Germany: the same day in the browser's zone wherever it runs. */
+const clock = () => new Date('2026-11-23T11:00:00Z');
 const schema = createAssignSchema(clock);
 
 const course = '0198c1a0-0000-7000-8000-0000000000c1';
@@ -40,7 +41,7 @@ describe('accepts', () => {
     expect(schema.safeParse({ ...valid, repeatYearly: false }).data).toEqual({ ...valid, repeatYearly: false });
   });
 
-  test("today, by the clock's local day", () => {
+  test("today, by the clock's day in Germany", () => {
     expect(refusals({ dueDate: '2026-11-23' })).toEqual({});
   });
 
@@ -98,8 +99,43 @@ describe('refuses', () => {
 });
 
 test('today follows the clock it is given', () => {
-  const later = createAssignSchema(() => new Date(2027, 0, 10, 8, 0, 0));
+  const later = createAssignSchema(() => new Date('2027-01-10T07:00:00Z'));
 
   expect(later.safeParse({ ...valid, dueDate: '2027-01-09' }).success).toBe(false);
   expect(later.safeParse({ ...valid, dueDate: '2027-01-10' }).success).toBe(true);
+});
+
+// The host's today is Germany's day (#239): the browser's zone, UTC here, is another day for an hour each night.
+describe("today is Germany's day, not the browser's", () => {
+  const timeZone = process.env.TZ;
+
+  afterEach(() => {
+    // Node applies a change of TZ at once; the test process gets its own zone back.
+    if (timeZone === undefined) {
+      delete process.env.TZ;
+    } else {
+      process.env.TZ = timeZone;
+    }
+  });
+
+  test('at 23:30 UTC on 23 November, already 24 November in Berlin, the 23rd is in the past and the 24th is not', () => {
+    process.env.TZ = 'UTC';
+    const lateAtNight = createAssignSchema(() => new Date('2026-11-23T23:30:00Z'));
+
+    const refusalsOf = (dueDate: string) =>
+      lateAtNight.safeParse({ ...valid, dueDate }).error?.issues.map((issue) => issue.message) ?? [];
+    expect(refusalsOf('2026-11-23')).toEqual(['compliance.assign.due.inThePast']);
+    expect(refusalsOf('2026-11-24')).toEqual([]);
+  });
+
+  // DateOnly.AddYears(10) on 29 February gives 28 February, not 1 March.
+  test('ten years from 29 February is 28 February: 1 March is too far', () => {
+    process.env.TZ = 'UTC';
+    const leapDay = createAssignSchema(() => new Date('2028-02-29T11:00:00Z'));
+
+    const refusalsOf = (dueDate: string) =>
+      leapDay.safeParse({ ...valid, dueDate }).error?.issues.map((issue) => issue.message) ?? [];
+    expect(refusalsOf('2038-02-28')).toEqual([]);
+    expect(refusalsOf('2038-03-01')).toEqual(['compliance.assign.due.tooFar']);
+  });
 });

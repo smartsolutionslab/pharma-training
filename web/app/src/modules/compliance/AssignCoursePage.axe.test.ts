@@ -1,5 +1,5 @@
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query';
-import { cleanup, render, screen } from '@testing-library/vue';
+import { cleanup, fireEvent, render, screen } from '@testing-library/vue';
 import userEvent from '@testing-library/user-event';
 import { createPinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -18,7 +18,11 @@ import AssignCoursePage from './AssignCoursePage.vue';
 // The page renders on its own, without a query client or the host. Each hook of the generated client answers as if its
 // request were still on its way or, once the page is shown with data, with its example in the data file: examples, or
 // emptyExamples for the page with nothing to show.
-const shown = vi.hoisted(() => ({ examples: undefined as Record<string, unknown> | undefined }));
+// A mutation resolves with its answer in answers, once it is sent: the steps after it can be checked too.
+const shown = vi.hoisted(() => ({
+  examples: undefined as Record<string, unknown> | undefined,
+  answers: {} as Record<string, unknown>,
+}));
 vi.mock('@/api/generated', async (importOriginal) => {
   const { ref } = await import('vue');
   const state = (data: unknown, loading: boolean) => ({
@@ -39,7 +43,7 @@ vi.mock('@/api/generated', async (importOriginal) => {
       ? state(shown.examples[hook], false)
       : state(undefined, true);
   // A mutation nobody has triggered is idle, not saving: the page shows as it first does.
-  const idle = () => ({
+  const idle = (hook: string) => ({
     data: ref(undefined),
     error: ref(null),
     isIdle: ref(true),
@@ -48,7 +52,7 @@ vi.mock('@/api/generated', async (importOriginal) => {
     isError: ref(false),
     status: ref('idle'),
     mutate: vi.fn(),
-    mutateAsync: vi.fn(),
+    mutateAsync: vi.fn(async () => shown.answers[hook]),
     reset: vi.fn(),
   });
   const generated = await importOriginal<Record<string, unknown>>();
@@ -58,7 +62,7 @@ vi.mock('@/api/generated', async (importOriginal) => {
       if (!/^use[A-Z]/.test(name)) {
         return [name, value];
       }
-      return [name, isMutation(name) ? idle : () => answer(name)];
+      return [name, isMutation(name) ? () => idle(name) : () => answer(name)];
     }),
   );
 });
@@ -74,6 +78,7 @@ vi.stubGlobal('fetch', () => new Promise<Response>(() => undefined));
 afterEach(cleanup);
 afterEach(() => {
   shown.examples = undefined;
+  shown.answers = {};
 });
 
 // The app's other themes: each check runs again in each, switched on as the app switches it before the screen renders.
@@ -112,6 +117,48 @@ async function renderPage() {
     screen.getByRole('heading', { level: 1, name: t('modules.compliance.pages.assign.title') }),
   ).toBeInTheDocument();
   return container;
+}
+
+/** The assignment's answer: Anna assigned; Ben refused in the UI's own words, Carla in the host's. */
+const assignment = {
+  assigned: [
+    { personId: '0198c1a0-0000-7000-8000-0000000000e1', assignmentId: '0198c1a0-0000-7000-8000-0000000000f1' },
+  ],
+  refused: [
+    {
+      personId: '0198c1a0-0000-7000-8000-0000000000e2',
+      code: 'compliance.assignment-already-active',
+      message: 'Die Schulung ist bereits aktiv zugewiesen.',
+    },
+    {
+      personId: '0198c1a0-0000-7000-8000-0000000000e3',
+      code: 'compliance.something-new',
+      message: 'Etwas Neues ist geschehen.',
+    },
+  ],
+};
+
+/** With the example data, the course chosen and Anna, Ben and Carla selected: on to the due date step. */
+async function toDueStep(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(
+    screen.getByRole('button', { name: t('compliance.assign.course.choose', { title: 'Hygiene in der Apotheke' }) }),
+  );
+  await user.click(screen.getByRole('button', { name: t('compliance.assign.next') }));
+  await screen.findByRole('heading', { level: 2, name: t('compliance.assign.learners.title') });
+  for (const name of ['Anna Albers', 'Ben Becker', 'Carla Claasen']) {
+    await user.click(await screen.findByRole('checkbox', { name: t('compliance.assign.learners.select', { name }) }));
+  }
+  await user.click(screen.getByRole('button', { name: t('compliance.assign.next') }));
+  await screen.findByRole('heading', { level: 2, name: t('compliance.assign.due.title') });
+}
+
+/** On from the due date step, with a due date and the yearly recurrence, to the review. */
+async function toReviewStep(user: ReturnType<typeof userEvent.setup>) {
+  await toDueStep(user);
+  await fireEvent.update(screen.getByLabelText(t('compliance.assign.due.date')), '2027-03-15');
+  await user.click(screen.getByRole('checkbox', { name: t('compliance.assign.due.repeat') }));
+  await user.click(screen.getByRole('button', { name: t('compliance.assign.next') }));
+  await screen.findByRole('heading', { level: 2, name: t('compliance.assign.review.title') });
 }
 
 // Each language in turn: the texts differ, and so may what axe finds in them.
@@ -216,4 +263,63 @@ describe.each(languages)('in %s', (language) => {
       expect(await axe(container)).toHaveNoViolations();
     },
   );
+  // Follow-ups of #37 (#239): the steps after the learners, with the example data, the day fixed.
+  describe('after the learners', () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-11-23T11:00:00Z'));
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    test.each([{ name: 'light', switchOn: () => undefined }, ...themes])(
+      'the Assign a course page passes axe on the due date step with a field error, in the $name theme',
+      async ({ switchOn }) => {
+        shown.examples = examples;
+        switchOn();
+        const user = userEvent.setup();
+        const container = await renderPage();
+        await toDueStep(user);
+
+        await user.click(screen.getByRole('button', { name: t('compliance.assign.next') }));
+        expect(await screen.findByRole('alert')).toHaveTextContent(t('compliance.assign.due.required'));
+
+        expect(await axe(container)).toHaveNoViolations();
+      },
+    );
+
+    test.each([{ name: 'light', switchOn: () => undefined }, ...themes])(
+      'the Assign a course page passes axe on the review, in the $name theme',
+      async ({ switchOn }) => {
+        shown.examples = examples;
+        switchOn();
+        const user = userEvent.setup();
+        const container = await renderPage();
+
+        await toReviewStep(user);
+        expect(screen.getAllByRole('term')).not.toEqual([]);
+
+        expect(await axe(container)).toHaveNoViolations();
+      },
+    );
+
+    test.each([{ name: 'light', switchOn: () => undefined }, ...themes])(
+      'the Assign a course page passes axe on the result with people refused, in the $name theme',
+      async ({ switchOn }) => {
+        shown.examples = examples;
+        shown.answers = { usePostCompliancePharmaciesIdAssignments: assignment };
+        switchOn();
+        const user = userEvent.setup();
+        const container = await renderPage();
+        await toReviewStep(user);
+
+        await user.click(screen.getByRole('button', { name: t('compliance.assign.submit') }));
+        await screen.findByRole('heading', { level: 2, name: t('compliance.assign.result.title') });
+        expect(screen.getByRole('list', { name: t('compliance.assign.result.refused') })).toBeInTheDocument();
+
+        expect(await axe(container)).toHaveNoViolations();
+      },
+    );
+  });
 });
