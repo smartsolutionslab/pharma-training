@@ -7,7 +7,8 @@ import { rateFigure } from './matrixRate';
 
 const shown = (rate: number, locale: 'de-DE' | 'en-GB' = 'de-DE') => {
   const { value, format } = rateFigure(rate);
-  return i18n.global.n(value, format, locale);
+  // Intl puts a no-break space before the sign; the expectations write a plain one.
+  return i18n.global.n(value, format, locale).replace(/\s/g, ' ');
 };
 
 test.each([
