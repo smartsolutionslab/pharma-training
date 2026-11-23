@@ -16,12 +16,14 @@ const editor = '0198c1a0-0000-7000-8000-0000000000e1';
 const newest: EditorialCourseVersionReturnDto = {
   id: '0198c1a0-0000-7000-8000-0000000000a2',
   returnedBy: editor,
+  returnedByName: null,
   returnedAt: '2026-11-21T14:05:00Z',
   reason: 'Kapitel 2 braucht eine Quelle.',
 };
 const older: EditorialCourseVersionReturnDto = {
   id: '0198c1a0-0000-7000-8000-0000000000a1',
   returnedBy: editor,
+  returnedByName: null,
   returnedAt: '2026-11-19T08:30:00Z',
   reason: 'Frage 1 ist zu kurz.',
 };

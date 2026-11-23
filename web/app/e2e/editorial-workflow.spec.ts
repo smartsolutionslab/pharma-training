@@ -156,7 +156,7 @@ test('an editor submits, returns with a reason, submits again, publishes and ret
   expect(returns.items.map((each) => each.reason)).toEqual([reason]);
   expect(returnPosts).toHaveLength(1);
 
-  // The history shows the return at once: on the day it was taken, by the editor (Ihnen, the realm user's own sub)
+  // The history shows the return at once: on the day it was taken, by the editor, named as the host stored it (#220): Emma Editor, the realm user
   // and why.
   /** The history's data rows, the header row left out. */
   const historyRows = history.getByRole('row').filter({ has: page.getByRole('cell') });
@@ -164,7 +164,7 @@ test('an editor submits, returns with a reason, submits again, publishes and ret
     await expect(historyRows).toHaveCount(1);
     const cells = historyRows.first().getByRole('cell');
     await expect(cells.nth(0)).toContainText(returnedOnThatDay);
-    await expect(cells.nth(1)).toHaveText('Ihnen');
+    await expect(cells.nth(1)).toHaveText('Emma Editor');
     await expect(cells.nth(2)).toHaveText(reason);
   };
   await expectTheReturnListed();

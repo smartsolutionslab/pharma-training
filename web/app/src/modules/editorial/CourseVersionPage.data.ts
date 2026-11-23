@@ -63,18 +63,21 @@ const draft = {
 };
 
 // Its return history (GET /editorial/course-versions/{id}/returns, #201), newest first: a two-line reason by the
-// signed-in user's colleague and a reason that looks like markup, shown as the characters it is.
+// signed-in user's colleague, stored with her name (#220), and an older one without a name whose reason looks like
+// markup, shown as the characters it is.
 const returns = {
   items: [
     {
       id: '0198c1a0-0000-7000-8000-0000000000a9',
       returnedBy: '0198c1a0-0000-7000-8000-0000000000ea',
+      returnedByName: 'Carla Kollegin',
       returnedAt: '2026-11-21T14:05:00Z',
       reason: 'Kapitel 2 braucht eine Quelle.\nDie Tabelle in Kapitel 3 ist veraltet.',
     },
     {
       id: '0198c1a0-0000-7000-8000-0000000000a8',
       returnedBy: '0198c1a0-0000-7000-8000-0000000000ea',
+      returnedByName: null,
       returnedAt: '2026-11-19T08:30:00Z',
       reason: 'Frage 1: <b>30 Sekunden</b> ist zu kurz.',
     },

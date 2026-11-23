@@ -94,6 +94,8 @@ export function stepTaken(host: WorkflowHost, step: WorkflowStep, body?: unknown
       {
         id: `0198c1a0-0000-7000-8000-${String(host.returns.length + 1).padStart(12, '0')}`,
         returnedBy: editorSub,
+        // The host stores the returner's name from the token since #220: the realm's editor.
+        returnedByName: 'Emma Editor',
         returnedAt: returnedAtNow,
         reason: reason.trim(),
       },
@@ -112,6 +114,8 @@ export function returnRecord(
   return {
     id: `0198c1a0-0000-7000-8000-0000000a${String(number).padStart(4, '0')}`,
     returnedBy,
+    // Recorded before #220 stored names: none.
+    returnedByName: null,
     returnedAt: new Date(Date.UTC(2026, 9, 1, 8, 0) + number * 3_600_000).toISOString(),
     reason,
   };

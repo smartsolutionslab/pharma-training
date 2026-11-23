@@ -148,7 +148,7 @@ describe('a return taken on the page', () => {
     await returnWith(reason);
 
     await waitFor(() => expect(heading).toHaveFocus());
-    await waitFor(() => expect(shownRows()[0]).toEqual([dateTime(returnedAtNow), 'Ihnen', reason]));
+    await waitFor(() => expect(shownRows()[0]).toEqual([dateTime(returnedAtNow), 'Emma Editor', reason]));
     expect(shownRows()[1]).toEqual([
       dateTime(older.returnedAt),
       'einer anderen Person aus der Redaktion',
@@ -169,7 +169,7 @@ describe('a return taken on the page', () => {
     await returnWith(reason);
 
     await waitFor(() => expect(heading).toHaveFocus());
-    await waitFor(() => expect(shownRows()[0]).toEqual([dateTime(returnedAtNow), 'Ihnen', reason]));
+    await waitFor(() => expect(shownRows()[0]).toEqual([dateTime(returnedAtNow), 'Emma Editor', reason]));
     expect(shownRows()[1]?.[2]).toBe('Grund 21');
     expect(historyReads().at(-1)).toBe('1');
   });
@@ -196,7 +196,7 @@ describe('a return taken on the page', () => {
 
     await waitFor(() => expect(heading).toHaveFocus());
     // Either the new return is the first row, or the table is busy: never the first page's old rows as current.
-    const newReturn = [dateTime(returnedAtNow), 'Ihnen', reason];
+    const newReturn = [dateTime(returnedAtNow), 'Emma Editor', reason];
     const busy = within(history()).getByRole('table').getAttribute('aria-busy') === 'true';
     expect([['busy'], newReturn]).toContainEqual(busy ? ['busy'] : shownRows()[0]);
     await waitFor(() => expect(shownRows()[0]).toEqual(newReturn));

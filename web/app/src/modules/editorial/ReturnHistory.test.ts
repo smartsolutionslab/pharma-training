@@ -23,24 +23,28 @@ const colleague = '0198c1a0-0000-7000-8000-0000000000e2';
 const twoLines: EditorialCourseVersionReturnDto = {
   id: '0198c1a0-0000-7000-8000-0000000000a2',
   returnedBy: editor,
+  returnedByName: null,
   returnedAt: '2026-11-21T14:05:00Z',
   reason: 'Kapitel 2 braucht eine Quelle.\nDie Tabelle in Kapitel 3 ist veraltet.',
 };
 const markup: EditorialCourseVersionReturnDto = {
   id: '0198c1a0-0000-7000-8000-0000000000a1',
   returnedBy: colleague,
+  returnedByName: null,
   returnedAt: '2026-11-19T08:30:00Z',
   reason: 'Frage 1: <b>30 Sekunden</b> ist zu kurz.',
 };
 const script: EditorialCourseVersionReturnDto = {
   id: '0198c1a0-0000-7000-8000-0000000000a0',
   returnedBy: editor,
+  returnedByName: null,
   returnedAt: '2026-11-18T10:00:00Z',
   reason: '<img src=x onerror=alert(1)>',
 };
 const onPageTwo: EditorialCourseVersionReturnDto = {
   id: '0198c1a0-0000-7000-8000-00000000009f',
   returnedBy: editor,
+  returnedByName: null,
   returnedAt: '2026-10-02T09:15:00Z',
   reason: 'Die Lernziele fehlen.',
 };
@@ -234,6 +238,27 @@ test("the rows are in the host's order, each with its date in the browser's time
       [dateTime(script.returnedAt), texts.de.byYou, script.reason],
     ]),
   );
+});
+
+test("a return stored with its returner's name shows that name, whoever returned it", async () => {
+  records = [
+    { ...twoLines, returnedByName: 'Emma Editor' },
+    { ...markup, returnedByName: 'Carla Kollegin' },
+    { ...script, returnedByName: '  ' },
+  ];
+  renderHistory();
+
+  await screen.findByText(markup.reason);
+  // A blank name is no name: that return reads as the ones stored before names were.
+  await waitFor(() => expect(returnedBy()).toEqual(['Emma Editor', 'Carla Kollegin', texts.de.byYou]));
+});
+
+test('a name that looks like markup shows as the text it is', async () => {
+  records = [{ ...markup, returnedByName: '<b>Mallory</b>' }];
+  const { container } = renderHistory();
+
+  await waitFor(() => expect(returnedBy()).toEqual(['<b>Mallory</b>']));
+  expect(container.querySelector('b')).toBeNull();
 });
 
 test('a return whose returnedBy is the signed-in user\'s sub reads "Ihnen", any other "einer anderen Person aus der Redaktion"', async () => {
