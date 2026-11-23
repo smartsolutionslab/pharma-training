@@ -4,6 +4,7 @@ import {
   type ComplianceAssignedLearnerDto,
   type ComplianceRefusedLearnerDto,
   getGetCatalogCoursesQueryKey,
+  getGetCompliancePharmaciesIdMatrixQueryKey,
   usePostCompliancePharmaciesIdAssignments,
 } from '@/api/generated';
 import { ApiError } from '@/api/baseApi';
@@ -38,7 +39,8 @@ function isDueDateCode(code: string): code is DueDateCode {
 
 /**
  * Assigns a course in a pharmacy (POST /compliance/pharmacies/{id}/assignments, #37). A course the host no longer
- * assigns marks every cached catalog page stale, so the course step reads it again.
+ * assigns marks every cached catalog page stale, so the course step reads it again. An assignment that assigned someone
+ * marks every cached page of the pharmacy's team matrix (#36) stale, so it shows the new cells on the way back.
  */
 export function useAssignCourse() {
   const queryClient = useQueryClient();
@@ -71,6 +73,9 @@ export function useAssignCourse() {
   async function assign(pharmacyId: string, request: AssignComplianceCourseRequest): Promise<AssignOutcome> {
     try {
       const { assigned, refused } = await mutateAsync({ id: pharmacyId, data: request });
+      if (assigned.length > 0) {
+        await queryClient.invalidateQueries({ queryKey: getGetCompliancePharmaciesIdMatrixQueryKey(pharmacyId) });
+      }
       return { kind: 'done', assigned, refused };
     } catch (error) {
       return refusal(error);

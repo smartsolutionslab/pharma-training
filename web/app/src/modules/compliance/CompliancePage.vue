@@ -1,65 +1,98 @@
 <script setup lang="ts">
-import { Inbox } from '@lucide/vue';
-import { useTemplateRef } from 'vue';
+import { keepPreviousData, useQueryClient } from '@tanstack/vue-query';
+import { computed, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { ComplianceSampleDto } from '@/api/generated';
+import { useRoute } from 'vue-router';
+import { ApiError } from '@/api/baseApi';
+import { getGetOrganisationPharmaciesMineQueryKey, useGetCompliancePharmaciesIdMatrix } from '@/api/generated';
 import { Button } from '@/components/ui/button';
-import DataTable from '@/components/ui/DataTable.vue';
-import { columnsOf, translatedHeader } from '@/components/ui/data-table-columns';
-import { EmptyState } from '@/components/ui/empty-state';
-import { t as translate } from '@/i18n';
-import { notify } from '@/lib/notify';
-import CreateComplianceSampleForm from './CreateComplianceSampleForm.vue';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useCurrentPharmacy } from '@/shell/useCurrentPharmacy';
+import { matrixFailure } from './matrixErrors';
+import { parseMatrixQuery } from './matrixQuery';
 import { titleKey } from './titleKey';
-import { useCanManage } from './useCanManage';
-import { useCreateComplianceSample, useComplianceSamples } from './useComplianceSamples';
 
-// The module's screen, starting from its sample (AGENTS.md): the samples in a table, by name, and a form that creates
-// one, shown in the table at once and taken out again if the host refuses it; the result is a toast. "Manage"
-// shows only to a caller its permission probe answers with 200, and any failure but a 403 shows as an alert.
-const samples = columnsOf<ComplianceSampleDto>();
-const columns = samples.columns([samples.accessor('name', translatedHeader('samples.form.name'))]);
-const none: ComplianceSampleDto[] = [];
+// The team matrix (#36): the current pharmacy's members by the courses assigned there, the manager's main page. The
+// filters and the page are in the address; whether the member may see the matrix the host decides (ADR 0003), and a
+// refusal takes the place of the matrix.
 
-const { samples: rows, page, isLoading, isError } = useComplianceSamples();
-const { create, isSaving } = useCreateComplianceSample();
-const permission = useCanManage();
-const form = useTemplateRef('form');
+/** A pharmacy has tens of members: one page of 50 shows them all, or nearly. */
+const pageSize = 50;
+
 const { t } = useI18n();
+const route = useRoute();
+const queryClient = useQueryClient();
+const { current } = useCurrentPharmacy();
 
-async function onCreate(name: string) {
-  const created = await create(name);
-  if (created) {
-    notify.success(translate('samples.created', { name }));
-  } else {
-    notify.failure(translate('samples.createFailed', { name }));
+const query = computed(() => parseMatrixQuery(route.query));
+
+const matrix = useGetCompliancePharmaciesIdMatrix(
+  () => current.value?.id ?? '',
+  () => ({ page: query.value.page, pageSize, jobFunction: query.value.jobFunction }),
+  { query: { enabled: computed(() => current.value !== undefined), placeholderData: keepPreviousData } },
+);
+const { data, error, isPending, isFetching } = matrix;
+
+const failure = computed(() => (error.value === null ? undefined : matrixFailure(error.value)));
+const failureText = computed(() => {
+  const shown = failure.value;
+  if (shown === undefined) {
+    return undefined;
   }
-  return created;
+  return 'key' in shown ? t(shown.key) : shown.message;
+});
+/** Only a failure, not a refusal, is worth reading again. */
+const canRetry = computed(() => {
+  const shown = failure.value;
+  return shown !== undefined && 'key' in shown && shown.key === 'compliance.matrix.loadFailed';
+});
+/** The matrix shows unless a refusal takes its place; a background refetch that failed keeps the data it had. */
+const showsMatrix = computed(() => failure.value === undefined || data.value !== undefined);
+
+// The host counts the caller a member no more: the memberships are read again, so the shell lets go of this one.
+watch(error, (refusal) => {
+  if (refusal instanceof ApiError && refusal.code === 'compliance.pharmacy-not-found') {
+    void queryClient.invalidateQueries({ queryKey: getGetOrganisationPharmaciesMineQueryKey() });
+  }
+});
+
+function retry() {
+  void matrix.refetch();
 }
 </script>
 
 <template>
   <main class="flex flex-col gap-6">
-    <h1>{{ t(titleKey) }}</h1>
-    <h2 v-if="permission === 'granted'">{{ t('samples.manage') }}</h2>
-    <p v-if="permission === 'failed'" role="alert">
-      {{ t('samples.permissionsFailed', { module: t(titleKey) }) }}
+    <div class="flex flex-wrap items-start justify-between gap-4">
+      <div class="flex flex-col gap-2">
+        <h1 class="text-title">{{ t(titleKey) }}</h1>
+        <p v-if="current !== undefined" class="text-body text-muted-foreground">
+          {{ t('compliance.matrix.intro', { pharmacy: current.name }) }}
+        </p>
+      </div>
+      <Button v-if="current?.canAssignCourses" as-child>
+        <RouterLink to="/compliance/assign">{{ t('modules.compliance.pages.assign.title') }}</RouterLink>
+      </Button>
+    </div>
+    <p v-if="failureText !== undefined" role="alert" class="text-body text-destructive">
+      {{ failureText }}
+      <Button v-if="canRetry" type="button" variant="outline" class="ml-2" @click="retry">
+        {{ t('compliance.matrix.retry') }}
+      </Button>
     </p>
-    <section aria-labelledby="compliance-samples" class="flex flex-col gap-4">
-      <h2 id="compliance-samples">{{ t('samples.title') }}</h2>
-      <CreateComplianceSampleForm ref="form" :on-create="onCreate" :saving="isSaving" />
-      <p v-if="isError" role="alert">{{ t('samples.loadFailed') }}</p>
-      <DataTable v-else :columns="columns" :data="rows ?? none" :loading="isLoading" :paging="page">
-        <template #empty>
-          <EmptyState>
-            <template #icon><Inbox /></template>
-            {{ t('samples.empty') }}
-            <template #action>
-              <Button type="button" variant="outline" @click="form?.focus()">{{ t('samples.createFirst') }}</Button>
-            </template>
-          </EmptyState>
-        </template>
-      </DataTable>
-    </section>
+    <div
+      v-if="showsMatrix"
+      role="region"
+      :aria-label="t('compliance.matrix.table.label')"
+      tabindex="0"
+      :aria-busy="isFetching || undefined"
+      class="max-h-[70vh] overflow-auto rounded-md border"
+    >
+      <div v-if="isPending" aria-hidden="true" class="flex flex-col gap-2 p-4">
+        <div v-for="row in 3" :key="row" class="flex gap-4">
+          <Skeleton v-for="column in 4" :key="column" class="h-8 w-36" />
+        </div>
+      </div>
+    </div>
   </main>
 </template>

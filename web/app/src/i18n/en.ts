@@ -73,7 +73,7 @@ export const en: MessageSchema = {
     assessment: { title: 'Tests' },
     certification: { title: 'Certificates' },
     compliance: {
-      title: 'Assignments',
+      title: 'Team matrix',
       pages: {
         assign: { title: 'Assign a course' },
       },
@@ -97,6 +97,17 @@ export const en: MessageSchema = {
     },
   },
   compliance: {
+    matrix: {
+      intro: 'Who in {pharmacy} has to complete which course by when.',
+      notAllowed: "You may not view the team's training status in this pharmacy.",
+      pharmacyNotFound: 'You are no longer a member of this pharmacy.',
+      identityIncomplete: 'Your account gives no name or valid email address. Complete your profile.',
+      loadFailed: 'The team matrix could not be loaded.',
+      retry: 'Try again',
+      table: {
+        label: 'Team matrix: members by course',
+      },
+    },
     assign: {
       notAllowed: 'You may not assign courses in this pharmacy.',
       steps: {

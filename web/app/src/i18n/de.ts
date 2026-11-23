@@ -82,7 +82,7 @@ export const de = {
     assessment: { title: 'Tests' },
     certification: { title: 'Teilnahmebestätigungen' },
     compliance: {
-      title: 'Zuweisungen',
+      title: 'Team-Matrix',
       pages: {
         assign: { title: 'Schulung zuweisen' },
       },
@@ -106,6 +106,17 @@ export const de = {
     },
   },
   compliance: {
+    matrix: {
+      intro: 'Wer in {pharmacy} welche Schulung bis wann abschließen muss.',
+      notAllowed: 'Sie dürfen den Schulungsstand des Teams in dieser Apotheke nicht sehen.',
+      pharmacyNotFound: 'Sie sind nicht mehr Mitglied dieser Apotheke.',
+      identityIncomplete: 'Ihr Konto nennt keinen Namen oder keine gültige E-Mail-Adresse. Ergänzen Sie Ihr Profil.',
+      loadFailed: 'Die Team-Matrix konnte nicht geladen werden.',
+      retry: 'Erneut versuchen',
+      table: {
+        label: 'Team-Matrix: Mitglieder nach Schulungen',
+      },
+    },
     assign: {
       notAllowed: 'Sie dürfen in dieser Apotheke keine Schulungen zuweisen.',
       steps: {
