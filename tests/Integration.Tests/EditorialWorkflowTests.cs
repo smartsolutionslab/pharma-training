@@ -218,6 +218,34 @@ public class EditorialWorkflowTests(AspireFixture aspire)
     }
 
     [Fact]
+    public async Task A_version_whose_settings_changed_after_approval_is_not_published_until_its_questions_are_approved_again()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var draft = await ReadyToSubmitAsync(client, cancellationToken);
+        await ApproveAllAsync(client, draft.Id, cancellationToken);
+        var path = new Uri($"/editorial/course-versions/{draft.Id}/blueprint", UriKind.Relative);
+        using (var set = await client.PutAsJsonAsync(path, new { questions = 1, passingScorePercent = 90, validityMonths = 12 }, cancellationToken))
+        {
+            set.StatusCode.ShouldBe(HttpStatusCode.OK, $"PUT {path} answered {(int)set.StatusCode}.");
+        }
+
+        await SubmitAsync(client, draft.Id, cancellationToken);
+
+        using (var refused = await StepAsync(client, draft.Id, "publish", cancellationToken))
+        {
+            refused.StatusCode.ShouldBe(HttpStatusCode.Conflict, "a version whose settings changed after its questions were approved was published unreviewed");
+            (await CodeOfAsync(refused, cancellationToken)).ShouldBe("editorial.question-not-approved");
+        }
+
+        (await ReadAsync(client, draft.Id, cancellationToken)).Status.ShouldBe("InReview");
+        await ApproveAllAsync(client, draft.Id, cancellationToken);
+        using var published = await StepAsync(client, draft.Id, "publish", cancellationToken);
+        published.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await ReadAsync(client, draft.Id, cancellationToken)).Status.ShouldBe("Published");
+    }
+
+    [Fact]
     public async Task A_published_version_is_not_published_again()
     {
         var cancellationToken = TestContext.Current.CancellationToken;

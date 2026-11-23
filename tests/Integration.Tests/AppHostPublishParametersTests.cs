@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Azure;
@@ -32,6 +33,7 @@ public class AppHostPublishParametersTests
     [InlineData("azure-openai-api-key")]
     [InlineData("smtp-username")]
     [InlineData("smtp-password")]
+    [InlineData("database-roles-key")]
     public async Task Every_publish_secret_is_an_explicit_parameter_in_key_vault(string name)
     {
         await using var builder = await PublishedAppHost.ModelAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
@@ -103,6 +105,63 @@ public class AppHostPublishParametersTests
             builder.Resources.OfType<ParameterResource>().Select(parameter => parameter.Name)
                 .ShouldNotContain($"messaging-{service.Name}-username", $"{service.Name}'s broker user name can be overridden.");
         }
+    }
+
+    /// <summary>
+    /// The key every module role's password is derived from, <c>guid(database_roles_key, '&lt;module&gt;')</c>, is a secure
+    /// parameter of main.bicep that the deployment sets, handed to the Flexible Server's module, which writes the roles'
+    /// connection strings (Q1 on #114, docs/adr/0005).
+    /// </summary>
+    [Fact]
+    public async Task The_database_roles_key_is_a_secure_parameter_the_server_receives()
+    {
+        var bicep = await PublishedAppHost.PublishAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
+        var main = bicep.Files["main.bicep"];
+
+        Regex.IsMatch(main, @"(?m)^@secure\(\)\s*\r?\n\s*param\s+database_roles_key\s+string\s*$", RegexOptions.None, TimeSpan.FromSeconds(1))
+            .ShouldBeTrue("main.bicep declares no @secure() parameter database_roles_key without a default.");
+        var postgres = main.IndexOf("module postgres 'postgres/postgres.bicep' = {", StringComparison.Ordinal);
+        postgres.ShouldBeGreaterThanOrEqualTo(0, "main.bicep declares no module postgres.");
+        var parameters = PublishedBicep.Block(main[postgres..], "params");
+        Regex.IsMatch(parameters, @"(?m)^\s*database_roles_key:\s*database_roles_key\s*$", RegexOptions.None, TimeSpan.FromSeconds(1))
+            .ShouldBeTrue($"main.bicep does not hand database_roles_key to the postgres module. It passes: {parameters}");
+        PublishedBicep.SecureParameters(bicep.Module("postgres")).ShouldContain("database_roles_key", "postgres/postgres.bicep does not receive database_roles_key as a @secure() parameter.");
+    }
+
+    /// <summary>
+    /// Every module role's password is <c>guid(database_roles_key, '&lt;module&gt;')</c>, so the key is all that stands
+    /// between a guess and every role: publishing (and so deploying) refuses one under 32 characters, naming the parameter,
+    /// rather than leave it to a Bicep <c>@minLength</c> that only fires once Azure deploys.
+    /// </summary>
+    [Fact]
+    public async Task Publishing_refuses_a_database_roles_key_under_32_characters()
+    {
+        var refused = await Should.ThrowAsync<Exception>(
+            () => PublishedAppHost.PublishAsync(PublishedAppHost.Staging, new Dictionary<string, string>(StringComparer.Ordinal) { ["database-roles-key"] = new string('k', 31) }, TestContext.Current.CancellationToken),
+            "Publishing succeeded with a database-roles-key of 31 characters.");
+
+        refused.ToString().ShouldContain("database-roles-key", Case.Sensitive, $"The failure does not name database-roles-key: {refused}");
+    }
+
+    /// <summary>
+    /// frontend-url is the web app's public origin, which the storage account's CORS rule allows and mail links lead to: an
+    /// https origin, scheme and host alone, no path, no trailing slash, no query and no wildcard. Anything else fails the
+    /// publish, naming the parameter.
+    /// </summary>
+    [Theory]
+    [InlineData("http://app.example")]
+    [InlineData("https://app.example/")]
+    [InlineData("https://app.example/app")]
+    [InlineData("https://app.example?tenant=a")]
+    [InlineData("https://*.example")]
+    [InlineData("app.example")]
+    public async Task Publishing_refuses_a_frontend_url_that_is_no_https_origin(string frontendUrl)
+    {
+        var refused = await Should.ThrowAsync<Exception>(
+            () => PublishedAppHost.PublishAsync(PublishedAppHost.Staging, new Dictionary<string, string>(StringComparer.Ordinal) { ["frontend-url"] = frontendUrl }, TestContext.Current.CancellationToken),
+            $"Publishing succeeded with the frontend-url '{frontendUrl}'.");
+
+        refused.ToString().ShouldContain("frontend-url", Case.Sensitive, $"The failure does not name frontend-url: {refused}");
     }
 
     [Fact]
