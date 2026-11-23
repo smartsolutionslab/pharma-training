@@ -183,17 +183,43 @@ public class AssignCourseTests
         assignments.Published.Count.ShouldBe(1);
     }
 
+    /// <summary>The due date is the request's, not a learner's: it is checked once, whoever is in the list.</summary>
     [Fact]
-    public async Task When_every_learner_is_refused_a_due_date_in_the_past_is_not_checked()
+    public async Task A_due_date_in_the_past_is_refused_whoever_is_in_the_list()
     {
         await SeedAsync();
         var stranger = PersonId.From(Guid.CreateVersion7());
 
         var result = await AssignAsync([stranger], dueDate: DueDate.From(new DateOnly(2027, 2, 28)));
 
-        result.Value.Assigned.ShouldBeEmpty();
-        result.Value.Refused.ShouldHaveSingleItem().Code.ShouldBe("compliance.learner-not-a-member");
+        result.IsFailure.ShouldBeTrue("a past due date was accepted because no learner reached the aggregate");
+        result.Error.Code.ShouldBe("compliance.due-date-in-the-past");
+        result.Error.Status.ShouldBe(HttpStatusCode.UnprocessableEntity);
         assignments.Commits.ShouldBe(0);
+    }
+
+    /// <summary>A due date more than ten years ahead is the caller's mistake, and its recurrences could never be computed.</summary>
+    [Fact]
+    public async Task A_due_date_more_than_ten_years_ahead_is_refused()
+    {
+        await SeedAsync();
+
+        var result = await AssignAsync([Anna], dueDate: DueDate.From(new DateOnly(2037, 3, 2)));
+
+        result.IsFailure.ShouldBeTrue("a due date more than ten years ahead was accepted");
+        result.Error.Code.ShouldBe("compliance.due-date-too-far");
+        result.Error.Status.ShouldBe(HttpStatusCode.BadRequest);
+        assignments.Commits.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task A_due_date_exactly_ten_years_ahead_is_accepted()
+    {
+        await SeedAsync();
+
+        var result = await AssignAsync([Anna], dueDate: DueDate.From(new DateOnly(2037, 3, 1)));
+
+        result.Value.Assigned.ShouldHaveSingleItem().PersonId.ShouldBe(Anna.Value);
     }
 
     [Fact]

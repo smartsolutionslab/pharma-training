@@ -207,6 +207,31 @@ public class ComplianceAssignmentsTests(AspireFixture aspire)
         await ShouldBeRefusedAsync(response, HttpStatusCode.BadRequest, "compliance.too-many-learners", cancellationToken);
     }
 
+    /// <summary>A body without a course is refused for it, not read as the empty id and told that course does not exist.</summary>
+    [Fact]
+    public async Task A_missing_course_id_is_the_callers_mistake()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var manager = await aspire.CreateHostClientAsync("developer");
+
+        using var response = await AssignAsync(manager, Guid.CreateVersion7(), new { personIds = new[] { Guid.CreateVersion7() }, dueDate = InAMonth() }, cancellationToken);
+
+        await ShouldBeRefusedAsync(response, HttpStatusCode.BadRequest, "compliance.course-missing", cancellationToken);
+    }
+
+    /// <summary>The route reads at most what a thousand ids need; a larger body is refused by the server before it is bound.</summary>
+    [Fact]
+    public async Task A_body_larger_than_a_thousand_ids_need_is_refused_before_it_is_read()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var manager = await aspire.CreateHostClientAsync("developer");
+        var persons = Enumerable.Range(0, 3000).Select(_ => Guid.CreateVersion7()).ToArray();
+
+        using var response = await AssignAsync(manager, Guid.CreateVersion7(), Request(Guid.CreateVersion7(), persons), cancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.RequestEntityTooLarge, await response.Content.ReadAsStringAsync(cancellationToken));
+    }
+
     [Fact]
     public async Task Assigning_again_reports_the_person_who_already_has_an_active_assignment()
     {
