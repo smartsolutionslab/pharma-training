@@ -58,7 +58,7 @@
       "publicClient": true,
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": false,
-      "redirectUris": ["${WEB_ORIGIN}/*"],
+      "redirectUris": ["${WEB_ORIGIN}", "${WEB_ORIGIN}/"],
       "webOrigins": ["${WEB_ORIGIN}"],
       "attributes": { "pkce.code.challenge.method": "S256" },
       "protocolMappers": [

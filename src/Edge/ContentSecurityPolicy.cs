@@ -34,6 +34,7 @@ public static partial class ContentSecurityPolicy
             "object-src 'none'",
             "base-uri 'self'",
             "frame-ancestors 'none'",
+            "form-action 'self'",
         ];
         return string.Join("; ", directives);
     }

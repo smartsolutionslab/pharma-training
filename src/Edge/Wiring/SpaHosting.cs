@@ -53,6 +53,14 @@ public static class SpaHosting
                     {
                         file.Context.Response.Headers.CacheControl = AssetCaching;
                     }
+
+                    // A page served as a file (/index.html) gets what the page fallback gives it: without the policy it could be
+                    // framed and run injected script, and without no-cache a new deployment's app would not be loaded.
+                    if (file.File.Name.EndsWith(".html", StringComparison.OrdinalIgnoreCase))
+                    {
+                        file.Context.Response.Headers.CacheControl = "no-cache";
+                        file.Context.Response.Headers[HeaderNames.ContentSecurityPolicy] = policy;
+                    }
                 },
             }));
 
