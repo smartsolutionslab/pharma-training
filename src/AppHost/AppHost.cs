@@ -55,7 +55,7 @@ var host = builder.AddProject<Projects.Edge>("host")
     .WaitFor(keycloak)
     .WithEnvironment("Authentication__Authority", ReferenceExpression.Create($"{keycloak.GetEndpoint("http")}/realms/pharma-training"));
 
-// Links in mail lead into the web app: its dev server when run, its public address (the parameter frontend-url) deployed,
+// Links in mail lead into the web app, for the services that send mail: its dev server when run, its public address (the parameter frontend-url) deployed,
 // which no endpoint reference knows.
 ReferenceExpression frontendUrl;
 if (builder.ExecutionContext.IsRunMode)
@@ -107,9 +107,15 @@ foreach (var (module, project) in builder.ServiceHosts())
         .WithBlobContainer(blobs, "blobs")
         .WithEnvironment("AzureOpenAI__Endpoint", azureOpenAIEndpoint)
         .WithEnvironment("AzureOpenAI__Deployment", azureOpenAIDeployment)
-        .WithSecret("AzureOpenAI__ApiKey", azureOpenAIApiKey, secrets)
-        .WithMail(mail, secrets)
-        .WithEnvironment("Frontend__BaseUrl", frontendUrl);
+        .WithSecret("AzureOpenAI__ApiKey", azureOpenAIApiKey, secrets);
+
+    // Only a service whose project says <SendsMail>true</SendsMail> gets the mail server and the web app's address its
+    // links lead to; published, the others never reference the mail secret, so they are not granted it (docs/adr/0004).
+    if (ServiceHostProjects.SendsMail(project))
+    {
+        service.WithMail(mail, secrets)
+            .WithEnvironment("Frontend__BaseUrl", frontendUrl);
+    }
 
     // The edge routes /<module>/... to the service it finds under the module's name, listed under Edge:Modules.
     host.WithReference(service)
