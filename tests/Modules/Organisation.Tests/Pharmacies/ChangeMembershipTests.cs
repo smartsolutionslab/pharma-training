@@ -29,7 +29,7 @@ public class ChangeMembershipTests
         pharmacy.Membership(anna).JobFunction.ShouldBe(JobFunction.Pka);
         pharmacy.Membership(anna).Role.ShouldBe(MembershipRole.Employee);
         pharmacy.DomainEvents.OfType<MembershipChanged>().ShouldHaveSingleItem()
-            .ShouldBe(new MembershipChanged(pharmacy.Id, anna, Anna, JobFunction.Pka, MembershipRole.Employee));
+            .ShouldBe(new MembershipChanged(pharmacy.Id, anna, Anna, DisplayName.From("Anna Berger"), JobFunction.Pka, MembershipRole.Employee, MembershipVersion.From(2)));
         store.Commits.ShouldBe(1);
         store.Published.ShouldBeEmpty();
     }
