@@ -85,7 +85,7 @@ public sealed class Membership : Entity<MembershipId>
     internal bool HoldsMostLinks() => invitationLinks.Count >= Pharmacy.MaxInvitationLinksPerVersion;
 
     /// <summary>A link mailed now, beside the version's earlier ones, which keep working.</summary>
-    internal void IssueLink(InvitationTokenHash tokenHash) => invitationLinks.Add(InvitationLink.Of(tokenHash));
+    internal void IssueLink(InvitationTokenHash tokenHash) => invitationLinks.Add(InvitationLink.From(tokenHash));
 
     /// <summary>Takes back the link with this hash, whose mail never left; answers whether the version held it.</summary>
     internal bool WithdrawLink(InvitationTokenHash tokenHash) => invitationLinks.RemoveAll(link => link.Hash == tokenHash) > 0;
