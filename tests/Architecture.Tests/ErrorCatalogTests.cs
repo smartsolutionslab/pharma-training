@@ -1,3 +1,4 @@
+using System.Reflection;
 using SmartSolutionsLab.PharmaTraining.Architecture.Tests.Probes.Errors;
 using SmartSolutionsLab.PharmaTraining.Architecture.Tests.Rules;
 
@@ -38,6 +39,16 @@ public class ErrorCatalogTests
         violation.ShouldContain("probe.twin has 2 messages");
         violation.ShouldContain($"{typeof(ProbeTwinA).FullName}: \"The probe is missing.\"");
         violation.ShouldContain($"{typeof(ProbeTwinB).FullName}: \"There is no such probe.\"");
+    }
+
+    [Fact]
+    public void A_domain_error_is_answered_with_the_status_of_every_failures_method_that_maps_it()
+    {
+        var methods = typeof(ProbeFailures).GetMethods(BindingFlags.Public | BindingFlags.Static).Where(method => method.Name == "From").ToList();
+
+        var statuses = ErrorCatalog.StatusesOf(typeof(ProbeMappedTwice), new ProbeMappedTwice(), methods);
+
+        statuses.Order().ShouldBe([400, 409]);
     }
 
     [Fact]

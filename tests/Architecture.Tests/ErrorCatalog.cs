@@ -219,31 +219,36 @@ public static partial class ErrorCatalog
     }
 
     /// <summary>
-    /// Every status a caller can receive the error with: an <see cref="ApiError"/>'s own; a domain error's from the
-    /// <c>*Failures</c> methods of its module's Application, taking one parameter of its exact type, else of a union
-    /// that has it as a case, else <see cref="DomainError"/> itself. A method that throws does not map it.
+    /// Every status a caller can receive the error with: an <see cref="ApiError"/>'s own; a domain error's from every
+    /// <c>*Failures</c> method of its module's Application that takes it, by its exact type, by a union that has it as a
+    /// case, or as a <see cref="DomainError"/> in a <c>From</c> overload, since overload resolution may reach any of
+    /// them; a factory of another name taking a <see cref="DomainError"/> maps only what its callers pass it, so it counts
+    /// only for an error nothing else maps. A method that throws does not map it.
     /// </summary>
-    private static List<int> Statuses(Type type, object? filled)
+    private static List<int> Statuses(Type type, object? filled) => StatusesOf(type, filled, [.. FailuresMethods(type)]);
+
+    /// <summary>The statuses <paramref name="filled"/> is answered with through <paramref name="methods"/>, the <c>*Failures</c> methods that may map it.</summary>
+    internal static List<int> StatusesOf(Type type, object? filled, IReadOnlyList<MethodInfo> methods)
     {
         switch (filled)
         {
             case ApiError api:
                 return [(int)api.Status];
             case DomainError domain:
-                var methods = FailuresMethods(type).ToList();
-                var exact = methods.Where(method => method.GetParameters()[0].ParameterType == type).ToList();
-                if (exact.Count > 0)
+                var exact = Invoke(methods.Where(method => method.GetParameters()[0].ParameterType == type), _ => domain);
+                var unions = Invoke(
+                    methods.Where(method => IsUnionOf(method.GetParameters()[0].ParameterType, type)),
+                    method => method.GetParameters()[0].ParameterType.GetConstructor([type])!.Invoke([domain]));
+                var generic = Invoke(
+                    methods.Where(method => method.Name == "From" && method.GetParameters()[0].ParameterType == typeof(DomainError)),
+                    _ => domain);
+                List<int> mapped = [.. exact.Concat(unions).Concat(generic).Distinct()];
+                if (mapped.Count > 0)
                 {
-                    return Invoke(exact, _ => domain);
+                    return mapped;
                 }
 
-                var unions = methods.Where(method => IsUnionOf(method.GetParameters()[0].ParameterType, type)).ToList();
-                if (unions.Count > 0)
-                {
-                    return Invoke(unions, method => method.GetParameters()[0].ParameterType.GetConstructor([type])!.Invoke([domain]));
-                }
-
-                return Invoke([.. methods.Where(method => method.GetParameters()[0].ParameterType == typeof(DomainError))], _ => domain);
+                return Invoke(methods.Where(method => method.GetParameters()[0].ParameterType == typeof(DomainError)), _ => domain);
             default:
                 return [];
         }
