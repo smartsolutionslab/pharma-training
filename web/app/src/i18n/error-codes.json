@@ -397,7 +397,7 @@
   {
     "code": "editorial.no-text-chapters-to-review",
     "status": 409,
-    "message": "The version has no text chapter to review."
+    "message": "The version has no chapter with text to review."
   },
   {
     "code": "editorial.not-a-draft",

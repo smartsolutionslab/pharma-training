@@ -2,6 +2,6 @@ using System.Net;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application;
 
-/// <summary>The AI content review reads only text chapters, and the version has none.</summary>
+/// <summary>The AI content review reads text chapters and PDF chapters with extracted text, and the version has none.</summary>
 public sealed record NoTextChaptersToReview()
-    : ApiError("editorial.no-text-chapters-to-review", "The version has no text chapter to review.", HttpStatusCode.Conflict);
+    : ApiError("editorial.no-text-chapters-to-review", "The version has no chapter with text to review.", HttpStatusCode.Conflict);
