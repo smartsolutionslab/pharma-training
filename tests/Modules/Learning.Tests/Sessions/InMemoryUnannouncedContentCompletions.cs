@@ -21,6 +21,9 @@ internal sealed class InMemoryUnannouncedContentCompletions : IUnannouncedConten
 
     public HashSet<StoredContentCompletion> Unreadable { get; } = [];
 
+    /// <summary>Found, but the database is gone when it is loaded.</summary>
+    public HashSet<StoredContentCompletion> Unreachable { get; } = [];
+
     public Task<IReadOnlyList<UnannouncedEvent>> FindAsync(DateTimeOffset storedFrom, DateTimeOffset storedUntil, int limit, CancellationToken cancellationToken)
     {
         Asked.Add(new Question(storedFrom, storedUntil, limit));
@@ -31,6 +34,11 @@ internal sealed class InMemoryUnannouncedContentCompletions : IUnannouncedConten
     public Task<ContentCompleted> LoadAsync(UnannouncedEvent found, CancellationToken cancellationToken)
     {
         var stored = loaded[found.EventId];
+        if (Unreachable.Contains(stored))
+        {
+            throw new DatabaseUnavailable();
+        }
+
         if (Unreadable.Contains(stored))
         {
             throw new JsonException("The stored event does not match ContentCompleted.");

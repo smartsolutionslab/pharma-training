@@ -133,6 +133,23 @@ public class ReannounceContentCompletionsTests
         skipped.Exception.ShouldBeNull();
     }
 
+    [Fact]
+    public async Task A_database_that_fails_while_an_event_is_loaded_ends_the_pass_with_the_failure()
+    {
+        // An outage is not unreadable data: it is not skipped with a warning but ends the pass, which the periodic
+        // service logs as an error; nothing after it is announced.
+        var first = Stored(streamVersion: 2, storedAt: Now.AddHours(-6));
+        var second = Stored(streamVersion: 3, storedAt: Now.AddHours(-5));
+        unannounced.Stored.AddRange([first, second]);
+        unannounced.Unreachable.Add(first);
+
+        await Should.ThrowAsync<DatabaseUnavailable>(() => PassAsync(Settings()));
+
+        unitOfWork.Published.ShouldBeEmpty();
+        unitOfWork.Commits.ShouldBe(0);
+        logger.Collector.GetSnapshot().ShouldNotContain(record => record.Level == LogLevel.Warning);
+    }
+
     private static StoredContentCompletion Stored(long streamVersion, DateTimeOffset storedAt)
     {
         var learner = PersonId.From(Guid.CreateVersion7());

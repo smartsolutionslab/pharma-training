@@ -21,6 +21,9 @@ internal sealed class InMemoryUnannouncedTestPasses : IUnannouncedTestPasses
 
     public HashSet<StoredTestPass> Unreadable { get; } = [];
 
+    /// <summary>Found, but the database is gone when it is loaded.</summary>
+    public HashSet<StoredTestPass> Unreachable { get; } = [];
+
     public Task<IReadOnlyList<UnannouncedEvent>> FindAsync(DateTimeOffset storedFrom, DateTimeOffset storedUntil, int limit, CancellationToken cancellationToken)
     {
         Asked.Add(new Question(storedFrom, storedUntil, limit));
@@ -31,6 +34,11 @@ internal sealed class InMemoryUnannouncedTestPasses : IUnannouncedTestPasses
     public Task<ExaminationPassed> LoadAsync(UnannouncedEvent found, CancellationToken cancellationToken)
     {
         var stored = loaded[found.EventId];
+        if (Unreachable.Contains(stored))
+        {
+            throw new DatabaseUnavailable();
+        }
+
         if (Unreadable.Contains(stored))
         {
             throw new JsonException("The stored event does not match ExaminationPassed.");
