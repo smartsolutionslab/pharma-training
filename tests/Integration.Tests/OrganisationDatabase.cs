@@ -121,6 +121,74 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1, $"There is no membership {membership}.");
     }
 
+    /// <summary>
+    /// Time travel for the renew cooldown: moves the instant the membership's newest invitation mail was requested
+    /// back by the span given, as if that request had been made so much earlier.
+    /// </summary>
+    public async Task MoveInvitationRequestBackAsync(Guid membership, TimeSpan by, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            "UPDATE organisation.memberships SET invitation_requested_at = invitation_requested_at - @by WHERE id = @id AND invitation_requested_at IS NOT NULL",
+            connection);
+        command.Parameters.AddWithValue("id", membership);
+        command.Parameters.AddWithValue("by", by);
+        (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1, $"There is no membership {membership} whose invitation mail was requested.");
+    }
+
+    /// <summary>
+    /// Sets the pharmacy's tally of invitation mails to the count given, all of them requested on the UTC day given. Pass
+    /// the day the module counts on, the database's (<see cref="TodayUtcAsync"/>).
+    /// </summary>
+    public async Task SetInvitationMailsAsync(Guid pharmacy, DateOnly day, int count, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            "UPDATE organisation.pharmacies SET invitation_mail_day = @day, invitation_mails_that_day = @count WHERE id = @id",
+            connection);
+        command.Parameters.AddWithValue("id", pharmacy);
+        command.Parameters.Add(new NpgsqlParameter("day", NpgsqlDbType.Date) { Value = day });
+        command.Parameters.AddWithValue("count", count);
+        (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1, $"There is no pharmacy {pharmacy}.");
+    }
+
+    /// <summary>The database's UTC day, which the module counts invitation mails on (docs/adr/0004).</summary>
+    public async Task<DateOnly> TodayUtcAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("SELECT (now() AT TIME ZONE 'utc')::date", connection);
+        return (DateOnly)(await command.ExecuteScalarAsync(cancellationToken) ?? throw new InvalidOperationException("The database answered no day."));
+    }
+
+    /// <summary>Time travel for the daily cap: moves the day of the pharmacy's tally back by one, as if its mails had been requested yesterday (UTC).</summary>
+    public async Task MoveInvitationMailDayBackAsync(Guid pharmacy, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            "UPDATE organisation.pharmacies SET invitation_mail_day = invitation_mail_day - 1 WHERE id = @id AND invitation_mail_day IS NOT NULL",
+            connection);
+        command.Parameters.AddWithValue("id", pharmacy);
+        (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1, $"There is no pharmacy {pharmacy} that has counted an invitation mail.");
+    }
+
+    /// <summary>The pharmacy's stored tally of invitation mails on its counted day.</summary>
+    public async Task<int> InvitationMailsThatDayAsync(Guid pharmacy, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("SELECT invitation_mails_that_day FROM organisation.pharmacies WHERE id = @id", connection);
+        command.Parameters.AddWithValue("id", pharmacy);
+        return (int)(await command.ExecuteScalarAsync(cancellationToken) ?? throw new InvalidOperationException($"There is no pharmacy {pharmacy}."));
+    }
+
+    /// <summary>The number of the pharmacy's memberships, whatever their status.</summary>
+    public async Task<long> MembershipsOfAsync(Guid pharmacy, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("SELECT count(*) FROM organisation.memberships WHERE pharmacy_id = @id", connection);
+        command.Parameters.AddWithValue("id", pharmacy);
+        return (long)(await command.ExecuteScalarAsync(cancellationToken) ?? 0L);
+    }
+
     /// <summary>The token hashes of the membership's stored links, in hash order; empty when it keeps none.</summary>
     public async Task<List<string>> TokenHashesAsync(Guid membership, CancellationToken cancellationToken)
     {
@@ -325,6 +393,96 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         }
 
         blocked.ShouldBe(expected);
+    }
+
+    /// <summary>
+    /// The backends waiting for the gate's backend that hold a lock on the service's durable inbox
+    /// (<c>wolverine.wolverine_incoming_envelopes</c>): requests that stored an envelope there in their open transaction
+    /// before they came to wait for the gate's rows.
+    /// </summary>
+    public async Task<long> WaitersHoldingIncomingEnvelopesAsync(PharmacyLock gate, CancellationToken cancellationToken)
+    {
+        Ensure.That(gate).IsNotNull();
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT count(DISTINCT activity.pid) FROM pg_stat_activity activity
+            JOIN pg_locks held ON held.pid = activity.pid AND held.granted
+            WHERE @gate = ANY(pg_blocking_pids(activity.pid))
+              AND held.relation = 'wolverine.wolverine_incoming_envelopes'::regclass
+            """,
+            connection);
+        command.Parameters.AddWithValue("gate", gate.ProcessId);
+        return (long)(await command.ExecuteScalarAsync(cancellationToken) ?? 0L);
+    }
+
+    /// <summary>
+    /// The mail requests of the pharmacy the service holds, handled or not: the envelopes of InvitationMailRequestedV1 in
+    /// its durable inbox and its dead letters whose body names the pharmacy's id.
+    /// </summary>
+    public async Task<long> MailRequestsOfPharmacyAsync(Guid pharmacy, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT (SELECT count(*) FROM wolverine.wolverine_incoming_envelopes
+                    WHERE message_type = @type AND position(convert_to(@pharmacy, 'UTF8') in body) > 0)
+                 + (SELECT count(*) FROM wolverine.wolverine_dead_letters
+                    WHERE message_type = @type AND position(convert_to(@pharmacy, 'UTF8') in body) > 0)
+            """,
+            connection);
+        command.Parameters.AddWithValue("type", MailRequestType);
+        command.Parameters.AddWithValue("pharmacy", pharmacy.ToString());
+        return (long)(await command.ExecuteScalarAsync(cancellationToken) ?? 0L);
+    }
+
+    /// <summary>The deadlocks PostgreSQL has detected in the organisation database since its statistics were reset.</summary>
+    public async Task<long> DeadlocksAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("SELECT deadlocks FROM pg_stat_database WHERE datname = current_database()", connection);
+        return (long)(await command.ExecuteScalarAsync(cancellationToken) ?? 0L);
+    }
+
+    /// <summary>
+    /// The organisation database's deadlock count once it has settled: the same over two seconds. A backend reports a
+    /// deadlock when it next goes idle, so read it settled before a deadlock that is to be counted.
+    /// </summary>
+    public async Task<long> SettledDeadlocksAsync(CancellationToken cancellationToken)
+    {
+        var started = TimeProvider.System.GetTimestamp();
+        var deadlocks = await DeadlocksAsync(cancellationToken);
+        var stableSince = TimeProvider.System.GetTimestamp();
+        while (TimeProvider.System.GetElapsedTime(stableSince) < TimeSpan.FromSeconds(2))
+        {
+            TimeProvider.System.GetElapsedTime(started).ShouldBeLessThan(TimeSpan.FromSeconds(30), "the organisation database's deadlock count never settled");
+            await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken);
+            var now = await DeadlocksAsync(cancellationToken);
+            if (now != deadlocks)
+            {
+                deadlocks = now;
+                stableSince = TimeProvider.System.GetTimestamp();
+            }
+        }
+
+        return deadlocks;
+    }
+
+    /// <summary>
+    /// Polls the organisation database's deadlock count until it rose above the given one, and fails the test when it
+    /// does not within 30 seconds. A backend reports its statistics when it goes idle, up to about ten seconds late.
+    /// </summary>
+    public async Task ShouldHaveDeadlockedSinceAsync(long before, CancellationToken cancellationToken)
+    {
+        var started = TimeProvider.System.GetTimestamp();
+        var deadlocks = await DeadlocksAsync(cancellationToken);
+        while (deadlocks <= before && TimeProvider.System.GetElapsedTime(started) < TimeSpan.FromSeconds(30))
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken);
+            deadlocks = await DeadlocksAsync(cancellationToken);
+        }
+
+        deadlocks.ShouldBeGreaterThan(before, "the request never ended in a deadlock, so the test never exercised the path it guards");
     }
 
     /// <summary>

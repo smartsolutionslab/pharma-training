@@ -1,4 +1,7 @@
-import { cleanup, render, screen } from '@testing-library/vue';
+import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query';
+import { cleanup, render, screen, within } from '@testing-library/vue';
+import userEvent from '@testing-library/user-event';
+import { createPinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { createMemoryHistory } from 'vue-router';
@@ -61,7 +64,7 @@ vi.mock('@/api/generated', async (importOriginal) => {
   );
 });
 
-const { examples } = data;
+const { examples, filtered } = data;
 // A data file written before it had an empty example has none: the page is then not checked with nothing to show.
 const emptyExamples = (data as { emptyExamples?: Record<string, unknown> }).emptyExamples ?? {};
 
@@ -94,16 +97,45 @@ afterEach(() => {
 // The router is on the screen's route before it mounts, and the screen has rendered when render returns.
 // The screen renders for the local user developer, signed in, without the sign-in plugin: the check sees the screen as
 // the developer does.
-async function renderPage() {
+async function renderPage(address = '/compliance') {
   const router = createAppRouter(createMemoryHistory());
-  await router.push('/compliance');
+  await router.push(address);
 
+  // The page reads the current pharmacy (a Pinia store over the memberships) and the query client (it reads the
+  // memberships again when the host no longer counts the caller a member).
   const { container } = render(CompliancePage, {
-    global: { plugins: [router, signedInAsDeveloper] },
+    global: {
+      plugins: [router, createPinia(), [VueQueryPlugin, { queryClient: new QueryClient() }], signedInAsDeveloper],
+    },
   });
   // The screen speaks the language of the moment: axe checks what that language's user hears.
   expect(screen.getByRole('heading', { level: 1, name: t(route.titleKey) })).toBeInTheDocument();
   return container;
+}
+
+// The check sees what it claims to check: the matrix with its example, or the page with nothing to show.
+const showsTheMatrix = () => expect(screen.getByRole('table')).toBeInTheDocument();
+const showsNothingToShow = () => expect(screen.getByText(t('compliance.matrix.empty.noCourses'))).toBeInTheDocument();
+
+/** The page with the example's matrix narrowed to one course and one job function. */
+async function renderFiltered() {
+  const container = await renderPage(`/compliance?course=${filtered.course}&jobFunction=${filtered.jobFunction}`);
+  expect(within(screen.getByRole('table')).getAllByRole('columnheader')).toHaveLength(2);
+  expect(screen.getByRole('combobox', { name: t('compliance.matrix.filters.jobFunction') })).toHaveValue(
+    filtered.jobFunction,
+  );
+  return container;
+}
+
+/** The page with a member's sheet open; the sheet is rendered outside the page, so axe checks the whole document. */
+async function openSheet() {
+  await renderPage();
+  const name = 'Berta Braun';
+  await userEvent
+    .setup()
+    .click(screen.getByRole('button', { name: t('compliance.matrix.table.openPerson', { name }) }));
+  expect(await screen.findByRole('dialog', { name })).toBeInTheDocument();
+  return document.body;
 }
 
 // Each language in turn: the texts differ, and so may what axe finds in them.
@@ -132,6 +164,7 @@ describe.each(languages)('in %s', (language) => {
   test.runIf(Object.keys(examples).length > 0)('the Compliance page passes axe with its example data', async () => {
     shown.examples = examples;
     const container = await renderPage();
+    showsTheMatrix();
 
     expect(await axe(container)).toHaveNoViolations();
   });
@@ -142,8 +175,45 @@ describe.each(languages)('in %s', (language) => {
       shown.examples = examples;
       switchOn();
       const container = await renderPage();
+      showsTheMatrix();
 
       expect(await axe(container)).toHaveNoViolations();
+    },
+  );
+
+  test('the Compliance page passes axe with a course and a job function chosen', async () => {
+    shown.examples = examples;
+    const container = await renderFiltered();
+
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  test.each(themes)(
+    'the Compliance page passes axe with a course and a job function chosen in the $name theme',
+    async ({ switchOn }) => {
+      shown.examples = examples;
+      switchOn();
+      const container = await renderFiltered();
+
+      expect(await axe(container)).toHaveNoViolations();
+    },
+  );
+
+  test('the Compliance page passes axe with a member’s sheet open', async () => {
+    shown.examples = examples;
+    const page = await openSheet();
+
+    expect(await axe(page)).toHaveNoViolations();
+  });
+
+  test.each(themes)(
+    'the Compliance page passes axe with a member’s sheet open in the $name theme',
+    async ({ switchOn }) => {
+      shown.examples = examples;
+      switchOn();
+      const page = await openSheet();
+
+      expect(await axe(page)).toHaveNoViolations();
     },
   );
 
@@ -153,6 +223,7 @@ describe.each(languages)('in %s', (language) => {
     async () => {
       shown.examples = emptyExamples;
       const container = await renderPage();
+      showsNothingToShow();
 
       expect(await axe(container)).toHaveNoViolations();
     },
@@ -164,6 +235,7 @@ describe.each(languages)('in %s', (language) => {
       shown.examples = emptyExamples;
       switchOn();
       const container = await renderPage();
+      showsNothingToShow();
 
       expect(await axe(container)).toHaveNoViolations();
     },

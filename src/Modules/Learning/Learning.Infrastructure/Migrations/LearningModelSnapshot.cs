@@ -16,7 +16,7 @@ partial class LearningModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261123141707_IndexCourseVersionChaptersByChapter";
+    public override string LastMigrationId => "20261123211825_AddMembershipCopies";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -79,6 +79,95 @@ partial class LearningModelSnapshot : ModelSnapshot
                     .HasName("pk_course_versions");
 
                 b.ToTable("course_versions", "learning");
+            });
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.ReadModels.CourseVersionRetirement", b =>
+            {
+                b.Property<Guid>("CourseVersionId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("course_version_id");
+
+                b.Property<Guid>("CourseId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("course_id");
+
+                b.HasKey("CourseVersionId")
+                    .HasName("pk_course_version_retirements");
+
+                b.ToTable("course_version_retirements", "learning");
+            });
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.ReadModels.MemberCopy", b =>
+            {
+                b.Property<Guid>("Id")
+                    .HasColumnType("uuid")
+                    .HasColumnName("id");
+
+                b.Property<Guid>("PersonId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("person_id");
+
+                b.Property<Guid>("PharmacyId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("pharmacy_id");
+
+                b.HasKey("Id")
+                    .HasName("pk_members");
+
+                b.HasIndex("PersonId")
+                    .HasDatabaseName("ix_members_person_id");
+
+                b.ToTable("members", "learning");
+            });
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.ReadModels.MembershipChangeCopy", b =>
+            {
+                b.Property<Guid>("MembershipId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("membership_id");
+
+                b.Property<int>("Version")
+                    .HasColumnType("integer")
+                    .HasColumnName("version");
+
+                b.Property<Guid>("PersonId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("person_id");
+
+                b.Property<Guid>("PharmacyId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("pharmacy_id");
+
+                b.HasKey("MembershipId", "Version")
+                    .HasName("pk_membership_changes");
+
+                b.HasIndex("PersonId")
+                    .HasDatabaseName("ix_membership_changes_person_id");
+
+                b.ToTable("membership_changes", "learning");
+            });
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.ReadModels.MembershipEndingCopy", b =>
+            {
+                b.Property<Guid>("Id")
+                    .HasColumnType("uuid")
+                    .HasColumnName("id");
+
+                b.Property<Guid>("PersonId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("person_id");
+
+                b.Property<Guid>("PharmacyId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("pharmacy_id");
+
+                b.HasKey("Id")
+                    .HasName("pk_membership_endings");
+
+                b.HasIndex("PersonId")
+                    .HasDatabaseName("ix_membership_endings_person_id");
+
+                b.ToTable("membership_endings", "learning");
             });
 
         modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.ReadModels.SampleSummary", b =>

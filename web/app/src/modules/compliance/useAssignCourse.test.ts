@@ -2,7 +2,11 @@ import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query';
 import { cleanup, render, waitFor } from '@testing-library/vue';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { defineComponent } from 'vue';
-import { type AssignComplianceCourseRequest, getGetCatalogCoursesQueryKey } from '@/api/generated';
+import {
+  type AssignComplianceCourseRequest,
+  getGetCatalogCoursesQueryKey,
+  getGetCompliancePharmaciesIdMatrixQueryKey,
+} from '@/api/generated';
 import { useAssignCourse } from './useAssignCourse';
 
 // Assigning a course (#37, T4): POST /compliance/pharmacies/{id}/assignments, and what its answer means for the wizard.
@@ -37,6 +41,16 @@ const catalogKeys = [
   getGetCatalogCoursesQueryKey({ page: 2, pageSize: 20 }),
 ];
 
+const otherPharmacy = '0198c1a0-0000-7000-8000-0000000000a2';
+
+/** Matrix pages the cache holds (#36), as the team matrix asked for them: this pharmacy's, filtered or not, and another's. */
+const matrixKeys = [
+  getGetCompliancePharmaciesIdMatrixQueryKey(pharmacy, { page: 1, pageSize: 50 }),
+  getGetCompliancePharmaciesIdMatrixQueryKey(pharmacy, { page: 2, pageSize: 50, jobFunction: 'Pta' }),
+];
+const otherMatrixKey = getGetCompliancePharmaciesIdMatrixQueryKey(otherPharmacy, { page: 1, pageSize: 50 });
+const emptyMatrix = { courses: [], members: { items: [], totalCount: 0, page: 1, pageSize: 50 } };
+
 function renderAssignment() {
   const used: { assignment?: ReturnType<typeof useAssignCourse> } = {};
   const Assignment = defineComponent({
@@ -48,6 +62,9 @@ function renderAssignment() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   for (const key of catalogKeys) {
     queryClient.setQueryData(key, { items: [], totalCount: 0, page: 1, pageSize: 20 });
+  }
+  for (const key of [...matrixKeys, otherMatrixKey]) {
+    queryClient.setQueryData(key, emptyMatrix);
   }
   render(Assignment, { global: { plugins: [[VueQueryPlugin, { queryClient }]] } });
   if (used.assignment === undefined) {
@@ -88,6 +105,40 @@ test('an assignment is under way until the host answers', async () => {
   answer(Response.json({ assigned: [], refused: [] }));
   await outcome;
   await waitFor(() => expect(assignment.isAssigning.value).toBe(false));
+});
+
+// The team matrix (#36) shows the new cells on the way back: an assignment that assigned someone marks every cached
+// matrix page of that pharmacy stale, by the matrix's key without its parameters. One that assigned nobody changed no
+// cell, and leaves the matrix as it is; another pharmacy's matrix is never touched.
+test('an assignment that assigned someone marks the pharmacy’s matrix stale, and one that assigned nobody does not', async () => {
+  const learner = request.personIds?.[0] ?? '';
+  host.mockImplementationOnce(async () =>
+    Response.json({
+      assigned: [],
+      refused: [{ personId: learner, code: 'compliance.assignment-already-active', message: 'aktiv' }],
+    }),
+  );
+  host.mockImplementationOnce(async () =>
+    Response.json({
+      assigned: [{ personId: learner, assignmentId: '0198c1a0-0000-7000-8000-0000000000f1' }],
+      refused: [],
+    }),
+  );
+  const { assignment, queryClient } = renderAssignment();
+
+  await expect(assignment.assign(pharmacy, request)).resolves.toMatchObject({ kind: 'done', assigned: [] });
+  for (const key of matrixKeys) {
+    expect(queryClient.getQueryState(key)?.isInvalidated).toBe(false);
+  }
+
+  await expect(assignment.assign(pharmacy, request)).resolves.toMatchObject({ kind: 'done' });
+  for (const key of matrixKeys) {
+    expect(queryClient.getQueryState(key)?.isInvalidated).toBe(true);
+  }
+  expect(queryClient.getQueryState(otherMatrixKey)?.isInvalidated).toBe(false);
+  for (const key of catalogKeys) {
+    expect(queryClient.getQueryState(key)?.isInvalidated).toBe(false);
+  }
 });
 
 describe('a refusal of the whole request', () => {

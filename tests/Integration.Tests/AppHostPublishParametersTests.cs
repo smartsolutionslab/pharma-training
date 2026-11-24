@@ -129,6 +129,24 @@ public class AppHostPublishParametersTests
     }
 
     /// <summary>
+    /// The 32-character minimum holds however the key reaches Azure, at a prompt or from the deployment's own parameters
+    /// too, not only from <c>Parameters__database-roles-key</c> at publish: main.bicep and the postgres module both declare
+    /// <c>@minLength(32)</c> on it, a floor Azure enforces (review of #231's head 6e8725a, optional 3).
+    /// </summary>
+    [Fact]
+    public async Task The_bicep_declares_a_minimum_length_of_32_on_the_database_roles_key()
+    {
+        var bicep = await PublishedAppHost.PublishAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
+
+        foreach (var (file, content) in new[] { ("main.bicep", bicep.Files["main.bicep"]), ("postgres/postgres.bicep", bicep.Module("postgres")) })
+        {
+            var declaration = Regex.Match(content, @"(?m)((?:^[ \t]*@[^\r\n]*\r?\n)*)^[ \t]*param\s+database_roles_key\s+string\b", RegexOptions.None, TimeSpan.FromSeconds(1));
+            declaration.Success.ShouldBeTrue($"{file} declares no parameter database_roles_key.");
+            declaration.Groups[1].Value.ShouldContain("@minLength(32)", Case.Sensitive, $"{file} declares database_roles_key without @minLength(32): {declaration.Value}");
+        }
+    }
+
+    /// <summary>
     /// Every module role's password is <c>guid(database_roles_key, '&lt;module&gt;')</c>, so the key is all that stands
     /// between a guess and every role: publishing (and so deploying) refuses one under 32 characters, naming the parameter,
     /// rather than leave it to a Bicep <c>@minLength</c> that only fires once Azure deploys.
@@ -155,6 +173,12 @@ public class AppHostPublishParametersTests
     [InlineData("https://app.example?tenant=a")]
     [InlineData("https://*.example")]
     [InlineData("app.example")]
+    // Parsed as an origin, but not the canonical, lower-case one a browser sends (review of #231's head 6e8725a, optional 4):
+    // frontend-url must be new Uri(value).GetLeftPart(UriPartial.Authority) exactly.
+    [InlineData("HTTPS://Good.Example")]
+    [InlineData("https://a:443")]
+    [InlineData("https://a/.")]
+    [InlineData("https://a.")]
     public async Task Publishing_refuses_a_frontend_url_that_is_no_https_origin(string frontendUrl)
     {
         var refused = await Should.ThrowAsync<Exception>(
@@ -200,16 +224,17 @@ public class AppHostPublishParametersTests
     }
 
     [Fact]
-    public async Task The_mail_server_reaches_every_service_and_keycloak_as_key_vault_references()
+    public async Task The_mail_server_reaches_the_services_that_send_mail_and_keycloak_as_key_vault_references()
     {
         await using var builder = await PublishedAppHost.ModelAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
-        var services = PublishedAppHost.Services(builder);
+        var senders = PublishedAppHost.Services(builder).Where(SendsMail).ToList();
 
-        services.ShouldNotBeEmpty();
-        foreach (var service in services)
+        senders.ShouldNotBeEmpty("no service host's project says <SendsMail>true</SendsMail>");
+        foreach (var service in senders)
         {
             var environment = await EnvironmentAsync(builder, service);
 
+            environment.ShouldContainKey("ConnectionStrings__mail", $"{service.Name} sends mail but does not read the mail server.");
             var mail = environment["ConnectionStrings__mail"].ShouldBeAssignableTo<IAzureKeyVaultSecretReference>($"{service.Name} reads the mail server as a plain value.");
             mail.ShouldNotBeNull();
             mail.Resource.Name.ShouldBe(KeyVault);
@@ -224,6 +249,32 @@ public class AppHostPublishParametersTests
             secret.Resource.Name.ShouldBe(KeyVault);
         }
     }
+
+    /// <summary>
+    /// Published, a service whose host does not say it sends mail reads neither the mail server (so it is granted no
+    /// access to its Key Vault secret) nor the sender nor the web app's address (docs/adr/0004, docs/adr/0005).
+    /// </summary>
+    [Fact]
+    public async Task A_service_that_sends_no_mail_has_no_mail_connection_string_once_published()
+    {
+        await using var builder = await PublishedAppHost.ModelAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
+        var services = PublishedAppHost.Services(builder);
+        var silent = services.Where(service => !SendsMail(service)).ToList();
+
+        silent.ShouldNotBeEmpty("every service host's project says <SendsMail>true</SendsMail>");
+        foreach (var service in silent)
+        {
+            var environment = await EnvironmentAsync(builder, service);
+
+            environment.ShouldNotContainKey("ConnectionStrings__mail", $"{service.Name} sends no mail but reads the mail server.");
+            environment.ShouldNotContainKey("Mail__From", $"{service.Name} sends no mail but reads Mail:From.");
+            environment.ShouldNotContainKey("Frontend__BaseUrl", $"{service.Name} sends no mail but reads Frontend:BaseUrl.");
+        }
+
+        services.Where(SendsMail).ShouldNotBeEmpty("no service host's project says <SendsMail>true</SendsMail>");
+    }
+
+    private static bool SendsMail(ProjectResource service) => ServiceHostMail.SendsMail(service.GetProjectMetadata().ProjectPath);
 
     private static ParameterResource Parameter(IDistributedApplicationTestingBuilder builder, string name)
     {

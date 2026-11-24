@@ -52,6 +52,9 @@ export function useTeamActions(pharmacy: MaybeRefOrGetter<MyPharmacyDto | undefi
     },
   );
 
+  /** Whether the page still shows the pharmacy an action was taken in: a refusal answered after a switch is not its. */
+  const stillShown = (takenIn: string | undefined) => takenIn !== undefined && toValue(pharmacy)?.id === takenIn;
+
   const current = () => {
     const shown = toValue(pharmacy);
     if (shown === undefined) {
@@ -75,14 +78,17 @@ export function useTeamActions(pharmacy: MaybeRefOrGetter<MyPharmacyDto | undefi
     values: Record<string, unknown>,
     run: (id: string) => Promise<unknown>,
     done: (id: string) => Promise<unknown>,
+    takenIn: MyPharmacyDto = current(),
   ): Promise<TeamFailure | undefined> {
     refusal.value = undefined;
-    const { id } = current();
+    const { id, name } = takenIn;
     try {
       await run(id);
     } catch (error) {
       const failure = teamFailureKey(action, error, values);
-      notify.failure(teamFailureText(failure));
+      const reason = teamFailureText(failure);
+      // Answered after a switch, the toast shows over another pharmacy: it names the one that refused.
+      notify.failure(stillShown(id) ? reason : t('organisation.team.errors.inPharmacy', { pharmacy: name, reason }));
       void readMembers(id);
       void readInvitations(id);
       if (refusesMembership(error)) {
@@ -94,7 +100,8 @@ export function useTeamActions(pharmacy: MaybeRefOrGetter<MyPharmacyDto | undefi
     return undefined;
   }
 
-  async function invite(request: InviteOrganisationMemberRequest) {
+  /** Invites into the pharmacy the dialog was opened on (by default the current one), even if sent after a switch. */
+  async function invite(request: InviteOrganisationMemberRequest, takenIn: MyPharmacyDto = current()) {
     const values = { email: request.email };
     return attempt(
       'invite',
@@ -104,6 +111,7 @@ export function useTeamActions(pharmacy: MaybeRefOrGetter<MyPharmacyDto | undefi
         notify.success(t('organisation.team.invite.invited', values));
         await readInvitations(id);
       },
+      takenIn,
     );
   }
 
@@ -121,6 +129,7 @@ export function useTeamActions(pharmacy: MaybeRefOrGetter<MyPharmacyDto | undefi
   }
 
   async function revoke(invitation: PharmacyInvitationDto) {
+    const takenIn = toValue(pharmacy)?.id;
     const values = { email: invitation.email };
     const failure = await attempt(
       'revoke',
@@ -131,15 +140,20 @@ export function useTeamActions(pharmacy: MaybeRefOrGetter<MyPharmacyDto | undefi
         await readInvitations(id);
       },
     );
-    if (failure !== undefined) {
+    if (failure !== undefined && stillShown(takenIn)) {
       refusal.value = { section: 'invitations', failure };
     }
     return failure;
   }
 
-  async function change(member: PharmacyMemberDto, request: ChangeOrganisationMembershipRequest) {
+  /** Changes a membership of the pharmacy the dialog was opened on (by default the current one). */
+  async function change(
+    member: PharmacyMemberDto,
+    request: ChangeOrganisationMembershipRequest,
+    takenIn: MyPharmacyDto = current(),
+  ) {
     const values = { name: member.name };
-    const own = member.membershipId === toValue(pharmacy)?.membershipId;
+    const own = member.membershipId === takenIn.membershipId;
     return attempt(
       'change',
       values,
@@ -148,11 +162,12 @@ export function useTeamActions(pharmacy: MaybeRefOrGetter<MyPharmacyDto | undefi
         notify.success(t('organisation.team.change.changed', values));
         await Promise.all([readMembers(id), own ? readMine() : undefined]);
       },
+      takenIn,
     );
   }
 
   async function end(member: PharmacyMemberDto) {
-    const { name, membershipId } = current();
+    const { id: takenIn, name, membershipId } = current();
     const own = member.membershipId === membershipId;
     const values = { name: member.name, pharmacy: name };
     const failure = await attempt(
@@ -162,15 +177,19 @@ export function useTeamActions(pharmacy: MaybeRefOrGetter<MyPharmacyDto | undefi
       async (id) => {
         if (own) {
           notify.success(t('organisation.team.end.endedSelf', values));
+          // Only the pharmacy it ended leaves for the start page; switched to another, the page stays on that one.
+          const leave = stillShown(takenIn);
           await readMine();
-          await router.push(startPage);
+          if (leave) {
+            await router.push(startPage);
+          }
           return;
         }
         notify.success(t('organisation.team.end.ended', values));
         await readMembers(id);
       },
     );
-    if (failure !== undefined) {
+    if (failure !== undefined && stillShown(takenIn)) {
       refusal.value = { section: 'members', failure };
     }
     return failure;

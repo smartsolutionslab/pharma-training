@@ -3,27 +3,44 @@ using Microsoft.Extensions.Time.Testing;
 using SmartSolutionsLab.PharmaTraining.Contracts.Learning;
 using SmartSolutionsLab.PharmaTraining.Modules.Learning.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.Commands.ReportProgress;
+using SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.ReadModels;
 using SmartSolutionsLab.PharmaTraining.Modules.Learning.Domain.LearningSessions;
 using SmartSolutionsLab.PharmaTraining.Modules.Learning.Domain.LearningSessions.Events;
+using SmartSolutionsLab.PharmaTraining.Modules.Learning.Tests.Consumers;
+using SmartSolutionsLab.PharmaTraining.Modules.Learning.Tests.Memberships;
 using static SmartSolutionsLab.PharmaTraining.Modules.Learning.Tests.Sessions.InMemoryLearningSessions;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Tests.Sessions;
 
 /// <summary>
 /// A learner reports how far they got in one chapter of their own session (story L2): only real progress is stored,
-/// a chapter counts once its kind's threshold is reached, and nothing is told about other people's sessions.
+/// a chapter counts once its kind's threshold is reached, and nothing is told about other people's sessions. Only an
+/// active member of any pharmacy reports progress (docs/adr/0017, #242); anyone else is refused before a session is
+/// loaded. Video progress may not outpace playback (#43, ADR 0024): the film lasts 420 s in Learning's copy, so a test
+/// that reports a gain on it lets the film's length pass first.
 /// </summary>
 public class ReportProgressTests
 {
     private static readonly ChapterId Intro = ChapterId.From(Guid.CreateVersion7());
     private static readonly ChapterId Handbook = ChapterId.From(Guid.CreateVersion7());
     private static readonly ChapterId Film = ChapterId.From(Guid.CreateVersion7());
+    private static readonly TimeSpan FilmDuration = TimeSpan.FromSeconds(CourseVersionCopies.VideoSeconds);
 
     private readonly InMemoryLearningSessions sessions = new();
+    private readonly InMemoryMembershipCopies memberships = new();
+    private readonly InMemoryCourseVersionCopies copies = new();
     private readonly FakeTimeProvider time = new(new DateTimeOffset(2027, 3, 1, 9, 0, 0, TimeSpan.Zero));
     private readonly PersonId learner = PersonId.From(Guid.CreateVersion7());
     private readonly CourseId course = CourseId.From(Guid.CreateVersion7());
     private readonly CourseVersionId version = CourseVersionId.From(Guid.CreateVersion7());
+    private readonly MemberCopy membership;
+
+    public ReportProgressTests()
+    {
+        membership = MembershipCopyRows.Started(learner);
+        memberships.Hold(membership);
+        copies.Hold(CopyOf(version, CourseVersionCopies.VideoSeconds));
+    }
 
     [Fact]
     public async Task Progress_on_ones_own_session_is_stored()
@@ -46,6 +63,7 @@ public class ReportProgressTests
     public async Task An_older_or_repeated_report_stores_nothing()
     {
         var session = await StartedAsync();
+        time.Advance(FilmDuration);
         (await ReportAsync(session, Film, 60)).IsSuccess.ShouldBeTrue();
         var stored = sessions.Streams[session.Value].Count;
         var saves = sessions.Saves;
@@ -64,8 +82,10 @@ public class ReportProgressTests
     {
         var session = await StartedAsync();
 
+        time.Advance(FilmDuration);
         await ReportAsync(session, Film, 94);
         CompletedChapters(session).ShouldBeEmpty();
+        time.Advance(FilmDuration);
         await ReportAsync(session, Film, 95);
         CompletedChapters(session).ShouldBe([Film]);
 
@@ -81,13 +101,13 @@ public class ReportProgressTests
     }
 
     [Fact]
-    public async Task Another_persons_session_is_not_found()
+    public async Task Another_persons_session_is_not_found_for_an_active_member()
     {
         var session = await StartedAsync();
         var stored = sessions.Streams[session.Value].Count;
         var saves = sessions.Saves;
 
-        var reported = await ReportAsync(session, PersonId.From(Guid.CreateVersion7()), Film, 60);
+        var reported = await ReportAsync(session, ActiveMember(), Film, 60);
 
         reported.IsFailure.ShouldBeTrue();
         reported.Error.Code.ShouldBe("learning.session-not-found");
@@ -148,6 +168,7 @@ public class ReportProgressTests
         await ReportAsync(session, Intro, 100);
         await ReportAsync(session, Handbook, 100);
         sessions.Published.ShouldBeEmpty();
+        time.Advance(FilmDuration);
 
         var reported = await ReportAsync(session, Film, 95);
 
@@ -169,6 +190,7 @@ public class ReportProgressTests
     {
         var session = await CompletedAsync();
         var saves = sessions.Saves;
+        time.Advance(FilmDuration);
 
         var reported = await ReportAsync(session, Film, 100);
 
@@ -182,6 +204,7 @@ public class ReportProgressTests
     public async Task A_report_that_completes_nothing_publishes_nothing_and_commits_nothing()
     {
         var session = await StartedAsync();
+        time.Advance(FilmDuration);
 
         var reported = await ReportAsync(session, Film, 60);
 
@@ -195,7 +218,7 @@ public class ReportProgressTests
     public async Task After_chapters_reopen_completing_them_publishes_ContentCompletedV1_again()
     {
         var session = await CompletedAsync();
-        await ChangeAsync(session, completed => completed.ReopenChapters([Intro], Now()));
+        await ChangeAsync(session, completed => completed.ReopenChapters(ExhaustionNotice.From(Guid.CreateVersion7()), [Intro], Now()));
 
         await ReportAsync(session, Intro, 99);
         sessions.Published.Count.ShouldBe(1);
@@ -217,7 +240,7 @@ public class ReportProgressTests
         sessions.Steps.Clear();
 
         var outside = await ReportAsync(session, ChapterId.From(Guid.CreateVersion7()), 100);
-        var someoneElse = await ReportAsync(session, PersonId.From(Guid.CreateVersion7()), Film, 100);
+        var someoneElse = await ReportAsync(session, ActiveMember(), Film, 100);
         var unknown = await ReportAsync(LearningSessionId.New(), Film, 100);
 
         outside.IsFailure.ShouldBeTrue();
@@ -233,6 +256,7 @@ public class ReportProgressTests
     {
         var session = await StartedAsync();
         var stored = sessions.Streams[session.Value].Count;
+        time.Advance(FilmDuration);
         sessions.LoseNextSave();
 
         var reported = await ReportAsync(session, Film, 60);
@@ -251,6 +275,7 @@ public class ReportProgressTests
         await ReportAsync(session, Intro, 100);
         await ReportAsync(session, Handbook, 100);
         sessions.Steps.Clear();
+        time.Advance(FilmDuration);
         sessions.LoseNextSave();
 
         var reported = await ReportAsync(session, Film, 95);
@@ -261,6 +286,82 @@ public class ReportProgressTests
         sessions.Commits.ShouldBe(0);
         sessions.Steps.ShouldBeEmpty();
         sessions.Streams[session.Value].OfType<ContentCompleted>().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task A_person_whose_membership_ended_may_not_report_progress_on_their_own_session()
+    {
+        var session = await StartedAsync();
+        var stored = sessions.Streams[session.Value].Count;
+        var saves = sessions.Saves;
+        memberships.Hold(MembershipCopyRows.EndingOf(membership));
+
+        var reported = await ReportAsync(session, Film, 60);
+
+        ShouldBeRefusedAsNonMember(reported);
+        sessions.Streams[session.Value].Count.ShouldBe(stored);
+        sessions.Saves.ShouldBe(saves);
+        sessions.Steps.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task A_person_whose_membership_ended_completing_the_content_publishes_nothing()
+    {
+        var session = await StartedAsync();
+        await ReportAsync(session, Intro, 100);
+        await ReportAsync(session, Handbook, 100);
+        sessions.Steps.Clear();
+        memberships.Hold(MembershipCopyRows.EndingOf(membership));
+
+        var reported = await ReportAsync(session, Film, 95);
+
+        ShouldBeRefusedAsNonMember(reported);
+        sessions.Published.ShouldBeEmpty();
+        sessions.Commits.ShouldBe(0);
+        sessions.Steps.ShouldBeEmpty();
+        sessions.Streams[session.Value].OfType<ContentCompleted>().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task The_membership_is_checked_before_the_session_is_loaded()
+    {
+        var session = await StartedAsync();
+        memberships.Hold(MembershipCopyRows.EndingOf(membership));
+        var loads = sessions.Loads;
+
+        var reported = await ReportAsync(session, Film, 60);
+
+        ShouldBeRefusedAsNonMember(reported);
+        sessions.Loads.ShouldBe(loads, "the session was loaded for a person who is no active member");
+    }
+
+    [Fact]
+    public async Task A_person_without_a_membership_is_refused_alike_for_an_unknown_and_another_persons_session()
+    {
+        var session = await StartedAsync();
+        var stranger = PersonId.From(Guid.CreateVersion7());
+
+        var another = await ReportAsync(session, stranger, Film, 60);
+        var unknown = await ReportAsync(LearningSessionId.New(), stranger, Film, 60);
+
+        ShouldBeRefusedAsNonMember(another);
+        ShouldBeRefusedAsNonMember(unknown);
+        another.Error.ShouldBe(unknown.Error);
+        sessions.Steps.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task A_member_of_another_pharmacy_reports_progress_although_an_earlier_membership_ended()
+    {
+        var session = await StartedAsync();
+        memberships.Hold(MembershipCopyRows.EndingOf(membership));
+        memberships.Hold(MembershipCopyRows.Started(learner));
+        time.Advance(FilmDuration);
+
+        var reported = await ReportAsync(session, Film, 60);
+
+        reported.IsSuccess.ShouldBeTrue();
+        sessions.Streams[session.Value].OfType<ChapterProgressRecorded>().ShouldHaveSingleItem();
     }
 
     /// <summary>
@@ -274,6 +375,7 @@ public class ReportProgressTests
         var session = await StartedAsync();
         await ReportAsync(session, Intro, 100);
         await ReportAsync(session, Handbook, 100);
+        time.Advance(FilmDuration);
         using var caller = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         sessions.CancelAfterNextSave(caller);
 
@@ -283,7 +385,115 @@ public class ReportProgressTests
         sessions.Commits.ShouldBe(1);
     }
 
-    private ReportProgressHandler Handler() => new(sessions, sessions, time);
+    [Fact]
+    public async Task A_video_jump_to_95_percent_seconds_after_the_start_is_refused_with_422_and_stores_nothing()
+    {
+        var session = await StartedAsync();
+        var stored = sessions.Streams[session.Value].Count;
+        var saves = sessions.Saves;
+        time.Advance(TimeSpan.FromSeconds(5));
+
+        var reported = await ReportAsync(session, Film, 95);
+
+        reported.IsFailure.ShouldBeTrue("a jump to 95 % five seconds after the start was accepted");
+        reported.Error.Code.ShouldBe("learning.progress-too-fast");
+        reported.Error.Status.ShouldBe(HttpStatusCode.UnprocessableEntity);
+        sessions.Streams[session.Value].Count.ShouldBe(stored);
+        sessions.Saves.ShouldBe(saves);
+        sessions.Published.ShouldBeEmpty();
+        sessions.Commits.ShouldBe(0);
+        sessions.Steps.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task A_video_reported_after_its_playback_time_is_recorded()
+    {
+        var session = await StartedAsync();
+        time.Advance(TimeSpan.FromSeconds(320));
+
+        var reported = await ReportAsync(session, Film, 95);
+
+        reported.IsSuccess.ShouldBeTrue();
+        CompletedChapters(session).ShouldBe([Film]);
+    }
+
+    [Fact]
+    public async Task The_duration_comes_from_the_copy_of_the_sessions_course_version()
+    {
+        // The other version, held from the constructor, has the same film at 420 s; the session's lasts 60 s.
+        var shortVersion = CourseVersionId.From(Guid.CreateVersion7());
+        copies.Hold(CopyOf(shortVersion, 60));
+        var session = await StartedAsync(shortVersion);
+
+        // 95 points of 60 s need 45.6 s.
+        time.Advance(TimeSpan.FromSeconds(45));
+        var early = await ReportAsync(session, Film, 95);
+        time.Advance(TimeSpan.FromSeconds(1));
+        var reported = await ReportAsync(session, Film, 95);
+
+        early.IsFailure.ShouldBeTrue("95 % of a 60 s film after 45 s was accepted");
+        early.Error.Code.ShouldBe("learning.progress-too-fast");
+        reported.IsSuccess.ShouldBeTrue("95 % of a 60 s film after 46 s was refused");
+        CompletedChapters(session).ShouldBe([Film]);
+    }
+
+    [Fact]
+    public async Task A_refused_report_is_accepted_once_enough_time_has_passed()
+    {
+        var session = await StartedAsync();
+        time.Advance(TimeSpan.FromSeconds(5));
+        var refused = await ReportAsync(session, Film, 95);
+        time.Advance(TimeSpan.FromSeconds(315));
+
+        var reported = await ReportAsync(session, Film, 95);
+
+        refused.IsFailure.ShouldBeTrue("a jump to 95 % five seconds after the start was accepted");
+        refused.Error.Code.ShouldBe("learning.progress-too-fast");
+        reported.IsSuccess.ShouldBeTrue();
+        CompletedChapters(session).ShouldBe([Film]);
+    }
+
+    [Fact]
+    public async Task Text_reported_complete_at_once_is_recorded()
+    {
+        var session = await StartedAsync();
+
+        var reported = await ReportAsync(session, Intro, 100);
+
+        reported.IsSuccess.ShouldBeTrue();
+        CompletedChapters(session).ShouldBe([Intro]);
+    }
+
+    [Fact]
+    public async Task A_video_chapter_the_copy_holds_no_duration_for_is_a_bug()
+    {
+        var broken = CourseVersionId.From(Guid.CreateVersion7());
+        copies.Hold(CopyOf(broken, null));
+        var session = await StartedAsync(broken);
+        time.Advance(FilmDuration);
+
+        await Should.ThrowAsync<InvalidOperationException>(() => ReportAsync(session, Film, 95));
+    }
+
+    private static void ShouldBeRefusedAsNonMember(Result<Unit, ApiError> reported)
+    {
+        reported.IsSuccess.ShouldBeFalse("the handler let a person who is no active member report progress");
+        reported.Error.Code.ShouldBe("learning.membership-missing");
+        reported.Error.Status.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    /// <summary>Another person, an active member of a pharmacy of their own.</summary>
+    private PersonId ActiveMember()
+    {
+        var person = PersonId.From(Guid.CreateVersion7());
+        memberships.Hold(MembershipCopyRows.Started(person));
+        return person;
+    }
+
+    private static CourseVersionCopy CopyOf(CourseVersionId courseVersion, int? videoSeconds) =>
+        CourseVersionCopies.Of(courseVersion.Value, videoSeconds, (Intro.Value, 1, ChapterKind.Text), (Handbook.Value, 2, ChapterKind.Pdf), (Film.Value, 3, ChapterKind.Video));
+
+    private ReportProgressHandler Handler() => new(memberships, sessions, sessions, copies, time);
 
     /// <summary>A session whose every chapter the learner completed through the use case, so its first ContentCompletedV1 is published.</summary>
     private async Task<LearningSessionId> CompletedAsync()
@@ -291,6 +501,7 @@ public class ReportProgressTests
         var session = await StartedAsync();
         await ReportAsync(session, Intro, 100);
         await ReportAsync(session, Handbook, 100);
+        time.Advance(FilmDuration);
         await ReportAsync(session, Film, 95);
         sessions.Published.ShouldHaveSingleItem();
         return session;
@@ -303,10 +514,12 @@ public class ReportProgressTests
         Handler().HandleAsync(new ReportProgress(session, by, chapter, ProgressPercent.From(percent)), TestContext.Current.CancellationToken);
 
     /// <summary>The learner's first run of the version, with one chapter of each kind, stored as starting it stores it; the steps start counting after it.</summary>
-    private async Task<LearningSessionId> StartedAsync()
+    private Task<LearningSessionId> StartedAsync() => StartedAsync(version);
+
+    private async Task<LearningSessionId> StartedAsync(CourseVersionId courseVersion)
     {
-        var id = LearningSessionId.For(learner, version, SessionRun.First);
-        var session = LearningSession.Start(id, learner, course, version, [Intro], [Handbook], [Film], Now());
+        var id = LearningSessionId.For(learner, courseVersion, SessionRun.First);
+        var session = LearningSession.Start(id, learner, course, courseVersion, [Intro], [Handbook], [Film], Now());
         await sessions.SaveAsync(session, TestContext.Current.CancellationToken);
         sessions.Steps.Clear();
         return id;

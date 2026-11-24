@@ -19,8 +19,23 @@ internal sealed class InMemoryCertificateStore : ICertificateStore, ICertificati
 
     public int Commits { get; private set; }
 
+    /// <summary>How often a certificate was looked up by its verification code.</summary>
+    public int VerificationLookups { get; private set; }
+
     public Task<bool> ExistsForAttemptAsync(AttemptId attempt, CancellationToken cancellationToken) =>
         Task.FromResult(Stored.Any(certificate => certificate.Attempt == attempt));
+
+    public Task<Option<Certificate>> FindByVerificationCodeAsync(VerificationCode code, CancellationToken cancellationToken)
+    {
+        VerificationLookups++;
+        var found = Stored.SingleOrDefault(certificate => certificate.VerificationCode == code);
+        if (found is null)
+        {
+            return Task.FromResult(Option<Certificate>.None);
+        }
+
+        return Task.FromResult(Option<Certificate>.Some(found));
+    }
 
     public void Add(Certificate certificate) => added.Add(certificate);
 

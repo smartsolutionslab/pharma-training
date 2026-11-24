@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Infrastructure;
 
-/// <summary>Learning's local copy of the published course versions, in its own tables; the module's unit of work saves what is added.</summary>
+/// <summary>Learning's local copy of the published course versions and their retirements, in its own tables; the module's unit of work saves what is added.</summary>
 public sealed class CourseVersionCopies(LearningDbContext context) : ICourseVersionCopies
 {
     public Task<bool> ExistsAsync(CourseVersionId version, CancellationToken cancellationToken)
@@ -33,6 +33,38 @@ public sealed class CourseVersionCopies(LearningDbContext context) : ICourseVers
             .SingleOrDefaultAsync(copy => copy.Id == version.Value, cancellationToken) is { } found
             ? Option<CourseVersionCopy>.Some(found)
             : Option<CourseVersionCopy>.None;
+    }
+
+    public async Task<Option<VideoDuration>> FindVideoDurationAsync(CourseVersionId version, ChapterId chapter, CancellationToken cancellationToken)
+    {
+        Ensure.That(version).IsNotNull();
+        Ensure.That(chapter).IsNotNull();
+
+        var seconds = await context.Set<CourseVersionChapterCopy>()
+            .AsNoTracking()
+            .Where(copy => copy.CourseVersionId == version.Value && copy.ChapterId == chapter.Value && copy.Kind == ChapterKind.Video)
+            .Select(copy => copy.VideoDurationSeconds)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (seconds is { } found)
+        {
+            return Option<VideoDuration>.Some(VideoDuration.From(found));
+        }
+
+        return Option<VideoDuration>.None;
+    }
+
+    public Task<bool> IsRetiredAsync(CourseVersionId version, CancellationToken cancellationToken)
+    {
+        Ensure.That(version).IsNotNull();
+
+        return context.Set<CourseVersionRetirement>().AnyAsync(retirement => retirement.CourseVersionId == version.Value, cancellationToken);
+    }
+
+    public void Add(CourseVersionRetirement retirement)
+    {
+        Ensure.That(retirement).IsNotNull();
+
+        context.Add(retirement);
     }
 
     public async Task<IReadOnlyList<ChapterPlacement>> ListPlacementsAsync(ChapterId chapter, CancellationToken cancellationToken)

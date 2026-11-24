@@ -29,7 +29,7 @@ internal static class TestPharmacies
         var token = Token();
         var email = EmailAddress.From($"member-{person.Value:N}@example.org");
         var membership = MembershipId.New();
-        pharmacy.Invite(membership, email, jobFunction, role, RegisteredAt).IsSuccess.ShouldBeTrue();
+        pharmacy.Invite(membership, email, jobFunction, role, RegisteredAt, InvitationMailLimits.Default).IsSuccess.ShouldBeTrue();
         pharmacy.IssueInvitationLink(membership, token, RegisteredAt).IsSuccess.ShouldBeTrue();
         pharmacy.AcceptInvitation(token, person, DisplayName.From(name), email, RegisteredAt).IsSuccess.ShouldBeTrue();
         return membership;
@@ -39,7 +39,7 @@ internal static class TestPharmacies
     public static MembershipId Invite(Pharmacy pharmacy, string email, Timestamp? at = null)
     {
         var membership = MembershipId.New();
-        pharmacy.Invite(membership, EmailAddress.From(email), JobFunction.Pta, MembershipRole.Employee, at ?? RegisteredAt).IsSuccess.ShouldBeTrue();
+        pharmacy.Invite(membership, EmailAddress.From(email), JobFunction.Pta, MembershipRole.Employee, at ?? RegisteredAt, InvitationMailLimits.Default).IsSuccess.ShouldBeTrue();
         return membership;
     }
 

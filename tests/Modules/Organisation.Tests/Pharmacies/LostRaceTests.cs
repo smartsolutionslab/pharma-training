@@ -55,7 +55,7 @@ public class LostRaceTests
     {
         var token = InvitationToken.From(Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(32)));
         var email = EmailAddress.From("bert@example.org");
-        var invitation = pharmacy.Invite(MembershipId.New(), email, JobFunction.Pta, MembershipRole.Employee, TestPharmacies.RegisteredAt).Value;
+        var invitation = pharmacy.Invite(MembershipId.New(), email, JobFunction.Pta, MembershipRole.Employee, TestPharmacies.RegisteredAt, InvitationMailLimits.Default).Value;
         pharmacy.IssueInvitationLink(invitation, token, TestPharmacies.RegisteredAt).IsSuccess.ShouldBeTrue();
         pharmacy.ClearDomainEvents();
 

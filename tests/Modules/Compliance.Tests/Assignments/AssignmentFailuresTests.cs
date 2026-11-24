@@ -49,6 +49,29 @@ public class AssignmentFailuresTests
         error.Status.ShouldBe(HttpStatusCode.BadRequest);
     }
 
+    [Fact]
+    public void An_assignment_the_pharmacy_does_not_have_is_not_found()
+    {
+        var id = Guid.CreateVersion7();
+
+        var error = AssignmentFailures.AssignmentNotFound(id);
+
+        error.Code.ShouldBe("compliance.assignment-not-found");
+        error.Status.ShouldBe(HttpStatusCode.NotFound);
+        error.Message.ShouldBe("This pharmacy has no such assignment.");
+        error.Message.ShouldNotContain(id.ToString());
+    }
+
+    [Fact]
+    public void A_change_reason_longer_than_its_maximum_is_the_callers_mistake()
+    {
+        var error = AssignmentFailures.InvalidChangeReason();
+
+        error.Code.ShouldBe("compliance.invalid-change-reason");
+        error.Status.ShouldBe(HttpStatusCode.BadRequest);
+        error.Message.ShouldContain(ChangeReason.MaxLength.ToString(System.Globalization.CultureInfo.InvariantCulture));
+    }
+
     private static AssignmentError Case(string name) => name switch
     {
         "DueDateInThePast" => AssignmentErrors.DueDateInThePast(DueDate.From(new DateOnly(2027, 2, 28))),

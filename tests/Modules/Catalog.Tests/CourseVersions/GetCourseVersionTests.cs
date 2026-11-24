@@ -19,7 +19,7 @@ public class GetCourseVersionTests
 
         unknown.Error.Code.ShouldBe("catalog.course-version-not-found");
         unknown.Error.Status.ShouldBe(HttpStatusCode.NotFound);
-        unknown.Error.Message.ShouldBe($"There is no course version {id}.");
+        unknown.Error.Message.ShouldBe("There is no such course version.");
         empty.Error.Code.ShouldBe("catalog.course-version-not-found");
         empty.Error.Status.ShouldBe(HttpStatusCode.NotFound);
     }

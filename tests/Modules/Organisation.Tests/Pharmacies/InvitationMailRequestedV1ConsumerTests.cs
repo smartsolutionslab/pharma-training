@@ -247,7 +247,7 @@ public partial class InvitationMailRequestedV1ConsumerTests
         var (pharmacy, membership) = Invited();
         await Consumer().HandleAsync(new InvitationMailRequestedV1(membership.Value, pharmacy.Id.Value), TestContext.Current.CancellationToken);
         time.Advance(TimeSpan.FromDays(1));
-        pharmacy.RenewInvitation(membership, Timestamp.From(time.GetUtcNow())).IsSuccess.ShouldBeTrue();
+        pharmacy.RenewInvitation(membership, Timestamp.From(time.GetUtcNow()), InvitationMailLimits.Default).IsSuccess.ShouldBeTrue();
         pharmacy.ClearDomainEvents();
 
         await Consumer().HandleAsync(new InvitationMailRequestedV1(membership.Value, pharmacy.Id.Value), TestContext.Current.CancellationToken);
@@ -293,7 +293,7 @@ public partial class InvitationMailRequestedV1ConsumerTests
             founder.Email,
             JobFunction.Pharmacist,
             TestPharmacies.RegisteredAt);
-        revoked.Invite(membership, Anna, JobFunction.Pta, MembershipRole.Employee, TestPharmacies.RegisteredAt).IsSuccess.ShouldBeTrue();
+        revoked.Invite(membership, Anna, JobFunction.Pta, MembershipRole.Employee, TestPharmacies.RegisteredAt, InvitationMailLimits.Default).IsSuccess.ShouldBeTrue();
         revoked.RevokeInvitation(membership).IsSuccess.ShouldBeTrue();
         revoked.ClearDomainEvents();
         store.Stored[store.Stored.IndexOf(pharmacy)] = revoked;
@@ -317,8 +317,8 @@ public partial class InvitationMailRequestedV1ConsumerTests
             founder.Email,
             JobFunction.Pharmacist,
             TestPharmacies.RegisteredAt);
-        renewed.Invite(membership, Anna, JobFunction.Pta, MembershipRole.Employee, TestPharmacies.RegisteredAt).IsSuccess.ShouldBeTrue();
-        renewed.RenewInvitation(membership, Timestamp.From(time.GetUtcNow())).IsSuccess.ShouldBeTrue();
+        renewed.Invite(membership, Anna, JobFunction.Pta, MembershipRole.Employee, TestPharmacies.RegisteredAt, InvitationMailLimits.Default).IsSuccess.ShouldBeTrue();
+        renewed.RenewInvitation(membership, Timestamp.From(time.GetUtcNow().AddMinutes(10)), InvitationMailLimits.Default).IsSuccess.ShouldBeTrue();
         renewed.ClearDomainEvents();
         store.Stored[store.Stored.IndexOf(pharmacy)] = renewed;
         pharmacy.Membership(membership).InvitationLinks.ShouldNotBeEmpty("the consumer's own copy must keep the link it committed");

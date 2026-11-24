@@ -4,12 +4,13 @@ using Aspire.Hosting.Azure;
 namespace Aspire.Hosting;
 
 /// <summary>
-/// The one SMTP server Keycloak and the services send through (docs/adr/0004, docs/adr/0005). In run mode it is Mailpit,
-/// whose inbox is http://localhost:8025: the realm points Keycloak at it, and the services read its allocated port as the
+/// The one SMTP server Keycloak and the services that send mail send through (docs/adr/0004, docs/adr/0005). In run mode it is Mailpit,
+/// whose inbox is http://localhost:8025: the realm points Keycloak at it, and the services that send mail (their project says
+/// <c>&lt;SendsMail&gt;true&lt;/SendsMail&gt;</c>) read its allocated port as the
 /// connection string <c>mail</c>, without credentials, and send from <c>mail-from</c>, <c>noreply@example.com</c> by
 /// default. Published, it is the server the deployment names in <c>smtp-host</c>, with the user and password
 /// <c>smtp-username</c> / <c>smtp-password</c> from the Key Vault, and the sender <c>smtp-from</c>: Keycloak reads them one
-/// by one, and the services read the connection string the AppHost composes from the same parameters, stored in the Key
+/// by one, and those services read the connection string the AppHost composes from the same parameters, stored in the Key
 /// Vault as <c>mail-connection-string</c>, as a Key Vault reference.
 /// </summary>
 public sealed class MailServer

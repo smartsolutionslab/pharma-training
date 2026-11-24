@@ -10,6 +10,15 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application;
 /// </summary>
 public interface IAssignmentStore
 {
+    /// <summary>The assignment, whatever its status or pharmacy, read without tracking.</summary>
+    Task<Option<Assignment>> ReadAsync(AssignmentId assignment, CancellationToken cancellationToken);
+
+    /// <summary>Whether an assignment that follows up this one is stored, whatever its status.</summary>
+    Task<bool> HasFollowUpAsync(AssignmentId assignment, CancellationToken cancellationToken);
+
+    /// <summary>Every assignment in the pharmacy, whatever its status or learner, read without tracking.</summary>
+    Task<IReadOnlyList<Assignment>> InPharmacyAsync(PharmacyId pharmacy, CancellationToken cancellationToken);
+
     /// <summary>Which of the learners already have an open or in-progress assignment of the course in the pharmacy.</summary>
     Task<IReadOnlySet<PersonId>> ActiveLearnersAsync(PharmacyId pharmacy, CourseId course, IReadOnlyCollection<PersonId> learners, CancellationToken cancellationToken);
 
@@ -17,4 +26,13 @@ public interface IAssignmentStore
     Task<IReadOnlyList<Assignment>> ActiveOfLearnerAsync(PersonId learner, CourseId course, CancellationToken cancellationToken);
 
     void Add(Assignment assignment);
+
+    /// <summary>The assignment if it belongs to the pharmacy, tracked so a commit saves its changes.</summary>
+    Task<Option<Assignment>> FindInPharmacyAsync(PharmacyId pharmacy, AssignmentId assignment, CancellationToken cancellationToken);
+
+    /// <summary>The assignment if it belongs to the pharmacy, read without tracking.</summary>
+    Task<Option<Assignment>> ReadInPharmacyAsync(PharmacyId pharmacy, AssignmentId assignment, CancellationToken cancellationToken);
+
+    /// <summary>The learner's open or in-progress assignments in the pharmacy, every course, tracked.</summary>
+    Task<IReadOnlyList<Assignment>> ActiveOfLearnerInPharmacyAsync(PersonId learner, PharmacyId pharmacy, CancellationToken cancellationToken);
 }

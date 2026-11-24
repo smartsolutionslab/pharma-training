@@ -1,4 +1,5 @@
 import type {
+  ComplianceJobFunction,
   EditorialChapterKind,
   EditorialCourseVersionStatus,
   EditorialQuestionProvenance,
@@ -7,6 +8,7 @@ import type {
   OrganisationJobFunction,
   OrganisationMembershipRole,
 } from '@/api/generated';
+import type { CellStatus } from '@/modules/compliance/cellStatus';
 
 // The German catalog, which defines the keys (MessageSchema). German follows docs/domain/README.md's glossary and
 // addresses the user as "Sie". vue-i18n reads @ { } | $ as syntax: write a literal one as {'@'}.
@@ -63,6 +65,7 @@ export const de = {
     signInFailed: 'Anmeldung fehlgeschlagen: {message}',
     signingIn: 'Anmeldung läuft…',
     signingOut: 'Abmeldung läuft…',
+    configurationUnavailable: 'Die Anwendung kann gerade nicht geladen werden. Bitte versuchen Sie es später erneut.',
   },
   theme: {
     label: 'Farbschema',
@@ -78,11 +81,16 @@ export const de = {
     },
   },
   modules: {
-    learning: { title: 'Meine Schulungen' },
+    learning: {
+      title: 'Meine Schulungen',
+      details: {
+        player: { title: 'Schulung' },
+      },
+    },
     assessment: { title: 'Tests' },
     certification: { title: 'Teilnahmebestätigungen' },
     compliance: {
-      title: 'Zuweisungen',
+      title: 'Team-Matrix',
       pages: {
         assign: { title: 'Schulung zuweisen' },
       },
@@ -106,6 +114,70 @@ export const de = {
     },
   },
   compliance: {
+    matrix: {
+      intro: 'Wer in {pharmacy} welche Schulung bis wann abschließen muss.',
+      notAllowed: 'Sie dürfen den Schulungsstand des Teams in dieser Apotheke nicht sehen.',
+      pharmacyNotFound: 'Sie sind nicht mehr Mitglied dieser Apotheke.',
+      identityIncomplete: 'Ihr Konto nennt keinen Namen oder keine gültige E-Mail-Adresse. Ergänzen Sie Ihr Profil.',
+      loadFailed: 'Die Team-Matrix konnte nicht geladen werden.',
+      retry: 'Erneut versuchen',
+      table: {
+        title: 'Team',
+        label: 'Team-Matrix: Mitglieder nach Schulungen',
+        legend: 'Legende',
+        member: 'Mitglied',
+        courseRate: 'Quote {rate}',
+        notAssigned: 'Nicht zugewiesen',
+        due: 'fällig {date}',
+        validUntil: 'gültig bis {date}',
+        openPerson: '{name}, Schulungsstand anzeigen',
+      },
+      filters: {
+        label: 'Filter',
+        course: 'Schulung',
+        allCourses: 'Alle Schulungen',
+        jobFunction: 'Tätigkeit',
+        allJobFunctions: 'Alle Tätigkeiten',
+        reset: 'Filter zurücksetzen',
+      },
+      rate: {
+        title: 'Compliance-Quote',
+        noValue: '–',
+        none: 'Noch keine Zuweisungen, daher keine Quote.',
+        summary: 'Fristgerecht: {compliant} von {assignments}',
+        overdue: 'Keine ist überfällig. | Eine ist überfällig. | {count} sind überfällig.',
+        scope: 'Bezogen auf: {course}; {jobFunction}',
+        explanation: 'Fristgerecht ist eine Zuweisung, solange sie nicht überfällig ist und ihr Abschluss noch gilt.',
+      },
+      jobFunctionShort: {
+        Pharmacist: 'Apotheker',
+        Pta: 'PTA',
+        Pka: 'PKA',
+        Trainee: 'Azubi',
+        Other: 'Sonstige',
+      } satisfies Record<ComplianceJobFunction, string>,
+      empty: {
+        noCourses: 'In dieser Apotheke ist noch keine Schulung zugewiesen.',
+        noMembers: 'Niemand in dieser Apotheke hat die Tätigkeit {jobFunction}.',
+      },
+      person: {
+        count: 'Keine Schulung zugewiesen | Eine Schulung zugewiesen | {count} Schulungen zugewiesen',
+        due: 'Fällig am',
+        lastCompleted: 'Zuletzt abgeschlossen',
+        validUntil: 'Gültig bis',
+        never: 'Noch nie',
+        none: 'Diesem Mitglied ist hier keine Schulung zugewiesen.',
+      },
+    },
+    status: {
+      Open: 'Offen',
+      InProgress: 'In Bearbeitung',
+      Locked: 'Gesperrt',
+      Overdue: 'Überfällig',
+      Completed: 'Abgeschlossen',
+      CompletedLate: 'Verspätet abgeschlossen',
+      Expired: 'Abgelaufen',
+    } satisfies Record<CellStatus, string>,
     assign: {
       notAllowed: 'Sie dürfen in dieser Apotheke keine Schulungen zuweisen.',
       steps: {
@@ -345,6 +417,11 @@ export const de = {
         invalidJobFunction: 'Die Tätigkeit fehlt oder ist unbekannt.',
         invalidMembershipRole: 'Die Rolle fehlt oder ist unbekannt.',
         identityIncomplete: 'Ihr Konto nennt keinen Namen oder keine gültige E-Mail-Adresse. Ergänzen Sie Ihr Profil.',
+        inPharmacy: 'In {pharmacy}: {reason}',
+        invitationRenewedTooSoon:
+          'Diese Einladung wurde gerade erst gesendet. Sie können sie in einigen Minuten erneut senden.',
+        tooManyInvitationsToday:
+          'Ihre Apotheke hat die Höchstzahl an Einladungs-E-Mails für heute erreicht. Versuchen Sie es später erneut.',
       },
     },
   },
@@ -554,6 +631,7 @@ export const de = {
           modelNotConfigured:
             'Für KI-Entwürfe ist kein Sprachmodell eingerichtet. Wenden Sie sich an den Betrieb der Plattform.',
           tooManyRequests: 'Sie haben in kurzer Zeit zu viele KI-Entwürfe angefordert. Versuchen Sie es später erneut.',
+          limitReached: 'Sie haben Ihr Limit für KI-Entwürfe erreicht. Versuchen Sie es später erneut.',
           malformed: 'Die Antwort der KI war unbrauchbar; es wurde nichts geändert. Versuchen Sie es erneut.',
           tooMuchContent:
             'Die Textkapitel sind zu lang für einen KI-Entwurf. Kürzen Sie sie oder schreiben Sie die Fragen von Hand.',
@@ -668,6 +746,51 @@ export const de = {
         publishFailed: 'Die Version konnte nicht veröffentlicht werden. Versuchen Sie es erneut.',
         returnFailed: 'Die Version konnte nicht zurückgegeben werden. Versuchen Sie es erneut.',
         retireFailed: 'Die Version konnte nicht zurückgezogen werden. Versuchen Sie es erneut.',
+      },
+    },
+  },
+  learning: {
+    player: {
+      loadFailed: 'Die Schulung konnte nicht geladen werden.',
+      notFound: 'Diese Schulung gibt es nicht.',
+      notReady: 'Die Schulung wird gerade bereitgestellt. Versuchen Sie es in einem Moment erneut.',
+      noIdentity: 'Ihr Konto ist unvollständig. Bitte melden Sie sich erneut an.',
+      empty: 'Diese Schulung hat keine Kapitel.',
+      chapters: 'Kapitel',
+      state: {
+        done: 'Erledigt',
+        progress: '{percent} bearbeitet',
+        open: 'Offen',
+      },
+      next: 'Nächstes Kapitel',
+      previous: 'Vorheriges Kapitel',
+      chapterDone: 'Kapitel „{title}“ erledigt.',
+      contentCompleted: 'Sie haben alle Kapitel bearbeitet. Der Test ist jetzt freigeschaltet.',
+      text: {
+        hint: 'Scrollen Sie bis zum Ende, um das Kapitel abzuschließen.',
+      },
+      video: {
+        label: 'Video: {title}',
+        seekHint: 'Sie können nur bis zur bereits gesehenen Stelle vorspulen.',
+        seekRefused: 'Vorspulen ist nur bis {position} möglich.',
+        resumed: 'Fortgesetzt bei {position}.',
+        failed: 'Das Video konnte nicht abgespielt werden.',
+      },
+      media: {
+        notReady: 'Die Datei wird noch bereitgestellt. Versuchen Sie es in einem Moment erneut.',
+      },
+      pdf: {
+        label: 'PDF: {title}',
+        page: 'Seite {page} von {pages}',
+        hint: 'Blättern Sie bis zur letzten Seite, um das Kapitel abzuschließen.',
+        next: 'Nächste Seite',
+        previous: 'Vorherige Seite',
+        failed: 'Das PDF konnte nicht angezeigt werden.',
+      },
+      progress: {
+        failed: 'Ihr Fortschritt konnte nicht gespeichert werden. Er wird erneut gesendet.',
+        saveNow: 'Jetzt speichern',
+        finished: 'Dieser Lerndurchlauf ist bereits abgeschlossen. Weiterer Fortschritt wird nicht gespeichert.',
       },
     },
   },

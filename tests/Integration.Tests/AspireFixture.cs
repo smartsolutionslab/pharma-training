@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
@@ -14,6 +15,18 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// <summary>The whole application, started once per test run on empty containers.</summary>
 public sealed partial class AspireFixture : IAsyncLifetime
 {
+    /// <summary>Every editorial model limit of this run, per minute and per day, for content review and test draft alike.</summary>
+    public const int EditorialModelLimit = 50;
+
+    /// <summary>The per-address limit on public certificate verification of this run, per minute (docs/adr/0029).</summary>
+    public const int CertificationVerificationLimit = 20;
+
+    /// <summary>The per-address limit on public certificate verification of this run, per day.</summary>
+    public const int CertificationVerificationDailyLimit = 1000;
+
+    /// <summary>How many invitations one user may accept a minute in this run (docs/adr/0004), raised from the default 10.</summary>
+    public const int OrganisationAcceptsPerMinute = 30;
+
     // Twice the largest start-up of the green CI runs listed in #134 (204 s), rounded up to the minute. Before #126 the
     // edge and every service host were rebuilt at each start, which took 3.5 to over 5 minutes; now every project starts
     // from the AppHost's build. The fixture logs each run's start-up beside this limit.
@@ -46,6 +59,30 @@ public sealed partial class AspireFixture : IAsyncLifetime
         // shows the application starting that way, and never uses a developer's own endpoint or key from user secrets.
         builder.Configuration["Parameters:azure-openai-endpoint"] = string.Empty;
         builder.Configuration["Parameters:azure-openai-api-key"] = string.Empty;
+
+        // The run sets every editorial model limit (docs/adr/0020) to EditorialModelLimit, a minute and a day alike, so
+        // EditorialModelLimitsTests reaches it with editor-b, a user only they call the model as. Every other test shares
+        // the editor's budget, which this leaves far above what they use (a handful of calls per endpoint in the whole run),
+        // and above the default 10 a minute, so no test is refused for another's calls.
+        var editorial = builder.CreateResourceBuilder(builder.Resources.OfType<ProjectResource>().Single(resource => resource.Name == "editorial"));
+        foreach (var setting in new[] { "ContentReview__PerMinute", "ContentReview__PerDay", "TestDraft__PerMinute", "TestDraft__PerDay" })
+        {
+            editorial.WithEnvironment($"Editorial__ModelLimits__{setting}", EditorialModelLimit.ToString(CultureInfo.InvariantCulture));
+        }
+
+        // The run sets the per-address verification limit (docs/adr/0029) to CertificationVerificationLimit a minute, so
+        // CertificationVerificationTests reaches it in a few dozen calls, and the day far above it, so the minute alone
+        // refuses. Every local caller reaches Certification from one address, the edge's, so every call of the run shares
+        // one count: only that collection calls /certification/verify, and it leaves the minute's window reset.
+        var certification = builder.CreateResourceBuilder(builder.Resources.OfType<ProjectResource>().Single(resource => resource.Name == "certification"));
+        certification.WithEnvironment("Certification__VerificationLimits__PerMinute", CertificationVerificationLimit.ToString(CultureInfo.InvariantCulture));
+        certification.WithEnvironment("Certification__VerificationLimits__PerDay", CertificationVerificationDailyLimit.ToString(CultureInfo.InvariantCulture));
+
+        // The accept tests accept as employee-a up to about 15 times in quick succession, more than the default 10 a minute
+        // (docs/adr/0004), so the run raises the per-minute accept limit to OrganisationAcceptsPerMinute; every user stays
+        // under it, and only OrganisationAcceptLimitTests accepts as visitor, to reach it.
+        var organisation = builder.CreateResourceBuilder(builder.Resources.OfType<ProjectResource>().Single(resource => resource.Name == "organisation"));
+        organisation.WithEnvironment("Organisation__AcceptLimit__PerMinute", OrganisationAcceptsPerMinute.ToString(CultureInfo.InvariantCulture));
 
         app = await builder.BuildAsync(timeout.Token);
         await app.StartAsync(timeout.Token);

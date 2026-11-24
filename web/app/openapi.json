@@ -5,6 +5,25 @@
     "version": "1.0.0"
   },
   "paths": {
+    "/config.json": {
+      "get": {
+        "tags": [
+          "Host"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FrontendConfiguration"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/me": {
       "get": {
         "tags": [
@@ -36,6 +55,138 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PermissionDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/assessment/examinations/by-session/{sessionId}": {
+      "get": {
+        "tags": [
+          "ExaminationEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssessmentExaminationDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/assessment/examinations/{id}/attempts": {
+      "post": {
+        "tags": [
+          "ExaminationEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssessmentAttemptDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/assessment/examinations/{id}/attempts/current/answers/{questionId}": {
+      "put": {
+        "tags": [
+          "ExaminationEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "questionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnswerAssessmentQuestionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/assessment/examinations/{id}/attempts/current/submit": {
+      "post": {
+        "tags": [
+          "ExaminationEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssessmentAttemptResultDto"
                 }
               }
             }
@@ -449,6 +600,178 @@
         }
       }
     },
+    "/certification/verify/{code}": {
+      "get": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificateVerificationDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/compliance/pharmacies/{id}/assignments/{assignmentId}": {
+      "get": {
+        "tags": [
+          "AssignmentChangeEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "assignmentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComplianceAssignmentDto"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "AssignmentChangeEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "assignmentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeComplianceAssignmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Unit"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "AssignmentChangeEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "assignmentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Unit"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/compliance/pharmacies/{id}/assignments": {
       "post": {
         "tags": [
@@ -501,6 +824,63 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PermissionDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/compliance/pharmacies/{id}/matrix": {
+      "get": {
+        "tags": [
+          "MatrixEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "maximum": 21474837,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "jobFunction",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/ComplianceJobFunction"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComplianceMatrixDto"
                 }
               }
             }
@@ -932,6 +1312,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/EditorialContentReviewDto"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1435,6 +1825,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/EditorialTestDraftDto"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1973,6 +2373,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
           }
         }
       }
@@ -2009,6 +2419,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Unit"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -2078,6 +2498,16 @@
                 "schema": {
                   "type": "string",
                   "format": "uuid"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -2438,6 +2868,253 @@
           }
         }
       },
+      "AnswerAssessmentQuestionRequest": {
+        "required": [
+          "optionIds"
+        ],
+        "type": "object",
+        "properties": {
+          "optionIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        }
+      },
+      "AssessmentAnswerOptionDto": {
+        "required": [
+          "id",
+          "text"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "AssessmentAttemptDto": {
+        "required": [
+          "id",
+          "number",
+          "questions"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "number": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "questions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssessmentAttemptQuestionDto"
+            }
+          }
+        }
+      },
+      "AssessmentAttemptOutcome": {
+        "enum": [
+          "Passed",
+          "Failed"
+        ]
+      },
+      "AssessmentAttemptQuestionDto": {
+        "required": [
+          "id",
+          "type",
+          "text",
+          "options",
+          "chosenOptionIds"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type": {
+            "$ref": "#/components/schemas/AssessmentQuestionType"
+          },
+          "text": {
+            "type": "string"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssessmentAnswerOptionDto"
+            }
+          },
+          "chosenOptionIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        }
+      },
+      "AssessmentAttemptResultDto": {
+        "required": [
+          "attemptId",
+          "number",
+          "scorePercent",
+          "passingScorePercent",
+          "outcome",
+          "chaptersToRepeat",
+          "attemptsLeft"
+        ],
+        "type": "object",
+        "properties": {
+          "attemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "number": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "scorePercent": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "passingScorePercent": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/AssessmentAttemptOutcome"
+          },
+          "chaptersToRepeat": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "attemptsLeft": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "AssessmentExaminationDto": {
+        "required": [
+          "id",
+          "sessionId",
+          "courseId",
+          "courseVersionId",
+          "status",
+          "attemptsUsed",
+          "maxAttempts",
+          "currentAttempt",
+          "lastResult"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sessionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "courseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "courseVersionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AssessmentExaminationStatus"
+          },
+          "attemptsUsed": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "maxAttempts": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "currentAttempt": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AssessmentAttemptDto"
+              }
+            ]
+          },
+          "lastResult": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AssessmentAttemptResultDto"
+              }
+            ]
+          }
+        }
+      },
+      "AssessmentExaminationStatus": {
+        "enum": [
+          "Locked",
+          "Unlocked",
+          "InAttempt",
+          "Passed",
+          "Exhausted"
+        ]
+      },
+      "AssessmentQuestionType": {
+        "enum": [
+          "SingleChoice",
+          "MultipleChoice"
+        ]
+      },
       "AssessmentSampleDto": {
         "required": [
           "id",
@@ -2667,6 +3344,41 @@
           }
         }
       },
+      "CertificateValidity": {
+        "enum": [
+          "Valid",
+          "Expired"
+        ]
+      },
+      "CertificateVerificationDto": {
+        "required": [
+          "holderName",
+          "courseTitle",
+          "issuedOn",
+          "validUntil",
+          "validity"
+        ],
+        "type": "object",
+        "properties": {
+          "holderName": {
+            "type": "string"
+          },
+          "courseTitle": {
+            "type": "string"
+          },
+          "issuedOn": {
+            "type": "string",
+            "format": "date"
+          },
+          "validUntil": {
+            "type": "string",
+            "format": "date"
+          },
+          "validity": {
+            "$ref": "#/components/schemas/CertificateValidity"
+          }
+        }
+      },
       "CertificationSampleDto": {
         "required": [
           "id",
@@ -2680,6 +3392,28 @@
           },
           "name": {
             "type": "string"
+          }
+        }
+      },
+      "ChangeComplianceAssignmentRequest": {
+        "required": [
+          "dueDate",
+          "reason"
+        ],
+        "type": "object",
+        "properties": {
+          "dueDate": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date"
+          },
+          "reason": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -2715,6 +3449,153 @@
           }
         }
       },
+      "ComplianceAssignmentChangeDto": {
+        "required": [
+          "kind",
+          "changedBy",
+          "changedAt",
+          "previousDueDate",
+          "newDueDate",
+          "reason"
+        ],
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/ComplianceAssignmentChangeKind"
+          },
+          "changedBy": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "changedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "previousDueDate": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date"
+          },
+          "newDueDate": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date"
+          },
+          "reason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ComplianceAssignmentChangeKind": {
+        "enum": [
+          "DueDateChanged",
+          "Cancelled"
+        ]
+      },
+      "ComplianceAssignmentDto": {
+        "required": [
+          "id",
+          "pharmacyId",
+          "learnerId",
+          "courseId",
+          "dueDate",
+          "recurrenceMonths",
+          "assignedBy",
+          "assignedAt",
+          "status",
+          "startedAt",
+          "completedAt",
+          "history"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "pharmacyId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "learnerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "courseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "dueDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "recurrenceMonths": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "assignedBy": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "assignedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ComplianceAssignmentStatus"
+          },
+          "startedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "completedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComplianceAssignmentChangeDto"
+            }
+          }
+        }
+      },
+      "ComplianceAssignmentState": {
+        "enum": [
+          "Open",
+          "InProgress",
+          "Locked",
+          "Overdue",
+          "Completed",
+          "CompletedLate"
+        ]
+      },
+      "ComplianceAssignmentStatus": {
+        "enum": [
+          "Open",
+          "InProgress",
+          "Completed",
+          "Cancelled"
+        ]
+      },
       "ComplianceCourseAssignmentDto": {
         "required": [
           "assigned",
@@ -2744,6 +3625,183 @@
           "Trainee",
           "Other"
         ]
+      },
+      "ComplianceMatrixCellDto": {
+        "required": [
+          "courseId",
+          "assignmentId",
+          "state",
+          "dueDate",
+          "lastCompletedOn",
+          "validUntil"
+        ],
+        "type": "object",
+        "properties": {
+          "courseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "assignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ComplianceAssignmentState"
+          },
+          "dueDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "lastCompletedOn": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date"
+          },
+          "validUntil": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date"
+          }
+        }
+      },
+      "ComplianceMatrixCourseDto": {
+        "required": [
+          "courseId",
+          "title",
+          "assignments",
+          "compliantAssignments",
+          "overdueAssignments",
+          "complianceRate"
+        ],
+        "type": "object",
+        "properties": {
+          "courseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "assignments": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "compliantAssignments": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "overdueAssignments": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "complianceRate": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d\u002B)?(?:[eE][\u002B-]?\\d\u002B)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "ComplianceMatrixDto": {
+        "required": [
+          "courses",
+          "members",
+          "assignments",
+          "compliantAssignments",
+          "overdueAssignments",
+          "complianceRate"
+        ],
+        "type": "object",
+        "properties": {
+          "courses": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComplianceMatrixCourseDto"
+            }
+          },
+          "members": {
+            "$ref": "#/components/schemas/PagedResultOfComplianceMatrixRowDto"
+          },
+          "assignments": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "compliantAssignments": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "overdueAssignments": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "complianceRate": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d\u002B)?(?:[eE][\u002B-]?\\d\u002B)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "ComplianceMatrixRowDto": {
+        "required": [
+          "personId",
+          "name",
+          "jobFunction",
+          "cells"
+        ],
+        "type": "object",
+        "properties": {
+          "personId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "jobFunction": {
+            "$ref": "#/components/schemas/ComplianceJobFunction"
+          },
+          "cells": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComplianceMatrixCellDto"
+            }
+          }
+        }
       },
       "ComplianceMemberDto": {
         "required": [
@@ -3538,6 +4596,21 @@
           }
         }
       },
+      "FrontendConfiguration": {
+        "required": [
+          "oidcAuthority",
+          "clientId"
+        ],
+        "type": "object",
+        "properties": {
+          "oidcAuthority": {
+            "type": "string"
+          },
+          "clientId": {
+            "type": "string"
+          }
+        }
+      },
       "InviteOrganisationMemberRequest": {
         "required": [
           "email",
@@ -3890,6 +4963,47 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/CertificationSampleDto"
+            }
+          },
+          "totalCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "page": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "pageSize": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "PagedResultOfComplianceMatrixRowDto": {
+        "required": [
+          "items",
+          "totalCount",
+          "page",
+          "pageSize"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComplianceMatrixRowDto"
             }
           },
           "totalCount": {
@@ -4402,6 +5516,44 @@
           }
         }
       },
+      "ProblemDetails": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "title": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "status": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "detail": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "instance": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "RegisterPharmacyRequest": {
         "required": [
           "name",
@@ -4497,7 +5649,16 @@
       "name": "Host"
     },
     {
+      "name": "ExaminationEndpoints"
+    },
+    {
+      "name": "AssignmentChangeEndpoints"
+    },
+    {
       "name": "AssignmentEndpoints"
+    },
+    {
+      "name": "MatrixEndpoints"
     },
     {
       "name": "MemberEndpoints"

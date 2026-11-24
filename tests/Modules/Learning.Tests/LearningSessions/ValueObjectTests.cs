@@ -13,6 +13,19 @@ public class ValueObjectTests
     public void Every_identity_refuses_the_empty_guid(string identity) =>
         Should.Throw<GuardException>(FromEmpty(identity));
 
+    [Fact]
+    public void An_exhaustion_notice_is_never_empty() =>
+        Should.Throw<GuardException>(() => ExhaustionNotice.From(Guid.Empty));
+
+    [Fact]
+    public void An_exhaustion_notice_keeps_the_identifier_it_was_made_from()
+    {
+        var identifier = Guid.CreateVersion7();
+
+        ExhaustionNotice.From(identifier).Value.ShouldBe(identifier);
+        ExhaustionNotice.From(identifier).ShouldBe(ExhaustionNotice.From(identifier));
+    }
+
     [Theory]
     [InlineData(-1)]
     [InlineData(101)]
@@ -39,6 +52,24 @@ public class ValueObjectTests
         CompletionRule.ThresholdFor(ChapterKind.Text).ShouldBe(ProgressPercent.Complete);
         CompletionRule.ThresholdFor(ChapterKind.Pdf).ShouldBe(ProgressPercent.Complete);
     }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(420)]
+    [InlineData(14_400)]
+    public void A_video_duration_holds_whole_seconds_from_1_to_4_hours(int seconds) =>
+        VideoDuration.From(seconds).Value.ShouldBe(seconds);
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(14_401)]
+    public void A_video_duration_outside_1_second_to_4_hours_is_refused(int seconds) =>
+        Should.Throw<GuardException>(() => VideoDuration.From(seconds));
+
+    [Fact]
+    public void Two_durations_of_the_same_seconds_are_equal() =>
+        VideoDuration.From(420).ShouldBe(VideoDuration.From(420));
 
     private static Action FromEmpty(string identity) =>
         identity switch

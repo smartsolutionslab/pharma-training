@@ -17,7 +17,7 @@ partial class ComplianceModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261123154132_AddAssignmentTestAccessChangedAt";
+    public override string LastMigrationId => "20261123233130_AddAssignmentFollowsAssignment";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -58,6 +58,10 @@ partial class ComplianceModelSnapshot : ModelSnapshot
                 b.Property<DateOnly>("DueDate")
                     .HasColumnType("date")
                     .HasColumnName("due_date");
+
+                b.Property<Guid?>("Follows")
+                    .HasColumnType("uuid")
+                    .HasColumnName("follows_assignment_id");
 
                 b.Property<Guid>("Learner")
                     .HasColumnType("uuid")
@@ -120,6 +124,10 @@ partial class ComplianceModelSnapshot : ModelSnapshot
 
                 b.HasKey("Id")
                     .HasName("pk_assignments");
+
+                b.HasIndex("Follows")
+                    .IsUnique()
+                    .HasDatabaseName("ux_assignments_follows_assignment_id");
 
                 b.HasIndex("Learner")
                     .HasDatabaseName("ix_assignments_learner_id");

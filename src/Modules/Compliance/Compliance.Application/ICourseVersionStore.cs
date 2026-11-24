@@ -21,4 +21,7 @@ public interface ICourseVersionStore
 
     /// <summary>The course from the versions and retirements stored for it, for a read; none while no version has arrived.</summary>
     Task<Option<PublishedCourse>> FindCourseAsync(CourseId course, CancellationToken cancellationToken);
+
+    /// <summary>Each of the courses as <see cref="FindCourseAsync"/> reads it; a course without a stored version is left out.</summary>
+    Task<IReadOnlyList<PublishedCourse>> FindCoursesAsync(IReadOnlyCollection<CourseId> courses, CancellationToken cancellationToken);
 }

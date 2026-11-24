@@ -16,8 +16,9 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Api.Endpoints;
 
 /// <summary>
 /// A learner's sessions (stories L1 and L2): start or resume one on a course version, read one's own and report progress
-/// on it. Open to every
-/// signed-in person, since Learning holds no memberships; the learner is always the token's subject, never the body.
+/// on it. Only an active member of any pharmacy, by Learning's copy of the memberships, may start or resume one or report
+/// progress on it; a former member still reads their own (docs/adr/0017). The handlers check it, since a membership is
+/// no realm role (docs/adr/0003). The learner is always the token's subject, never the body.
 /// </summary>
 public sealed class LearningSessionEndpoints : IEndpoint
 {

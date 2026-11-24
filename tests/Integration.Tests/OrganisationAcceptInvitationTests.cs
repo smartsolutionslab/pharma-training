@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Aspire.Hosting.Testing;
 using Npgsql;
@@ -149,7 +150,10 @@ public partial class OrganisationAcceptInvitationTests(AspireFixture aspire)
         await ShouldBeRefusedAsync(unknown, HttpStatusCode.NotFound, "organisation.invitation-not-found", cancellationToken);
         var againBody = await again.Content.ReadAsStringAsync(cancellationToken);
         var unknownBody = await unknown.Content.ReadAsStringAsync(cancellationToken);
-        Detail(againBody).ShouldBe(Detail(unknownBody));
+        var expected = ErrorCodeCatalog.MessageOf("organisation.invitation-not-found");
+        Title(againBody).ShouldBe(expected);
+        Title(unknownBody).ShouldBe(expected);
+        WithoutTraceId(againBody).ShouldBe(WithoutTraceId(unknownBody), "a used link answers otherwise than an unknown one");
         againBody.ShouldNotContain(pharmacy.ToString(), Case.Insensitive);
     }
 
@@ -447,10 +451,18 @@ public partial class OrganisationAcceptInvitationTests(AspireFixture aspire)
 
     private static Uri PharmacyUri(Guid pharmacy) => new($"/organisation/pharmacies/{pharmacy}", UriKind.Relative);
 
-    private static string? Detail(string body)
+    /// <summary>The problem as sent, without its <c>traceId</c>, which differs on every request.</summary>
+    private static string WithoutTraceId(string body)
+    {
+        var problem = JsonNode.Parse(body).ShouldBeOfType<JsonObject>();
+        problem.Remove("traceId");
+        return problem.ToJsonString();
+    }
+
+    private static string? Title(string body)
     {
         using var problem = JsonDocument.Parse(body);
-        return problem.RootElement.TryGetProperty("detail", out var detail) ? detail.GetString() : null;
+        return problem.RootElement.TryGetProperty("title", out var title) ? title.GetString() : null;
     }
 
     private static async Task<string> DescribeAsync(HttpResponseMessage[] responses, CancellationToken cancellationToken)
