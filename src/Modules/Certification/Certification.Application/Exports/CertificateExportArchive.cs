@@ -5,12 +5,12 @@ using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Certificates
 namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Exports;
 
 /// <summary>
-/// A pharmacy's certificates for a period as one ZIP (#52, docs/adr/0031), written straight into a response body and
+/// A pharmacy's certificates for a period as one ZIP (#52, docs/adr/0032), written straight into a response body and
 /// never stored: <see cref="CertificateExportIndex.FileName"/> first, then each stored PDF under <c>pdf/</c>, copied byte
 /// for byte from the module's blob storage as it is written. A certificate whose PDF is still pending is in the index
 /// alone. Everything is written asynchronously, as Kestrel requires, and each entry is dated by its certificate's issue
 /// (the index by the period's start), so the same certificates give the same archive. A failure while writing leaves
-/// the archive without its central directory; see #367 and docs/adr/0031.
+/// the archive without its central directory; see #367 and docs/adr/0032.
 /// </summary>
 public sealed class CertificateExportArchive
 {

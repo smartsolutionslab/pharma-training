@@ -6,7 +6,7 @@ using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Certificates
 namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Exports;
 
 /// <summary>
-/// The export's <c>index.csv</c> (#52, docs/adr/0031): UTF-8 with a byte order mark, <c>;</c> between fields and CRLF
+/// The export's <c>index.csv</c> (#52, docs/adr/0032): UTF-8 with a byte order mark, <c>;</c> between fields and CRLF
 /// after each row, so Excel with a German locale opens it as it is; a header row, then one row per certificate in the
 /// order given. A name or course title, text people typed, starting like a formula gets a leading <c>'</c>; the fields
 /// the module makes itself (ids, numbers, dates, the verification code, which may start with <c>-</c>) stay verbatim.

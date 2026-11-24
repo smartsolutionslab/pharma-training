@@ -7,7 +7,7 @@ using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Memberships;
 namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Queries.ExportPharmacyCertificates;
 
 /// <summary>
-/// Chooses the certificates a manager exports for their pharmacy (#52, docs/adr/0031), checking in this order, the first
+/// Chooses the certificates a manager exports for their pharmacy (#52, docs/adr/0032), checking in this order, the first
 /// that fails answering: the caller is a person (403); the caller has an active membership in the pharmacy (404); every
 /// such membership's current role grants the export (403); the period is valid (400); at most
 /// <see cref="CertificateExportArchive.MaxCertificates"/> certificates are chosen (400). A certificate is chosen when its
