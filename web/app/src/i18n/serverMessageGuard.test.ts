@@ -8,11 +8,7 @@ const readers = new Set(['src/api/baseApi.ts', 'src/i18n/errorText.ts']);
 
 // The call sites that still read it, until #147's page tasks (T3 to T7) move each to the helper and take it off this
 // list. A file on it that no longer reads serverMessage fails below, so the list only shrinks; once it is empty it goes.
-const pending = new Set([
-  // T7, compliance
-  'src/modules/compliance/matrixErrors.ts',
-  'src/modules/compliance/useAssignCourse.ts',
-]);
+const pending = new Set<string>([]);
 
 /** The file's code without its comments: a comment may name serverMessage. */
 function code(source: string): string {
