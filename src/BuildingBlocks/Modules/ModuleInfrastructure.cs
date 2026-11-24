@@ -12,7 +12,7 @@ public static class ModuleInfrastructure
         Ensure.That(services).IsNotNull();
         Ensure.That(configuration).IsNotNull();
         services.AddModuleDbContext<TModule>(configuration);
-        services.AddDatabaseErrorDetailGuard();
+        services.AddDatabaseErrorDetailGuard(configuration);
         services.AddModuleHandlers<TModule>();
         services.AddModuleUnitOfWork<TModule>();
         services.AddModuleEventStore<TModule>(configuration);
