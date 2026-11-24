@@ -7,7 +7,8 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Con
 
 /// <summary>
 /// Issues the certificate for a passed test, once per attempt, from Certification's copies of the person's membership
-/// and the course version, and announces it as <c>CertificateIssuedV1</c> in the same commit.
+/// and the course version, announces it as <c>CertificateIssuedV1</c> and requests its PDF as
+/// <c>CertificateDocumentRequestedV1</c>, both in the same commit, so a refused commit sends neither (#50).
 /// It deduplicates on the attempt id, not on <c>Metadata.EventIdentifier</c>: that also absorbs a re-publish under a new
 /// identifier, and the unique index on the attempt refuses a concurrent delivery's second certificate, whose retry then
 /// finds the first.
@@ -67,6 +68,7 @@ public sealed class TestPassedV1Consumer(
             course,
             versionId,
             version.Title,
+            version.Number,
             version.Validity,
             ScorePercent.From(message.ScorePercent),
             VerificationCodes.Next(),
@@ -75,6 +77,7 @@ public sealed class TestPassedV1Consumer(
         foreach (var issued in certificate.DomainEvents.OfType<CertificateIssued>())
         {
             await unitOfWork.PublishAsync(issued.ToIntegrationEvent());
+            await unitOfWork.PublishAsync(issued.ToDocumentRequest());
         }
 
         await unitOfWork.CommitAsync(cancellationToken);

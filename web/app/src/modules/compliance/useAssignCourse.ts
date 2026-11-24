@@ -8,7 +8,7 @@ import {
   usePostCompliancePharmaciesIdAssignments,
 } from '@/api/generated';
 import { ApiError } from '@/api/baseApi';
-import { t } from '@/i18n';
+import { type ErrorMessage, errorMessage } from '@/i18n/errorText';
 
 /** The host's codes for a due date it refuses. */
 export type DueDateCode =
@@ -22,14 +22,14 @@ const dueDateCodes: readonly string[] = [
 
 /**
  * What an assignment came to, sorted by what the user can do about it: see who was assigned and who refused (done),
- * fix the due date, choose another course, nothing here at all (notAvailable, in the host's words), look again and send
+ * fix the due date, choose another course, nothing here at all (notAvailable, by its code), look again and send
  * again (changed), or try again (failed).
  */
 export type AssignOutcome =
   | { kind: 'done'; assigned: ComplianceAssignedLearnerDto[]; refused: ComplianceRefusedLearnerDto[] }
   | { kind: 'dueDate'; code: DueDateCode }
   | { kind: 'courseGone' }
-  | { kind: 'notAvailable'; message: string }
+  | { kind: 'notAvailable'; message: ErrorMessage }
   | { kind: 'changed' }
   | { kind: 'failed' };
 
@@ -61,7 +61,12 @@ export function useAssignCourse() {
         return { kind: 'courseGone' };
       case 'compliance.capability-missing':
       case 'compliance.pharmacy-not-found':
-        return { kind: 'notAvailable', message: error.serverMessage ?? t('compliance.assign.notAllowed') };
+        return {
+          kind: 'notAvailable',
+          message: errorMessage(error, 'compliance.assign.notAllowed', {
+            overrides: { 'compliance.capability-missing': 'compliance.assign.notAllowed' },
+          }),
+        };
       case 'compliance.assignments-changed':
       case 'already-exists':
         return { kind: 'changed' };

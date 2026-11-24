@@ -17,6 +17,7 @@ public sealed class Certificate : AggregateRoot<CertificateId>
         CourseId course,
         CourseVersionId courseVersion,
         CourseTitle courseTitle,
+        CourseVersionNumber courseVersionNumber,
         ScorePercent score,
         Timestamp issuedAt,
         CalendarDate validUntil,
@@ -29,6 +30,7 @@ public sealed class Certificate : AggregateRoot<CertificateId>
         Course = course;
         CourseVersion = courseVersion;
         CourseTitle = courseTitle;
+        CourseVersionNumber = courseVersionNumber;
         Score = score;
         IssuedAt = issuedAt;
         ValidUntil = validUntil;
@@ -47,6 +49,8 @@ public sealed class Certificate : AggregateRoot<CertificateId>
     public CourseVersionId CourseVersion { get; }
 
     public CourseTitle CourseTitle { get; }
+
+    public CourseVersionNumber CourseVersionNumber { get; }
 
     public ScorePercent Score { get; }
 
@@ -69,18 +73,19 @@ public sealed class Certificate : AggregateRoot<CertificateId>
         CourseId course,
         CourseVersionId courseVersion,
         CourseTitle courseTitle,
+        CourseVersionNumber courseVersionNumber,
         RecurrenceInterval validity,
         ScorePercent score,
         VerificationCode verificationCode,
         Timestamp passedAt)
     {
         var validUntil = passedAt.DayInGermany().Plus(validity);
-        var certificate = new Certificate(id, attempt, holder, holderName, course, courseVersion, courseTitle, score, passedAt, validUntil, verificationCode);
+        var certificate = new Certificate(id, attempt, holder, holderName, course, courseVersion, courseTitle, courseVersionNumber, score, passedAt, validUntil, verificationCode);
         certificate.Raise(new CertificateIssued(id, holder, course, courseVersion, passedAt, validUntil));
         return certificate;
     }
 
-    /// <summary>The rendered PDF is stored once; a second render (a retried reaction) changes nothing.</summary>
+    /// <summary>The rendered PDF is stored once; a second attach (a retried or replayed request) changes nothing.</summary>
     public void AttachDocument(DocumentReference location)
     {
         if (Document == DocumentState.Pending)

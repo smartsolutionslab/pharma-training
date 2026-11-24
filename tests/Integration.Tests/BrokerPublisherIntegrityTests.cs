@@ -162,6 +162,37 @@ public class BrokerPublisherIntegrityTests(AspireFixture aspire)
         (await MembersAsync(started.MembershipId, cancellationToken)).ShouldBe(0);
     }
 
+    /// <summary>
+    /// A type that is a module's event name with a NUL after it (#230) named the module, so it was not refused; PostgreSQL
+    /// then refused to store it in the inbox (22021), and Wolverine paused the listener and requeued the message without
+    /// end, so the next event Compliance's queue held was never handled. Refused like an unknown type, it is dead-lettered
+    /// and the listener goes on.
+    /// </summary>
+    [Fact]
+    public async Task An_event_whose_type_has_a_nul_is_dead_lettered_and_the_next_event_is_still_handled()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var poisoned = MembershipStartedEvent();
+        var poisonedId = Guid.CreateVersion7();
+        var next = MembershipStartedEvent();
+        var nextId = Guid.CreateVersion7();
+        var organisation = await BrokerUsers.ConnectionStringOfAsync(aspire, Organisation, cancellationToken);
+        var user = BrokerUsers.UserOf(organisation);
+
+        // Organisation's own event on its own exchange, with its own user_id, typed with a NUL after the event's name.
+        await PublishAsync(organisation, MembershipStarted, MembershipStarted + "\0", poisoned, poisonedId, user, cancellationToken);
+        await PublishAsync(organisation, MembershipStarted, MembershipStarted, next, nextId, user, cancellationToken);
+
+        var nextOutcome = await OutcomeAsync(nextId, cancellationToken);
+        var poisonedOutcome = await OutcomeAsync(poisonedId, cancellationToken);
+        nextOutcome.ShouldBe(
+            Outcome.Handled,
+            $"Compliance's inbox holds the valid membership {nextId}, published after one typed '{MembershipStarted}\\0' ({poisonedId}, {poisonedOutcome}), as {nextOutcome}: the listener stopped consuming.");
+        (await MembersAsync(next.MembershipId, cancellationToken)).ShouldBe(1, $"Compliance did not store the valid membership {next.MembershipId} published after the one typed with a NUL.");
+        poisonedOutcome.State.ShouldStartWith("dead-lettered", customMessage: $"Compliance's inbox holds the membership {poisonedId} typed '{MembershipStarted}\\0' as {poisonedOutcome}, not dead-lettered.");
+        (await MembersAsync(poisoned.MembershipId, cancellationToken)).ShouldBe(0, $"Compliance stored the membership {poisoned.MembershipId} whose type has a NUL.");
+    }
+
     [Fact]
     public async Task An_event_its_own_modules_user_publishes_is_handled()
     {

@@ -7,8 +7,9 @@ import { introduction, refusal, versionId } from './courseTestFixtures';
 import { useQuestionMutations } from './useQuestionMutations';
 
 // Adding, replacing and deleting a question of a version, through the generated client (#25, S5). Each answers ok or
-// a failure with the host's words where a module sent some (ApiError.serverMessage), and afterwards the version is
-// stale, also after a refusal: a 409 (NotADraft) means the page shows something that is no longer so.
+// a failure carrying the error the call rejected with, which the page turns into text by its code (#147, errorText),
+// and afterwards the version is stale, also after a refusal: a 409 (NotADraft) means the page shows something that is
+// no longer so.
 const host = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>();
 vi.stubGlobal('fetch', host);
 afterEach(() => host.mockReset());
@@ -93,28 +94,32 @@ const changes: [string, (mutations: Mutations) => Promise<unknown>][] = [
 ];
 
 test.each(changes)(
-  "%s refused with a module's 409 answers the host's words; every change reloads the version, also after a refusal",
+  "%s refused with a module's 409 answers the refusal with its code; every change reloads the version, also after a refusal",
   async (_change, change) => {
-    host.mockImplementation(async () =>
-      refusal(409, 'editorial.not-a-draft', 'Die Version ist kein Entwurf mehr und kann nicht geändert werden.'),
-    );
+    host.mockImplementation(async () => refusal(409, 'editorial.not-a-draft', 'SERVER WORDS'));
     const { mutations, queryClient } = renderMutations();
 
     await expect(change(mutations)).resolves.toEqual({
       ok: false,
-      serverMessage: 'Die Version ist kein Entwurf mehr und kann nicht geändert werden.',
+      error: expect.objectContaining({ status: 409, failureCode: 'editorial.not-a-draft' }),
     });
     expect(queryClient.getQueryState(versionKey)?.isInvalidated).toBe(true);
   },
 );
 
-test.each(changes)('%s the host cannot do answers a failure without words of the host', async (_change, change) => {
-  host.mockImplementation(async () => new Response('', { status: 500 }));
-  const { mutations, queryClient } = renderMutations();
+test.each(changes)(
+  '%s the host cannot do answers a failure with its error, without a code',
+  async (_change, change) => {
+    host.mockImplementation(async () => new Response('', { status: 500 }));
+    const { mutations, queryClient } = renderMutations();
 
-  await expect(change(mutations)).resolves.toEqual({ ok: false });
-  expect(queryClient.getQueryState(versionKey)?.isInvalidated).toBe(true);
-});
+    await expect(change(mutations)).resolves.toEqual({
+      ok: false,
+      error: expect.objectContaining({ status: 500, failureCode: undefined }),
+    });
+    expect(queryClient.getQueryState(versionKey)?.isInvalidated).toBe(true);
+  },
+);
 
 test.each(changes)('%s that never reached the host answers a failure', async (_change, change) => {
   host.mockImplementation(async () => {
@@ -122,7 +127,7 @@ test.each(changes)('%s that never reached the host answers a failure', async (_c
   });
   const { mutations, queryClient } = renderMutations();
 
-  await expect(change(mutations)).resolves.toEqual({ ok: false });
+  await expect(change(mutations)).resolves.toEqual({ ok: false, error: expect.any(TypeError) });
   expect(queryClient.getQueryState(versionKey)?.isInvalidated).toBe(true);
 });
 
@@ -138,25 +143,31 @@ describe('approving', () => {
   });
 
   test.each([
-    [422, 'editorial.too-few-options', 'Eine Frage braucht mindestens zwei Antwortoptionen.'],
-    [422, 'editorial.multiple-choice-a-correct', 'Bei Multiple Choice ist mindestens eine Antwortoption richtig.'],
-    [409, 'editorial.question-already-approved', 'Die Frage ist bereits freigegeben.'],
+    [422, 'editorial.too-few-options'],
+    [422, 'editorial.multiple-choice-a-correct'],
+    [409, 'editorial.question-already-approved'],
   ])(
-    "approving refused with %i %s answers the host's words and marks the version stale",
-    async (status, code, detail) => {
-      host.mockImplementation(async () => refusal(status, code, detail));
+    'approving refused with %i %s answers the refusal with its code and marks the version stale',
+    async (status, code) => {
+      host.mockImplementation(async () => refusal(status, code, 'SERVER WORDS'));
       const { mutations, queryClient } = renderMutations();
 
-      await expect(mutations.approve(questionId)).resolves.toEqual({ ok: false, serverMessage: detail });
+      await expect(mutations.approve(questionId)).resolves.toEqual({
+        ok: false,
+        error: expect.objectContaining({ status, failureCode: code }),
+      });
       expect(queryClient.getQueryState(versionKey)?.isInvalidated).toBe(true);
     },
   );
 
-  test('approving the host cannot do answers a failure without words of the host', async () => {
+  test('approving the host cannot do answers a failure with its error, without a code', async () => {
     host.mockImplementation(async () => new Response('', { status: 500 }));
     const { mutations, queryClient } = renderMutations();
 
-    await expect(mutations.approve(questionId)).resolves.toEqual({ ok: false });
+    await expect(mutations.approve(questionId)).resolves.toEqual({
+      ok: false,
+      error: expect.objectContaining({ status: 500, failureCode: undefined }),
+    });
     expect(queryClient.getQueryState(versionKey)?.isInvalidated).toBe(true);
   });
 });
