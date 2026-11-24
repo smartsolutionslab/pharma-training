@@ -152,7 +152,7 @@ public class VideoPaceTests
         var session = Started();
         Report(session, Film, 95, At(320)).IsSuccess.ShouldBeTrue();
         var reopenedAt = Timestamp.From(Start.Value.AddHours(1));
-        session.ReopenChapters([Film], reopenedAt).IsSuccess.ShouldBeTrue();
+        session.ReopenChapters(ExhaustionNotice.From(Guid.CreateVersion7()), [Film], reopenedAt).IsSuccess.ShouldBeTrue();
 
         ShouldBeTooFast(Report(session, Film, 95, Timestamp.From(reopenedAt.Value.AddSeconds(10))));
         Report(session, Film, 95, Timestamp.From(reopenedAt.Value.AddSeconds(320))).IsSuccess.ShouldBeTrue();
