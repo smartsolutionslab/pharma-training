@@ -325,13 +325,7 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
     {
         Ensure.That(now).IsNotNull();
 
-        var today = UtcDay.Of(now);
-        if (InvitationMailDay is { } stored && stored.Value.DayNumber - today.Value.DayNumber > 1)
-        {
-            return Option<UtcDay>.Some(stored);
-        }
-
-        return Option<UtcDay>.None;
+        return UtcDay.BeyondTomorrow(now, InvitationMailDay);
     }
 
     private Membership? Find(MembershipId id) => memberships.SingleOrDefault(m => m.Id == id);
@@ -362,20 +356,6 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
         InvitationMailDay = UtcDay.Of(now);
     }
 
-    /// <summary>
-    /// The stored day when its tally still counts: today, or tomorrow, so a request racing 00:00 UTC adds to the new
-    /// day's tally instead of restarting the old day's. A stored day before today, or beyond tomorrow (a hand-edited
-    /// row: every instance reads the database's clock), counts for nothing, and today's tally starts afresh; it never
-    /// locks invitation mail.
-    /// </summary>
-    private Option<UtcDay> CountedDay(Timestamp now)
-    {
-        var today = UtcDay.Of(now);
-        if (InvitationMailDay is { } stored && stored.Value.DayNumber - today.Value.DayNumber is 0 or 1)
-        {
-            return Option<UtcDay>.Some(stored);
-        }
-
-        return Option<UtcDay>.None;
-    }
+    /// <summary>The stored day when its tally still counts (<see cref="UtcDay.CountingDay"/>).</summary>
+    private Option<UtcDay> CountedDay(Timestamp now) => UtcDay.CountingDay(now, InvitationMailDay);
 }
