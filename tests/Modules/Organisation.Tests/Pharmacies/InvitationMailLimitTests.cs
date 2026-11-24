@@ -63,6 +63,45 @@ public class InvitationMailLimitTests
         renewed.IsSuccess.ShouldBeTrue("an invitation was refused a renewal 10 minutes after its last renewal");
     }
 
+    // #294: a request time a cooldown or more ahead of now is not trusted, as the recipient rule does not trust one.
+    [Fact]
+    public void A_renewal_whose_request_time_is_a_cooldown_ahead_is_accepted()
+    {
+        var pharmacy = TestPharmacies.Register(Owner);
+        var invitation = Invite(pharmacy, "anna@example.org", Start.AddMinutes(10));
+
+        var renewed = pharmacy.RenewInvitation(invitation, At(Start), InvitationMailLimits.Default);
+
+        renewed.IsSuccess.ShouldBeTrue("an invitation whose request time lies exactly a cooldown ahead was refused a renewal");
+        pharmacy.Membership(invitation).InvitationRequestedAt.ShouldBe(At(Start));
+        pharmacy.Membership(invitation).InvitationVersion.ShouldBe(InvitationVersion.From(2));
+    }
+
+    [Fact]
+    public void A_renewal_whose_request_time_is_far_ahead_is_accepted()
+    {
+        var pharmacy = TestPharmacies.Register(Owner);
+        var invitation = Invite(pharmacy, "anna@example.org", Start.AddDays(365));
+
+        var renewed = pharmacy.RenewInvitation(invitation, At(Start), InvitationMailLimits.Default);
+
+        renewed.IsSuccess.ShouldBeTrue("an invitation whose request time lies a year ahead was refused a renewal");
+        pharmacy.Membership(invitation).InvitationRequestedAt.ShouldBe(At(Start));
+    }
+
+    [Fact]
+    public void A_request_time_less_than_a_cooldown_ahead_is_trusted()
+    {
+        var pharmacy = TestPharmacies.Register(Owner);
+        var requestedAt = Start.AddMinutes(10).AddSeconds(-1);
+        var invitation = Invite(pharmacy, "anna@example.org", requestedAt);
+
+        var refused = pharmacy.RenewInvitation(invitation, At(Start), InvitationMailLimits.Default);
+
+        refused.IsSuccess.ShouldBeFalse("an invitation whose request time lies less than a cooldown ahead was renewed");
+        refused.Error.ShouldBeOfType<InvitationRenewedTooSoon>().RetryAt.ShouldBe(At(requestedAt.AddMinutes(10)));
+    }
+
     [Fact]
     public void A_refused_renewal_changes_nothing_and_raises_nothing()
     {
