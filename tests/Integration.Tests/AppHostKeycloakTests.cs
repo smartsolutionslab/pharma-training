@@ -152,6 +152,7 @@ public partial class AppHostKeycloakTests
         dockerfile.ShouldMatch(@"(?m)^RUN\s+/opt/keycloak/bin/kc\.sh\s+build\b.*--health-enabled=true\b", $"Keycloak's Dockerfile does not build with --health-enabled=true:\n{dockerfile}");
         dockerfile.ShouldMatch(@"(?m)^COPY\s+--from=\S+\s+/opt/keycloak/?\s+/opt/keycloak/?\s*$", $"Keycloak's Dockerfile does not copy the built /opt/keycloak into the stage it runs:\n{dockerfile}");
         dockerfile.ShouldMatch(@"(?m)^COPY\s+realm\.json\s+/opt/keycloak/data/import/realm\.json\s*$", $"Keycloak's Dockerfile does not copy the published realm to /opt/keycloak/data/import/realm.json:\n{dockerfile}");
+        dockerfile.ShouldMatch(@"(?m)^COPY\s+--chmod=0?755\s+kcadm-otp\.sh\s+/opt/keycloak/bin/", $"Keycloak's Dockerfile should make kcadm-otp.sh executable itself (#331), not rely on the mode the checkout gave it:\n{dockerfile}");
     }
 
     /// <summary>

@@ -133,16 +133,8 @@ public final class KcadmOtp {
                 + "); kcadm.sh's session is as it was.");
         }
 
-        var now = System.currentTimeMillis();
-        var endpoint = JSON.createObjectNode()
-            .put("clientId", CLIENT)
-            .put("token", answer.path("access_token").asText())
-            .put("refreshToken", answer.path("refresh_token").asText())
-            .put("grantTypeForAuthentication", "password")
-            .put("expiresAt", now + (answer.path("expires_in").asLong() * 1000))
-            .put("refreshExpiresAt", now + (answer.path("refresh_expires_in").asLong() * 1000));
-        var config = JSON.createObjectNode().put("serverUrl", SERVER).put("realm", REALM);
-        config.putObject("endpoints").putObject(SERVER).set(REALM, endpoint);
+        var config = existingConfig().put("serverUrl", SERVER).put("realm", REALM);
+        storeSession(config, answer);
         writeSession(JSON.writerWithDefaultPrettyPrinter().writeValueAsString(config));
         System.out.println("Signed in as " + user + "; ./kcadm.sh works as " + user + " until the session ends.");
     }
@@ -170,7 +162,30 @@ public final class KcadmOtp {
             throw new Refusal(signIn + " (kcadm.sh's session has ended: " + answer.path("error_description").asText(answer.path("error").asText("HTTP " + response.statusCode())) + ").");
         }
 
+        // Kept as kcadm.sh's session again: a realm that revokes a refresh token once used would otherwise end it (#331).
+        var config = existingConfig();
+        storeSession(config, answer);
+        writeSession(JSON.writerWithDefaultPrettyPrinter().writeValueAsString(config));
         return answer.path("access_token").asText();
+    }
+
+    /** kcadm.sh's settings as they are, sessions with other servers and realms included; empty without any. */
+    private static ObjectNode existingConfig() throws IOException {
+        return Files.exists(CONFIG) && JSON.readTree(CONFIG.toFile()) instanceof ObjectNode existing ? existing : JSON.createObjectNode();
+    }
+
+    /** Puts the tokens of a token answer in as kcadm.sh's session with master on this server, as kcadm.sh writes it. */
+    private static void storeSession(ObjectNode config, JsonNode answer) {
+        var now = System.currentTimeMillis();
+        var endpoints = config.get("endpoints") instanceof ObjectNode existing ? existing : config.putObject("endpoints");
+        var server = endpoints.get(SERVER) instanceof ObjectNode existing ? existing : endpoints.putObject(SERVER);
+        var session = server.get(REALM) instanceof ObjectNode existing ? existing : server.putObject(REALM);
+        session.put("clientId", CLIENT)
+            .put("token", answer.path("access_token").asText())
+            .put("refreshToken", answer.path("refresh_token").asText())
+            .put("grantTypeForAuthentication", "password")
+            .put("expiresAt", now + (answer.path("expires_in").asLong() * 1000))
+            .put("refreshExpiresAt", now + (answer.path("refresh_expires_in").asLong() * 1000));
     }
 
     /** Asks master's token endpoint with the form given. */
