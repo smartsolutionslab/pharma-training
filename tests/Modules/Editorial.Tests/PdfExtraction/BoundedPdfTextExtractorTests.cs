@@ -1,4 +1,5 @@
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.PdfText;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Infrastructure.PdfText;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
@@ -146,6 +147,92 @@ public sealed class BoundedPdfTextExtractorTests : IDisposable
         honouring.Fail(0, new OutOfMemoryException());
 
         await Should.ThrowAsync<OutOfMemoryException>(extracting);
+    }
+
+    [Fact]
+    public async Task A_parse_that_ignores_the_token_is_answered_as_no_text_at_its_deadline_while_it_still_runs()
+    {
+        var extractor = Bounded(ignoring, 2);
+
+        var extracting = extractor.ExtractAsync(Pdf, Cancellation);
+        await ignoring.Started(0);
+        time.Advance(Timeout);
+        var extracted = await extracting;
+
+        extracted.IsSuccess.ShouldBeTrue("a PDF read past its deadline is no text, never an error (ADR 0008 D11)");
+        extracted.Value.Extraction.ShouldBe(PdfTextExtraction.NoText);
+        extracted.Value.Text.ShouldBeNull();
+        ignoring.Ended(0).IsCompleted.ShouldBeFalse("the caller does not wait for the abandoned parse");
+    }
+
+    [Fact]
+    public async Task A_parse_that_honours_the_token_is_answered_as_no_text_at_its_deadline_never_as_an_exception()
+    {
+        var extractor = Bounded(honouring, 2);
+
+        var extracting = extractor.ExtractAsync(Pdf, Cancellation);
+        await honouring.Started(0);
+        time.Advance(Timeout);
+        var extracted = await extracting;
+
+        extracted.IsSuccess.ShouldBeTrue("a PDF read past its deadline is no text, never an error (ADR 0008 D11)");
+        extracted.Value.Extraction.ShouldBe(PdfTextExtraction.NoText);
+        extracted.Value.Text.ShouldBeNull();
+        await honouring.Ended(0);
+    }
+
+    [Fact]
+    public async Task A_parse_just_before_its_deadline_is_still_answered()
+    {
+        var extractor = Bounded(ignoring, 2);
+
+        var extracting = extractor.ExtractAsync(Pdf, Cancellation);
+        await ignoring.Started(0);
+        time.Advance(Timeout - TimeSpan.FromMilliseconds(1));
+        ignoring.Finish(0, BlockingPdfTextParser.Answer);
+
+        (await extracting).Value.ShouldBe(BlockingPdfTextParser.Answer);
+    }
+
+    [Fact]
+    public async Task An_abandoned_parse_keeps_its_slot_until_its_thread_ends()
+    {
+        var extractor = Bounded(ignoring, 1);
+        var abandoned = extractor.ExtractAsync(Pdf, Cancellation);
+        await ignoring.Started(0);
+        time.Advance(Timeout);
+        (await abandoned).Value.Extraction.ShouldBe(PdfTextExtraction.NoText);
+
+        var refused = extractor.ExtractAsync(Pdf, Cancellation);
+        time.Advance(BoundedPdfTextExtractor.SlotWait);
+        (await refused).IsFailure.ShouldBeTrue("the abandoned parse still holds the only slot");
+        ignoring.Entered.ShouldBe(1);
+
+        var next = extractor.ExtractAsync(Pdf, Cancellation);
+        ignoring.Finish(0, BlockingPdfTextParser.Answer);
+        await ignoring.Started(1);
+        ignoring.Finish(1, BlockingPdfTextParser.Answer);
+
+        (await next).Value.ShouldBe(BlockingPdfTextParser.Answer, "the slot is free once the abandoned parse really ended");
+    }
+
+    [Fact]
+    public async Task A_request_cancelled_mid_parse_is_cancelled_at_once_and_its_slot_frees_once_the_parse_stops()
+    {
+        var extractor = Bounded(ignoring, 1);
+        using var cancellation = new CancellationTokenSource();
+        var cancelled = extractor.ExtractAsync(Pdf, cancellation.Token);
+        await ignoring.Started(0);
+
+        await cancellation.CancelAsync();
+
+        await Should.ThrowAsync<OperationCanceledException>(cancelled);
+        ignoring.Ended(0).IsCompleted.ShouldBeFalse("the request does not wait for the parse to stop");
+        var next = extractor.ExtractAsync(Pdf, Cancellation);
+        ignoring.Finish(0, BlockingPdfTextParser.Answer);
+        await ignoring.Started(1);
+        ignoring.Finish(1, BlockingPdfTextParser.Answer);
+        (await next).Value.ShouldBe(BlockingPdfTextParser.Answer);
     }
 
     private BoundedPdfTextExtractor Bounded(IPdfTextParser parser, int maxConcurrentParses) =>
