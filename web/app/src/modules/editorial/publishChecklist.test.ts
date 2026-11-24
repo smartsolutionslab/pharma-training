@@ -285,8 +285,8 @@ const texts: [string, Record<string, number>, number | undefined, string, string
     'editorial.workflow.checklist.fourEyes',
     {},
     undefined,
-    'Sie haben diese Version eingereicht. Mit Vier-Augen-Freigabe muss eine andere Person sie veröffentlichen.',
-    'You submitted this version. Four-eyes approval requires someone else to publish it.',
+    'Sie haben diese Version eingereicht oder ihre Testvorgaben zuletzt geändert. Mit Vier-Augen-Freigabe muss eine andere Person sie veröffentlichen.',
+    'You submitted this version or last changed its test blueprint. Four-eyes approval requires someone else to publish it.',
   ],
   [
     'editorial.workflow.checklist.publisherApproved',

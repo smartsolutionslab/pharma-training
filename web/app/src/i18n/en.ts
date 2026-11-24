@@ -668,7 +668,8 @@ export const en: MessageSchema = {
         approvedSome: 'One of {held} questions is approved. | {count} of {held} questions are approved.',
         submitted: 'The version has been submitted for review.',
         notSubmitted: 'The version still has to be submitted for review.',
-        fourEyes: 'You submitted this version. Four-eyes approval requires someone else to publish it.',
+        fourEyes:
+          'You submitted this version or last changed its test blueprint. Four-eyes approval requires someone else to publish it.',
         publisherApproved:
           'You approved questions of this version. Four-eyes approval requires someone else to publish it.',
       },
@@ -701,7 +702,8 @@ export const en: MessageSchema = {
         tooManyQuestions: 'The test has more questions than allowed.',
         questionNotApproved: 'Every question must be approved before publishing.',
         questionDefect: 'A question is incomplete. Check its answer options and correct answers in the test.',
-        fourEyes: 'Four-eyes approval does not let whoever submitted the version publish it. Ask another editor.',
+        fourEyes:
+          'Four-eyes approval does not let whoever submitted the version or last changed its test blueprint publish it. Ask another editor.',
         publisherApprovedQuestions:
           'Four-eyes approval does not let whoever approved questions of this version publish it. Ask another editor.',
         changed: 'The version has changed in the meantime. You now see its current state; please try again.',

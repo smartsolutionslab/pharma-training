@@ -94,8 +94,8 @@ const answers: [string, WorkflowAction, () => unknown, string, string, string][]
     'publish',
     refusal(403, 'editorial.four-eyes'),
     'editorial.workflow.errors.fourEyes',
-    'Mit Vier-Augen-Freigabe darf nicht veröffentlichen, wer die Version eingereicht hat. Bitten Sie eine andere Person aus der Redaktion.',
-    'Four-eyes approval does not let whoever submitted the version publish it. Ask another editor.',
+    'Mit Vier-Augen-Freigabe darf nicht veröffentlichen, wer die Version eingereicht oder ihre Testvorgaben zuletzt geändert hat. Bitten Sie eine andere Person aus der Redaktion.',
+    'Four-eyes approval does not let whoever submitted the version or last changed its test blueprint publish it. Ask another editor.',
   ],
   [
     '403 publisher-approved-questions',

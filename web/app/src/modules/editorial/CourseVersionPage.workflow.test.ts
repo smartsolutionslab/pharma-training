@@ -410,13 +410,13 @@ describe('publishing a version in review', () => {
 
     await waitFor(() =>
       expect(notify.failure).toHaveBeenCalledWith(
-        'Mit Vier-Augen-Freigabe darf nicht veröffentlichen, wer die Version eingereicht hat. Bitten Sie eine andere Person aus der Redaktion.',
+        'Mit Vier-Augen-Freigabe darf nicht veröffentlichen, wer die Version eingereicht oder ihre Testvorgaben zuletzt geändert hat. Bitten Sie eine andere Person aus der Redaktion.',
       ),
     );
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     await waitFor(() => expect(actionButton('publish')).toHaveFocus());
     const item = checklistItem(
-      'Sie haben diese Version eingereicht. Mit Vier-Augen-Freigabe muss eine andere Person sie veröffentlichen.',
+      'Sie haben diese Version eingereicht oder ihre Testvorgaben zuletzt geändert. Mit Vier-Augen-Freigabe muss eine andere Person sie veröffentlichen.',
     );
     expect(item).not.toBeNull();
     expect(within(item ?? document.body).getByText(t('editorial.workflow.checklist.open'))).toBeInTheDocument();
@@ -447,7 +447,7 @@ describe('publishing a version in review', () => {
     host.step = async () => refused(403, 'editorial.four-eyes');
     const { user, dialog, queryClient } = await openPublish();
     const fourEyes =
-      'Sie haben diese Version eingereicht. Mit Vier-Augen-Freigabe muss eine andere Person sie veröffentlichen.';
+      'Sie haben diese Version eingereicht oder ihre Testvorgaben zuletzt geändert. Mit Vier-Augen-Freigabe muss eine andere Person sie veröffentlichen.';
     const readsBefore = reads().length;
 
     await user.click(within(dialog).getByRole('button', { name: 'Veröffentlichen' }));
@@ -491,7 +491,7 @@ describe('publishing a version in review', () => {
     host.step = async () => refused(403, 'editorial.four-eyes');
     const { user, dialog, queryClient } = await openPublish();
     const fourEyes =
-      'Sie haben diese Version eingereicht. Mit Vier-Augen-Freigabe muss eine andere Person sie veröffentlichen.';
+      'Sie haben diese Version eingereicht oder ihre Testvorgaben zuletzt geändert. Mit Vier-Augen-Freigabe muss eine andere Person sie veröffentlichen.';
     await user.click(within(dialog).getByRole('button', { name: 'Veröffentlichen' }));
     await waitFor(() => expect(checklistItem(fourEyes)).not.toBeNull());
 
@@ -512,7 +512,7 @@ describe('publishing a version in review', () => {
     host.step = async () => refused(403, 'editorial.four-eyes');
     const { user, dialog, router } = await openPublish();
     const fourEyes =
-      'Sie haben diese Version eingereicht. Mit Vier-Augen-Freigabe muss eine andere Person sie veröffentlichen.';
+      'Sie haben diese Version eingereicht oder ihre Testvorgaben zuletzt geändert. Mit Vier-Augen-Freigabe muss eine andere Person sie veröffentlichen.';
     await user.click(within(dialog).getByRole('button', { name: 'Veröffentlichen' }));
     await waitFor(() => expect(checklistItem(fourEyes)).not.toBeNull());
 
