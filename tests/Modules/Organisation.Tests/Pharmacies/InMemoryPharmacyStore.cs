@@ -10,7 +10,9 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Tests.Pharmacies
 /// The pharmacies table in memory, with the invitation recipients and senders tables (#265), and the module's unit of
 /// work over them: what is added is stored, and what is published is sent, only once committed. <see cref="LoseNextCommit"/> makes the next <see cref="TryCommitAsync"/>
 /// lose a race, as a save does whose pharmacy another save changed since it was loaded; <see cref="FailNextCommit"/>
-/// makes the next <see cref="CommitAsync"/> throw, as <c>CommitAsync</c> lets a lost race through.
+/// makes the next <see cref="CommitAsync"/> throw, as <c>CommitAsync</c> lets a lost race through;
+/// <see cref="FailNextFind"/> makes the next no-tracking read (<see cref="FindAsync"/>) throw, as a dropped connection
+/// does, while <see cref="LoadAsync"/> still loads.
 /// </summary>
 internal sealed class InMemoryPharmacyStore : IPharmacyStore, IInvitationRecipientStore, IInvitationSenderStore, IOrganisationUnitOfWork
 {
@@ -20,6 +22,7 @@ internal sealed class InMemoryPharmacyStore : IPharmacyStore, IInvitationRecipie
     private readonly List<IntegrationEvent> queued = [];
     private bool loseNextCommit;
     private Exception? failNextCommit;
+    private Exception? failNextFind;
     private Action? onCommit;
 
     public List<Pharmacy> Stored { get; } = [];
@@ -46,11 +49,19 @@ internal sealed class InMemoryPharmacyStore : IPharmacyStore, IInvitationRecipie
     public Task<Option<InvitationSender>> LoadAsync(PersonId id, CancellationToken cancellationToken) =>
         Task.FromResult(StoredSenders.SingleOrDefault(sender => sender.Id == id) is { } sender ? Option<InvitationSender>.Some(sender) : Option<InvitationSender>.None);
 
-    public Task<Option<Pharmacy>> FindAsync(PharmacyId id, CancellationToken cancellationToken) =>
-        Task.FromResult(Stored.SingleOrDefault(pharmacy => pharmacy.Id == id) is { } pharmacy ? Option<Pharmacy>.Some(pharmacy) : Option<Pharmacy>.None);
+    public Task<Option<Pharmacy>> FindAsync(PharmacyId id, CancellationToken cancellationToken)
+    {
+        if (failNextFind is { } failure)
+        {
+            failNextFind = null;
+            return Task.FromException<Option<Pharmacy>>(failure);
+        }
+
+        return Task.FromResult(Lookup(id));
+    }
 
     /// <summary>The stored pharmacy itself, so what a command changes on it is what the next read finds once committed.</summary>
-    public Task<Option<Pharmacy>> LoadAsync(PharmacyId id, CancellationToken cancellationToken) => FindAsync(id, cancellationToken);
+    public Task<Option<Pharmacy>> LoadAsync(PharmacyId id, CancellationToken cancellationToken) => Task.FromResult(Lookup(id));
 
     /// <summary>The one stored pharmacy whose memberships hold the hash, as the database's unique index on it finds it.</summary>
     public Task<Option<Pharmacy>> LoadByInvitationAsync(InvitationTokenHash hash, CancellationToken cancellationToken) =>
@@ -120,6 +131,9 @@ internal sealed class InMemoryPharmacyStore : IPharmacyStore, IInvitationRecipie
     /// <summary>The next <see cref="CommitAsync"/> throws the failure and stores and sends nothing.</summary>
     public void FailNextCommit(Exception failure) => failNextCommit = failure;
 
+    /// <summary>The next <see cref="FindAsync"/> throws the failure; <see cref="LoadAsync"/> is not affected.</summary>
+    public void FailNextFind(Exception failure) => failNextFind = failure;
+
     /// <summary>The next <see cref="TryCommitAsync"/> answers <see langword="false"/> and stores and sends nothing.</summary>
     public void LoseNextCommit() => loseNextCommit = true;
 
@@ -135,6 +149,9 @@ internal sealed class InMemoryPharmacyStore : IPharmacyStore, IInvitationRecipie
         await CommitAsync(cancellationToken);
         return true;
     }
+
+    private Option<Pharmacy> Lookup(PharmacyId id) =>
+        Stored.SingleOrDefault(pharmacy => pharmacy.Id == id) is { } pharmacy ? Option<Pharmacy>.Some(pharmacy) : Option<Pharmacy>.None;
 
     private void Discard()
     {

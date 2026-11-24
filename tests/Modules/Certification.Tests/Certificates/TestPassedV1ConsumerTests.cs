@@ -11,7 +11,8 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Tests.Certifica
 
 /// <summary>
 /// Issuing: a passed test becomes exactly one certificate for its attempt, built from Certification's copies of the
-/// person's membership and the course version, and announced as <see cref="CertificateIssuedV1"/> in the same commit.
+/// person's membership and the course version (its number included, #50), announced as <see cref="CertificateIssuedV1"/>
+/// and with its PDF requested as <see cref="CertificateDocumentRequestedV1"/>, both in the same commit.
 /// </summary>
 public class TestPassedV1ConsumerTests
 {
@@ -23,10 +24,10 @@ public class TestPassedV1ConsumerTests
     private readonly Guid courseVersionId = Guid.CreateVersion7();
 
     [Fact]
-    public async Task A_passed_test_issues_a_certificate_with_the_stored_name_title_and_validity_from_the_day_of_passing()
+    public async Task A_passed_test_issues_a_certificate_with_the_stored_name_title_version_number_and_validity_from_the_day_of_passing()
     {
         StoreMembership(personId, "Anna Berger", MembershipEvents.StartedAt);
-        StoreCourseVersion(courseVersionId, courseId, "Hygiene 2027", 24);
+        StoreCourseVersion(courseVersionId, courseId, 4, "Hygiene 2027", 24);
         var passed = TestPassedEvents.Passed(Guid.CreateVersion7(), personId, courseId, courseVersionId, 85);
 
         await HandleAsync(passed);
@@ -38,6 +39,7 @@ public class TestPassedV1ConsumerTests
         certificate.Course.ShouldBe(CourseId.From(courseId));
         certificate.CourseVersion.ShouldBe(CourseVersionId.From(courseVersionId));
         certificate.CourseTitle.ShouldBe(CourseTitle.From("Hygiene 2027"));
+        certificate.CourseVersionNumber.ShouldBe(CourseVersionNumber.From(4));
         certificate.Score.ShouldBe(ScorePercent.From(85));
         certificate.IssuedAt.ShouldBe(Timestamp.From(TestPassedEvents.PassedAt));
         certificate.ValidUntil.ShouldBe(CalendarDate.From(new DateOnly(2029, 3, 2)));
@@ -55,13 +57,28 @@ public class TestPassedV1ConsumerTests
         await HandleAsync(TestPassedEvents.Passed(personId, courseId, courseVersionId));
 
         var certificate = certificates.Stored.ShouldHaveSingleItem();
-        var issued = certificates.Published.ShouldHaveSingleItem().ShouldBeOfType<CertificateIssuedV1>();
+        var issued = certificates.Published.OfType<CertificateIssuedV1>().ShouldHaveSingleItem();
         issued.CertificateId.ShouldBe(certificate.Id.Value);
         issued.PersonId.ShouldBe(personId);
         issued.CourseId.ShouldBe(courseId);
         issued.CourseVersionId.ShouldBe(courseVersionId);
         issued.IssuedAt.ShouldBe(TestPassedEvents.PassedAt);
         issued.ValidUntil.ShouldBe(new DateOnly(2028, 3, 2));
+        certificates.Commits.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task Issuing_requests_the_certificates_document_in_the_same_commit_and_announces_nothing_else()
+    {
+        StoreMembership(personId, "Anna Berger", MembershipEvents.StartedAt);
+        StoreCourseVersion(courseVersionId, courseId, "Hygiene 2027", 12);
+
+        await HandleAsync(TestPassedEvents.Passed(personId, courseId, courseVersionId));
+
+        var certificate = certificates.Stored.ShouldHaveSingleItem();
+        certificates.Published.Count.ShouldBe(2);
+        certificates.Published.OfType<CertificateIssuedV1>().ShouldHaveSingleItem();
+        certificates.Published.OfType<CertificateDocumentRequestedV1>().ShouldHaveSingleItem().CertificateId.ShouldBe(certificate.Id.Value);
         certificates.Commits.ShouldBe(1);
     }
 
@@ -76,7 +93,8 @@ public class TestPassedV1ConsumerTests
         await HandleAsync(passed);
 
         certificates.Stored.ShouldHaveSingleItem();
-        certificates.Published.ShouldHaveSingleItem();
+        certificates.Published.OfType<CertificateIssuedV1>().ShouldHaveSingleItem();
+        certificates.Published.OfType<CertificateDocumentRequestedV1>().ShouldHaveSingleItem();
         certificates.Commits.ShouldBe(1);
     }
 
@@ -93,7 +111,8 @@ public class TestPassedV1ConsumerTests
         await HandleAsync(republished);
 
         certificates.Stored.ShouldHaveSingleItem().Attempt.ShouldBe(AttemptId.From(passed.AttemptId));
-        certificates.Published.ShouldHaveSingleItem();
+        certificates.Published.OfType<CertificateIssuedV1>().ShouldHaveSingleItem();
+        certificates.Published.OfType<CertificateDocumentRequestedV1>().ShouldHaveSingleItem();
         certificates.Commits.ShouldBe(1);
     }
 
@@ -107,7 +126,9 @@ public class TestPassedV1ConsumerTests
         await HandleAsync(TestPassedEvents.Passed(personId, courseId, courseVersionId));
 
         certificates.Stored.Count.ShouldBe(2);
-        certificates.Published.Count.ShouldBe(2);
+        certificates.Published.OfType<CertificateIssuedV1>().Count().ShouldBe(2);
+        certificates.Published.OfType<CertificateDocumentRequestedV1>().Select(requested => requested.CertificateId)
+            .ShouldBe(certificates.Stored.Select(certificate => certificate.Id.Value), ignoreOrder: true);
     }
 
     [Fact]
@@ -275,7 +296,10 @@ public class TestPassedV1ConsumerTests
     }
 
     private void StoreCourseVersion(Guid version, Guid course, string title, int validityMonths) =>
-        courseVersions.Versions.Add(CourseVersion.Published(CourseVersionId.From(version), CourseId.From(course), CourseTitle.From(title), RecurrenceInterval.From(validityMonths)));
+        StoreCourseVersion(version, course, 1, title, validityMonths);
+
+    private void StoreCourseVersion(Guid version, Guid course, int number, string title, int validityMonths) =>
+        courseVersions.Versions.Add(CourseVersion.Published(CourseVersionId.From(version), CourseId.From(course), CourseVersionNumber.From(number), CourseTitle.From(title), RecurrenceInterval.From(validityMonths)));
 
     private void NothingSaved()
     {

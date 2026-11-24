@@ -125,6 +125,19 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
     }
 
     /// <summary>
+    /// Writes one more link of the membership's current version by hand, past the aggregate, as a run of the mail
+    /// consumer whose mail may be out leaves it: the hash alone, as the table keeps it.
+    /// </summary>
+    public async Task InsertInvitationLinkAsync(Guid membership, string tokenHash, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("INSERT INTO organisation.invitation_links (membership_id, token_hash) VALUES (@membership, @tokenHash)", connection);
+        command.Parameters.AddWithValue("membership", membership);
+        command.Parameters.AddWithValue("tokenHash", tokenHash);
+        (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1);
+    }
+
+    /// <summary>
     /// Time travel for the renew cooldown: moves the instant the membership's newest invitation mail was requested
     /// back by the span given, as if that request had been made so much earlier. The recipient cooldown of the
     /// membership's stored address (#265) moves back by the same span, since that mail was the address's too: its row,
@@ -516,11 +529,15 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
     /// same time, so a backend counts only when its wait leads back to the gate's own backend: a second request that
     /// waits for a row behind the first is blocked by the first, not by the gate.
     /// </summary>
-    public async Task WaitUntilBlockedAsync(PharmacyLock gate, int expected, CancellationToken cancellationToken)
+    public Task WaitUntilBlockedAsync(PharmacyLock gate, int expected, CancellationToken cancellationToken) =>
+        WaitUntilBlockedAsync(gate, expected, TimeSpan.FromSeconds(30), cancellationToken);
+
+    /// <summary>As above, failing the test when they do not within <paramref name="within"/>.</summary>
+    public async Task WaitUntilBlockedAsync(PharmacyLock gate, int expected, TimeSpan within, CancellationToken cancellationToken)
     {
         Ensure.That(gate).IsNotNull();
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+        timeout.CancelAfter(within);
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand(
             """
@@ -688,6 +705,35 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
     }
 
     /// <summary>
+    /// Polls the stored envelope that <see cref="RedeliverAsync"/> handed back until Wolverine has taken it again: a node
+    /// owns it, it was tried, its status moved on, or it left the inbox (dead-lettered or handled and dropped). Fails the
+    /// test when it is still waiting after <paramref name="within"/>.
+    /// </summary>
+    public async Task WaitUntilTakenAsync(Guid envelope, TimeSpan within, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        var started = TimeProvider.System.GetTimestamp();
+        while (true)
+        {
+            await using var command = new NpgsqlCommand(
+                "SELECT count(*) FROM wolverine.wolverine_incoming_envelopes WHERE id = @id AND status = 'Incoming' AND owner_id = 0 AND attempts = 0",
+                connection);
+            command.Parameters.AddWithValue("id", envelope);
+            if ((long)(await command.ExecuteScalarAsync(cancellationToken) ?? 0L) == 0)
+            {
+                return;
+            }
+
+            if (TimeProvider.System.GetElapsedTime(started) >= within)
+            {
+                throw new TimeoutException($"Wolverine had not taken the handed-back envelope {envelope} again after {within.TotalSeconds:0} s");
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
+        }
+    }
+
+    /// <summary>
     /// Polls the service's dead letters (<c>wolverine.wolverine_dead_letters</c>) until it holds the mail request of the
     /// membership, and answers the row: its id, its exception message, its message's JSON and the whole row as JSON text
     /// with the body escaped. Fails the test when there is none within <paramref name="within"/>.
@@ -701,7 +747,8 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
             await using var command = new NpgsqlCommand(
                 """
                 SELECT id, exception_message, body,
-                       (to_jsonb(dead_letter) - 'body' || jsonb_build_object('body', encode(dead_letter.body, 'escape')))::text
+                       (to_jsonb(dead_letter) - 'body' || jsonb_build_object('body', encode(dead_letter.body, 'escape')))::text,
+                       coalesce(exception_type, '')
                 FROM wolverine.wolverine_dead_letters dead_letter
                 WHERE message_type = @type AND position(convert_to(@membership, 'UTF8') in body) > 0
                 """,
@@ -712,11 +759,14 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
             {
                 if (await reader.ReadAsync(cancellationToken))
                 {
+                    var body = reader.GetFieldValue<byte[]>(2);
                     return new MailRequestDeadLetter(
                         reader.GetGuid(0),
                         await reader.IsDBNullAsync(1, cancellationToken) ? string.Empty : reader.GetString(1),
-                        MessageJson(reader.GetFieldValue<byte[]>(2)),
-                        reader.GetString(3));
+                        MessageJson(body),
+                        reader.GetString(3),
+                        reader.GetString(4),
+                        AttemptsIn(body));
                 }
             }
 
@@ -746,6 +796,21 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         command.Parameters.AddWithValue("type", MailRequestType);
         command.Parameters.AddWithValue("membership", membership.ToString());
         return (string?)await command.ExecuteScalarAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Hands a stored envelope of the durable inbox back to Wolverine as one no node has taken yet (<c>Incoming</c>,
+    /// owner 0, no attempts), as a node that died while handling it leaves it; the durability agent recovers it and
+    /// delivers it again. Used on a handled mail request, it delivers that request a second time.
+    /// </summary>
+    public async Task RedeliverAsync(Guid envelope, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            "UPDATE wolverine.wolverine_incoming_envelopes SET status = 'Incoming', owner_id = 0, attempts = 0, keep_until = NULL WHERE id = @id",
+            connection);
+        command.Parameters.AddWithValue("id", envelope);
+        (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1, $"There is no stored envelope {envelope}.");
     }
 
     /// <summary>Marks the dead letter replayable, so Wolverine delivers it again.</summary>
@@ -789,6 +854,26 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         throw new ShouldAssertException("the stored envelope holds no JSON message");
     }
 
+    /// <summary>
+    /// The envelope's <c>attempts</c> header: how often it had been tried when it was stored. <c>EnvelopeSerializer</c>
+    /// writes each header as two length-prefixed strings, key then value, and leaves the header out while it is 0.
+    /// </summary>
+    private static int AttemptsIn(byte[] envelope)
+    {
+        // The key's length, 8, then the key.
+        byte[] key = [8, .. "attempts"u8];
+        var at = envelope.AsSpan().IndexOf(key);
+        if (at < 0)
+        {
+            return 0;
+        }
+
+        var length = envelope[at + key.Length];
+        var value = Encoding.UTF8.GetString(envelope, at + key.Length + 1, length);
+        int.TryParse(value, System.Globalization.CultureInfo.InvariantCulture, out var attempts).ShouldBeTrue($"the envelope's attempts header is no number: {value}");
+        return attempts;
+    }
+
     private async Task<JsonDocument> ClaimsOfAsync(string user)
     {
         var token = await aspire.RequestAccessTokenAsync(user);
@@ -816,8 +901,11 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
     /// <summary>An envelope of the service's durable inbox as the tests read it: its message's JSON.</summary>
     internal sealed record MailRequestEnvelope(Guid Id, string ReceivedAt, int Attempts, string Body);
 
-    /// <summary>A dead letter as the tests read it: its message's JSON, and the whole row as JSON text with the body escaped.</summary>
-    internal sealed record MailRequestDeadLetter(Guid Id, string ExceptionMessage, string Body, string Row);
+    /// <summary>
+    /// A dead letter as the tests read it: its message's JSON, the whole row as JSON text with the body escaped, its
+    /// exception's type and the attempts its envelope had been tried when it was dead-lettered.
+    /// </summary>
+    internal sealed record MailRequestDeadLetter(Guid Id, string ExceptionMessage, string Body, string Row, string ExceptionType, int Attempts);
 
     /// <summary>An active membership as the tests read it back: its id and its pharmacy.</summary>
     internal sealed record ActiveMembership(Guid Id, Guid PharmacyId);

@@ -252,7 +252,8 @@ public class AppHostPublishParametersTests
 
     /// <summary>
     /// Published, a service whose host does not say it sends mail reads neither the mail server (so it is granted no
-    /// access to its Key Vault secret) nor the sender nor the web app's address (docs/adr/0004, docs/adr/0005).
+    /// access to its Key Vault secret) nor the sender, nor the web app's address unless its project says
+    /// <c>&lt;LinksToFrontend&gt;true&lt;/LinksToFrontend&gt;</c> (docs/adr/0004, docs/adr/0005, docs/adr/0030).
     /// </summary>
     [Fact]
     public async Task A_service_that_sends_no_mail_has_no_mail_connection_string_once_published()
@@ -268,13 +269,23 @@ public class AppHostPublishParametersTests
 
             environment.ShouldNotContainKey("ConnectionStrings__mail", $"{service.Name} sends no mail but reads the mail server.");
             environment.ShouldNotContainKey("Mail__From", $"{service.Name} sends no mail but reads Mail:From.");
-            environment.ShouldNotContainKey("Frontend__BaseUrl", $"{service.Name} sends no mail but reads Frontend:BaseUrl.");
+            if (LinksToFrontend(service))
+            {
+                // A host that prints links into the web app without mailing gets its address alone (#50).
+                environment.ShouldContainKey("Frontend__BaseUrl", $"{service.Name} says <LinksToFrontend>true</LinksToFrontend> but does not read Frontend:BaseUrl.");
+            }
+            else
+            {
+                environment.ShouldNotContainKey("Frontend__BaseUrl", $"{service.Name} sends no mail and links nowhere but reads Frontend:BaseUrl.");
+            }
         }
 
         services.Where(SendsMail).ShouldNotBeEmpty("no service host's project says <SendsMail>true</SendsMail>");
     }
 
     private static bool SendsMail(ProjectResource service) => ServiceHostMail.SendsMail(service.GetProjectMetadata().ProjectPath);
+
+    private static bool LinksToFrontend(ProjectResource service) => ServiceHostMail.LinksToFrontend(service.GetProjectMetadata().ProjectPath);
 
     private static ParameterResource Parameter(IDistributedApplicationTestingBuilder builder, string name)
     {

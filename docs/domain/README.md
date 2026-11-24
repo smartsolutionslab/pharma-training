@@ -275,7 +275,7 @@ Status: `Draft` → `InReview` → `Published` → `Superseded` bzw. `Retired`.
 
 Entsteht aus `TestPassed`; pro bestandenem Versuch genau eine Bestätigung (AttemptId eindeutig, damit idempotent).
 
-Inhalt: `CertificateId`, `PersonId`, `HolderName` und `CourseTitle` als Momentaufnahme beim Ausstellen, `CourseVersionId`, `Score`, `IssuedAt`, `ValidUntil` (Ausstellung + Gültigkeit der Version), `VerificationCode` (zufällig, nicht die Id, für den QR-Code). Das PDF wird beim Ausstellen erzeugt und unverändert gespeichert.
+Inhalt: `CertificateId`, `PersonId`, `HolderName`, `CourseTitle` und `CourseVersionNumber` (die Versionsnummer der Redaktion, ab 1) als Momentaufnahme beim Ausstellen, `CourseVersionId`, `Score`, `IssuedAt`, `ValidUntil` (Ausstellung + Gültigkeit der Version), `VerificationCode` (zufällig, nicht die Id, für den QR-Code). Das PDF wird im selben Commit wie die Ausstellung angefordert (`CertificateDocumentRequestedV1`, bleibt im Certification-Host), einmal aus der Momentaufnahme erzeugt, unter `certificates/{id}.pdf` im eigenen Container nur angelegt, nie überschrieben, und danach nie neu erzeugt (#50).
 
 QR-Prüfung (`GET /certification/verify/{code}`, öffentlich, Z2): zeigt nur Name, Schulung, Ausstellungs- und Gültig-bis-Datum sowie gültig/abgelaufen. Unbekannte, falsch geformte Codes und Ids bekommen dieselbe Antwort (404, `certification.certificate-not-verifiable`). Begrenzt auf 30 pro Minute und 500 pro Tag je Client-Adresse (ADR 0029).
 
