@@ -48,6 +48,12 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
 
     public PersonId? SubmittedBy { get; private set; }
 
+    /// <summary>
+    /// The editor whose change of the test blueprint last took effect; under four eyes that editor does not publish the
+    /// version (#246). A return and a resubmission keep it; the next version starts without one.
+    /// </summary>
+    public PersonId? BlueprintChangedBy { get; private set; }
+
     public PersonId? PublishedBy { get; private set; }
 
     public Timestamp? PublishedAt { get; private set; }
@@ -151,10 +157,14 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         return Success(chapter.Id);
     }
 
-    /// <summary>Replaces a chapter's content. Its questions need a fresh review, since what they ask about changed.</summary>
-    public Result<Unit, DomainError> ReplaceChapter(Chapter replacement)
+    /// <summary>
+    /// Replaces a chapter's content. Its questions need a fresh review, since what they ask about changed; when one of
+    /// them was approved, the reset is raised naming the editor.
+    /// </summary>
+    public Result<Unit, DomainError> ReplaceChapter(Chapter replacement, PersonId editor)
     {
         Ensure.That(replacement).IsNotNull();
+        Ensure.That(editor).IsNotNull();
 
         if (!IsDraft)
         {
@@ -173,11 +183,7 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         }
 
         stored.Take(replacement);
-        foreach (var question in questions.Where(question => question.Chapter == replacement.Id))
-        {
-            question.MarkUnreviewed();
-        }
-
+        ResetApprovals(questions.Where(question => question.Chapter == replacement.Id), editor, ApprovalResetReason.ChapterReplaced);
         return Success(Unit.Value);
     }
 
@@ -235,11 +241,13 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
 
     /// <summary>
     /// Replaces a draft's test settings. Replacing them sends every question of the version back to review, copied
-    /// ones included, so reviewers sign off the changed test again. The same settings again change nothing.
+    /// ones included, so reviewers sign off the changed test again, and records the editor as the one who last changed
+    /// them, whom four eyes keeps from publishing. The same settings again change nothing.
     /// </summary>
-    public Result<Unit, DomainError> SetBlueprint(TestBlueprint blueprint)
+    public Result<Unit, DomainError> SetBlueprint(TestBlueprint blueprint, PersonId editor)
     {
         Ensure.That(blueprint).IsNotNull();
+        Ensure.That(editor).IsNotNull();
 
         if (!IsDraft)
         {
@@ -252,11 +260,8 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         }
 
         Blueprint = blueprint;
-        foreach (var question in questions)
-        {
-            question.MarkUnreviewed();
-        }
-
+        BlueprintChangedBy = editor;
+        ResetApprovals(questions, editor, ApprovalResetReason.TestSettingsChanged);
         return Success(Unit.Value);
     }
 
@@ -316,9 +321,11 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         return Success(id);
     }
 
-    public Result<Unit, DomainError> EditQuestion(QuestionId id, DraftedQuestion draft, Func<AnswerOptionId> newOptionId)
+    /// <summary>Gives a question new content; an approved one goes back to review, and the reset is raised naming the editor.</summary>
+    public Result<Unit, DomainError> EditQuestion(QuestionId id, DraftedQuestion draft, PersonId editor, Func<AnswerOptionId> newOptionId)
     {
         Ensure.That(draft).IsNotNull();
+        Ensure.That(editor).IsNotNull();
 
         if (!IsDraft)
         {
@@ -336,7 +343,13 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
             return Failure(CourseVersionErrors.ChapterNotFound(Id, draft.Chapter));
         }
 
+        var wasApproved = question.Review == ReviewState.Approved;
         question.Edit(draft, newOptionId);
+        if (wasApproved)
+        {
+            Raise(new QuestionApprovalsReset(Id, editor, ApprovalResetReason.QuestionEdited));
+        }
+
         return Success(Unit.Value);
     }
 
@@ -437,8 +450,9 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
 
     /// <summary>
     /// Publishes the version. Every question is approved and sound, and with <see cref="ReviewPolicy.FourEyes"/> the
-    /// publishing editor is neither the one who submitted it nor one who approved any of its questions, a question copied
-    /// from the previous version included. The Application supersedes the course's previous version.
+    /// publishing editor is neither the one who submitted it, nor the one who last changed its test blueprint, nor one who
+    /// approved any of its questions, a question copied from the previous version included. The Application supersedes
+    /// the course's previous version.
     /// </summary>
     public Result<Unit, CourseVersionWorkflowError> Publish(PersonId editor, ReviewPolicy policy, Timestamp now)
     {
@@ -458,7 +472,7 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
             return Failure(CourseVersionErrors.Workflow.TestIncomplete(Id, Blueprint.Questions, QuestionCount.From(questions.Count)));
         }
 
-        if (policy == ReviewPolicy.FourEyes && editor == SubmittedBy)
+        if (policy == ReviewPolicy.FourEyes && (editor == SubmittedBy || editor == BlueprintChangedBy))
         {
             return Failure(CourseVersionErrors.Workflow.FourEyesRequired(Id));
         }
@@ -521,6 +535,22 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         Ensure.That(loaded).IsNotNull();
 
         questions.AddRange(loaded);
+    }
+
+    /// <summary>Sends the given questions back to review; when one of them was approved, raises one reset naming the editor and why.</summary>
+    private void ResetApprovals(IEnumerable<Question> reviewed, PersonId editor, ApprovalResetReason reason)
+    {
+        var approvalReset = false;
+        foreach (var question in reviewed)
+        {
+            approvalReset |= question.Review == ReviewState.Approved;
+            question.MarkUnreviewed();
+        }
+
+        if (approvalReset)
+        {
+            Raise(new QuestionApprovalsReset(Id, editor, reason));
+        }
     }
 
     /// <summary>Whether a chapter of the version other than <paramref name="chapter"/> holds the file: one file, one chapter.</summary>

@@ -20,7 +20,7 @@ public sealed class SetTestBlueprintHandler(ICourseVersionStore versions, IEdito
             return Failure(CourseVersionFailures.NotFound(command.Version.Value));
         }
 
-        var set = found.Value.SetBlueprint(command.Blueprint);
+        var set = found.Value.SetBlueprint(command.Blueprint, command.Editor);
         if (set.IsFailure)
         {
             return Failure(CourseVersionFailures.From(set.Error));

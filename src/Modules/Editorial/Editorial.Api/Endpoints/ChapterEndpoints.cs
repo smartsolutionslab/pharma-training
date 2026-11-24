@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Security.Claims;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Api;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application;
@@ -17,8 +18,9 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Api.Endpoints;
 
 /// <summary>
 /// An editor adds, replaces, removes and reorders the chapters of a draft: Markdown text, or a PDF or video uploaded
-/// through a URL the uploads endpoint issued. What the caller got wrong is
-/// refused before it becomes a value object, whose factory would throw on it; the empty Guid is no version or chapter.
+/// through a URL the uploads endpoint issued. A replacement resets its questions' approvals in the caller's name, so a
+/// caller whose token names no person is refused (403 <c>editorial.identity-incomplete</c>) before the body is checked.
+/// What the caller got wrong is refused before it becomes a value object, whose factory would throw on it; the empty Guid is no version or chapter.
 /// </summary>
 public sealed class ChapterEndpoints : IEndpoint
 {
@@ -54,11 +56,17 @@ public sealed class ChapterEndpoints : IEndpoint
             return (await dispatcher.SendAsync(addText, cancellationToken)).ToCreatedHttpResult(Location);
         }).RequireAuthorization(EditorialPolicyNames.Edit);
 
-        endpoints.MapPut("/course-versions/{id:guid}/chapters/{chapterId:guid}", async (Guid id, Guid chapterId, EditorialChapterRequest request, IDispatcher dispatcher, CancellationToken cancellationToken) =>
+        endpoints.MapPut("/course-versions/{id:guid}/chapters/{chapterId:guid}", async (Guid id, Guid chapterId, EditorialChapterRequest request, ClaimsPrincipal user, IDispatcher dispatcher, CancellationToken cancellationToken) =>
         {
             if (Unknown(id, chapterId) is { HasValue: true } unknown)
             {
                 return Result<Unit, ApiError>.Failure(unknown.Value).ToHttpResult();
+            }
+
+            var editor = EditorialCaller.PersonOf(user);
+            if (!editor.HasValue)
+            {
+                return Result<Unit, ApiError>.Failure(CourseVersionFailures.IdentityIncomplete()).ToHttpResult();
             }
 
             var parsed = Content(request);
@@ -72,11 +80,11 @@ public sealed class ChapterEndpoints : IEndpoint
             var chapter = ChapterId.From(chapterId);
             if (content.File is { } file)
             {
-                var replaceFile = new ReplaceFileChapter(version, chapter, content.Title, content.Kind, file, content.Duration);
+                var replaceFile = new ReplaceFileChapter(version, chapter, content.Title, content.Kind, file, content.Duration, editor.Value);
                 return (await dispatcher.SendAsync(replaceFile, cancellationToken)).ToHttpResult();
             }
 
-            var replaceText = new ReplaceTextChapter(version, chapter, content.Title, content.Text ?? throw new UnreachableException("A text chapter has its text."));
+            var replaceText = new ReplaceTextChapter(version, chapter, content.Title, content.Text ?? throw new UnreachableException("A text chapter has its text."), editor.Value);
             return (await dispatcher.SendAsync(replaceText, cancellationToken)).ToHttpResult();
         }).RequireAuthorization(EditorialPolicyNames.Edit);
 

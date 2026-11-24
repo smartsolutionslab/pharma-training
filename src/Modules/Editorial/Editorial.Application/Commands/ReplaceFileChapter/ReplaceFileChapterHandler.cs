@@ -50,7 +50,7 @@ public sealed class ReplaceFileChapterHandler(ICourseVersionStore versions, IEdi
             }
         }
 
-        var changed = found.Value.ReplaceChapter(FileChapters.Of(command.Chapter, command.Title, command.Kind, command.File, command.Duration));
+        var changed = found.Value.ReplaceChapter(FileChapters.Of(command.Chapter, command.Title, command.Kind, command.File, command.Duration), command.Editor);
         if (changed.IsFailure)
         {
             return Failure(CourseVersionFailures.From(changed.Error));
