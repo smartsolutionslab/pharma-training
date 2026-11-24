@@ -32,8 +32,8 @@ public class InvitationMailedTests
         var membership = TestPharmacies.Invite(pharmacy, Anna.Value);
 
         pharmacy.Membership(membership).InvitationVersion.ShouldBe(InvitationVersion.First);
-        pharmacy.RenewInvitation(membership, Now()).IsSuccess.ShouldBeTrue();
-        pharmacy.RenewInvitation(membership, Now()).IsSuccess.ShouldBeTrue();
+        pharmacy.RenewInvitation(membership, Timestamp.From(time.GetUtcNow().AddMinutes(10)), InvitationMailLimits.Default).IsSuccess.ShouldBeTrue();
+        pharmacy.RenewInvitation(membership, Timestamp.From(time.GetUtcNow().AddMinutes(20)), InvitationMailLimits.Default).IsSuccess.ShouldBeTrue();
 
         pharmacy.Membership(membership).InvitationVersion.ShouldBe(InvitationVersion.From(3));
         pharmacy.Membership(membership).InvitationVersion.Value.ShouldBe(3);
@@ -73,7 +73,7 @@ public class InvitationMailedTests
         switch (which)
         {
             case "renewed":
-                pharmacy.RenewInvitation(membership, Now()).IsSuccess.ShouldBeTrue();
+                pharmacy.RenewInvitation(membership, Timestamp.From(time.GetUtcNow().AddMinutes(10)), InvitationMailLimits.Default).IsSuccess.ShouldBeTrue();
                 break;
             case "revoked":
                 pharmacy.RevokeInvitation(membership).IsSuccess.ShouldBeTrue();
@@ -141,7 +141,7 @@ public class InvitationMailedTests
         mails.SendAsync(Arg.Any<OutgoingMail>(), Arg.Any<CancellationToken>()).Returns(_ =>
         {
             // The renewal lands on the consumer's own copy between the send and the mark, so the mark is refused.
-            pharmacy.RenewInvitation(membership, Now()).IsSuccess.ShouldBeTrue();
+            pharmacy.RenewInvitation(membership, Timestamp.From(time.GetUtcNow().AddMinutes(10)), InvitationMailLimits.Default).IsSuccess.ShouldBeTrue();
             return Task.CompletedTask;
         });
 
