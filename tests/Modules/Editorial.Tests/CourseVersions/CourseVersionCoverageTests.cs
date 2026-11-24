@@ -107,7 +107,7 @@ public class CourseVersionCoverageTests
         version.AddChapter(TextChapter(second, "Flächendesinfektion", "Wischen.")).IsSuccess.ShouldBeTrue();
         var stored = version.Chapters[0];
 
-        var replaced = version.ReplaceChapter(Chapter.OfPdf(first, ChapterTitle.From("Hygieneplan"), BlobReference.From("courses/plan.pdf")));
+        var replaced = version.ReplaceChapter(Chapter.OfPdf(first, ChapterTitle.From("Hygieneplan"), BlobReference.From("courses/plan.pdf")), Author);
 
         replaced.IsSuccess.ShouldBeTrue();
         version.Chapters.Select(chapter => chapter.Id).ShouldBe([first, second]);
@@ -125,7 +125,7 @@ public class CourseVersionCoverageTests
     {
         var version = DraftWithChapter(out var chapter);
 
-        version.ReplaceChapter(Chapter.OfVideo(chapter, ChapterTitle.From("Vorführung"), BlobReference.From("courses/demo.mp4"), VideoDuration.From(90)))
+        version.ReplaceChapter(Chapter.OfVideo(chapter, ChapterTitle.From("Vorführung"), BlobReference.From("courses/demo.mp4"), VideoDuration.From(90)), Author)
             .IsSuccess.ShouldBeTrue();
 
         var replaced = version.Chapters.ShouldHaveSingleItem();
@@ -140,7 +140,7 @@ public class CourseVersionCoverageTests
         var version = DraftWithChapter(out var chapter);
         var stranger = ChapterId.New();
 
-        var replaced = version.ReplaceChapter(TextChapter(stranger));
+        var replaced = version.ReplaceChapter(TextChapter(stranger), Author);
         var removed = version.RemoveChapter(stranger);
 
         replaced.Error.ShouldBe(new ChapterNotFound(version.Id, stranger));
@@ -199,7 +199,7 @@ public class CourseVersionCoverageTests
         var blueprint = new TestBlueprint(QuestionCount.From(5), ScorePercent.From(70), RecurrenceInterval.From(24));
 
         version.Rename(CourseTitle.From("Hygiene 2028")).IsSuccess.ShouldBeTrue();
-        version.SetBlueprint(blueprint).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(blueprint, Author).IsSuccess.ShouldBeTrue();
 
         version.Title.ShouldBe(CourseTitle.From("Hygiene 2028"));
         version.Blueprint.ShouldBe(blueprint);
@@ -250,7 +250,7 @@ public class CourseVersionCoverageTests
             chapter,
             [(AnswerText.From("Waschen"), Correctness.Correct), (AnswerText.From("Desinfizieren"), Correctness.Correct), (AnswerText.From("Nichts"), Correctness.Incorrect)]);
 
-        version.EditQuestion(id, multiple, AnswerOptionId.New).IsSuccess.ShouldBeTrue();
+        version.EditQuestion(id, multiple, Author, AnswerOptionId.New).IsSuccess.ShouldBeTrue();
 
         var question = version.Questions.ShouldHaveSingleItem();
         question.Text.ShouldBe(QuestionText.From("Was gehört zur Händehygiene?"));
@@ -265,7 +265,7 @@ public class CourseVersionCoverageTests
         var version = DraftWithChapter(out var chapter);
         var stranger = QuestionId.New();
 
-        var edited = version.EditQuestion(stranger, SingleChoice(chapter), AnswerOptionId.New);
+        var edited = version.EditQuestion(stranger, SingleChoice(chapter), Author, AnswerOptionId.New);
         var removed = version.RemoveQuestion(stranger);
         var approved = version.ApproveQuestion(stranger, Author, AuthorsName, Now);
 
@@ -343,7 +343,7 @@ public class CourseVersionCoverageTests
     public void A_question_in_review_can_still_be_approved()
     {
         var version = DraftWithChapter(out var chapter);
-        version.SetBlueprint(new TestBlueprint(QuestionCount.From(1), ScorePercent.From(80), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(new TestBlueprint(QuestionCount.From(1), ScorePercent.From(80), RecurrenceInterval.Yearly), Author).IsSuccess.ShouldBeTrue();
         var id = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
         version.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
 
@@ -462,7 +462,7 @@ public class CourseVersionCoverageTests
         var unapproved = Draft();
         var chapter = ChapterId.New();
         unapproved.AddChapter(TextChapter(chapter)).IsSuccess.ShouldBeTrue();
-        unapproved.SetBlueprint(new TestBlueprint(QuestionCount.From(1), ScorePercent.From(80), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
+        unapproved.SetBlueprint(new TestBlueprint(QuestionCount.From(1), ScorePercent.From(80), RecurrenceInterval.Yearly), Author).IsSuccess.ShouldBeTrue();
         unapproved.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).IsSuccess.ShouldBeTrue();
         unapproved.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
         var approved = InReview();
@@ -578,14 +578,14 @@ public class CourseVersionCoverageTests
     private static DomainError Refusal(CourseVersion version, ChapterId chapter, string edit) => edit switch
     {
         "add a chapter" => version.AddChapter(TextChapter(ChapterId.New())).Error,
-        "replace a chapter" => version.ReplaceChapter(TextChapter(chapter, "Neu", "Neu: …")).Error,
+        "replace a chapter" => version.ReplaceChapter(TextChapter(chapter, "Neu", "Neu: …"), Author).Error,
         "remove a chapter" => version.RemoveChapter(chapter).Error,
         "reorder the chapters" => version.ReorderChapters([chapter]).Error,
         "rename" => version.Rename(CourseTitle.From("Anders")).Error,
-        "set the blueprint" => version.SetBlueprint(TestBlueprint.Default).Error,
+        "set the blueprint" => version.SetBlueprint(TestBlueprint.Default, Author).Error,
         "apply an ai test draft" => version.ApplyAiTestDraft([SingleChoice(chapter)], QuestionId.New, AnswerOptionId.New).Error,
         "add a question" => version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Error,
-        "edit a question" => version.EditQuestion(version.Questions.Single().Id, SingleChoice(chapter), AnswerOptionId.New).Error,
+        "edit a question" => version.EditQuestion(version.Questions.Single().Id, SingleChoice(chapter), Author, AnswerOptionId.New).Error,
         "remove a question" => version.RemoveQuestion(version.Questions.Single().Id).Error,
         _ => throw new InvalidOperationException($"No edit is called '{edit}'."),
     };

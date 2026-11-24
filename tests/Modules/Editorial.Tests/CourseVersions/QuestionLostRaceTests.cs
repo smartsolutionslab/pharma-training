@@ -40,7 +40,7 @@ public class QuestionLostRaceTests
     public async Task An_edited_question_that_lost_the_race_is_told_the_version_changed()
     {
         var edited = await new EditQuestionHandler(store, lostRace)
-            .HandleAsync(new EditQuestion(version.Id, question, MultipleChoice(chapter)), TestContext.Current.CancellationToken);
+            .HandleAsync(new EditQuestion(version.Id, question, MultipleChoice(chapter), Author), TestContext.Current.CancellationToken);
 
         ShouldBeChanged(edited.Error);
     }

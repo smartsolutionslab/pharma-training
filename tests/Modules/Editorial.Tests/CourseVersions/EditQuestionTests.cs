@@ -1,6 +1,7 @@
 using System.Net;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.EditQuestion;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions.Events;
 using static SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersions.CourseVersionBuilder;
 using static SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersions.QuestionDrafts;
 
@@ -15,7 +16,7 @@ public class EditQuestionTests
         var version = DraftWithApprovedQuestion(out var chapter, out var id);
         store.Stored.Add(version);
 
-        var edited = await Handler(store).HandleAsync(new EditQuestion(version.Id, id, MultipleChoice(chapter)), TestContext.Current.CancellationToken);
+        var edited = await Handler(store).HandleAsync(new EditQuestion(version.Id, id, MultipleChoice(chapter), Author), TestContext.Current.CancellationToken);
 
         edited.IsSuccess.ShouldBeTrue();
         var question = version.Questions.ShouldHaveSingleItem();
@@ -44,7 +45,7 @@ public class EditQuestionTests
         var id = version.Questions.ShouldHaveSingleItem().Id;
         store.Stored.Add(version);
 
-        var edited = await Handler(store).HandleAsync(new EditQuestion(version.Id, id, MultipleChoice(chapter)), TestContext.Current.CancellationToken);
+        var edited = await Handler(store).HandleAsync(new EditQuestion(version.Id, id, MultipleChoice(chapter), Author), TestContext.Current.CancellationToken);
 
         edited.IsSuccess.ShouldBeTrue();
         version.Questions.ShouldHaveSingleItem().Provenance.ShouldBe(Provenance.AiDrafted);
@@ -55,7 +56,7 @@ public class EditQuestionTests
     {
         var store = new InMemoryCourseVersionStore();
 
-        var edited = await Handler(store).HandleAsync(new EditQuestion(CourseVersionId.New(), QuestionId.New(), SingleChoice(ChapterId.New())), TestContext.Current.CancellationToken);
+        var edited = await Handler(store).HandleAsync(new EditQuestion(CourseVersionId.New(), QuestionId.New(), SingleChoice(ChapterId.New()), Author), TestContext.Current.CancellationToken);
 
         edited.Error.Code.ShouldBe("editorial.course-version-not-found");
         edited.Error.Status.ShouldBe(HttpStatusCode.NotFound);
@@ -69,7 +70,7 @@ public class EditQuestionTests
         var version = DraftWithQuestion(out var chapter, out _);
         store.Stored.Add(version);
 
-        var edited = await Handler(store).HandleAsync(new EditQuestion(version.Id, QuestionId.New(), MultipleChoice(chapter)), TestContext.Current.CancellationToken);
+        var edited = await Handler(store).HandleAsync(new EditQuestion(version.Id, QuestionId.New(), MultipleChoice(chapter), Author), TestContext.Current.CancellationToken);
 
         edited.Error.Code.ShouldBe("editorial.question-not-found");
         edited.Error.Status.ShouldBe(HttpStatusCode.NotFound);
@@ -84,7 +85,7 @@ public class EditQuestionTests
         var question = version.Questions.ShouldHaveSingleItem();
         store.Stored.Add(version);
 
-        var edited = await Handler(store).HandleAsync(new EditQuestion(version.Id, question.Id, MultipleChoice(chapter)), TestContext.Current.CancellationToken);
+        var edited = await Handler(store).HandleAsync(new EditQuestion(version.Id, question.Id, MultipleChoice(chapter), Author), TestContext.Current.CancellationToken);
 
         edited.Error.Code.ShouldBe("editorial.not-a-draft");
         edited.Error.Status.ShouldBe(HttpStatusCode.Conflict);
@@ -101,7 +102,7 @@ public class EditQuestionTests
         var question = version.Questions.ShouldHaveSingleItem();
         store.Stored.Add(version);
 
-        var edited = await Handler(store).HandleAsync(new EditQuestion(version.Id, question.Id, MultipleChoice(ChapterId.New())), TestContext.Current.CancellationToken);
+        var edited = await Handler(store).HandleAsync(new EditQuestion(version.Id, question.Id, MultipleChoice(ChapterId.New()), Author), TestContext.Current.CancellationToken);
 
         edited.Error.Code.ShouldBe("editorial.not-a-draft");
         edited.Error.Status.ShouldBe(HttpStatusCode.Conflict);
@@ -116,7 +117,7 @@ public class EditQuestionTests
         var version = DraftWithQuestion(out _, out _);
         store.Stored.Add(version);
 
-        var edited = await Handler(store).HandleAsync(new EditQuestion(version.Id, QuestionId.New(), MultipleChoice(ChapterId.New())), TestContext.Current.CancellationToken);
+        var edited = await Handler(store).HandleAsync(new EditQuestion(version.Id, QuestionId.New(), MultipleChoice(ChapterId.New()), Author), TestContext.Current.CancellationToken);
 
         edited.Error.Code.ShouldBe("editorial.question-not-found");
         edited.Error.Status.ShouldBe(HttpStatusCode.NotFound);
@@ -131,12 +132,28 @@ public class EditQuestionTests
         var question = version.Questions.ShouldHaveSingleItem();
         store.Stored.Add(version);
 
-        var edited = await Handler(store).HandleAsync(new EditQuestion(version.Id, id, MultipleChoice(ChapterId.New())), TestContext.Current.CancellationToken);
+        var edited = await Handler(store).HandleAsync(new EditQuestion(version.Id, id, MultipleChoice(ChapterId.New()), Author), TestContext.Current.CancellationToken);
 
         edited.Error.Code.ShouldBe("editorial.chapter-not-found");
         edited.Error.Status.ShouldBe(HttpStatusCode.NotFound);
         question.Type.ShouldBe(QuestionType.SingleChoice);
         store.Commits.ShouldBe(0);
+    }
+
+    /// <summary>The reset names the editor the command carries, who need not be the one who approved (#246).</summary>
+    [Fact]
+    public async Task The_reset_names_the_commands_editor()
+    {
+        var store = new InMemoryCourseVersionStore();
+        var version = DraftWithApprovedQuestion(out var chapter, out var id);
+        store.Stored.Add(version);
+
+        var edited = await Handler(store).HandleAsync(new EditQuestion(version.Id, id, MultipleChoice(chapter), Reviewer), TestContext.Current.CancellationToken);
+
+        edited.IsSuccess.ShouldBeTrue();
+        version.DomainEvents.OfType<QuestionApprovalsReset>().ShouldHaveSingleItem()
+            .ShouldBe(new QuestionApprovalsReset(version.Id, Reviewer, ApprovalResetReason.QuestionEdited));
+        store.Commits.ShouldBe(1);
     }
 
     private static EditQuestionHandler Handler(InMemoryCourseVersionStore store) => new(store, store);

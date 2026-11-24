@@ -15,7 +15,7 @@ public class AiTestDraftApplyTests
     public void Applying_a_draft_returns_the_ids_of_the_drafted_questions_in_their_order()
     {
         var version = DraftWithQuestion(out var chapter, out var approved);
-        version.SetBlueprint(new TestBlueprint(QuestionCount.From(3), ScorePercent.From(80), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(new TestBlueprint(QuestionCount.From(3), ScorePercent.From(80), RecurrenceInterval.Yearly), Author).IsSuccess.ShouldBeTrue();
         version.ApproveQuestion(approved, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
         var first = QuestionId.New();
         var second = QuestionId.New();
@@ -46,7 +46,7 @@ public class AiTestDraftApplyTests
     public void Ai_drafted_questions_keep_the_version_from_being_published_until_each_is_approved()
     {
         var version = DraftWithChapter(out var chapter);
-        version.SetBlueprint(new TestBlueprint(QuestionCount.From(2), ScorePercent.From(80), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(new TestBlueprint(QuestionCount.From(2), ScorePercent.From(80), RecurrenceInterval.Yearly), Author).IsSuccess.ShouldBeTrue();
         var first = QuestionId.New();
         var second = QuestionId.New();
         var handedOut = new Queue<QuestionId>([first, second]);

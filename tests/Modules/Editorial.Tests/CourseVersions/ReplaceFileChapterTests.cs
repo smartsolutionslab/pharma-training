@@ -2,6 +2,7 @@ using System.Net;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.ReplaceFileChapter;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions.Events;
 using static SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersions.AddFileChapterTests;
 using static SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersions.CourseVersionBuilder;
 
@@ -64,7 +65,7 @@ public class ReplaceFileChapterTests
         store.Stored.Add(next);
 
         var replaced = await Handler().HandleAsync(
-            new ReplaceFileChapter(next.Id, chapter, ChapterTitle.From("Hygieneplan 2028"), ChapterKind.Pdf, file, null),
+            new ReplaceFileChapter(next.Id, chapter, ChapterTitle.From("Hygieneplan 2028"), ChapterKind.Pdf, file, null, Author),
             TestContext.Current.CancellationToken);
 
         replaced.IsSuccess.ShouldBeTrue(replaced.IsFailure ? replaced.Error.Code : string.Empty);
@@ -104,7 +105,7 @@ public class ReplaceFileChapterTests
         version.AddChapter(Chapter.OfPdf(pdf, ChapterTitle.From("Hygieneplan"), BlobReference.From(file))).IsSuccess.ShouldBeTrue();
 
         var replaced = await Handler().HandleAsync(
-            new ReplaceFileChapter(version.Id, pdf, ChapterTitle.From("Hygieneplan 2028"), ChapterKind.Pdf, BlobReference.From(file), null),
+            new ReplaceFileChapter(version.Id, pdf, ChapterTitle.From("Hygieneplan 2028"), ChapterKind.Pdf, BlobReference.From(file), null, Author),
             TestContext.Current.CancellationToken);
 
         replaced.IsSuccess.ShouldBeTrue(replaced.IsFailure ? replaced.Error.Code : string.Empty);
@@ -295,6 +296,27 @@ public class ReplaceFileChapterTests
         store.Commits.ShouldBe(0);
     }
 
+    /// <summary>The reset names the editor the command carries, who need not be the one who approved (#246).</summary>
+    [Fact]
+    public async Task The_reset_names_the_commands_editor()
+    {
+        var version = DraftWithChapter(out var chapter);
+        var question = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
+        version.ApproveQuestion(question, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
+        store.Stored.Add(version);
+        var file = IssuedName(version.Id, ".pdf");
+        blobs.Upload(file, "application/pdf", 1024);
+
+        var replaced = await Handler().HandleAsync(
+            new ReplaceFileChapter(version.Id, chapter, ChapterTitle.From("Hygieneplan"), ChapterKind.Pdf, BlobReference.From(file), null, Reviewer),
+            TestContext.Current.CancellationToken);
+
+        replaced.IsSuccess.ShouldBeTrue(replaced.IsFailure ? replaced.Error.Code : string.Empty);
+        version.DomainEvents.OfType<QuestionApprovalsReset>().ShouldHaveSingleItem()
+            .ShouldBe(new QuestionApprovalsReset(version.Id, Reviewer, ApprovalResetReason.ChapterReplaced));
+        store.Commits.ShouldBe(1);
+    }
+
     /// <summary>The next draft of a published version whose one chapter is a PDF, named under the published version.</summary>
     internal static (CourseVersion Next, ChapterId Chapter, BlobReference File) NextOfPublishedWithPdf()
     {
@@ -302,7 +324,7 @@ public class ReplaceFileChapterTests
         var chapter = ChapterId.New();
         var file = BlobReference.From(IssuedName(first.Id, ".pdf"));
         first.AddChapter(Chapter.OfPdf(chapter, ChapterTitle.From("Hygieneplan"), file)).IsSuccess.ShouldBeTrue();
-        first.SetBlueprint(new TestBlueprint(QuestionCount.From(1), ScorePercent.From(80), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
+        first.SetBlueprint(new TestBlueprint(QuestionCount.From(1), ScorePercent.From(80), RecurrenceInterval.Yearly), Author).IsSuccess.ShouldBeTrue();
         var question = first.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
         first.ApproveQuestion(question, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
         first.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
@@ -312,7 +334,7 @@ public class ReplaceFileChapterTests
     }
 
     private static ReplaceFileChapter Command(CourseVersionId version, ChapterId chapter, ChapterKind kind, string file, VideoDuration? duration = null) =>
-        new(version, chapter, ChapterTitle.From("Hygieneplan"), kind, BlobReference.From(file), duration);
+        new(version, chapter, ChapterTitle.From("Hygieneplan"), kind, BlobReference.From(file), duration, Author);
 
     private ReplaceFileChapterHandler Handler() => new(store, store, blobs);
 }

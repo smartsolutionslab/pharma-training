@@ -26,7 +26,7 @@ public class CourseVersionTests
     public void An_ai_draft_replaces_unreviewed_questions_but_keeps_approved_ones()
     {
         var version = DraftWithChapter(out var chapter);
-        version.SetBlueprint(Blueprint(questions: 3));
+        version.SetBlueprint(Blueprint(questions: 3), Author);
         version.ApplyAiTestDraft([Single(chapter), Single(chapter)], NewQuestion, NewOption);
         var kept = version.Questions[0].Id;
         version.ApproveQuestion(kept, Author, AuthorsName, Now);
@@ -45,7 +45,7 @@ public class CourseVersionTests
         var question = version.AddQuestion(NewQuestion(), Single(chapter), NewOption).Value;
         version.ApproveQuestion(question, Author, AuthorsName, Now);
 
-        version.EditQuestion(question, Single(chapter), NewOption);
+        version.EditQuestion(question, Single(chapter), Author, NewOption);
 
         version.Questions.Single().Review.ShouldBe(ReviewState.Unreviewed);
         version.Questions.Single().ReviewedBy.ShouldBeNull();
@@ -58,7 +58,7 @@ public class CourseVersionTests
         var question = version.AddQuestion(NewQuestion(), Single(chapter), NewOption).Value;
         version.ApproveQuestion(question, Author, AuthorsName, Now);
 
-        version.ReplaceChapter(Chapter.OfText(chapter, ChapterTitle.From("Händehygiene"), MarkdownText.From("Neu: …")));
+        version.ReplaceChapter(Chapter.OfText(chapter, ChapterTitle.From("Händehygiene"), MarkdownText.From("Neu: …")), Author);
 
         version.Questions.Single().Review.ShouldBe(ReviewState.Unreviewed);
     }
@@ -92,7 +92,7 @@ public class CourseVersionTests
     public void A_test_short_of_its_blueprint_cannot_be_submitted()
     {
         var version = DraftWithChapter(out var chapter);
-        version.SetBlueprint(Blueprint(questions: 2));
+        version.SetBlueprint(Blueprint(questions: 2), Author);
         version.AddQuestion(NewQuestion(), Single(chapter), NewOption);
 
         version.SubmitForReview(Author).Error.Value.ShouldBeOfType<TestIncomplete>();
@@ -190,11 +190,11 @@ public class CourseVersionTests
     {
         var version = DraftWithChapter(out var chapter);
 
-        version.ReplaceChapter(Chapter.OfVideo(chapter, ChapterTitle.From("Vorführung"), BlobReference.From("course-versions/a/demo.mp4"), VideoDuration.From(90))).IsSuccess.ShouldBeTrue();
+        version.ReplaceChapter(Chapter.OfVideo(chapter, ChapterTitle.From("Vorführung"), BlobReference.From("course-versions/a/demo.mp4"), VideoDuration.From(90)), Author).IsSuccess.ShouldBeTrue();
         var asVideo = version.Chapters.Single();
         (asVideo.Kind, asVideo.File, asVideo.Duration, asVideo.Text).ShouldBe((ChapterKind.Video, BlobReference.From("course-versions/a/demo.mp4"), VideoDuration.From(90), (MarkdownText?)null));
 
-        version.ReplaceChapter(Chapter.OfPdf(chapter, ChapterTitle.From("Hygieneplan"), BlobReference.From("course-versions/a/plan.pdf"))).IsSuccess.ShouldBeTrue();
+        version.ReplaceChapter(Chapter.OfPdf(chapter, ChapterTitle.From("Hygieneplan"), BlobReference.From("course-versions/a/plan.pdf")), Author).IsSuccess.ShouldBeTrue();
         var asPdf = version.Chapters.Single();
         (asPdf.Kind, asPdf.File, asPdf.Duration, asPdf.Text).ShouldBe((ChapterKind.Pdf, BlobReference.From("course-versions/a/plan.pdf"), (VideoDuration?)null, (MarkdownText?)null));
     }
@@ -213,7 +213,7 @@ public class CourseVersionTests
     private static CourseVersion Submitted(bool approveAll)
     {
         var version = DraftWithChapter(out var chapter);
-        version.SetBlueprint(Blueprint(questions: 1));
+        version.SetBlueprint(Blueprint(questions: 1), Author);
         var question = version.AddQuestion(NewQuestion(), Single(chapter), NewOption).Value;
         if (approveAll)
         {

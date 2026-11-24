@@ -39,7 +39,7 @@ public class LostRaceTests
     public async Task A_replaced_chapter_that_lost_the_race_is_told_the_version_changed()
     {
         var replaced = await new ReplaceTextChapterHandler(store, lostRace)
-            .HandleAsync(new ReplaceTextChapter(version.Id, chapter, ChapterTitle.From("Neu"), MarkdownText.From("Neu.")), TestContext.Current.CancellationToken);
+            .HandleAsync(new ReplaceTextChapter(version.Id, chapter, ChapterTitle.From("Neu"), MarkdownText.From("Neu."), Author), TestContext.Current.CancellationToken);
 
         ShouldBeChanged(replaced.Error);
     }
@@ -66,7 +66,7 @@ public class LostRaceTests
         blobs.Upload(file, "video/mp4", 1024);
 
         var replaced = await new ReplaceFileChapterHandler(store, lostRace, blobs)
-            .HandleAsync(new ReplaceFileChapter(version.Id, chapter, ChapterTitle.From("Neu"), ChapterKind.Video, BlobReference.From(file), VideoDuration.From(90)), TestContext.Current.CancellationToken);
+            .HandleAsync(new ReplaceFileChapter(version.Id, chapter, ChapterTitle.From("Neu"), ChapterKind.Video, BlobReference.From(file), VideoDuration.From(90), Author), TestContext.Current.CancellationToken);
 
         replaced.IsFailure.ShouldBeTrue();
         ShouldBeChanged(replaced.Error);

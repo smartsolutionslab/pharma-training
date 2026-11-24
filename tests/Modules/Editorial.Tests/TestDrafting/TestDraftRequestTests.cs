@@ -61,7 +61,7 @@ public class TestDraftRequestTests
             version.AddChapter(TextChapter(ChapterId.New(), $"Kapitel {index + 1}")).IsSuccess.ShouldBeTrue();
         }
 
-        version.SetBlueprint(Blueprint(questions)).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(Blueprint(questions), Author).IsSuccess.ShouldBeTrue();
 
         var request = TestDraftRequest.For(version).Value;
 
@@ -73,7 +73,7 @@ public class TestDraftRequestTests
     public void Approved_questions_are_subtracted_and_unreviewed_ones_are_not()
     {
         var version = DraftWithChapter(out var chapter);
-        version.SetBlueprint(Blueprint(5)).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(Blueprint(5), Author).IsSuccess.ShouldBeTrue();
         var approved = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
         var otherApproved = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
         version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).IsSuccess.ShouldBeTrue();
@@ -124,7 +124,7 @@ public class TestDraftRequestTests
     public void Approved_questions_that_fill_the_blueprint_leave_nothing_to_draft(int blueprint, int approved)
     {
         var version = DraftWithChapter(out var chapter);
-        version.SetBlueprint(Blueprint(blueprint)).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(Blueprint(blueprint), Author).IsSuccess.ShouldBeTrue();
         for (var index = 0; index < approved; index++)
         {
             var question = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;

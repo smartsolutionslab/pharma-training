@@ -179,7 +179,7 @@ public class DraftNextVersionTests
     private static CourseVersion PublishedWithQuestionsApprovedBy(PersonId approver, Timestamp approvedAt)
     {
         var version = DraftWithChapter(out var chapter);
-        version.SetBlueprint(new TestBlueprint(QuestionCount.From(2), ScorePercent.From(80), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(new TestBlueprint(QuestionCount.From(2), ScorePercent.From(80), RecurrenceInterval.Yearly), Author).IsSuccess.ShouldBeTrue();
         var first = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
         var second = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
         version.ApproveQuestion(first, approver, ApproversName, approvedAt).IsSuccess.ShouldBeTrue();

@@ -172,7 +172,7 @@ public class IntegrationEventMappingsTests
         version.AddChapter(Chapter.OfText(text, ChapterTitle.From("Grundlagen"), MarkdownText.From("# Grundlagen"))).IsSuccess.ShouldBeTrue();
         version.AddChapter(Chapter.OfPdf(pdf, ChapterTitle.From("Merkblatt"), BlobReference.From("courses/kuehlkette/merkblatt.pdf"))).IsSuccess.ShouldBeTrue();
         version.AddChapter(Chapter.OfVideo(video, ChapterTitle.From("Praxis"), BlobReference.From("courses/kuehlkette/praxis.mp4"), VideoDuration.From(754))).IsSuccess.ShouldBeTrue();
-        version.SetBlueprint(new TestBlueprint(QuestionCount.From(2), ScorePercent.From(70), RecurrenceInterval.From(24))).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(new TestBlueprint(QuestionCount.From(2), ScorePercent.From(70), RecurrenceInterval.From(24)), Author).IsSuccess.ShouldBeTrue();
 
         var temperature = version.AddQuestion(
             QuestionId.New(),
