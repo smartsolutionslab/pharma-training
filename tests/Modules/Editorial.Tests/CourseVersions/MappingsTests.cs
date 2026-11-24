@@ -94,15 +94,16 @@ public class MappingsTests
         ]);
     }
 
-    /// <summary>Each count lands in its own field: the three differ, so a swap shows.</summary>
+    /// <summary>Each count lands in its own field: the four differ, so a swap shows.</summary>
     [Fact]
-    public void Republished_events_map_to_a_dto_with_their_three_counts()
+    public void Republished_events_map_to_a_dto_with_their_four_counts()
     {
-        var dto = new RepublishedEvents(5, 4, 2).ToDto();
+        var dto = new RepublishedEvents(5, 4, 3, 2).ToDto();
 
-        dto.ShouldBe(new EditorialRepublishedEventsDto(5, 4, 2));
+        dto.ShouldBe(new EditorialRepublishedEventsDto(5, 4, 3, 2));
         dto.CourseVersions.ShouldBe(5);
         dto.TestDefinitions.ShouldBe(4);
+        dto.FileReleases.ShouldBe(3);
         dto.Retirements.ShouldBe(2);
     }
 }

@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Storage;
 using SmartSolutionsLab.PharmaTraining.Contracts;
 using SmartSolutionsLab.PharmaTraining.Contracts.Editorial;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application;
@@ -19,7 +20,9 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersion
 /// An editor republishes what Editorial announced about its course versions (#189), for a subscriber that bound its
 /// queue after the events went out: every version that was published gets its <see cref="CourseVersionPublishedV1"/>
 /// and its <see cref="TestDefinitionPublishedV1"/> again, and every version that was retired its
-/// <see cref="CourseVersionRetiredV1"/>, by course and version number, one commit per version. The versions reach
+/// <see cref="CourseVersionRetiredV1"/>, by course and version number, one commit per version. A published version with
+/// PDF or video chapters gets its <see cref="ChapterFilesReleasedV1"/> too, with read URLs signed when it runs (#264),
+/// since the ones first released expired fifteen minutes after the publish. The versions reach
 /// their states through the module's own handlers on the same store, so the events first announced are in
 /// <see cref="InMemoryCourseVersionStore.Published"/> before the republish runs.
 /// </summary>
@@ -35,6 +38,14 @@ public class RepublishCourseVersionsTests
 
     private readonly InMemoryCourseVersionStore store = new();
     private readonly FakeTimeProvider time = new(Start);
+    private readonly FakeBlobUrls publishUrls;
+    private readonly FakeBlobUrls urls;
+
+    public RepublishCourseVersionsTests()
+    {
+        publishUrls = new FakeBlobUrls(time);
+        urls = new FakeBlobUrls(time);
+    }
 
     [Fact]
     public async Task Every_published_version_is_announced_again_with_its_test_definition()
@@ -197,6 +208,96 @@ public class RepublishCourseVersionsTests
         republished.Value.Retirements.ShouldBe(1);
     }
 
+    /// <summary>
+    /// #264: the first release's URLs lived fifteen minutes after the publish, so the republish signs new ones, the way
+    /// the publish signs them: on each PDF and video chapter's file, for the longest a URL lives, inline with the kind's
+    /// type, expiring fifteen minutes after the republish.
+    /// </summary>
+    [Fact]
+    public async Task A_version_with_files_has_them_released_again_with_read_urls_signed_when_it_is_republished()
+    {
+        var version = InReviewWithFiles(out var pdf, out var video);
+        store.Stored.Add(version);
+        await PublishAsync(version);
+        var original = store.Published.OfType<ChapterFilesReleasedV1>().ShouldHaveSingleItem();
+        time.Advance(TimeSpan.FromHours(2));
+        var before = store.Published.Count;
+        var pdfFile = BlobName.From(PdfFile(version));
+        var videoFile = BlobName.From(VideoFile(version));
+        var lifetime = BlobUrlLifetime.From(BlobUrlLifetime.Maximum);
+
+        await RepublishAsync();
+
+        urls.Reads.ShouldBe(
+        [
+            (pdfFile, lifetime, BlobReadHeaders.Inline("application/pdf")),
+            (videoFile, lifetime, BlobReadHeaders.Inline("video/mp4")),
+        ]);
+        urls.Uploads.ShouldBeEmpty();
+        var released = store.Published.Skip(before).OfType<ChapterFilesReleasedV1>().ShouldHaveSingleItem();
+        released.CourseVersionId.ShouldBe(version.Id.Value);
+        released.Files.ShouldBe(
+        [
+            new ReleasedChapterFileV1(pdf.Value, ChapterKindV1.Pdf, urls.UrlFor(pdfFile, lifetime, "r").Url, Start.AddHours(2).AddMinutes(15)),
+            new ReleasedChapterFileV1(video.Value, ChapterKindV1.Video, urls.UrlFor(videoFile, lifetime, "r").Url, Start.AddHours(2).AddMinutes(15)),
+        ]);
+        original.Files.Select(file => file.ExpiresAt).ShouldAllBe(expiresAt => expiresAt == Start.AddMinutes(15));
+    }
+
+    /// <summary>The files go out as they first did, in the version's commit after its test definition, and before its retirement.</summary>
+    [Fact]
+    public async Task A_retired_version_with_files_is_announced_published_test_definition_files_then_retired_in_one_commit()
+    {
+        var version = InReviewWithFiles(out _, out _);
+        store.Stored.Add(version);
+        await PublishAsync(version);
+        await RetiredAsync(version);
+        var before = store.Published.Count;
+        var commitsBefore = store.Commits;
+
+        await RepublishAsync();
+
+        store.Published.Skip(before).Select(Describe).ShouldBe(
+        [
+            (nameof(CourseVersionPublishedV1), version.Id.Value),
+            (nameof(TestDefinitionPublishedV1), version.Id.Value),
+            (nameof(ChapterFilesReleasedV1), version.Id.Value),
+            (nameof(CourseVersionRetiredV1), version.Id.Value),
+        ]);
+        (store.Commits - commitsBefore).ShouldBe(1);
+    }
+
+    /// <summary>A text-only version released no files when it was published, so its republish signs and releases none either.</summary>
+    [Fact]
+    public async Task A_text_only_version_signs_nothing_and_releases_no_files()
+    {
+        await PublishedAsync("Hygiene 2027");
+        var before = store.Published.Count;
+
+        var republished = await RepublishAsync();
+
+        urls.Reads.ShouldBeEmpty();
+        store.Published.Skip(before).OfType<ChapterFilesReleasedV1>().ShouldBeEmpty();
+        republished.Value.FileReleases.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task The_answer_counts_the_file_releases_sent_one_per_version_with_files()
+    {
+        var withFiles = InReviewWithFiles(out _, out _);
+        store.Stored.Add(withFiles);
+        await PublishAsync(withFiles);
+        await PublishedAsync("Lagerung 2027");
+
+        var republished = await RepublishAsync();
+
+        republished.IsSuccess.ShouldBeTrue();
+        republished.Value.CourseVersions.ShouldBe(2);
+        republished.Value.TestDefinitions.ShouldBe(2);
+        republished.Value.FileReleases.ShouldBe(1);
+        republished.Value.Retirements.ShouldBe(0);
+    }
+
     [Fact]
     public async Task With_nothing_ever_published_nothing_is_announced_or_committed_and_every_count_is_zero()
     {
@@ -208,7 +309,9 @@ public class RepublishCourseVersionsTests
         republished.IsSuccess.ShouldBeTrue();
         republished.Value.CourseVersions.ShouldBe(0);
         republished.Value.TestDefinitions.ShouldBe(0);
+        republished.Value.FileReleases.ShouldBe(0);
         republished.Value.Retirements.ShouldBe(0);
+        urls.Reads.ShouldBeEmpty();
         store.Published.ShouldBeEmpty();
         store.Commits.ShouldBe(0);
     }
@@ -230,6 +333,7 @@ public class RepublishCourseVersionsTests
             CourseVersionPublishedV1 published => (nameof(CourseVersionPublishedV1), published.CourseVersionId),
             TestDefinitionPublishedV1 test => (nameof(TestDefinitionPublishedV1), test.CourseVersionId),
             CourseVersionRetiredV1 retired => (nameof(CourseVersionRetiredV1), retired.CourseVersionId),
+            ChapterFilesReleasedV1 released => (nameof(ChapterFilesReleasedV1), released.CourseVersionId),
             _ => throw new InvalidOperationException($"Editorial announced an unexpected {announced.GetType().Name}."),
         };
 
@@ -251,8 +355,27 @@ public class RepublishCourseVersionsTests
         }
     }
 
+    private static string PdfFile(CourseVersion version) => $"course-versions/{version.Id.Value:D}/0193a1b2-0000-7000-8000-000000000001.pdf";
+
+    private static string VideoFile(CourseVersion version) => $"course-versions/{version.Id.Value:D}/0193a1b2-0000-7000-8000-000000000002.mp4";
+
+    /// <summary>A version with a text, a PDF and a video chapter, in that order, and one approved question, submitted by the author.</summary>
+    private static CourseVersion InReviewWithFiles(out ChapterId pdf, out ChapterId video)
+    {
+        var version = DraftWithChapter(out var text);
+        pdf = ChapterId.New();
+        video = ChapterId.New();
+        version.AddChapter(Chapter.OfPdf(pdf, ChapterTitle.From("Merkblatt"), BlobReference.From(PdfFile(version)))).IsSuccess.ShouldBeTrue();
+        version.AddChapter(Chapter.OfVideo(video, ChapterTitle.From("Praxis"), BlobReference.From(VideoFile(version)), VideoDuration.From(754))).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(new TestBlueprint(QuestionCount.From(1), ScorePercent.From(80), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
+        var question = version.AddQuestion(QuestionId.New(), SingleChoice(text), AnswerOptionId.New).Value;
+        version.ApproveQuestion(question, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
+        version.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
+        return version;
+    }
+
     private Task<Result<EditorialRepublishedEventsDto, ApiError>> RepublishAsync() =>
-        new RepublishCourseVersionsHandler(store, store, new InMemoryRepublishLock(), NullLogger<RepublishCourseVersionsHandler>.Instance)
+        new RepublishCourseVersionsHandler(store, store, urls, new InMemoryRepublishLock(), NullLogger<RepublishCourseVersionsHandler>.Instance)
             .HandleAsync(new RepublishCourseVersions(Author), TestContext.Current.CancellationToken);
 
     /// <summary>A new course's first version, published through the handler by the reviewer.</summary>
@@ -277,7 +400,7 @@ public class RepublishCourseVersionsTests
 
     private async Task PublishAsync(CourseVersion version)
     {
-        var published = await new PublishCourseVersionHandler(store, store, new FakeBlobUrls(time), ReviewSettings.Default, time)
+        var published = await new PublishCourseVersionHandler(store, store, publishUrls, ReviewSettings.Default, time)
             .HandleAsync(new PublishCourseVersion(version.Id, Reviewer), TestContext.Current.CancellationToken);
         published.IsSuccess.ShouldBeTrue();
         version.Status.ShouldBe(CourseVersionStatus.Published);

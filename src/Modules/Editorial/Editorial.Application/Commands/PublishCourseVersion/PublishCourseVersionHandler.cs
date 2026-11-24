@@ -44,7 +44,7 @@ public sealed class PublishCourseVersionHandler(ICourseVersionStore versions, IE
         }
 
         // Before the first publish, which opens the outbox's transaction: signing may ask the storage service for a key.
-        var readUrls = await SignFilesAsync(version, cancellationToken);
+        var readUrls = await urls.SignReadUrlsAsync(version, cancellationToken);
         await unitOfWork.PublishAsync(version.ToCourseVersionPublishedV1());
         await unitOfWork.PublishAsync(version.ToTestDefinitionPublishedV1());
         if (readUrls.Count > 0)
@@ -58,22 +58,5 @@ public sealed class PublishCourseVersionHandler(ICourseVersionStore versions, IE
         }
 
         return Success(Unit.Value);
-    }
-
-    /// <summary>A read URL on each PDF and video chapter's file, for as long as a URL may live, shown inline with the kind's type.</summary>
-    private async Task<Dictionary<ChapterId, BlobUrl>> SignFilesAsync(CourseVersion version, CancellationToken cancellationToken)
-    {
-        var lifetime = BlobUrlLifetime.From(BlobUrlLifetime.Maximum);
-        Dictionary<ChapterId, BlobUrl> readUrls = [];
-        foreach (var chapter in version.Chapters)
-        {
-            // A file chapter's file is a name the module issued, so it is a blob name.
-            if (chapter.Kind is ChapterKind.Pdf or ChapterKind.Video && chapter.File is { } file)
-            {
-                readUrls[chapter.Id] = await urls.CreateReadUrlAsync(BlobName.From(file.Value), lifetime, ChapterUploads.ReadHeadersFor(chapter.Kind), cancellationToken);
-            }
-        }
-
-        return readUrls;
     }
 }

@@ -100,6 +100,6 @@ public class RepublishRunTests
     }
 
     private Task<Result<EditorialRepublishedEventsDto, ApiError>> RepublishAsync(IEditorialUnitOfWork unitOfWork) =>
-        new RepublishCourseVersionsHandler(store, unitOfWork, runLock, logger)
+        new RepublishCourseVersionsHandler(store, unitOfWork, new FakeBlobUrls(TimeProvider.System), runLock, logger)
             .HandleAsync(new RepublishCourseVersions(Author), TestContext.Current.CancellationToken);
 }
