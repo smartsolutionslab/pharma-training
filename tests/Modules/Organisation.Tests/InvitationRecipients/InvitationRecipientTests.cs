@@ -94,6 +94,22 @@ public class InvitationRecipientTests
         recipient.LastMailedAt.ShouldBe(At(Start), "a stored instant a cooldown or more ahead was kept");
     }
 
+    // #326: the stored instant is checked before anything is added to it, so one within a cooldown of the end of the
+    // calendar is distrusted like any other instant a cooldown or more ahead, instead of overflowing.
+    [Theory]
+    [InlineData(0)]
+    [InlineData(5)]
+    [InlineData(9)]
+    public void A_stored_instant_within_a_cooldown_of_the_end_of_the_calendar_is_not_trusted_and_is_replaced_by_now(int minutesBeforeTheEnd)
+    {
+        var recipient = InvitationRecipient.FirstMailed(Anna, At(DateTimeOffset.MaxValue.AddMinutes(-minutesBeforeTheEnd)));
+
+        var mailed = Should.NotThrow(() => recipient.RequestMail(At(Start), TenMinutes));
+
+        mailed.IsSuccess.ShouldBeTrue($"a mail stored {minutesBeforeTheEnd} minutes before the end of the calendar locked the address out");
+        recipient.LastMailedAt.ShouldBe(At(Start), "a stored instant at the end of the calendar was kept");
+    }
+
     [Fact]
     public void A_cooldown_is_its_own_configured_length()
     {

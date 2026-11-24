@@ -4557,6 +4557,7 @@
           "type",
           "options",
           "provenance",
+          "origin",
           "review",
           "reviewedBy",
           "reviewedAt",
@@ -4596,6 +4597,9 @@
           "provenance": {
             "$ref": "#/components/schemas/EditorialQuestionProvenance"
           },
+          "origin": {
+            "$ref": "#/components/schemas/EditorialQuestionOrigin"
+          },
           "review": {
             "$ref": "#/components/schemas/EditorialQuestionReview"
           },
@@ -4627,6 +4631,13 @@
             "format": "date-time"
           }
         }
+      },
+      "EditorialQuestionOrigin": {
+        "enum": [
+          "AiDraft",
+          "Copied",
+          "HandWritten"
+        ]
       },
       "EditorialQuestionProvenance": {
         "enum": [

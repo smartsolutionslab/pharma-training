@@ -13,7 +13,7 @@ const overrides: Record<string, MessageKey> = {
   'editorial.too-few-options': 'editorial.workflow.errors.questionDefect',
   'editorial.single-choice-one-correct': 'editorial.workflow.errors.questionDefect',
   'editorial.multiple-choice-a-correct': 'editorial.workflow.errors.questionDefect',
-  'editorial.invalid-return-reason': 'editorial.workflow.returnForm.reasonInvalid',
+  'editorial.invalid-return-reason': 'editorial.workflow.returnForm.reasonRefused',
 };
 
 /** The module's refusals of a step the page knows, besides its overrides: the catalog says them (errors.<code>). */

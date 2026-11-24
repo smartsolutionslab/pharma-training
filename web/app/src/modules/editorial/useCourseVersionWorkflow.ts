@@ -39,15 +39,32 @@ const stepRefused = (error: unknown, { id }: { id: string }, _result: unknown, {
 
 const mutation = { mutation: { onSuccess: stepTaken, onError: stepRefused } };
 
+/** What the page does when a step is taken, before the cache is marked stale. */
+export interface WorkflowHooks {
+  /**
+   * A return was taken: runs before the version and its returns are read again, and the step waits for it. The page
+   * turns its return history to the first page here, so that page, where the new return is, is the one read again.
+   */
+  onReturned?: () => unknown;
+}
+
 /**
  * A course version's workflow (#26): submit, publish, return with a reason and retire, through
  * POST /editorial/course-versions/{id}/<step>. Each answers once the cache has been marked stale and the version read
  * again where it is shown.
  */
-export function useCourseVersionWorkflow(versionId: MaybeRefOrGetter<string>) {
+export function useCourseVersionWorkflow(versionId: MaybeRefOrGetter<string>, hooks: WorkflowHooks = {}) {
   const submitting = usePostEditorialCourseVersionsIdSubmit(mutation);
   const publishing = usePostEditorialCourseVersionsIdPublish(mutation);
-  const returning = usePostEditorialCourseVersionsIdReturn(mutation);
+  const returning = usePostEditorialCourseVersionsIdReturn({
+    mutation: {
+      onSuccess: async (...taken: Parameters<typeof stepTaken>) => {
+        await hooks.onReturned?.();
+        return stepTaken(...taken);
+      },
+      onError: stepRefused,
+    },
+  });
   const retiring = usePostEditorialCourseVersionsIdRetire(mutation);
 
   async function taken(step: () => Promise<unknown>): Promise<WorkflowResult> {
