@@ -8,9 +8,10 @@ namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 /// <summary>
 /// Sends <typeparamref name="TCommand"/>, a command without data, every interval, through the dispatcher of a scope of
 /// its own; the first pass runs one interval after start, never at start. It runs a module's announcement sweep (#277,
-/// docs/adr/0016). A pass that throws never stops the host: one that ends on a unique violation (another writer, a
-/// replica's sweep or the late handler, committed the marker first) is logged at Information, anything else at Error,
-/// and the next interval runs again. Stopping the host ends the loop quietly.
+/// docs/adr/0016). A pass that throws never stops the host: one that ends on a unique violation of the marker's primary
+/// key (another writer, a replica's sweep or the late handler, committed the marker first) is logged at Information,
+/// anything else at Error, a unique violation of another constraint included, and the next interval runs again.
+/// Stopping the host ends the loop quietly.
 /// </summary>
 public sealed partial class PeriodicCommandService<TCommand> : BackgroundService
     where TCommand : ICommand<Result<Unit, ApiError>>, new()
@@ -50,7 +51,7 @@ public sealed partial class PeriodicCommandService<TCommand> : BackgroundService
 
     private static bool IsUniqueViolation(Exception exception) => exception switch
     {
-        PostgresException { SqlState: PostgresErrorCodes.UniqueViolation } => true,
+        PostgresException { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: AnnouncedEventMarker.PrimaryKey } => true,
         AggregateException aggregate => aggregate.InnerExceptions.Any(IsUniqueViolation),
         { InnerException: { } inner } => IsUniqueViolation(inner),
         _ => false,

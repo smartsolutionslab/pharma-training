@@ -1,3 +1,4 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.Modules.Assessment.Application.ReadModels;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
@@ -15,7 +16,7 @@ public sealed class AnnouncedEventConfiguration : IEntityTypeConfiguration<Annou
         Ensure.That(builder).IsNotNull();
 
         builder.ToTable("announced_events");
-        builder.HasKey(announced => new { announced.StreamId, announced.StreamVersion }).HasName("pk_announced_events");
+        builder.HasKey(announced => new { announced.StreamId, announced.StreamVersion }).HasName(AnnouncedEventMarker.PrimaryKey);
         builder.Property(announced => announced.StreamId).HasColumnName("stream_id").ValueGeneratedNever();
         builder.Property(announced => announced.StreamVersion).HasColumnName("stream_version").ValueGeneratedNever();
         builder.Property(announced => announced.AnnouncedAt).HasColumnName("announced_at").IsRequired();
