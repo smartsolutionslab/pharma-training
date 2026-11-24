@@ -458,6 +458,40 @@ public class InviteMemberTests
         sender.MailsThatDay.Value.ShouldBe(1);
     }
 
+    // #326
+    [Theory]
+    [InlineData(10, "2027-04-01T08:10:00")]
+    [InlineData(60 * 24 * 365, "2028-03-31T08:00:00")]
+    public async Task A_stored_recipient_instant_a_cooldown_or_more_ahead_is_logged_as_a_warning_naming_only_the_two_instants(int minutesAhead, string storedInstant)
+    {
+        var store = new InMemoryPharmacyStore();
+        var pharmacy = TestPharmacies.Register(Owner).Stored(store);
+        store.StoredRecipients.Add(InvitationRecipient.FirstMailed(Invitee, Timestamp.From(Start.AddMinutes(minutesAhead))));
+        var logger = new FakeLogger<InviteMemberHandler>();
+
+        var invited = await new InviteMemberHandler(store, store, store, store, new FakeDatabaseClock(new FakeTimeProvider(Start)), InvitationMailLimits.Default, RecipientAndSenderMailLimits.Default, logger)
+            .HandleAsync(new InviteMember(pharmacy.Id, Owner, Invitee, JobFunction.Pta, MembershipRole.Employee), TestContext.Current.CancellationToken);
+
+        invited.IsSuccess.ShouldBeTrue();
+        var warning = logger.Collector.GetSnapshot().Where(record => record.Level == LogLevel.Warning)
+            .ShouldHaveSingleItem($"a recipient's instant {minutesAhead} minutes ahead was discarded without a warning");
+        warning.Message.ShouldContain(storedInstant, Case.Sensitive, "the warning does not name the stored instant");
+        warning.Message.ShouldContain("2027-04-01T08:00:00", Case.Sensitive, "the warning does not name the database's now");
+        warning.Message.ShouldContain("the database's clock moved back");
+        var recipient = InvitationRecipientId.For(Invitee).Value;
+        warning.Message.ShouldNotContain(Invitee.Value, Case.Insensitive, "the warning names the address");
+        warning.Message.ShouldNotContain(recipient.ToString("D"), Case.Insensitive, "the warning names the recipient id");
+        warning.Message.ShouldNotContain(recipient.ToString("N"), Case.Insensitive, "the warning names the recipient id");
+        foreach (var property in warning.StructuredState ?? [])
+        {
+            (property.Value ?? string.Empty).ShouldNotContain(Invitee.Value, Case.Insensitive, $"the warning's {property.Key} names the address");
+            (property.Value ?? string.Empty).ShouldNotContain(recipient.ToString("D"), Case.Insensitive, $"the warning's {property.Key} names the recipient id");
+            (property.Value ?? string.Empty).ShouldNotContain(recipient.ToString("N"), Case.Insensitive, $"the warning's {property.Key} names the recipient id");
+        }
+
+        store.StoredRecipients.ShouldHaveSingleItem().LastMailedAt.ShouldBe(Timestamp.From(Start));
+    }
+
     [Fact]
     public async Task The_address_and_the_sender_are_counted_on_the_database_clock_not_the_host_clock()
     {
