@@ -105,8 +105,6 @@ export const en: MessageSchema = {
     matrix: {
       intro: 'Who in {pharmacy} has to complete which course by when.',
       notAllowed: "You may not view the team's training status in this pharmacy.",
-      pharmacyNotFound: 'You are no longer a member of this pharmacy.',
-      identityIncomplete: 'Your account gives no name or valid email address. Complete your profile.',
       loadFailed: 'The team matrix could not be loaded.',
       retry: 'Try again',
       table: {
@@ -237,6 +235,7 @@ export const en: MessageSchema = {
         alreadyActive: '{name}: this course is already assigned.',
         notAMember: '{name}: no longer a member of the pharmacy.',
         other: '{name}: {message}',
+        refusedUnknown: 'Not assigned.',
         again: 'Assign another course',
         home: 'Go to the start page',
       },

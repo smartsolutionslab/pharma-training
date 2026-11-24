@@ -6,6 +6,7 @@ import type { CatalogCourseDto, ComplianceMemberDto, ComplianceRefusedLearnerDto
 import { Button } from '@/components/ui/button';
 import { toTypedSchema } from '@/forms/toTypedSchema';
 import { type MessageKey, t as translate } from '@/i18n';
+import { type ErrorMessage, messageText } from '@/i18n/errorText';
 import { calendarDate } from '@/i18n/formats';
 import { notify } from '@/lib/notify';
 import { useCurrentPharmacy } from '@/shell/useCurrentPharmacy';
@@ -52,7 +53,7 @@ const selected = ref(new Map<string, string>());
 const stepError = ref<{ key: MessageKey; values?: Record<string, unknown> }>();
 const reviewError = ref<MessageKey>();
 /** The host's words when the user cannot assign here at all. */
-const unavailable = ref<string>();
+const unavailable = ref<ErrorMessage>();
 const outcome = ref<{ assigned: number; refused: ComplianceRefusedLearnerDto[] }>();
 const sending = ref(false);
 /** Bumped by each fresh start: an answer sent before it belongs to a wizard no longer shown, and is dropped. */
@@ -265,7 +266,7 @@ function nameOf(personId: string) {
       tabindex="-1"
       class="text-body outline-none"
     >
-      {{ unavailable }}
+      {{ messageText(unavailable) }}
     </p>
     <template v-else-if="current !== undefined">
       <ol :aria-label="t('compliance.assign.steps.label')" class="flex flex-wrap gap-2 text-caption">

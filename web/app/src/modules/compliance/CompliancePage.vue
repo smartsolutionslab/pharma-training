@@ -8,6 +8,7 @@ import { ApiError } from '@/api/baseApi';
 import { type ComplianceJobFunction, getGetOrganisationPharmaciesMineQueryKey } from '@/api/generated';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
+import { messageText } from '@/i18n/errorText';
 import { useCurrentPharmacy } from '@/shell/useCurrentPharmacy';
 import ComplianceMatrixTable from './ComplianceMatrixTable.vue';
 import MatrixFilters from './MatrixFilters.vue';
@@ -40,13 +41,7 @@ const { matrix, courses, course, columns, rows, paging, tally } = useTeamMatrix(
 const { data, error, isPending, isFetching } = matrix;
 
 const failure = computed(() => (error.value === null ? undefined : matrixFailure(error.value)));
-const failureText = computed(() => {
-  const shown = failure.value;
-  if (shown === undefined) {
-    return undefined;
-  }
-  return 'key' in shown ? t(shown.key) : shown.message;
-});
+const failureText = computed(() => (failure.value === undefined ? undefined : messageText(failure.value)));
 /** Only a failure, not a refusal, is worth reading again. */
 const canRetry = computed(() => {
   const shown = failure.value;
