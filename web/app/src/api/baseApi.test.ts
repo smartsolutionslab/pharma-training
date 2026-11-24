@@ -214,3 +214,58 @@ test('an ApiError made from a body directly carries its failure code too', () =>
 
   expect(error.failureCode).toBe('model-not-configured');
 });
+
+// A binary answer (#297, ADR 0032: the certificate export streams a ZIP): a 2xx whose Content-Type is neither JSON nor
+// absent comes back as the bytes, a File when Content-Disposition names one (filename* first), else a Blob.
+const zipBytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00]);
+
+const zip = (headers: Record<string, string> = {}) =>
+  new Response(zipBytes, { status: 200, headers: { 'Content-Type': 'application/zip', ...headers } });
+
+async function answerTo(response: Response): Promise<unknown> {
+  host.mockResolvedValue(response);
+  return apiFetch<unknown>('/certification/pharmacies/p/certificates/export', { method: 'GET' });
+}
+
+async function bytesOf(blob: Blob): Promise<number[]> {
+  return [...new Uint8Array(await blob.arrayBuffer())];
+}
+
+test('a binary answer with a disposition naming a file is a File of that name, filename* first', async () => {
+  const answer = await answerTo(zip({ 'Content-Disposition': "attachment; filename=a.zip; filename*=UTF-8''b.zip" }));
+
+  expect(answer).toBeInstanceOf(File);
+  const file = answer as File;
+  expect(file.name).toBe('b.zip');
+  expect(file.type).toBe('application/zip');
+  expect(await bytesOf(file)).toEqual([...zipBytes]);
+});
+
+test('a binary answer without a disposition is a Blob, not a File, with the bytes sent', async () => {
+  const answer = await answerTo(zip());
+
+  expect(answer).toBeInstanceOf(Blob);
+  expect(answer).not.toBeInstanceOf(File);
+  expect(await bytesOf(answer as Blob)).toEqual([...zipBytes]);
+});
+
+test('a JSON answer is parsed, as before', async () => {
+  const answer = await answerTo(Response.json({ items: [1, 2], totalCount: 2 }, { status: 200 }));
+
+  expect(answer).toEqual({ items: [1, 2], totalCount: 2 });
+});
+
+test('a 404 problem is an ApiError with its code, as before', async () => {
+  const error = await refusalOf(
+    problem(404, { title: 'Die Apotheke gibt es nicht.', status: 404, code: 'certification.pharmacy-not-found' }),
+  );
+
+  expect(error.status).toBe(404);
+  expect(error.code).toBe('certification.pharmacy-not-found');
+});
+
+test('an empty 204 is undefined, as before', async () => {
+  const answer = await answerTo(new Response(null, { status: 204 }));
+
+  expect(answer).toBeUndefined();
+});
