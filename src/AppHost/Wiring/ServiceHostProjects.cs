@@ -44,8 +44,8 @@ public static class ServiceHostProjects
     /// <summary>
     /// Whether the service host at <paramref name="projectPath"/> builds links into the web app without sending mail, as
     /// its project says: <c>&lt;LinksToFrontend&gt;true&lt;/LinksToFrontend&gt;</c>, read like <c>&lt;SendsMail&gt;</c>.
-    /// Such a host, and one that sends mail, is given the web app's address, <c>Frontend__BaseUrl</c>; Certification
-    /// prints its verification link on the certificate's PDF (#50, docs/adr/0027).
+    /// Such a host, and one that sends mail, is given the web app's address, <c>Frontend__BaseUrl</c>; such a host
+    /// prints links into the web app on documents it renders.
     /// </summary>
     public static bool LinksToFrontend(string projectPath) => Flag(projectPath, "LinksToFrontend");
 

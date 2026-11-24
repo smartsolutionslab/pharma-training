@@ -124,7 +124,7 @@ foreach (var (module, project) in builder.ServiceHosts())
     else if (ServiceHostProjects.LinksToFrontend(project))
     {
         // A service that links into the web app without mailing, as its project says with <LinksToFrontend>true</LinksToFrontend>,
-        // gets the web app's address alone: Certification prints the verification link on its PDFs (docs/adr/0027).
+        // gets the web app's address alone: such a host prints links into the web app on documents it renders.
         service.WithEnvironment("Frontend__BaseUrl", frontendUrl);
     }
 
