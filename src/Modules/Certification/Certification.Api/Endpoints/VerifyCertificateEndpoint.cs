@@ -25,6 +25,8 @@ public sealed class VerifyCertificateEndpoint : IEndpoint
         endpoints.MapGet("/verify/{code}", async (string code, IDispatcher dispatcher, CancellationToken cancellationToken) =>
             (await dispatcher.QueryAsync(new VerifyCertificate(code), cancellationToken)).ToHttpResult())
             .AllowAnonymous()
+            // The code is a credential: telemetry records the route's template, never the path (#311, docs/adr/0033).
+            .WithMetadata(new RedactedRoute())
             .AddEndpointFilter(async (context, next) =>
             {
                 // Before the limit's filter, so its 429 is not kept by any cache either.
