@@ -12,6 +12,10 @@ public sealed class LearningSession : EventSourcedAggregate<LearningSessionId>
     private readonly Dictionary<ChapterId, ChapterKind> chapters = [];
     private readonly Dictionary<ChapterId, ProgressPercent> progress = [];
     private readonly HashSet<ChapterId> completed = [];
+    private readonly HashSet<ExhaustionNotice> notices = [];
+
+    // The session's clock for the video pace (ADR 0024): its last recorded activity, moved only by what is stored.
+    private Timestamp lastRecordedAt = null!;
 
     // Only loading creates an empty session, which its first event fills.
     private LearningSession()
@@ -58,9 +62,11 @@ public sealed class LearningSession : EventSourcedAggregate<LearningSessionId>
 
     /// <summary>
     /// The client reports progress in batches (on pause, at the end of a chapter, at most every 30 s).
-    /// Only real progress is stored, so a replayed or older report changes nothing.
+    /// Only real progress is stored, so a replayed or older report changes nothing. A video's gain is refused with
+    /// <see cref="ProgressTooFast"/> when watching it at 1.25 times speed does not fit into the time since the session's
+    /// last recorded progress in any chapter (ADR 0024); the duration comes from the caller, none for text and PDF.
     /// </summary>
-    public Result<Unit, RecordProgressError> RecordProgress(ChapterId chapter, ProgressPercent reported, Timestamp now)
+    public Result<Unit, RecordProgressError> RecordProgress(ChapterId chapter, ProgressPercent reported, Option<VideoDuration> duration, Timestamp now)
     {
         Ensure.That(chapter).IsNotNull();
         Ensure.That(reported).IsNotNull();
@@ -81,6 +87,20 @@ public sealed class LearningSession : EventSourcedAggregate<LearningSessionId>
             return Success(Unit.Value);
         }
 
+        if (kind == ChapterKind.Video)
+        {
+            // Learning's copy refuses a video chapter without a duration, so its absence here is broken data.
+            if (!duration.HasValue)
+            {
+                throw new InvalidOperationException($"Session {Id.Value} has no duration for its video chapter {chapter.Value}.");
+            }
+
+            if (!VideoPace.Allows(progress[chapter], reported, duration.Value, lastRecordedAt, now))
+            {
+                return Failure(LearningSessionErrors.ProgressTooFast(Id, chapter));
+            }
+        }
+
         Raise(new ChapterProgressRecorded(Id, chapter, reported, now));
 
         if (!completed.Contains(chapter) && reported >= CompletionRule.ThresholdFor(kind))
@@ -98,10 +118,14 @@ public sealed class LearningSession : EventSourcedAggregate<LearningSessionId>
 
     /// <summary>
     /// Three failed attempts (AttemptsExhausted): the chapters of the wrongly answered questions open again,
-    /// and the test unlocks only once they are worked through anew.
+    /// and the test unlocks only once they are worked through anew. The notice names the announcement, and the session
+    /// notes it in the same append, so the same lock delivered again acts once, even after its chapters were worked
+    /// through again (ADR 0025). A finished session ignores every lock; a lock naming a chapter the session does not have
+    /// is refused and changes nothing.
     /// </summary>
-    public Result<Unit, DomainError> ReopenChapters(IReadOnlyList<ChapterId> failedChapters, Timestamp now)
+    public Result<Unit, DomainError> ReopenChapters(ExhaustionNotice notice, IReadOnlyList<ChapterId> failedChapters, Timestamp now)
     {
+        Ensure.That(notice).IsNotNull();
         Ensure.That(failedChapters).IsNotNull();
         Ensure.That(now).IsNotNull();
 
@@ -111,14 +135,26 @@ public sealed class LearningSession : EventSourcedAggregate<LearningSessionId>
             return Success(Unit.Value);
         }
 
-        var toReopen = failedChapters.Where(completed.Contains).Distinct().ToList();
-        if (toReopen.Count == 0)
+        if (notices.Contains(notice))
         {
-            // AttemptsExhausted delivered twice.
+            // This lock was delivered before.
             return Success(Unit.Value);
         }
 
-        Raise(new ChaptersReopened(Id, toReopen, now));
+        var outside = failedChapters.FirstOrDefault(chapter => !chapters.ContainsKey(chapter));
+        if (outside is not null)
+        {
+            return Failure(LearningSessionErrors.FailedChapterNotInCourse(Id, outside));
+        }
+
+        var toReopen = failedChapters.Where(completed.Contains).Distinct().ToList();
+        if (toReopen.Count > 0)
+        {
+            Raise(new ChaptersReopened(Id, toReopen, now));
+        }
+
+        // Noted even when nothing reopens, so a redelivery never reopens what the learner completed meanwhile.
+        Raise(new ExhaustionNoted(Id, notice, now));
         return Success(Unit.Value);
     }
 
@@ -141,6 +177,7 @@ public sealed class LearningSession : EventSourcedAggregate<LearningSessionId>
         Course = started.Course;
         CourseVersion = started.CourseVersion;
         Status = SessionStatus.InProgress;
+        lastRecordedAt = started.StartedAt;
 
         foreach (var chapter in started.TextChapters)
         {
@@ -163,7 +200,11 @@ public sealed class LearningSession : EventSourcedAggregate<LearningSessionId>
         }
     }
 
-    private void Apply(ChapterProgressRecorded recorded) => progress[recorded.Chapter] = recorded.Progress;
+    private void Apply(ChapterProgressRecorded recorded)
+    {
+        progress[recorded.Chapter] = recorded.Progress;
+        lastRecordedAt = recorded.RecordedAt;
+    }
 
     private void Apply(ChapterCompleted chapterCompleted) => completed.Add(chapterCompleted.Chapter);
 
@@ -178,7 +219,16 @@ public sealed class LearningSession : EventSourcedAggregate<LearningSessionId>
         }
 
         Status = SessionStatus.InProgress;
+
+        // The pace never measures from an instant before one already recorded (ADR 0024): a reopening stamped by an
+        // instance whose clock runs behind leaves the clock where the last progress put it.
+        if (reopened.ReopenedAt > lastRecordedAt)
+        {
+            lastRecordedAt = reopened.ReopenedAt;
+        }
     }
 
     private void Apply(SessionFinished finished) => Status = SessionStatus.Finished;
+
+    private void Apply(ExhaustionNoted noted) => notices.Add(noted.Notice);
 }

@@ -1,4 +1,6 @@
 using Aspire.Hosting.Testing;
+using JasperFx;
+using Marten;
 using Npgsql;
 
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
@@ -44,6 +46,10 @@ internal static class AssessmentDatabase
     public static SentCompletion Completed(Guid courseVersionId) =>
         new(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), courseVersionId, NewMetadata());
 
+    /// <summary>The person completed the content of a new session of a course version: their examination opens.</summary>
+    public static SentCompletion Completed(Guid courseVersionId, Guid personId) =>
+        new(Guid.CreateVersion7(), personId, Guid.CreateVersion7(), courseVersionId, NewMetadata());
+
     /// <summary>Sends the event under a new envelope id and waits until Assessment's inbox has handled it.</summary>
     public static async Task DeliverAsync<T>(AspireFixture aspire, string type, T message, CancellationToken cancellationToken)
     {
@@ -77,6 +83,39 @@ internal static class AssessmentDatabase
 
             await Task.Delay(PollInterval, cancellationToken);
         }
+    }
+
+    /// <summary>
+    /// Appends an <c>ExaminationExhausted</c> to the examination's stream in Assessment's event store, as three failed
+    /// attempts would have, at <paramref name="exhaustedAt"/>.
+    /// </summary>
+    public static async Task PlantExhaustionAsync(AspireFixture aspire, Guid stream, SentCompletion completed, DateTimeOffset exhaustedAt, CancellationToken cancellationToken)
+    {
+        var connectionString = await aspire.App.GetConnectionStringAsync("assessment-database", cancellationToken)
+            ?? throw new InvalidOperationException("Assessment's database has no connection string.");
+        await using var store = DocumentStore.For(options =>
+        {
+            options.Connection(connectionString);
+            options.DatabaseSchemaName = "assessment";
+            options.Events.DatabaseSchemaName = "assessment";
+            options.AutoCreateSchemaObjects = AutoCreate.None;
+            options.UseSystemTextJsonForSerialization();
+            options.Events.MapEventType<PlantedExaminationExhausted>("examination_exhausted");
+        });
+        await using var session = store.LightweightSession();
+        session.Events.Append(
+            stream,
+            new PlantedExaminationExhausted(stream, completed.SessionId, completed.PersonId, completed.CourseVersionId, [Guid.CreateVersion7()], exhaustedAt));
+        await session.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>Deletes the completion's handled marker, as when the marker's commit failed on every retry (ADR 0012's window).</summary>
+    public static async Task ForgetHandledAsync(AspireFixture aspire, Guid eventIdentifier, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(aspire, cancellationToken);
+        await using var command = new NpgsqlCommand("delete from assessment.handled_content_completions where event_identifier = @id", connection);
+        command.Parameters.AddWithValue("id", eventIdentifier);
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     public static async Task<long> CountAsync(AspireFixture aspire, string query, Guid id, CancellationToken cancellationToken)

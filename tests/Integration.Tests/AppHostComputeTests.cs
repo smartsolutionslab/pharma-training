@@ -4,14 +4,14 @@ using Aspire.Hosting.Azure.AppContainers;
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 
 /// <summary>
-/// What runs in the Container Apps environment: the edge, every service, Keycloak and the broker, each a Container App with
-/// one replica always running; only the edge is reachable from outside (the auth proxy joins it in PR-C), and the Aspire
-/// dashboard is not deployed.
+/// What runs in the Container Apps environment: the edge, every service, Keycloak, the auth proxy in front of it and the
+/// broker, each a Container App with one replica always running; only the edge and the auth proxy are reachable from
+/// outside, and the Aspire dashboard is not deployed.
 /// </summary>
 public class AppHostComputeTests
 {
     [Fact]
-    public async Task Only_the_edge_is_external()
+    public async Task Only_the_edge_and_the_auth_proxy_are_external()
     {
         await using var builder = await PublishedAppHost.ModelAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
 
@@ -20,14 +20,14 @@ public class AppHostComputeTests
             .Select(resource => resource.Name)
             .Order(StringComparer.Ordinal);
 
-        external.ShouldBe(["host"]);
+        external.ShouldBe(["auth", "host"], ignoreOrder: false, "Published, only the edge and the auth proxy in front of Keycloak should be reachable from outside.");
     }
 
     [Fact]
-    public async Task The_edge_every_service_keycloak_and_the_broker_are_container_apps()
+    public async Task The_edge_every_service_keycloak_the_auth_proxy_and_the_broker_are_container_apps()
     {
         await using var builder = await PublishedAppHost.ModelAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
-        var expected = PublishedAppHost.Services(builder).Select(service => service.Name).Concat(["host", "keycloak", "messaging"]);
+        var expected = PublishedAppHost.Services(builder).Select(service => service.Name).Concat(["auth", "host", "keycloak", "messaging"]);
 
         var bicep = await PublishedAppHost.PublishAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
 

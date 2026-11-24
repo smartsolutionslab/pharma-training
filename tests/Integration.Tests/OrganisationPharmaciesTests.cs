@@ -15,6 +15,13 @@ public class OrganisationPharmaciesTests(AspireFixture aspire)
     private static readonly Uri Pharmacies = new("/organisation/pharmacies", UriKind.Relative);
     private static readonly Uri Mine = new("/organisation/pharmacies/mine?page=1&pageSize=100", UriKind.Relative);
 
+    private readonly OrganisationDatabase database = new(aspire);
+
+    /// <summary>
+    /// The founder, <c>owner</c>, signs in with an address Keycloak has verified (<see cref="RealmUsersTests"/>), so this is
+    /// also the verified caller's registration.
+    /// </summary>
+
     [Fact]
     public async Task A_registered_pharmacy_is_read_back_by_its_founder_as_its_manager_and_listed_among_theirs()
     {
@@ -35,9 +42,23 @@ public class OrganisationPharmaciesTests(AspireFixture aspire)
         pharmacy.JobFunction.ShouldBe("Pharmacist");
         pharmacy.CanManageMembers.ShouldBeTrue();
         pharmacy.CanAssignCourses.ShouldBeTrue();
+        (await AllOfMineAsync(client, cancellationToken)).ShouldContain(pharmacy);
+    }
+
+    [Fact]
+    public async Task An_account_whose_address_keycloak_has_not_verified_cannot_register_a_pharmacy()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("unverified");
+        var name = $"Apotheke {Guid.CreateVersion7()}";
+
+        using var refused = await client.PostAsJsonAsync(Pharmacies, new { name, jobFunction = "Pharmacist" }, cancellationToken);
+
+        refused.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await refused.Content.ReadFromJsonAsync<Problem>(cancellationToken))!.Code.ShouldBe("organisation.email-not-verified");
         var mine = await client.GetFromJsonAsync<MyPharmacyPage>(Mine, cancellationToken);
-        mine!.Items.ShouldContain(pharmacy);
-        mine.PageSize.ShouldBe(100);
+        mine!.Items.ShouldNotContain(pharmacy => pharmacy.Name == name);
+        (await database.PharmaciesNamedAsync(name, cancellationToken)).ShouldBe(0);
     }
 
     [Fact]
@@ -169,6 +190,26 @@ public class OrganisationPharmaciesTests(AspireFixture aspire)
         using var created = await client.PostAsJsonAsync(Pharmacies, new { name, jobFunction = "Pharmacist" }, cancellationToken);
         created.StatusCode.ShouldBe(HttpStatusCode.Created);
         return await created.Content.ReadFromJsonAsync<Guid>(cancellationToken);
+    }
+
+    /// <summary>
+    /// Every pharmacy the caller is a member of, read a page of 100 at a time, so a long list from earlier tests on the same
+    /// database does not hide the newest one beyond the first page.
+    /// </summary>
+    private static async Task<IReadOnlyList<MyPharmacy>> AllOfMineAsync(HttpClient client, CancellationToken cancellationToken)
+    {
+        List<MyPharmacy> all = [];
+        for (var page = 1; ; page++)
+        {
+            var mine = await client.GetFromJsonAsync<MyPharmacyPage>(new Uri($"/organisation/pharmacies/mine?page={page}&pageSize=100", UriKind.Relative), cancellationToken);
+            mine.ShouldNotBeNull();
+            mine.PageSize.ShouldBe(100);
+            all.AddRange(mine.Items);
+            if (mine.Items.Count == 0 || all.Count >= mine.TotalCount)
+            {
+                return all;
+            }
+        }
     }
 
     private sealed record MyPharmacy(Guid Id, string Name, Guid MembershipId, string Role, string JobFunction, bool CanManageMembers, bool CanAssignCourses);

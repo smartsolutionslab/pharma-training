@@ -20,6 +20,8 @@ public sealed class DeploymentSecrets
 
     private readonly Dictionary<string, IResourceBuilder<AzureKeyVaultSecretResource>> stored = [];
 
+    private bool grantsRegistered;
+
     private DeploymentSecrets(IDistributedApplicationBuilder builder, IResourceBuilder<AzureKeyVaultResource>? vault)
     {
         this.builder = builder;
@@ -75,6 +77,18 @@ public sealed class DeploymentSecrets
         return stored.TryGetValue(parameter.Resource.Name, out var secret) && ReferenceEquals(secret.Resource.Value, parameter.Resource)
             ? secret
             : null;
+    }
+
+    /// <summary>Records that each app's grants are registered (<see cref="SecretAccess"/>); false when they already were.</summary>
+    internal bool RegisterGrants()
+    {
+        if (grantsRegistered)
+        {
+            return false;
+        }
+
+        grantsRegistered = true;
+        return true;
     }
 
     /// <summary>The vault's secret <see cref="Store"/> stored under a name; publish mode only.</summary>

@@ -83,6 +83,8 @@ Stand der Diskussion vom 17.11.2026.
 | Rolle Redaktion | Keycloak-Realm-Rolle editor, getrennt von den Apothekenrollen in Organisation | Plattform-Mitarbeiter sind keine Apothekenmitglieder |
 | Matrix und Startversion | Matrix zeigt nur in der Apotheke zugewiesene Schulungen; begonnene Session bleibt auf ihrer Version, sonst aktuelle Version (Compliance hält sie) | Übersichtlich; konsistent mit Runde 9 |
 | Nachweis-Export | In Certification als ZIP mit PDFs und CSV, nur Bestätigungen aus der Beschäftigungszeit | PDFs liegen dort; kein synchroner Aufruf zwischen Services |
+| Zuweisungen bei Austritt | Austritt storniert offene und begonnene Zuweisungen der Person in dieser Apotheke, nicht abgeschlossene und nicht die anderer Apotheken; die Historie nennt die ausgetretene Person und „Mitgliedschaft beendet“; nichts wird storniert, solange sie dort eine weitere aktive Mitgliedschaft hat | Das Event nennt niemanden sonst; eine erneut eingeladene Person hat eine neue Mitgliedschaft (#30) |
+| Eigene Zuweisungen | Eine Leitung ändert oder zieht keine Zuweisung zurück, deren Lernende sie selbst ist (403 `compliance.own-assignment`); das tut eine andere Leitung der Apotheke | Vorgabe des Orchestrators bei #269, die der Owner überstimmen kann |
 
 ## Glossar (Ubiquitous Language)
 
@@ -115,6 +117,7 @@ MVP 1 besteht aus acht Contexts. Der Kernfluss läuft von der Zuweisung über da
 flowchart LR
   subgraph MVP1[MVP 1]
     Organisation -- Mitglieder --> Compliance
+    Organisation -- Mitglieder --> Learning
     Organisation --- Identity
     Editorial -- Freigabe --> Catalog
     Catalog -- "Version + Fragen" --> Assessment
@@ -149,28 +152,28 @@ Regeln:
 
 - Namen im Perfekt, Version im Typnamen (`CertificateIssuedV1`); eine Änderung, die Konsumenten bricht, wird eine neue Version.
 - Jedes Event trägt `EventId`, `OccurredAt` und die IDs, die Konsumenten zum Zuordnen brauchen (immer `CourseId` und `CourseVersionId`).
-- Keine Personendaten in Events aus event-sourced Services (Learning, Assessment): nur `PersonId`, damit Löschung nach DSGVO möglich bleibt. Namen liegen außerhalb von Events nur hier: in Organisation, in Certification, in Compliance (Namen der Mitglieder, `MemberName`) und in Editorial (Anzeigename der Person, die eine Frage freigegeben hat, `editorial.course_version_questions.reviewed_by_name`, aus dem Claim `name` zum Zeitpunkt der Freigabe und in jede Folgeversion übernommen; Entscheidung des Owners zu #205). Die Löschung (#115) muss jede dieser Stellen erreichen.
+- Keine Personendaten in Events aus event-sourced Services (Learning, Assessment): nur `PersonId`, damit Löschung nach DSGVO möglich bleibt. Namen liegen außerhalb von Events nur hier: in Organisation, in Certification, in Compliance (Namen der Mitglieder, `MemberName`) und in Editorial (Anzeigename der Person, die eine Frage freigegeben hat, `editorial.course_version_questions.reviewed_by_name`, aus dem Claim `name` zum Zeitpunkt der Freigabe und in jede Folgeversion übernommen; Entscheidung des Owners zu #205; und Anzeigename der Person, die eine Kursversion zurückgegeben hat, `editorial.course_version_returns.returned_by_name`, aus dem Claim `name` zum Zeitpunkt der Rückgabe; dieselbe Entscheidung, für Rückgaben angewandt in #220). Die Löschung (#115) muss jede dieser Stellen erreichen.
 - Prüfungsfragen mit Lösungen gehen nur an Assessment, nie an Catalog oder Frontend.
 
 | Event | Publisher | Konsumenten | Wichtige Felder |
 | --- | --- | --- | --- |
 | `CourseVersionPublished` | Editorial | Catalog, Learning, Certification | CourseId, CourseVersionId, Title, Chapters (Id, Typ, Pflichtlänge), ValidityMonths |
 | `TestDefinitionPublished` | Editorial | Assessment | CourseVersionId, Questions inkl. richtiger Antworten, PassingScorePercent, MaxAttempts |
-| `CourseVersionRetired` | Editorial | Catalog, Compliance | CourseId, CourseVersionId |
+| `CourseVersionRetired` | Editorial | Catalog, Compliance, Learning | CourseId, CourseVersionId |
 | `PharmacyRegistered` | Organisation | Compliance, Certification | PharmacyId, Name |
-| `MembershipStarted` | Organisation | Compliance, Certification | MembershipId, PersonId, PharmacyId, DisplayName, JobFunction, Role |
-| `MembershipEnded` | Organisation | Compliance | MembershipId, PersonId, PharmacyId, EndedAt |
-| `MembershipChanged` | Organisation | Compliance | MembershipId, PersonId, PharmacyId, DisplayName, JobFunction, Role, Version |
+| `MembershipStarted` | Organisation | Compliance, Certification, Learning | MembershipId, PersonId, PharmacyId, DisplayName, JobFunction, Role |
+| `MembershipEnded` | Organisation | Compliance, Learning | MembershipId, PersonId, PharmacyId, EndedAt |
+| `MembershipChanged` | Organisation | Compliance, Learning | MembershipId, PersonId, PharmacyId, DisplayName, JobFunction, Role, Version |
 | `CourseAssigned` | Compliance | (keiner in MVP 1, später Benachrichtigung) | AssignmentId, PersonId, PharmacyId, CourseId, DueDate |
 | `AssignmentCompleted` | Compliance | (keiner in MVP 1) | AssignmentId, CertificateId, CompletedAt, Late |
 | `LearningSessionStarted` | Learning | Compliance | SessionId, PersonId, CourseId, CourseVersionId |
-| `ContentCompleted` | Learning | Assessment | SessionId, PersonId, CourseId, CourseVersionId |
-| `TestPassed` | Assessment | Certification | AttemptId, SessionId, PersonId, CourseId, CourseVersionId, ScorePercent |
+| `ContentCompleted` | Learning | Assessment, Compliance | SessionId, PersonId, CourseId, CourseVersionId |
+| `TestPassed` | Assessment | Certification, Learning | AttemptId, SessionId, PersonId, CourseId, CourseVersionId, ScorePercent, PassedAt |
 | `TestFailed` | Assessment | (keiner in MVP 1) | AttemptId, SessionId, PersonId, AttemptNumber |
-| `AttemptsExhausted` | Assessment | Learning, Compliance | SessionId, PersonId, CourseVersionId |
+| `AttemptsExhausted` | Assessment | Learning, Compliance | SessionId, PersonId, CourseId, CourseVersionId, FailedChapterIds |
 | `CertificateIssued` | Certification | Compliance | CertificateId, PersonId, CourseId, CourseVersionId, IssuedAt, ValidUntil |
 
-Ablauf: `CourseAssigned` → `LearningSessionStarted` (Status in Bearbeitung) → `ContentCompleted` (Test frei) → `TestPassed` → `CertificateIssued` → Compliance schließt alle offenen Zuweisungen der Person für diese `CourseId` und legt bei Wiederholung die nächste an. Bei `AttemptsExhausted` setzt Learning den Fortschritt zurück und Compliance zeigt „gesperrt“.
+Ablauf: `CourseAssigned` → `LearningSessionStarted` (Status in Bearbeitung) → `ContentCompleted` (Test frei) → `TestPassed` → `CertificateIssued` → Compliance schließt alle offenen Zuweisungen der Person für diese `CourseId` und legt bei Wiederholung die nächste an. Bei `AttemptsExhausted` setzt Learning den Fortschritt zurück und Compliance zeigt „gesperrt“, bis `ContentCompleted` derselben Person und `CourseId` meldet, dass der Inhalt erneut durchgearbeitet ist (Entscheidung des Owners zu #32, Option b).
 
 Nachträge aus Runde 16 und 17: Compliance konsumiert zusätzlich `MembershipStarted` (Namen) und `CourseVersionPublished` (Titel, aktuelle Version); Certification konsumiert zusätzlich `MembershipEnded`. `CourseVersionPublished` trägt pro Videokapitel die Dauer (Plausibilitätsprüfung in Learning) und die Gültigkeit aus den Testvorgaben.
 
@@ -182,18 +185,20 @@ Drei Aggregate tragen MVP 1: `Assignment` (Compliance, DDD), `LearningSession` (
 
 Value Objects: `AssignmentId`, `PersonId`, `PharmacyId`, `CourseId`, `DueDate`, `RecurrenceInterval` (Monate, 1 bis 60), `AssignmentChange` (Historie).
 
-Status: `Open` → `InProgress` → `Completed`, außerdem `Cancelled`. `Overdue` und `Late` werden berechnet, nicht gespeichert. `Locked` ist ein Flag in `InProgress`.
+Status: `Open` → `InProgress` → `Completed`, außerdem `Cancelled`. `Overdue` und `Late` werden berechnet, nicht gespeichert. `Locked` ist ein Flag, angezeigt in `InProgress`; eine Sperre, die vor dem Start ankommt, wird gemerkt.
 
 | Command | Auslöser | Invarianten |
 | --- | --- | --- |
 | `Assign` | Apothekenleiter | Frist nicht in der Vergangenheit; höchstens eine aktive Zuweisung pro Person × Apotheke × Schulung (Unique Index) |
 | `ChangeDueDate` | Apothekenleiter | Nur wenn aktiv; neue Frist nicht in der Vergangenheit; Eintrag in der Historie |
 | `Cancel` | Apothekenleiter, `MembershipEnded` | Nur wenn aktiv; terminal |
-| `MarkStarted` | `LearningSessionStarted` | Nur aus `Open`; sonst ignorieren |
-| `MarkLocked` / `Unlock` | `AttemptsExhausted` / `LearningSessionStarted` | Nur in `InProgress` |
+| `MarkStarted` | `LearningSessionStarted` | Nur aus `Open`; sonst ignorieren; entsperrt nicht; der früheste Start gilt, auch einer von vor der Zuweisung |
+| `MarkLocked` / `Unlock` | `AttemptsExhausted` / `ContentCompleted` | Nur wenn aktiv; das später geschehene Ereignis (`OccurredAt`) gewinnt, bei Gleichstand die Sperre; Ereignisse vor der Zuweisung zählen nicht (ADR 0023) |
 | `Complete` | `CertificateIssued` | Aus `Open` oder `InProgress` (Events können überholen); gleiche CertificateId erneut = No-op; terminal |
 
-Nach `Complete` mit Wiederholung legt ein Handler eine neue Zuweisung an: Frist = Abschlussdatum + Intervall. Eine Bestätigung von vor der Zuweisung erfüllt sie nicht.
+Nach `Complete` mit Wiederholung legt ein Handler eine neue Zuweisung an: Frist = Abschlussdatum + Intervall. Eine Bestätigung von vor der Zuweisung erfüllt sie nicht. Der `CertificateIssued`-Consumer von Compliance fordert sie im abschließenden Commit an (`AssignmentFollowUpRequestedV1`, lokal im Service); dessen eigener Consumer legt sie einmal pro abgeschlossener Zuweisung an (`follows_assignment_id`), zugewiesen von der ursprünglich zuweisenden Person und nicht vor dem Abschluss. Sie entfällt, wenn die Person die Apotheke verlassen hat oder schon eine aktive Zuweisung der Schulung hat, und wird auch für eine zurückgezogene Schulung angelegt (ADR 0026).
+
+`CertificateIssued` schließt jede aktive Zuweisung der Person für die `CourseId` in jeder Apotheke ab, jede Version zählt; eine Bestätigung, die vor der Zuweisung ausgestellt wurde, lässt sie offen. Verspätet (`Late` in `AssignmentCompletedV1`, `CompletedLate` im Dashboard) heißt: der Ausstellungstag in deutscher Zeit liegt nach der Frist; maßgeblich ist `IssuedAt`, nicht die Verarbeitung. Dieselbe Bestätigung erneut findet keine aktive Zuweisung mehr oder nur die Folgezuweisung, die sie ablehnt (sie ist nicht nach deren Zuweisung ausgestellt), und ändert nichts.
 
 ### LearningSession (Learning, event-sourced)
 
@@ -205,10 +210,13 @@ Ein Stream pro Person × Schulungsversion und Durchlauf. Die Kapitelstruktur wir
 | `ChapterProgressRecorded` | Kapitel, gesehene Abschnitte bzw. Seiten; nur bei echtem Fortschritt |
 | `ChapterCompleted` | Kapitel erfüllt sein Abschlusskriterium |
 | `ContentCompleted` | Alle Pflichtkapitel erfüllt; einmal pro Zyklus. Schaltet nur die Prüfung frei und belegt allein keine Schulung (ADR 0018) |
-| `ProgressReset` | Nach `AttemptsExhausted`; die Kapitel der falsch beantworteten Fragen sind wieder offen |
-| `SessionFinished` | Nach `TestPassed` (Learning konsumiert es zusätzlich zu Certification); danach keine Änderungen |
+| `ChaptersReopened` | Nach `AttemptsExhausted`; die Kapitel der falsch beantworteten Fragen sind wieder offen |
+| `ExhaustionNoted` | Kennung des `AttemptsExhausted`, das die Sperre auslöste; dieselbe Sperre wirkt nur einmal (ADR 0025) |
+| `SessionFinished` | Nach `TestPassed` (Learning konsumiert es zusätzlich zu Certification); danach keine Änderungen; eine Sperre danach ändert nichts |
 
-Invarianten: Fortschritt pro Kapitel wächst nur; `ContentCompleted` erst, wenn jedes Pflichtkapitel erfüllt ist; höchstens eine nicht beendete Session pro Person × Version. Der Client meldet Fortschritt gebündelt (beim Pausieren, am Kapitelende, spätestens alle 30 s), damit der Stream klein bleibt.
+Invarianten: Fortschritt pro Kapitel wächst nur; `ContentCompleted` erst, wenn jedes Pflichtkapitel erfüllt ist; höchstens eine nicht beendete Session pro Person × Version; Videofortschritt wächst höchstens so schnell, wie die Zeit seit dem letzten gespeicherten Fortschritt der Session es bei 1,25-facher Wiedergabe der Dauer aus der lokalen Kopie erlaubt (ADR 0024); sonst 422 `learning.progress-too-fast`, nichts wird gespeichert. Der Client meldet Fortschritt gebündelt (beim Pausieren, am Kapitelende, spätestens alle 30 s), damit der Stream klein bleibt.
+
+Auf einer zurückgezogenen Version (`CourseVersionRetired`) beginnt kein neuer Durchlauf (409 `learning.course-version-retired`); ein nicht beendeter wird weiter fortgesetzt, gelesen und fortgeschrieben. Eine nur abgelöste Version bleibt startbar.
 
 ### Examination (Assessment, event-sourced)
 
@@ -217,12 +225,12 @@ Aggregatgrenze ist die Prüfung pro LearningSession, nicht der einzelne Versuch:
 | Event (intern) | Bedeutung |
 | --- | --- |
 | `ExaminationUnlocked` | Nach `ContentCompleted` |
-| `AttemptStarted` | Gestellte Fragenversionen in fester Reihenfolge |
+| `AttemptStarted` | Gestellte Fragenversionen in fester Reihenfolge; Antwortoptionen in einer aus der AttemptId abgeleiteten Reihenfolge (ADR 0022) |
 | `AttemptSubmitted` | Antworten, Punktzahl, bestanden ja/nein |
 | `ExaminationPassed` | Führt zu `TestPassed`; terminal |
 | `ExaminationLocked` | Nach dem 3. Fehlversuch; führt zu `AttemptsExhausted` |
 
-Invarianten: Versuch nur, wenn freigeschaltet und kein Versuch offen; Bewertung serverseitig gegen die Testdefinition der Version; nach Bestehen keine weiteren Versuche; nach Sperre erst wieder nach erneutem `ContentCompleted`.
+Invarianten: Versuch nur, wenn freigeschaltet und kein Versuch offen; Antworten nur auf Fragen und Optionen des offenen Versuchs; bei Einfachauswahl genau eine Option; Bewertung serverseitig gegen die Testdefinition der Version; nach Bestehen keine weiteren Versuche; nach Sperre erst wieder nach erneutem `ContentCompleted`.
 
 ## Aggregate der übrigen Contexts (Entwurf)
 
@@ -235,15 +243,15 @@ Mitgliedschaften sind Entities **innerhalb** der Apotheke. Eine Apotheke hat wen
 | Command | Invarianten | Event |
 | --- | --- | --- |
 | `Register` | Registrierende Person wird sofort aktive Leitung | `PharmacyRegistered`, `MembershipStarted` |
-| `Invite` | E-Mail nicht schon aktiv oder eingeladen; Tätigkeit und Rolle angegeben | `MemberInvited` |
+| `Invite` | E-Mail nicht schon aktiv oder eingeladen; Tätigkeit und Rolle angegeben; die Mail zählt zur Tagesgrenze der Apotheke (50 Einladungsmails je UTC-Kalendertag, sonst `TooManyInvitationsToday`, 429 bis 00:00 UTC) | `MemberInvited` |
 | `AcceptInvitation` | Einladung offen und nicht abgelaufen; PersonId aus Keycloak | `MembershipStarted` |
-| `RenewInvitation` | Nur offene oder abgelaufene Einladungen; wieder 14 Tage gültig, der alte Link gilt sofort nicht mehr; das neue Token entsteht beim Versand der Mail | `MemberInvited` |
+| `RenewInvitation` | Nur offene oder abgelaufene Einladungen; frühestens 10 Minuten nach der letzten Mail der Einladung (sonst `InvitationRenewedTooSoon`, 429); zählt zur selben Tagesgrenze wie `Invite`; wieder 14 Tage gültig, der alte Link gilt sofort nicht mehr; das neue Token entsteht beim Versand der Mail | `MemberInvited` |
 | `IssueInvitationLink` | Nur offene, nicht abgelaufene Einladungen; beim Versand der Mail, ersetzt den Hash | `InvitationLinkIssued` |
 | `RevokeInvitation` | Nur offene Einladungen | `InvitationRevoked` |
 | `EndMembership` | Nicht die letzte aktive Leitung | `MembershipEnded` |
 | `ChangeJobFunction` / `ChangeRole` | Letzte Leitung kann nicht zum Mitarbeiter werden | `MembershipChanged` |
 
-Value Objects: `PharmacyId`, `PharmacyName`, `MembershipId`, `EmailAddress`, `InvitationToken`, `InvitationTokenHash` (SHA-256 des Tokens, nur er wird gespeichert), `DisplayName`. Enums: `MembershipRole` (Manager, Employee), `JobFunction` (Pharmacist, Pta, Pka, Trainee, Other), `MembershipStatus` (Invited, Active, Ended, Revoked). Fähigkeiten wie `CanAssignCourses` leiten sich aus der Rolle ab.
+Value Objects: `PharmacyId`, `PharmacyName`, `MembershipId`, `EmailAddress`, `InvitationToken`, `InvitationTokenHash` (SHA-256 des Tokens, nur er wird gespeichert), `DisplayName`, `UtcDay` und `InvitationMailCount` (der Tageszähler der Einladungsmails), `RenewCooldown` und `DailyMailCap` (die Grenzen, aus der Konfiguration, zusammen `InvitationMailLimits`). Enums: `MembershipRole` (Manager, Employee), `JobFunction` (Pharmacist, Pta, Pka, Trainee, Other), `MembershipStatus` (Invited, Active, Ended, Revoked). Fähigkeiten wie `CanAssignCourses` leiten sich aus der Rolle ab.
 
 ### CourseVersion (Editorial)
 
@@ -254,7 +262,7 @@ Status: `Draft` → `InReview` → `Published` → `Superseded` bzw. `Retired`.
 | Command | Invarianten |
 | --- | --- |
 | `AddChapter` / `ReorderChapters` / `EditChapter` | Nur im Entwurf; Kapitel ist Text (Markdown), PDF oder Video (Blob + Dauer) |
-| `SetTestBlueprint` | Anzahl Fragen (Standard 10), Bestehensgrenze (Standard 80 %), Gültigkeit in Monaten |
+| `SetTestBlueprint` | Anzahl Fragen (Standard 10), Bestehensgrenze (Standard 80 %), Gültigkeit in Monaten; nur im Entwurf; eine Änderung einer der drei Vorgaben setzt die Freigabe aller Fragen zurück, auch kopierter; dieselben Werte ändern nichts |
 | `ApplyAiTestDraft` | Ersetzt nur ungeprüfte Fragen; jede Frage trägt Herkunft `AiDrafted` |
 | `EditQuestion` / `ApproveQuestion` | Freigabe vermerkt Redakteur und Zeitpunkt |
 | `SubmitForReview` | Mindestens ein Kapitel; Test vollständig laut Vorgaben |
@@ -294,14 +302,15 @@ Alle Pfade beginnen mit dem Modulnamen; der Edge leitet danach weiter. Kein Serv
 | catalog | `GET /catalog/course-versions/{id}` | Mitglied | Inhalt für den Player (ohne Fragen) |
 | compliance | `POST /compliance/pharmacies/{id}/assignments` | Leitung | Zuweisen an mehrere Mitarbeiter (C1, C2) |
 | compliance | `GET /compliance/pharmacies/{id}/members?jobFunction=` | Leitung | Aktive Mitglieder für den Zuweisungsassistenten, nach Name, filterbar nach Tätigkeit |
+| compliance | `GET …/assignments/{aid}` | Leitung | Zuweisung mit Historie (wer, was, wann) |
 | compliance | `PATCH …/assignments/{aid}`, `DELETE …/assignments/{aid}` | Leitung | Frist ändern, zurückziehen |
-| compliance | `GET /compliance/pharmacies/{id}/matrix` | Leitung | Matrix Mitarbeiter × Schulung mit Status und Quote (C3) |
+| compliance | `GET /compliance/pharmacies/{id}/matrix?jobFunction=` | Leitung | Matrix Mitarbeiter × Schulung mit Status und Quote (C3); Zeilen = aktive Mitglieder, seitenweise; Spalten = Schulungen mit mindestens einer nicht stornierten Zuweisung in der Apotheke; Quote = konforme unter allen Zellen (je Person und Schulung die neueste nicht stornierte Zuweisung): offen, in Bearbeitung oder gesperrt ist konform, überfällig nicht, abgeschlossen (auch verspätet) bis einschließlich „gültig bis“ = deutscher Abschlusstag + Gültigkeitsmonate der neuesten Version; für alle Zeilen des Filters, je Schulung und gesamt; ohne Zelle keine Quote |
 | compliance | `GET /compliance/me/assignments` | Mitglied | Mein Dashboard, Überfällige zuerst (C4) |
 | learning | `POST /learning/sessions` | Mitglied | Starten oder fortsetzen (idempotent) |
 | learning | `GET /learning/sessions/{id}`, `POST …/{id}/progress` | Mitglied | Fortschritt lesen und melden (L1, L2) |
 | learning | `GET /learning/media/{chapterId}` | Mitglied | Kurzlebige Lese-URL für PDF/Video |
 | assessment | `GET /assessment/examinations/by-session/{sessionId}` | Mitglied | Teststatus |
-| assessment | `POST …/{id}/attempts`, `PUT …/attempts/current/answers/{qid}`, `POST …/attempts/current/submit` | Mitglied | Versuch starten, antworten, abgeben (A1, A2) |
+| assessment | `POST /assessment/examinations/{id}/attempts`, `PUT /assessment/examinations/{id}/attempts/current/answers/{qid}`, `POST /assessment/examinations/{id}/attempts/current/submit` | Mitglied | Versuch starten, antworten, abgeben (A1, A2) |
 | certification | `GET /certification/me/certificates`, `GET …/certificates/{id}/pdf` | Mitglied | Eigene Bestätigungen (Z1) |
 | certification | `GET /certification/pharmacies/{id}/certificates/export` | Leitung | ZIP mit PDFs und CSV-Index (Z3) |
 | certification | `GET /certification/verify/{code}` | öffentlich | QR-Prüfung (Z2) |
@@ -311,6 +320,7 @@ Lokale Kopien, die daraus folgen:
 - **Compliance** hält Namen der Mitglieder (`MembershipStarted`) und Titel der Schulungen (`CourseVersionPublished`) für Matrix und Dashboard. Der Status kommt aus der Zuweisung selbst; Learning wird nicht abgefragt.
 - **Certification** hält Mitgliedschaften mit Beginn und Ende, damit der Export nur Bestätigungen aus der Beschäftigungszeit bei dieser Apotheke enthält.
 - **Learning** und **Assessment** halten Kapitelstruktur bzw. Testdefinition der Version.
+- **Learning** hält Mitgliedschaften ohne Namen, Rolle und Tätigkeit (Beginn, Änderungen, Ende), um nur aktive Mitglieder lernen zu lassen; nach dem Ende bleibt die eigene Sitzung lesbar.
 
 ### Vue-Seiten
 

@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Azure;
@@ -32,6 +33,7 @@ public class AppHostPublishParametersTests
     [InlineData("azure-openai-api-key")]
     [InlineData("smtp-username")]
     [InlineData("smtp-password")]
+    [InlineData("database-roles-key")]
     public async Task Every_publish_secret_is_an_explicit_parameter_in_key_vault(string name)
     {
         await using var builder = await PublishedAppHost.ModelAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
@@ -105,6 +107,87 @@ public class AppHostPublishParametersTests
         }
     }
 
+    /// <summary>
+    /// The key every module role's password is derived from, <c>guid(database_roles_key, '&lt;module&gt;')</c>, is a secure
+    /// parameter of main.bicep that the deployment sets, handed to the Flexible Server's module, which writes the roles'
+    /// connection strings (Q1 on #114, docs/adr/0005).
+    /// </summary>
+    [Fact]
+    public async Task The_database_roles_key_is_a_secure_parameter_the_server_receives()
+    {
+        var bicep = await PublishedAppHost.PublishAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
+        var main = bicep.Files["main.bicep"];
+
+        Regex.IsMatch(main, @"(?m)^@secure\(\)\s*\r?\n\s*param\s+database_roles_key\s+string\s*$", RegexOptions.None, TimeSpan.FromSeconds(1))
+            .ShouldBeTrue("main.bicep declares no @secure() parameter database_roles_key without a default.");
+        var postgres = main.IndexOf("module postgres 'postgres/postgres.bicep' = {", StringComparison.Ordinal);
+        postgres.ShouldBeGreaterThanOrEqualTo(0, "main.bicep declares no module postgres.");
+        var parameters = PublishedBicep.Block(main[postgres..], "params");
+        Regex.IsMatch(parameters, @"(?m)^\s*database_roles_key:\s*database_roles_key\s*$", RegexOptions.None, TimeSpan.FromSeconds(1))
+            .ShouldBeTrue($"main.bicep does not hand database_roles_key to the postgres module. It passes: {parameters}");
+        PublishedBicep.SecureParameters(bicep.Module("postgres")).ShouldContain("database_roles_key", "postgres/postgres.bicep does not receive database_roles_key as a @secure() parameter.");
+    }
+
+    /// <summary>
+    /// The 32-character minimum holds however the key reaches Azure, at a prompt or from the deployment's own parameters
+    /// too, not only from <c>Parameters__database-roles-key</c> at publish: main.bicep and the postgres module both declare
+    /// <c>@minLength(32)</c> on it, a floor Azure enforces (review of #231's head 6e8725a, optional 3).
+    /// </summary>
+    [Fact]
+    public async Task The_bicep_declares_a_minimum_length_of_32_on_the_database_roles_key()
+    {
+        var bicep = await PublishedAppHost.PublishAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
+
+        foreach (var (file, content) in new[] { ("main.bicep", bicep.Files["main.bicep"]), ("postgres/postgres.bicep", bicep.Module("postgres")) })
+        {
+            var declaration = Regex.Match(content, @"(?m)((?:^[ \t]*@[^\r\n]*\r?\n)*)^[ \t]*param\s+database_roles_key\s+string\b", RegexOptions.None, TimeSpan.FromSeconds(1));
+            declaration.Success.ShouldBeTrue($"{file} declares no parameter database_roles_key.");
+            declaration.Groups[1].Value.ShouldContain("@minLength(32)", Case.Sensitive, $"{file} declares database_roles_key without @minLength(32): {declaration.Value}");
+        }
+    }
+
+    /// <summary>
+    /// Every module role's password is <c>guid(database_roles_key, '&lt;module&gt;')</c>, so the key is all that stands
+    /// between a guess and every role: publishing (and so deploying) refuses one under 32 characters, naming the parameter,
+    /// rather than leave it to a Bicep <c>@minLength</c> that only fires once Azure deploys.
+    /// </summary>
+    [Fact]
+    public async Task Publishing_refuses_a_database_roles_key_under_32_characters()
+    {
+        var refused = await Should.ThrowAsync<Exception>(
+            () => PublishedAppHost.PublishAsync(PublishedAppHost.Staging, new Dictionary<string, string>(StringComparer.Ordinal) { ["database-roles-key"] = new string('k', 31) }, TestContext.Current.CancellationToken),
+            "Publishing succeeded with a database-roles-key of 31 characters.");
+
+        refused.ToString().ShouldContain("database-roles-key", Case.Sensitive, $"The failure does not name database-roles-key: {refused}");
+    }
+
+    /// <summary>
+    /// frontend-url is the web app's public origin, which the storage account's CORS rule allows and mail links lead to: an
+    /// https origin, scheme and host alone, no path, no trailing slash, no query and no wildcard. Anything else fails the
+    /// publish, naming the parameter.
+    /// </summary>
+    [Theory]
+    [InlineData("http://app.example")]
+    [InlineData("https://app.example/")]
+    [InlineData("https://app.example/app")]
+    [InlineData("https://app.example?tenant=a")]
+    [InlineData("https://*.example")]
+    [InlineData("app.example")]
+    // Parsed as an origin, but not the canonical, lower-case one a browser sends (review of #231's head 6e8725a, optional 4):
+    // frontend-url must be new Uri(value).GetLeftPart(UriPartial.Authority) exactly.
+    [InlineData("HTTPS://Good.Example")]
+    [InlineData("https://a:443")]
+    [InlineData("https://a/.")]
+    [InlineData("https://a.")]
+    public async Task Publishing_refuses_a_frontend_url_that_is_no_https_origin(string frontendUrl)
+    {
+        var refused = await Should.ThrowAsync<Exception>(
+            () => PublishedAppHost.PublishAsync(PublishedAppHost.Staging, new Dictionary<string, string>(StringComparer.Ordinal) { ["frontend-url"] = frontendUrl }, TestContext.Current.CancellationToken),
+            $"Publishing succeeded with the frontend-url '{frontendUrl}'.");
+
+        refused.ToString().ShouldContain("frontend-url", Case.Sensitive, $"The failure does not name frontend-url: {refused}");
+    }
+
     [Fact]
     public async Task No_container_app_receives_a_secret_as_a_plain_value()
     {
@@ -141,16 +224,17 @@ public class AppHostPublishParametersTests
     }
 
     [Fact]
-    public async Task The_mail_server_reaches_every_service_and_keycloak_as_key_vault_references()
+    public async Task The_mail_server_reaches_the_services_that_send_mail_and_keycloak_as_key_vault_references()
     {
         await using var builder = await PublishedAppHost.ModelAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
-        var services = PublishedAppHost.Services(builder);
+        var senders = PublishedAppHost.Services(builder).Where(SendsMail).ToList();
 
-        services.ShouldNotBeEmpty();
-        foreach (var service in services)
+        senders.ShouldNotBeEmpty("no service host's project says <SendsMail>true</SendsMail>");
+        foreach (var service in senders)
         {
             var environment = await EnvironmentAsync(builder, service);
 
+            environment.ShouldContainKey("ConnectionStrings__mail", $"{service.Name} sends mail but does not read the mail server.");
             var mail = environment["ConnectionStrings__mail"].ShouldBeAssignableTo<IAzureKeyVaultSecretReference>($"{service.Name} reads the mail server as a plain value.");
             mail.ShouldNotBeNull();
             mail.Resource.Name.ShouldBe(KeyVault);
@@ -165,6 +249,32 @@ public class AppHostPublishParametersTests
             secret.Resource.Name.ShouldBe(KeyVault);
         }
     }
+
+    /// <summary>
+    /// Published, a service whose host does not say it sends mail reads neither the mail server (so it is granted no
+    /// access to its Key Vault secret) nor the sender nor the web app's address (docs/adr/0004, docs/adr/0005).
+    /// </summary>
+    [Fact]
+    public async Task A_service_that_sends_no_mail_has_no_mail_connection_string_once_published()
+    {
+        await using var builder = await PublishedAppHost.ModelAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
+        var services = PublishedAppHost.Services(builder);
+        var silent = services.Where(service => !SendsMail(service)).ToList();
+
+        silent.ShouldNotBeEmpty("every service host's project says <SendsMail>true</SendsMail>");
+        foreach (var service in silent)
+        {
+            var environment = await EnvironmentAsync(builder, service);
+
+            environment.ShouldNotContainKey("ConnectionStrings__mail", $"{service.Name} sends no mail but reads the mail server.");
+            environment.ShouldNotContainKey("Mail__From", $"{service.Name} sends no mail but reads Mail:From.");
+            environment.ShouldNotContainKey("Frontend__BaseUrl", $"{service.Name} sends no mail but reads Frontend:BaseUrl.");
+        }
+
+        services.Where(SendsMail).ShouldNotBeEmpty("no service host's project says <SendsMail>true</SendsMail>");
+    }
+
+    private static bool SendsMail(ProjectResource service) => ServiceHostMail.SendsMail(service.GetProjectMetadata().ProjectPath);
 
     private static ParameterResource Parameter(IDistributedApplicationTestingBuilder builder, string name)
     {

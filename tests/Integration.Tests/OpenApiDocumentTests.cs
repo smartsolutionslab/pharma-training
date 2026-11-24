@@ -7,6 +7,9 @@ public class OpenApiDocumentTests(AspireFixture aspire)
 {
     private const string ComponentSchemas = "#/components/schemas/";
 
+    /// <summary>A property whose name contains one of these, ignoring case, names a solution.</summary>
+    private static readonly string[] SolutionWords = ["correct", "solution", "answerkey"];
+
     private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
 
     /// <summary>The frontend's client is generated from web/app/openapi.json; it must describe the API the host serves.</summary>
@@ -88,33 +91,58 @@ public class OpenApiDocumentTests(AspireFixture aspire)
     }
 
     /// <summary>
+    /// A learner's attempt routes (#46) are in the document with their methods, so the correctness check above walks
+    /// what they answer and take, and the generated client has them.
+    /// </summary>
+    [Fact]
+    public async Task The_document_describes_the_attempt_routes()
+    {
+        var paths = (await ServedAsync())["paths"]?.AsObject();
+        paths.ShouldNotBeNull("the document has paths");
+
+        string[] described =
+        [
+            .. new (string Path, string Method)[]
+            {
+                ("/assessment/examinations/by-session/{sessionId}", "get"),
+                ("/assessment/examinations/{id}/attempts", "post"),
+                ("/assessment/examinations/{id}/attempts/current/answers/{questionId}", "put"),
+                ("/assessment/examinations/{id}/attempts/current/submit", "post"),
+            }.Where(route => paths[route.Path]?[route.Method] is null).Select(route => $"{route.Method.ToUpperInvariant()} {route.Path}"),
+        ];
+
+        described.ShouldBeEmpty("these attempt routes are missing from the document");
+    }
+
+    /// <summary>
     /// The solutions go to Assessment and never to the frontend (docs/domain/README.md): no schema an assessment path
-    /// answers or takes, and no component schema of Assessment's, has a property that names correctness, however deep.
+    /// answers or takes, and no component schema of Assessment's, has a property that names correctness, a solution or an
+    /// answer key, however deep.
     /// It catches an inline or anonymous type that the architecture rule AssessmentResponsesCarryNoSolutions might miss.
     /// </summary>
     [Fact]
-    public async Task No_assessment_schema_has_a_correctness_property()
+    public async Task No_assessment_schema_names_a_solution_or_correctness()
     {
         var served = await ServedAsync();
         var schemas = served["components"]?["schemas"]?.AsObject();
         var paths = served["paths"]?.AsObject();
         paths.ShouldNotBeNull("the document has paths");
-        List<string> correctness = [];
+        List<string> solutionNames = [];
         HashSet<string> visited = [];
 
         var assessmentPaths = paths.Where(path => path.Key.StartsWith("/assessment/", StringComparison.Ordinal)).ToList();
         foreach (var (name, path) in assessmentPaths)
         {
-            CollectCorrectness(served, path, $"paths{name}", correctness, visited);
+            CollectSolutionNames(served, path, $"paths{name}", solutionNames, visited);
         }
 
         foreach (var (name, schema) in schemas?.Where(schema => schema.Key.StartsWith("Assessment", StringComparison.Ordinal)) ?? [])
         {
-            CollectCorrectness(served, schema, $"{ComponentSchemas}{name}", correctness, visited);
+            CollectSolutionNames(served, schema, $"{ComponentSchemas}{name}", solutionNames, visited);
         }
 
         assessmentPaths.ShouldNotBeEmpty("the document describes Assessment's endpoints");
-        correctness.ShouldBeEmpty();
+        solutionNames.ShouldBeEmpty();
     }
 
     private async Task<JsonObject> ServedAsync()
@@ -159,8 +187,11 @@ public class OpenApiDocumentTests(AspireFixture aspire)
         }
     }
 
-    /// <summary>Every property whose name contains "correct", ignoring case, in the node and what its <c>$ref</c>s name, each component once.</summary>
-    private static void CollectCorrectness(JsonObject document, JsonNode? node, string path, List<string> correctness, HashSet<string> visited)
+    /// <summary>
+    /// Every property whose name contains "correct", "solution" or "answerkey", ignoring case, in the node and what its
+    /// <c>$ref</c>s name, each component once.
+    /// </summary>
+    internal static void CollectSolutionNames(JsonObject document, JsonNode? node, string path, List<string> found, HashSet<string> visited)
     {
         if (node is JsonObject schema)
         {
@@ -169,27 +200,27 @@ public class OpenApiDocumentTests(AspireFixture aspire)
                 var name = reference[ComponentSchemas.Length..];
                 if (visited.Add(name))
                 {
-                    CollectCorrectness(document, document["components"]?["schemas"]?[name], $"{path} -> {reference}", correctness, visited);
+                    CollectSolutionNames(document, document["components"]?["schemas"]?[name], $"{path} -> {reference}", found, visited);
                 }
             }
 
             if (schema["properties"] is JsonObject properties)
             {
-                correctness.AddRange(properties
-                    .Where(property => property.Key.Contains("correct", StringComparison.OrdinalIgnoreCase))
+                found.AddRange(properties
+                    .Where(property => SolutionWords.Any(word => property.Key.Contains(word, StringComparison.OrdinalIgnoreCase)))
                     .Select(property => $"{path}/properties/{property.Key}"));
             }
 
             foreach (var (key, child) in schema)
             {
-                CollectCorrectness(document, child, $"{path}/{key}", correctness, visited);
+                CollectSolutionNames(document, child, $"{path}/{key}", found, visited);
             }
         }
         else if (node is JsonArray items)
         {
             for (var index = 0; index < items.Count; index++)
             {
-                CollectCorrectness(document, items[index], $"{path}/{index}", correctness, visited);
+                CollectSolutionNames(document, items[index], $"{path}/{index}", found, visited);
             }
         }
     }

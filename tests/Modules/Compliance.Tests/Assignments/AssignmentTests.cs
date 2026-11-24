@@ -1,3 +1,4 @@
+using System.Globalization;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Assignments;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Assignments.Events;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Courses;
@@ -126,16 +127,19 @@ public class AssignmentTests
     }
 
     [Fact]
-    public void Three_failed_attempts_show_as_locked_until_the_learner_starts_again()
+    public void Three_failed_attempts_show_as_locked_until_the_learner_relearns_the_content()
     {
         var assignment = Assign(DueInDays(30)).Value;
         assignment.MarkStarted(Monday);
 
-        assignment.MarkLocked();
+        assignment.MarkLocked(Later(1));
         assignment.StateOn(Day(1)).ShouldBe(AssignmentState.Locked);
 
         assignment.MarkStarted(Later(2));
-        assignment.StateOn(Day(2)).ShouldBe(AssignmentState.InProgress);
+        assignment.StateOn(Day(2)).ShouldBe(AssignmentState.Locked);
+
+        assignment.Unlock(Later(3));
+        assignment.StateOn(Day(3)).ShouldBe(AssignmentState.InProgress);
     }
 
     [Fact]
@@ -167,6 +171,76 @@ public class AssignmentTests
         assignment.Complete(Certificate(), Later(10));
 
         assignment.FollowUp(AssignmentId.New(), Later(10)).HasValue.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void A_follow_up_records_the_assignment_it_follows()
+    {
+        var assignment = Assign(DueInDays(30), RecurrenceInterval.Yearly).Value;
+        assignment.Complete(Certificate(), Later(10));
+
+        var next = assignment.FollowUp(AssignmentId.New(), Later(10)).Value;
+
+        next.Follows.ShouldBe(assignment.Id);
+        assignment.Follows.ShouldBeNull();
+    }
+
+    [Fact]
+    public void A_follow_up_is_never_assigned_before_the_completion_it_follows()
+    {
+        var assignment = Assign(DueInDays(30), RecurrenceInterval.Yearly).Value;
+        assignment.Complete(Certificate(), Later(10));
+
+        // Compliance's clock behind Certification's: the follow-up is taken a day before the certificate was issued.
+        var next = assignment.FollowUp(AssignmentId.New(), Later(9)).Value;
+
+        next.AssignedAt.ShouldBe(Later(10));
+    }
+
+    [Fact]
+    public void The_certificate_that_completed_an_assignment_does_not_complete_its_follow_up()
+    {
+        var assignment = Assign(DueInDays(30), RecurrenceInterval.Yearly).Value;
+        var certificate = Certificate();
+        assignment.Complete(certificate, Later(10));
+        var next = assignment.FollowUp(AssignmentId.New(), Later(10)).Value;
+
+        var completed = next.Complete(certificate, Later(10));
+
+        completed.IsFailure.ShouldBeTrue();
+        completed.Error.Value.ShouldBeOfType<CertificatePredatesAssignment>();
+        next.Status.ShouldBe(AssignmentStatus.Open);
+        next.Certificate.ShouldBeNull();
+    }
+
+    [Fact]
+    public void A_later_certificate_completes_the_follow_up()
+    {
+        var assignment = Assign(DueInDays(30), RecurrenceInterval.Yearly).Value;
+        assignment.Complete(Certificate(), Later(10));
+        var next = assignment.FollowUp(AssignmentId.New(), Later(10)).Value;
+
+        next.Complete(Certificate(), Later(11)).IsSuccess.ShouldBeTrue();
+
+        next.Status.ShouldBe(AssignmentStatus.Completed);
+    }
+
+    /// <summary>
+    /// The interval counts from the completion's day in Germany: a day the shorter month lacks becomes its last day, and
+    /// a completion late in the evening (UTC) that is already the next day in Germany counts from that next day.
+    /// </summary>
+    [Theory]
+    [InlineData("2027-03-31T10:00:00+02:00", 1, "2027-04-30")]
+    [InlineData("2027-05-30T22:30:00Z", 2, "2027-07-31")]
+    public void A_monthly_follow_up_from_the_31st_is_due_on_the_last_day_of_the_shorter_month(string completedAt, int months, string due)
+    {
+        var assignment = Assign(DueInDays(30), RecurrenceInterval.From(months)).Value;
+        var at = Timestamp.From(DateTimeOffset.Parse(completedAt, CultureInfo.InvariantCulture));
+        assignment.Complete(Certificate(), at);
+
+        var next = assignment.FollowUp(AssignmentId.New(), at).Value;
+
+        next.DueDate.ShouldBe(DueDate.From(DateOnly.Parse(due, CultureInfo.InvariantCulture)));
     }
 
     private static Result<Assignment, AssignmentError> Assign(DueDate dueDate, RecurrenceInterval? recurrence = null) =>

@@ -1,18 +1,23 @@
 using System.Collections;
 using System.Reflection;
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.Contracts.Assessment;
 
 namespace SmartSolutionsLab.PharmaTraining.Architecture.Tests.Rules;
 
 /// <summary>
 /// The solutions go to Assessment and never to the frontend (docs/domain/README.md): nothing Assessment answers or
-/// publishes carries a member that names correctness, or the types that hold the solutions, however deep.
+/// publishes carries a member that names correctness, a solution or an answer key, or the types that hold the
+/// solutions, however deep. A query or command is walked through its result, which is what its caller is answered.
 /// </summary>
 public sealed class AssessmentResponsesCarryNoSolutions : IArchitectureRule
 {
     private const string Api = "SmartSolutionsLab.PharmaTraining.Modules.Assessment.Api";
     private const string Application = "SmartSolutionsLab.PharmaTraining.Modules.Assessment.Application";
     private const string Contracts = "SmartSolutionsLab.PharmaTraining.Contracts.Assessment";
+
+    /// <summary>A public property whose name contains one of these, ignoring case, names a solution.</summary>
+    private static readonly string[] SolutionWords = ["Correct", "Solution", "AnswerKey"];
 
     /// <summary>The types that hold the solutions: for scoring only, never on a response.</summary>
     private static readonly HashSet<string> SolutionTypes =
@@ -25,28 +30,52 @@ public sealed class AssessmentResponsesCarryNoSolutions : IArchitectureRule
     ];
 
     public string Description =>
-        $"No type of Assessment's Api, no *Dto of its Application and no event in {Contracts} reaches, through its public properties, collections and generic arguments, a property whose name contains \"Correct\" or a type that holds the solutions ({string.Join(", ", SolutionTypes.Select(type => type[(type.LastIndexOf('.') + 1)..]))}).";
+        $"No type of Assessment's Api, no *Dto of its Application, no result of a query or command of its Application and no event in {Contracts} reaches, through its public properties, collections and generic arguments, a property whose name contains {string.Join(", ", SolutionWords.Select(word => $"\"{word}\""))} or a type that holds the solutions ({string.Join(", ", SolutionTypes.Select(type => type[(type.LastIndexOf('.') + 1)..]))}).";
 
-    /// <summary>The violations reachable from each of <paramref name="types"/>, each named with its path from the root.</summary>
+    /// <summary>
+    /// The violations reachable from each of <paramref name="types"/>, each named with its path from the root. A query or
+    /// command is walked through its result (<c>ListX.Result</c>), any other root through its own members.
+    /// </summary>
     public static IEnumerable<string> Violations(IEnumerable<Type> types)
     {
         Ensure.That(types).IsNotNull();
 
-        return types.SelectMany(root => Walk(root, root.Name, [root]));
+        return types.SelectMany(root =>
+        {
+            var results = root.GetInterfaces().Where(IsRequest).Select(request => request.GetGenericArguments()[0]).ToList();
+            return results.Count == 0
+                ? Walk(root, root.Name, [root])
+                : results.SelectMany(result => Reached(result, $"{root.Name}.Result"))
+                    .Where(reached => IsOwn(reached.Type))
+                    .SelectMany(reached => Walk(reached.Type, reached.Path, [reached.Type]));
+        });
     }
 
-    public IEnumerable<string> Violations(ArchitectureModel model)
+    /// <summary>
+    /// Every type of Assessment's Api (its request records included), every *Dto, query and command of its Application,
+    /// and every event in <see cref="Contracts"/>; none compiler-generated.
+    /// </summary>
+    public static IReadOnlyList<Type> Roots(ArchitectureModel model)
     {
         Ensure.That(model).IsNotNull();
 
-        var api = model.ModuleAssemblies.Where(assembly => assembly.GetName().Name == Api).SelectMany(assembly => assembly.GetTypes());
-        var dtos = model.ModuleAssemblies
-            .Where(assembly => assembly.GetName().Name == Application)
-            .SelectMany(assembly => assembly.GetTypes())
-            .Where(type => type.Name.EndsWith("Dto", StringComparison.Ordinal));
+        var api = TypesOf(model, Api);
+        var application = TypesOf(model, Application).ToList();
+        var dtos = application.Where(type => type.Name.EndsWith("Dto", StringComparison.Ordinal));
+        var requests = application.Where(type => !type.IsAbstract && type.GetInterfaces().Any(IsRequest));
         var published = typeof(TestPassedV1).Assembly.GetTypes().Where(type => type.Namespace == Contracts);
-        return Violations(api.Concat(dtos).Concat(published).Where(type => !IsCompilerGenerated(type)));
+        return [.. api.Concat(dtos).Concat(requests).Concat(published).Where(type => !IsCompilerGenerated(type)).Distinct()];
     }
+
+    public IEnumerable<string> Violations(ArchitectureModel model) => Violations(Roots(model));
+
+    private static IEnumerable<Type> TypesOf(ArchitectureModel model, string assembly) =>
+        model.ModuleAssemblies.Where(candidate => candidate.GetName().Name == assembly).SelectMany(candidate => candidate.GetTypes());
+
+    private static bool IsRequest(Type contract) =>
+        contract.IsGenericType
+        && !contract.ContainsGenericParameters
+        && (contract.GetGenericTypeDefinition() == typeof(IQuery<>) || contract.GetGenericTypeDefinition() == typeof(ICommand<>));
 
     private static IEnumerable<string> Walk(Type type, string path, HashSet<Type> onPath)
     {
@@ -59,9 +88,9 @@ public sealed class AssessmentResponsesCarryNoSolutions : IArchitectureRule
         foreach (var property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(property => property.GetIndexParameters().Length == 0))
         {
             var propertyPath = $"{path}.{property.Name}";
-            if (property.Name.Contains("Correct", StringComparison.OrdinalIgnoreCase))
+            if (SolutionWords.FirstOrDefault(word => property.Name.Contains(word, StringComparison.OrdinalIgnoreCase)) is { } word)
             {
-                yield return $"{propertyPath} names correctness; a learner never sees which answer is right.";
+                yield return $"{propertyPath} names a solution ({word}); a learner never sees which answer is right.";
                 continue;
             }
 

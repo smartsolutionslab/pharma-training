@@ -31,6 +31,9 @@ public sealed class Membership : Entity<MembershipId>
 
     public Timestamp? InvitationExpiresAt { get; private set; }
 
+    /// <summary>When the newest invitation mail was requested (invite or renewal); none for a founder, never mailed.</summary>
+    public Timestamp? InvitationRequestedAt { get; private set; }
+
     public PersonId? Person { get; private set; }
 
     public DisplayName? Name { get; private set; }
@@ -47,8 +50,8 @@ public sealed class Membership : Entity<MembershipId>
 
     internal bool IsActiveManager => Status == MembershipStatus.Active && Role == MembershipRole.Manager;
 
-    internal static Membership Invited(MembershipId id, EmailAddress email, JobFunction jobFunction, MembershipRole role, Timestamp expiresAt) =>
-        new(id) { Email = email, InvitationExpiresAt = expiresAt, JobFunction = jobFunction, Role = role, Status = MembershipStatus.Invited };
+    internal static Membership Invited(MembershipId id, EmailAddress email, JobFunction jobFunction, MembershipRole role, Timestamp now, Timestamp expiresAt) =>
+        new(id) { Email = email, InvitationRequestedAt = now, InvitationExpiresAt = expiresAt, JobFunction = jobFunction, Role = role, Status = MembershipStatus.Invited };
 
     internal static Membership Founder(MembershipId id, EmailAddress email, PersonId person, DisplayName name, JobFunction jobFunction, Timestamp now) =>
         new(id) { Email = email, Person = person, Name = name, JobFunction = jobFunction, Role = MembershipRole.Manager, Status = MembershipStatus.Active, StartedAt = now };
@@ -96,9 +99,21 @@ public sealed class Membership : Entity<MembershipId>
 
     internal void RecordMailed(InvitationVersion version) => InvitationMailedFor = version;
 
-    internal void RenewInvitation(Timestamp expiresAt)
+    /// <summary>The instant from which the invitation may be renewed again; none while no mail was ever requested.</summary>
+    internal Option<Timestamp> RenewableFrom(RenewCooldown cooldown)
+    {
+        if (InvitationRequestedAt is { } requestedAt)
+        {
+            return Option<Timestamp>.Some(requestedAt.Plus(cooldown.Value));
+        }
+
+        return Option<Timestamp>.None;
+    }
+
+    internal void RenewInvitation(Timestamp now, Timestamp expiresAt)
     {
         invitationLinks.Clear(); // the old links stop working at once; the renewal's mail issues the new one
+        InvitationRequestedAt = now;
         InvitationExpiresAt = expiresAt;
         InvitationVersion = InvitationVersion.Next();
     }

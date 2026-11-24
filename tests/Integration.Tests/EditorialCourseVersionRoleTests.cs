@@ -81,6 +81,7 @@ public class EditorialCourseVersionRoleTests(AspireFixture aspire)
     [InlineData("POST", "course-versions/{id}/retire")]
     [InlineData("GET", "course-versions/{id}/returns")]
     [InlineData("POST", "course-versions/{id}/next")]
+    [InlineData("POST", "course-versions/republish")]
     public async Task A_pharmacy_owner_is_forbidden(string method, string route)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -112,6 +113,7 @@ public class EditorialCourseVersionRoleTests(AspireFixture aspire)
     [InlineData("POST", "course-versions/{id}/retire")]
     [InlineData("GET", "course-versions/{id}/returns")]
     [InlineData("POST", "course-versions/{id}/next")]
+    [InlineData("POST", "course-versions/republish")]
     public async Task An_anonymous_caller_is_unauthorized(string method, string route)
     {
         var cancellationToken = TestContext.Current.CancellationToken;

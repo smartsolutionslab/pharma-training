@@ -33,6 +33,9 @@ internal sealed class InMemoryCourseVersionStore : ICourseVersionStore, ICatalog
     public Task<Option<CourseVersion>> FindAsync(Guid courseVersionId, CancellationToken cancellationToken) =>
         Task.FromResult(Stored.SingleOrDefault(version => version.Id == courseVersionId) is { } version ? Option<CourseVersion>.Some(version) : Option<CourseVersion>.None);
 
+    public Task<bool> HasNewerVersionAsync(Guid courseId, int versionNumber, CancellationToken cancellationToken) =>
+        Task.FromResult(Stored.Any(version => version.CourseId == courseId && version.VersionNumber > versionNumber));
+
     public Task<PagedResult<CourseVersion>> ListCurrentAsync(Page page, PageSize pageSize, CancellationToken cancellationToken)
     {
         List<CourseVersion> current = [.. Stored

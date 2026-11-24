@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Tests of the building blocks' per-user rate limits (src/BuildingBlocks/RateLimits): the windows, the limiter on TimeProvider, the registration and the endpoint filter's 429. -->
+  <PropertyGroup>
+    <RootNamespace>SmartSolutionsLab.PharmaTraining.BuildingBlocks.RateLimits.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../../src/BuildingBlocks/BuildingBlocks.csproj" />
+    <Compile Include="../../Fakes/*.cs" Link="Fakes/%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
+  </ItemGroup>
+
+</Project>

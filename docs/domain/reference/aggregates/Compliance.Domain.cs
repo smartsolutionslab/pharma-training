@@ -132,6 +132,9 @@ public sealed record DueDate : IValueObject<DateOnly>
     public static DueDate On(CalendarDate date) => new(date.Value);
 
     public CalendarDate AsDate() => CalendarDate.From(Value);
+
+    /// <summary>Whether a completion at that instant is late: its day in Germany lies after the due date.</summary>
+    public bool IsMissedBy(Timestamp completedAt) => completedAt.DayInGermany() > AsDate();
 }
 
 /// <summary>How often an assignment repeats, in months: 12 for the yearly briefing, 24 for first aid.</summary>
@@ -169,6 +172,8 @@ public sealed record ChangeReason : IValueObject<string>
     }
 
     public static ChangeReason MembershipEnded => new("Mitgliedschaft beendet");
+
+    public static ChangeReason Withdrawn => new("Von der Leitung zurückgezogen");
 }
 
 // ───────────────────────────── State ─────────────────────────────
@@ -242,7 +247,8 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
         DueDate dueDate,
         RecurrenceInterval? recurrence,
         PersonId assignedBy,
-        Timestamp assignedAt)
+        Timestamp assignedAt,
+        AssignmentId? follows)
         : base(id)
     {
         Learner = learner;
@@ -252,6 +258,7 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
         Recurrence = recurrence;
         AssignedBy = assignedBy;
         AssignedAt = assignedAt;
+        Follows = follows;
         Status = AssignmentStatus.Open;
         TestAccess = TestAccess.Available;
     }
@@ -276,9 +283,15 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
 
     public Timestamp? StartedAt { get; private set; }
 
+    /// <summary>When the lock or unlock last applied happened; null until the first (ADR 0023).</summary>
+    public Timestamp? TestAccessChangedAt { get; private set; }
+
     public Timestamp? CompletedAt { get; private set; }
 
     public CertificateId? Certificate { get; private set; }
+
+    /// <summary>The assignment this one follows up, when it was created by <see cref="FollowUp"/>; null for one assigned by hand (ADR 0026).</summary>
+    public AssignmentId? Follows { get; }
 
     public IReadOnlyList<AssignmentChange> History => history;
 
@@ -303,7 +316,7 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
             return Failure(AssignmentErrors.DueDateInThePast(dueDate));
         }
 
-        var assignment = new Assignment(id, learner, pharmacy, course, dueDate, recurrence, assignedBy, now);
+        var assignment = new Assignment(id, learner, pharmacy, course, dueDate, recurrence, assignedBy, now, null);
         assignment.Raise(new CourseAssigned(id, learner, pharmacy, course, dueDate));
         return Success(assignment);
     }
@@ -349,30 +362,64 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
         return Success(Unit.Value);
     }
 
-    /// <summary>The learner opened the course (LearningSessionStarted). Late or repeated events change nothing.</summary>
+    /// <summary>
+    /// The learner opened the course (LearningSessionStarted): an open assignment goes in progress. The earliest start
+    /// wins, also one before the assignment (owner decision on #247); a start of a completed or cancelled one changes
+    /// nothing. A start does not unlock the test: only relearned content does (owner decision on #32, ADR 0023).
+    /// </summary>
     public void MarkStarted(Timestamp at)
     {
+        if (!IsActive)
+        {
+            return;
+        }
+
         if (Status == AssignmentStatus.Open)
         {
             Status = AssignmentStatus.InProgress;
             StartedAt = at;
         }
-
-        TestAccess = TestAccess.Available; // a new session after a lock unlocks the test
-    }
-
-    /// <summary>Three failed attempts (AttemptsExhausted).</summary>
-    public void MarkLocked()
-    {
-        if (Status == AssignmentStatus.InProgress)
+        else if (StartedAt is null || at < StartedAt)
         {
-            TestAccess = TestAccess.LockedAfterFailedAttempts;
+            StartedAt = at;
         }
     }
 
     /// <summary>
+    /// Three failed attempts (AttemptsExhausted) lock the test unless a later lock or unlock was applied; on the same
+    /// instant the lock wins (ADR 0023). A lock while open is kept and shows once in progress.
+    /// </summary>
+    public void MarkLocked(Timestamp at)
+    {
+        if (!IsActive || at < AssignedAt || (TestAccessChangedAt is not null && at < TestAccessChangedAt))
+        {
+            return;
+        }
+
+        TestAccess = TestAccess.LockedAfterFailedAttempts;
+        TestAccessChangedAt = at;
+    }
+
+    /// <summary>
+    /// The content was worked through again (ContentCompleted): the test is available unless a lock or unlock at the
+    /// same instant or later was applied (ADR 0023). It never changes the status.
+    /// </summary>
+    public void Unlock(Timestamp at)
+    {
+        if (!IsActive || at < AssignedAt || (TestAccessChangedAt is not null && at <= TestAccessChangedAt))
+        {
+            return;
+        }
+
+        TestAccess = TestAccess.Available;
+        TestAccessChangedAt = at;
+    }
+
+    /// <summary>
     /// A certificate for this course was issued (CertificateIssued). Allowed from Open too, because the certificate
-    /// can overtake LearningSessionStarted on the bus. The same certificate twice is a no-op.
+    /// can overtake LearningSessionStarted on the bus. The same certificate twice is a no-op. A follow-up refuses a
+    /// certificate issued at or before it was assigned, so the certificate that completed its predecessor never
+    /// completes it (ADR 0026).
     /// </summary>
     public Result<Unit, AssignmentError> Complete(CertificateId certificate, Timestamp issuedAt)
     {
@@ -386,7 +433,7 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
             return Failure(AssignmentErrors.NotActive(Id, Status));
         }
 
-        if (issuedAt.CompareTo(AssignedAt) < 0)
+        if (Predates(issuedAt))
         {
             return Failure(AssignmentErrors.CertificatePredatesAssignment(Id, certificate));
         }
@@ -401,7 +448,8 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
 
     /// <summary>
     /// The next assignment of a recurring one: due one interval after completion, which is the day the certificate
-    /// runs out. Called by the reaction to AssignmentCompleted.
+    /// runs out. It records the assignment it follows and is never assigned before the completion. Called by the
+    /// consumer of AssignmentFollowUpRequestedV1, which the completing commit publishes (ADR 0026).
     /// </summary>
     public Option<Assignment> FollowUp(AssignmentId id, Timestamp now)
     {
@@ -411,7 +459,8 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
         }
 
         var dueDate = DueDate.On(CompletedAt.DayInGermany().Plus(Recurrence));
-        var next = new Assignment(id, Learner, Pharmacy, Course, dueDate, Recurrence, AssignedBy, now);
+        var assignedAt = now.CompareTo(CompletedAt) > 0 ? now : CompletedAt;
+        var next = new Assignment(id, Learner, Pharmacy, Course, dueDate, Recurrence, AssignedBy, assignedAt, Id);
         next.Raise(new CourseAssigned(id, Learner, Pharmacy, Course, dueDate));
         return Option<Assignment>.Some(next);
     }
@@ -421,19 +470,22 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
         Status switch
         {
             AssignmentStatus.Cancelled => AssignmentState.Cancelled,
-            AssignmentStatus.Completed when CompletedAt!.DayInGermany() > DueDate.AsDate() => AssignmentState.CompletedLate,
+            AssignmentStatus.Completed when DueDate.IsMissedBy(CompletedAt!) => AssignmentState.CompletedLate,
             AssignmentStatus.Completed => AssignmentState.Completed,
             _ when today > DueDate.AsDate() => AssignmentState.Overdue,
             AssignmentStatus.InProgress when TestAccess == TestAccess.LockedAfterFailedAttempts => AssignmentState.Locked,
             AssignmentStatus.InProgress => AssignmentState.InProgress,
             _ => AssignmentState.Open,
         };
+
+    private bool Predates(Timestamp issuedAt) =>
+        Follows is null ? issuedAt.CompareTo(AssignedAt) < 0 : issuedAt.CompareTo(AssignedAt) <= 0;
 }
 
 // ───────────────────────────── Domain events ─────────────────────────────
 // Turned into integration events (CourseAssignedV1, AssignmentCompletedV1) by the Application through the outbox.
 
-[DeliberatelyUnhandled("The command that assigns announces it to other modules as CourseAssignedV1; nothing in Compliance reacts.")]
+[DeliberatelyUnhandled("The command that assigns and the follow-up consumer announce it to other modules as CourseAssignedV1; nothing in Compliance reacts.")]
 public sealed record CourseAssigned(AssignmentId Assignment, PersonId Learner, PharmacyId Pharmacy, CourseId Course, DueDate DueDate) : IDomainEvent;
 
 [DeliberatelyUnhandled("Only the dashboard read model cares; no integration event in MVP 1.")]
@@ -442,7 +494,7 @@ public sealed record AssignmentDueDateChanged(AssignmentId Assignment, DueDate N
 [DeliberatelyUnhandled("Nobody outside Compliance reacts in MVP 1.")]
 public sealed record AssignmentCancelled(AssignmentId Assignment, PersonId Learner, PharmacyId Pharmacy) : IDomainEvent;
 
-[DeliberatelyUnhandled("Nothing completes an assignment before #33; #31 replaces this with the follow-up reaction.")]
+[DeliberatelyUnhandled("The CertificateIssuedV1 consumer announces it as AssignmentCompletedV1 and, for a recurring assignment, requests its follow-up as AssignmentFollowUpRequestedV1 in the completing commit, so neither is lost (AGENTS.md; ADR 0026).")]
 public sealed record AssignmentCompleted(
     AssignmentId Assignment,
     PersonId Learner,

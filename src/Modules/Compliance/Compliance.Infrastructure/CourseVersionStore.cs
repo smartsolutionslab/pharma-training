@@ -36,4 +36,27 @@ public sealed class CourseVersionStore(ComplianceDbContext context) : ICourseVer
         var retirements = await context.Set<CourseVersionRetirement>().AsNoTracking().Where(retirement => retirement.Course == course).ToListAsync(cancellationToken);
         return PublishedCourse.Of(course, versions, retirements);
     }
+
+    public async Task<IReadOnlyList<PublishedCourse>> FindCoursesAsync(IReadOnlyCollection<CourseId> courses, CancellationToken cancellationToken)
+    {
+        Ensure.That(courses).IsNotNull();
+
+        List<CourseId> asked = [.. courses.Distinct()];
+        var versions = await context.Set<CourseVersion>().AsNoTracking().Where(version => asked.Contains(version.Course)).ToListAsync(cancellationToken);
+        var retirements = await context.Set<CourseVersionRetirement>().AsNoTracking().Where(retirement => asked.Contains(retirement.Course)).ToListAsync(cancellationToken);
+        var versionsOf = versions.ToLookup(version => version.Course);
+        var retirementsOf = retirements.ToLookup(retirement => retirement.Course);
+
+        List<PublishedCourse> found = [];
+        foreach (var course in asked)
+        {
+            var published = PublishedCourse.Of(course, [.. versionsOf[course]], [.. retirementsOf[course]]);
+            if (published.HasValue)
+            {
+                found.Add(published.Value);
+            }
+        }
+
+        return found;
+    }
 }

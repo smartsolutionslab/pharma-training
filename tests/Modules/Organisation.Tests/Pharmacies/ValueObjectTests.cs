@@ -266,4 +266,55 @@ public class ValueObjectTests
         MembershipVersion.First.Next().ShouldBe(MembershipVersion.From(2));
         MembershipVersion.From(2).Next().Value.ShouldBe(3);
     }
+
+    [Fact]
+    public void A_utc_day_is_the_utc_calendar_day_of_an_instant_and_starts_at_midnight_utc()
+    {
+        var lateInBerlin = Timestamp.From(new DateTimeOffset(2027, 4, 2, 0, 30, 0, TimeSpan.FromHours(2)));
+
+        var day = UtcDay.Of(lateInBerlin);
+
+        day.Value.ShouldBe(new DateOnly(2027, 4, 1));
+        day.Start.ShouldBe(Timestamp.From(new DateTimeOffset(2027, 4, 1, 0, 0, 0, TimeSpan.Zero)));
+        day.Next().ShouldBe(UtcDay.From(new DateOnly(2027, 4, 2)));
+        day.Next().Start.ShouldBe(Timestamp.From(new DateTimeOffset(2027, 4, 2, 0, 0, 0, TimeSpan.Zero)));
+        UtcDay.Of(Timestamp.From(new DateTimeOffset(2027, 4, 1, 23, 59, 59, TimeSpan.Zero))).ShouldBe(day);
+    }
+
+    [Fact]
+    public void An_invitation_mail_count_starts_at_zero_counts_up_and_is_never_negative()
+    {
+        InvitationMailCount.Zero.Value.ShouldBe(0);
+        InvitationMailCount.Zero.Next().ShouldBe(InvitationMailCount.From(1));
+        InvitationMailCount.From(49).Next().Value.ShouldBe(50);
+        Should.Throw<GuardException>(() => InvitationMailCount.From(-1));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(10)]
+    [InlineData(1440)]
+    public void A_renew_cooldown_of_a_minute_up_to_a_day_is_a_cooldown(int minutes) =>
+        RenewCooldown.From(TimeSpan.FromMinutes(minutes)).Value.ShouldBe(TimeSpan.FromMinutes(minutes));
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(1441)]
+    public void A_renew_cooldown_of_nothing_less_or_more_than_a_day_is_refused(int minutes) =>
+        Should.Throw<GuardException>(() => RenewCooldown.From(TimeSpan.FromMinutes(minutes)));
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(50)]
+    [InlineData(10000)]
+    public void A_daily_mail_cap_from_1_to_10000_is_a_cap(int mails) =>
+        DailyMailCap.From(mails).Value.ShouldBe(mails);
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(10001)]
+    public void A_daily_mail_cap_outside_1_to_10000_is_refused(int mails) =>
+        Should.Throw<GuardException>(() => DailyMailCap.From(mails));
 }

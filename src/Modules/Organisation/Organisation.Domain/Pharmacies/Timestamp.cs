@@ -11,6 +11,8 @@ public sealed record Timestamp : IValueObject<DateTimeOffset>, IComparable<Times
 
     public Timestamp PlusDays(int days) => From(Value.AddDays(days));
 
+    public Timestamp Plus(TimeSpan duration) => From(Value.Add(duration));
+
     public int CompareTo(Timestamp? other) => other is null ? 1 : Value.CompareTo(other.Value);
 
     public static bool operator <(Timestamp left, Timestamp right) => Compare(left, right) < 0;

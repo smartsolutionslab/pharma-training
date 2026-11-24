@@ -1,0 +1,179 @@
+using System.Net;
+using System.Net.Http.Json;
+using System.Text.Json;
+
+namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
+
+/// <summary>
+/// Invitation mail is limited in Organisation's database (docs/adr/0004): an invitation is renewed at most once per
+/// 10 minutes, and a pharmacy requests at most 50 invitation mails per UTC day. Over a limit, invite and renew answer
+/// 429 with the limit's code, a <c>Retry-After</c> and <c>retryAt</c>, and nothing is stored or mailed. The tests
+/// travel in time by moving the stored instants back, never by waiting.
+/// </summary>
+public class OrganisationInvitationLimitsTests(AspireFixture aspire)
+{
+    private static readonly Uri Pharmacies = new("/organisation/pharmacies", UriKind.Relative);
+
+    private readonly OrganisationDatabase database = new(aspire);
+
+    private readonly Mailpit mailpit = new(aspire);
+
+    [Fact]
+    public async Task Renewing_an_invitation_again_within_ten_minutes_is_429_with_retry_after_until_the_cooldown_ends_and_once_it_has_passed_is_ok()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var owner = await aspire.CreateHostClientAsync("owner");
+        var pharmacy = await RegisterAsync(owner, cancellationToken);
+        var address = Invitee();
+        var membership = await InviteAsync(owner, pharmacy, address, cancellationToken);
+        (await mailpit.MessagesToAsync(address, 1, cancellationToken)).ShouldHaveSingleItem();
+
+        using (var tooSoon = await owner.PostAsync(RenewUri(pharmacy, membership), content: null, cancellationToken))
+        {
+            await ShouldBeRefusedLaterAsync(tooSoon, "organisation.invitation-renewed-too-soon", TimeSpan.FromMinutes(10), cancellationToken);
+        }
+
+        (await mailpit.CountToAsync(address, cancellationToken)).ShouldBe(1, "the refused renewal sent a mail");
+        await database.MoveInvitationRequestBackAsync(membership, TimeSpan.FromMinutes(10), cancellationToken);
+
+        using var renewed = await owner.PostAsync(RenewUri(pharmacy, membership), content: null, cancellationToken);
+
+        renewed.StatusCode.ShouldBe(HttpStatusCode.OK, await renewed.Content.ReadAsStringAsync(cancellationToken));
+        (await mailpit.MessagesToAsync(address, 2, cancellationToken)).Count.ShouldBe(2, "the refused renewal sent a mail besides the invite's and the renewal's");
+    }
+
+    [Fact]
+    public async Task A_pharmacy_at_fifty_invitation_mails_today_is_429_with_retry_after_until_midnight_utc_and_the_next_day_may_invite_again()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var owner = await aspire.CreateHostClientAsync("owner");
+        var pharmacy = await RegisterAsync(owner, cancellationToken);
+        await database.SetInvitationMailsAsync(pharmacy, await database.TodayUtcAsync(cancellationToken), 49, cancellationToken);
+        await InviteAsync(owner, pharmacy, Invitee(), cancellationToken);
+        var refusedAddress = Invitee();
+
+        using (var tooMany = await owner.PostAsJsonAsync(InvitationsUri(pharmacy), Invitation(refusedAddress), cancellationToken))
+        {
+            await ShouldBeRefusedLaterAsync(tooMany, "organisation.too-many-invitations-today", TimeSpan.FromDays(1), cancellationToken);
+        }
+
+        await database.MoveInvitationMailDayBackAsync(pharmacy, cancellationToken);
+
+        using var nextDay = await owner.PostAsJsonAsync(InvitationsUri(pharmacy), Invitation(refusedAddress), cancellationToken);
+
+        nextDay.StatusCode.ShouldBe(HttpStatusCode.Created, await nextDay.Content.ReadAsStringAsync(cancellationToken));
+    }
+
+    [Fact]
+    public async Task A_refused_invitation_mails_nothing_and_stores_nothing()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var owner = await aspire.CreateHostClientAsync("owner");
+        var pharmacy = await RegisterAsync(owner, cancellationToken);
+        await database.SetInvitationMailsAsync(pharmacy, await database.TodayUtcAsync(cancellationToken), 50, cancellationToken);
+        var memberships = await database.MembershipsOfAsync(pharmacy, cancellationToken);
+        var refusedAddress = Invitee();
+
+        using (var tooMany = await owner.PostAsJsonAsync(InvitationsUri(pharmacy), Invitation(refusedAddress), cancellationToken))
+        {
+            await ShouldBeRefusedLaterAsync(tooMany, "organisation.too-many-invitations-today", TimeSpan.FromDays(1), cancellationToken);
+        }
+
+        (await database.MembershipsOfAsync(pharmacy, cancellationToken)).ShouldBe(memberships, "the refused invitation was stored");
+        (await database.StatusesOfAsync(pharmacy, refusedAddress, cancellationToken)).ShouldBeEmpty();
+
+        // A mail requested by the refusal would have been sent before the one an invite requests after it.
+        await database.MoveInvitationMailDayBackAsync(pharmacy, cancellationToken);
+        var laterAddress = Invitee();
+        await InviteAsync(owner, pharmacy, laterAddress, cancellationToken);
+        (await mailpit.MessagesToAsync(laterAddress, 1, cancellationToken)).ShouldHaveSingleItem();
+        (await mailpit.CountToAsync(refusedAddress, cancellationToken)).ShouldBe(0, "the refused invitation sent a mail");
+    }
+
+    /// <summary>
+    /// The cap needs no lock (docs/adr/0004): two invites at 49 mails both load the tally below the cap, and the
+    /// pharmacy's row version lets only the first commit count the fiftieth; the other is told the pharmacy changed.
+    /// </summary>
+    [Fact]
+    public async Task Of_two_invitations_at_once_at_forty_nine_mails_today_one_is_stored_and_the_other_is_told_the_pharmacy_changed()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var owner = await aspire.CreateHostClientAsync("owner");
+        var pharmacy = await RegisterAsync(owner, cancellationToken);
+        await database.SetInvitationMailsAsync(pharmacy, await database.TodayUtcAsync(cancellationToken), 49, cancellationToken);
+
+        HttpResponseMessage[] responses;
+        await using (var gate = await database.LockPharmacyAsync(pharmacy, cancellationToken))
+        {
+            var first = owner.PostAsJsonAsync(InvitationsUri(pharmacy), Invitation(Invitee()), cancellationToken);
+            var second = owner.PostAsJsonAsync(InvitationsUri(pharmacy), Invitation(Invitee()), cancellationToken);
+            await database.WaitUntilBlockedAsync(gate, 2, cancellationToken);
+            await gate.CommitAsync(cancellationToken);
+            responses = await Task.WhenAll(first, second);
+        }
+
+        try
+        {
+            List<string> answers = [];
+            foreach (var response in responses)
+            {
+                answers.Add($"{(int)response.StatusCode} {await response.Content.ReadAsStringAsync(cancellationToken)}");
+            }
+
+            var described = string.Join(" | ", answers);
+            responses.Select(response => response.StatusCode).ShouldBe([HttpStatusCode.Created, HttpStatusCode.Conflict], ignoreOrder: true, described);
+            var lost = responses.Single(response => response.StatusCode == HttpStatusCode.Conflict);
+            using var problem = JsonDocument.Parse(await lost.Content.ReadAsStringAsync(cancellationToken));
+            problem.RootElement.GetProperty("code").GetString().ShouldBe("organisation.pharmacy-changed", described);
+            (await database.InvitationMailsThatDayAsync(pharmacy, cancellationToken)).ShouldBe(50, described);
+        }
+        finally
+        {
+            foreach (var response in responses)
+            {
+                response.Dispose();
+            }
+        }
+    }
+
+    private static object Invitation(string address) => new { email = address, jobFunction = "Pta", role = "Employee" };
+
+    private static string Invitee() => $"invitee-{Guid.CreateVersion7()}@example.com";
+
+    private static Uri InvitationsUri(Guid pharmacy) => new($"/organisation/pharmacies/{pharmacy}/invitations", UriKind.Relative);
+
+    private static Uri RenewUri(Guid pharmacy, Guid membership) => new($"/organisation/pharmacies/{pharmacy}/invitations/{membership}/renew", UriKind.Relative);
+
+    private static async Task<Guid> RegisterAsync(HttpClient client, CancellationToken cancellationToken)
+    {
+        using var created = await client.PostAsJsonAsync(Pharmacies, new { name = $"Apotheke {Guid.CreateVersion7()}", jobFunction = "Pharmacist" }, cancellationToken);
+        created.StatusCode.ShouldBe(HttpStatusCode.Created);
+        return await created.Content.ReadFromJsonAsync<Guid>(cancellationToken);
+    }
+
+    /// <summary>Invites the address as an employee through the API and answers the new membership's id.</summary>
+    private static async Task<Guid> InviteAsync(HttpClient client, Guid pharmacy, string address, CancellationToken cancellationToken)
+    {
+        using var invited = await client.PostAsJsonAsync(InvitationsUri(pharmacy), Invitation(address), cancellationToken);
+        invited.StatusCode.ShouldBe(HttpStatusCode.Created, await invited.Content.ReadAsStringAsync(cancellationToken));
+        return await invited.Content.ReadFromJsonAsync<Guid>(cancellationToken);
+    }
+
+    /// <summary>
+    /// A 429 with the code, a <c>Retry-After</c> of at least one second and at most <paramref name="atMost"/>, and the
+    /// instant itself as <c>retryAt</c> in the problem, which <c>Retry-After</c> counts down to.
+    /// </summary>
+    private static async Task ShouldBeRefusedLaterAsync(HttpResponseMessage response, string code, TimeSpan atMost, CancellationToken cancellationToken)
+    {
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        response.StatusCode.ShouldBe(HttpStatusCode.TooManyRequests, body);
+        using var problem = JsonDocument.Parse(body);
+        problem.RootElement.GetProperty("code").GetString().ShouldBe(code, body);
+        problem.RootElement.TryGetProperty("retryAt", out var retryAt).ShouldBeTrue($"the problem carries no retryAt: {body}");
+        retryAt.GetDateTimeOffset().ShouldBeGreaterThan(TimeProvider.System.GetUtcNow(), body);
+        var retryAfter = response.Headers.RetryAfter?.Delta;
+        retryAfter.ShouldNotBeNull($"the 429 carries no Retry-After in seconds: {body}");
+        retryAfter.Value.ShouldBeInRange(TimeSpan.FromSeconds(1), atMost, body);
+        (retryAfter.Value.TotalSeconds % 1).ShouldBe(0, "Retry-After is not in whole seconds");
+    }
+}

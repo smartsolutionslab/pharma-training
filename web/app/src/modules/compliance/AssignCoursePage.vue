@@ -12,7 +12,7 @@ import { useCurrentPharmacy } from '@/shell/useCurrentPharmacy';
 import AssignCourseStep from './AssignCourseStep.vue';
 import AssignLearnersStep from './AssignLearnersStep.vue';
 import AssignResult from './AssignResult.vue';
-import { createAssignSchema, localDay, maximumLearners } from './assignSchema';
+import { type AssignValues, createAssignSchema, latest, maximumLearners, today } from './assignSchema';
 import { type DueDateCode, useAssignCourse } from './useAssignCourse';
 
 // Assigning a course (#37): a course from the catalog, the learners, a due date with an optional yearly recurrence,
@@ -42,7 +42,7 @@ const schema = createAssignSchema(clock);
 
 const { t, d, n } = useI18n();
 const { current } = useCurrentPharmacy();
-const { assign, isAssigning } = useAssignCourse();
+const { assign } = useAssignCourse();
 
 const step = ref<Step>('course');
 const course = ref<CatalogCourseDto>();
@@ -55,8 +55,10 @@ const reviewError = ref<MessageKey>();
 const unavailable = ref<string>();
 const outcome = ref<{ assigned: number; refused: ComplianceRefusedLearnerDto[] }>();
 const sending = ref(false);
+/** Bumped by each fresh start: an answer sent before it belongs to a wizard no longer shown, and is dropped. */
+let generation = 0;
 
-const { defineField, errors, validate, resetForm, setFieldError, values } = useForm({
+const { defineField, errors, handleSubmit, validate, resetForm, setFieldError, values } = useForm({
   validationSchema: toTypedSchema(schema.pick({ dueDate: true, repeatYearly: true })),
   initialValues: { dueDate: '', repeatYearly: false },
 });
@@ -66,8 +68,17 @@ const [repeatYearly, repeatYearlyAttributes] = defineField('repeatYearly');
 const heading = useTemplateRef<HTMLElement>('heading');
 const alert = useTemplateRef<HTMLElement>('alert');
 const dueAlert = useTemplateRef<HTMLElement>('dueAlert');
+const unavailableAlert = useTemplateRef<HTMLElement>('unavailableAlert');
 
-const today = computed(() => localDay(clock()));
+/** The days the due date may lie between, read from the clock again each time the due date step shows. */
+const earliestDue = ref(today(clock));
+const latestDue = ref(latest(clock));
+watch(step, (shown) => {
+  if (shown === 'due') {
+    earliestDue.value = today(clock);
+    latestDue.value = latest(clock);
+  }
+});
 const learners = computed(() => [...selected.value]);
 const count = computed(() => selected.value.size);
 
@@ -84,6 +95,8 @@ async function enter(next: Step) {
 
 /** Starts afresh: on the course step, nothing chosen. */
 function reset() {
+  generation++;
+  sending.value = false;
   step.value = 'course';
   course.value = undefined;
   selected.value = new Map();
@@ -161,21 +174,34 @@ async function back() {
   }
 }
 
-/** Sends the assignment once, however often Submit is pressed, and lands where its answer can be acted on. */
-async function submit() {
+/** Back on the due date step, its field's error focused: the due date is refused, here or by the host. */
+async function refuseDueDate() {
+  step.value = 'due';
+  await focus(() => dueAlert.value);
+}
+
+/**
+ * Sends the assignment once, however often Submit is pressed, and lands where its answer can be acted on. An answer
+ * that comes after the wizard started afresh (another pharmacy) is the old wizard's, and is dropped.
+ */
+async function send(checked: Pick<AssignValues, 'dueDate' | 'repeatYearly'>) {
   const pharmacy = current.value;
   if (sending.value || pharmacy === undefined || course.value === undefined) {
     return;
   }
+  const sent = generation;
   sending.value = true;
   reviewError.value = undefined;
   try {
     const answer = await assign(pharmacy.id, {
       courseId: course.value.courseId,
       personIds: [...selected.value.keys()],
-      dueDate: values.dueDate,
-      recurrenceMonths: values.repeatYearly ? 12 : null,
+      dueDate: checked.dueDate,
+      recurrenceMonths: checked.repeatYearly ? 12 : null,
     });
+    if (sent !== generation) {
+      return;
+    }
     switch (answer.kind) {
       case 'done': {
         outcome.value = { assigned: answer.assigned.length, refused: answer.refused };
@@ -189,9 +215,8 @@ async function submit() {
         break;
       }
       case 'dueDate':
-        step.value = 'due';
         setFieldError('dueDate', dueDateMessages[answer.code]);
-        await focus(() => dueAlert.value);
+        await refuseDueDate();
         break;
       case 'courseGone':
         course.value = undefined;
@@ -200,6 +225,7 @@ async function submit() {
         break;
       case 'notAvailable':
         unavailable.value = answer.message;
+        await focus(() => unavailableAlert.value);
         break;
       case 'changed':
         reviewError.value = 'compliance.assign.changed';
@@ -209,9 +235,14 @@ async function submit() {
         break;
     }
   } finally {
-    sending.value = false;
+    if (sent === generation) {
+      sending.value = false;
+    }
   }
 }
+
+/** Checks the due date again against the clock as it is now, then sends; a due date gone stale goes back to its step. */
+const submit = handleSubmit(send, refuseDueDate);
 
 async function again() {
   reset();
@@ -227,7 +258,15 @@ function nameOf(personId: string) {
   <main class="flex max-w-4xl flex-col gap-6">
     <h1 class="text-title">{{ t('modules.compliance.pages.assign.title') }}</h1>
     <p v-if="current?.canAssignCourses === false" class="text-body">{{ t('compliance.assign.notAllowed') }}</p>
-    <p v-else-if="unavailable !== undefined" role="alert" class="text-body">{{ unavailable }}</p>
+    <p
+      v-else-if="unavailable !== undefined"
+      ref="unavailableAlert"
+      role="alert"
+      tabindex="-1"
+      class="text-body outline-none"
+    >
+      {{ unavailable }}
+    </p>
     <template v-else-if="current !== undefined">
       <ol :aria-label="t('compliance.assign.steps.label')" class="flex flex-wrap gap-2 text-caption">
         <li
@@ -261,6 +300,7 @@ function nameOf(personId: string) {
           @toggle="toggle"
           @add="add"
           @clear="clear"
+          @too-many="refuse('compliance.assign.learners.tooMany', { max: maximumLearners })"
         />
         <div v-else-if="step === 'due'" class="flex flex-col gap-4">
           <div class="flex flex-col gap-2">
@@ -270,7 +310,8 @@ function nameOf(personId: string) {
               v-model="dueDate"
               v-bind="dueDateAttributes"
               type="date"
-              :min="today"
+              :min="earliestDue"
+              :max="latestDue"
               aria-required="true"
               :aria-invalid="errors.dueDate ? true : undefined"
               :aria-describedby="errors.dueDate ? `${dueField}-error` : undefined"
@@ -331,7 +372,7 @@ function nameOf(personId: string) {
           <Button v-if="step !== 'course'" type="button" variant="outline" @click="back">
             {{ t('compliance.assign.back') }}
           </Button>
-          <Button v-if="step === 'review'" type="button" :disabled="sending || isAssigning" @click="submit">
+          <Button v-if="step === 'review'" type="button" :disabled="sending" @click="submit">
             {{ t('compliance.assign.submit') }}
           </Button>
           <Button v-else type="button" @click="next">{{ t('compliance.assign.next') }}</Button>

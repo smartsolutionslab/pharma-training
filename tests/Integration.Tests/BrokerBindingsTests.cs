@@ -27,6 +27,19 @@ public partial class BrokerBindingsTests(AspireFixture aspire)
     // is the one a host needs.
     private const string MembershipStarted = "SmartSolutionsLab.PharmaTraining.Contracts.Organisation.MembershipStartedV1";
 
+    private const string MembershipChanged = "SmartSolutionsLab.PharmaTraining.Contracts.Organisation.MembershipChangedV1";
+
+    private const string MembershipEnded = "SmartSolutionsLab.PharmaTraining.Contracts.Organisation.MembershipEndedV1";
+
+    private const string LearningQueue = "learning";
+
+    private const string AttemptsExhausted = "SmartSolutionsLab.PharmaTraining.Contracts.Assessment.AttemptsExhaustedV1";
+
+    private const string TestPassed = "SmartSolutionsLab.PharmaTraining.Contracts.Assessment.TestPassedV1";
+
+    // Learning consumes Editorial's retirement (#195), so Learning's queue is bound to its exchange.
+    private const string CourseVersionRetired = "SmartSolutionsLab.PharmaTraining.Contracts.Editorial.CourseVersionRetiredV1";
+
     private static readonly TimeSpan WaitTimeout = TimeSpan.FromSeconds(30);
 
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(250);
@@ -59,6 +72,32 @@ public partial class BrokerBindingsTests(AspireFixture aspire)
             .Select(binding => $"{binding.Source} -> {binding.DestinationType} {binding.Destination}")
             .ShouldBeEmpty("the broker routes InvitationMailRequestedV1, which Organisation's host publishes and consumes locally, to a queue");
         exchanges.Select(exchange => exchange.Name).ShouldNotContain(InvitationMailRequested, "the broker holds an exchange for InvitationMailRequestedV1");
+    }
+
+    /// <summary>
+    /// Compliance's follow-up request of a recurring assignment (#31) is its own work item, published and consumed by the
+    /// Compliance service: like the mail request, it travels on the host's local queue only (docs/adr/0026).
+    /// </summary>
+    [Fact]
+    public async Task The_broker_has_no_exchange_or_binding_for_the_follow_up_request()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var management = await ManagementClientAsync(cancellationToken);
+        await WaitForBindingAsync(management, MembershipStarted, "compliance", cancellationToken);
+
+        // A sender's exchange is declared on its first publish, so Compliance must have requested a follow-up first.
+        var followUps = new ComplianceFollowUps(aspire);
+        var recurring = await followUps.AssignYearlyAsync(cancellationToken);
+        await followUps.IssueAsync(recurring, cancellationToken);
+        await followUps.WaitForFollowUpAsync(recurring.Assignment, cancellationToken);
+
+        var bindings = await BindingsAsync(management, cancellationToken);
+        var exchanges = await management.GetFromJsonAsync<List<Exchange>>(new Uri("/api/exchanges/%2F", UriKind.Relative), cancellationToken) ?? [];
+
+        bindings.Where(binding => binding.Source == ComplianceFollowUps.FollowUpRequestedType)
+            .Select(binding => $"{binding.Source} -> {binding.DestinationType} {binding.Destination}")
+            .ShouldBeEmpty("the broker routes AssignmentFollowUpRequestedV1, which Compliance's host publishes and consumes locally, to a queue");
+        exchanges.Select(exchange => exchange.Name).ShouldNotContain(ComplianceFollowUps.FollowUpRequestedType, "the broker holds an exchange for AssignmentFollowUpRequestedV1");
     }
 
     /// <summary>
@@ -114,6 +153,62 @@ public partial class BrokerBindingsTests(AspireFixture aspire)
 
         (await BindingsAsync(management, cancellationToken))
             .ShouldContain(binding => binding.Source == MembershipStarted && binding.Destination == "compliance" && binding.DestinationType == "queue");
+    }
+
+    /// <summary>Learning reopens the failed chapters when Assessment announces the attempts used up (#42).</summary>
+    [Fact]
+    public async Task Learnings_queue_is_bound_to_the_exhaustion()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var management = await ManagementClientAsync(cancellationToken);
+
+        await WaitForBindingAsync(management, AttemptsExhausted, LearningQueue, cancellationToken);
+
+        (await BindingsAsync(management, cancellationToken))
+            .ShouldContain(binding => binding.Source == AttemptsExhausted && binding.Destination == LearningQueue && binding.DestinationType == "queue");
+    }
+
+    /// <summary>Learning finishes the session when Assessment announces the test passed (#42); Certification's binding to it is its own.</summary>
+    [Fact]
+    public async Task Learnings_queue_is_bound_to_the_passed_test()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var management = await ManagementClientAsync(cancellationToken);
+
+        await WaitForBindingAsync(management, TestPassed, LearningQueue, cancellationToken);
+
+        (await BindingsAsync(management, cancellationToken))
+            .ShouldContain(binding => binding.Source == TestPassed && binding.Destination == LearningQueue && binding.DestinationType == "queue");
+    }
+
+    /// <summary>Learning admits only active members (#194), so it binds its queue to all three of Organisation's membership events.</summary>
+    [Fact]
+    public async Task The_membership_events_are_bound_to_learnings_queue()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var management = await ManagementClientAsync(cancellationToken);
+
+        await WaitForBindingAsync(management, MembershipStarted, LearningQueue, cancellationToken);
+        await WaitForBindingAsync(management, MembershipChanged, LearningQueue, cancellationToken);
+        await WaitForBindingAsync(management, MembershipEnded, LearningQueue, cancellationToken);
+
+        var bindings = await BindingsAsync(management, cancellationToken);
+        foreach (var exchange in new[] { MembershipStarted, MembershipChanged, MembershipEnded })
+        {
+            bindings.ShouldContain(binding => binding.Source == exchange && binding.Destination == LearningQueue && binding.DestinationType == "queue", $"{exchange} is not bound to Learning's queue.");
+        }
+    }
+
+    [Fact]
+    public async Task Learnings_queue_is_bound_to_the_course_version_retirement()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var management = await ManagementClientAsync(cancellationToken);
+
+        await WaitForBindingAsync(management, CourseVersionRetired, LearningQueue, cancellationToken);
+
+        (await BindingsAsync(management, cancellationToken))
+            .ShouldContain(binding => binding.Source == CourseVersionRetired && binding.Destination == LearningQueue && binding.DestinationType == "queue");
     }
 
     /// <summary>

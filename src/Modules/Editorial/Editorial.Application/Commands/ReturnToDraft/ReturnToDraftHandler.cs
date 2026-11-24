@@ -16,7 +16,7 @@ public sealed class ReturnToDraftHandler(ICourseVersionStore versions, IEditoria
             return Failure(CourseVersionFailures.NotFound(command.Version.Value));
         }
 
-        var returned = found.Value.ReturnToDraft(command.Editor, command.Reason, Timestamp.From(time.GetUtcNow()));
+        var returned = found.Value.ReturnToDraft(command.Editor, command.EditorName, command.Reason, Timestamp.From(time.GetUtcNow()));
         if (returned.IsFailure)
         {
             return Failure(CourseVersionFailures.From(returned.Error));

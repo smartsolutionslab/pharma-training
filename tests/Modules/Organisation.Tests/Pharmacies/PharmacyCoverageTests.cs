@@ -109,7 +109,7 @@ public class PharmacyCoverageTests
         var pharmacy = Register();
         pharmacy.RevokeInvitation(Invite(pharmacy, AnnaMail));
 
-        pharmacy.Invite(MembershipId.New(), AnnaMail, JobFunction.Pta, MembershipRole.Employee, Now).IsSuccess.ShouldBeTrue();
+        pharmacy.Invite(MembershipId.New(), AnnaMail, JobFunction.Pta, MembershipRole.Employee, Now, InvitationMailLimits.Default).IsSuccess.ShouldBeTrue();
     }
 
     [Fact]
@@ -118,8 +118,8 @@ public class PharmacyCoverageTests
         var pharmacy = Register();
         var founder = pharmacy.Memberships.Single().Id;
 
-        pharmacy.RenewInvitation(founder, Now).Error.ShouldBeOfType<NoOpenInvitation>();
-        pharmacy.RenewInvitation(MembershipId.New(), Now).Error.ShouldBeOfType<NoOpenInvitation>();
+        pharmacy.RenewInvitation(founder, Now, InvitationMailLimits.Default).Error.ShouldBeOfType<NoOpenInvitation>();
+        pharmacy.RenewInvitation(MembershipId.New(), Now, InvitationMailLimits.Default).Error.ShouldBeOfType<NoOpenInvitation>();
     }
 
     [Fact]
@@ -128,7 +128,7 @@ public class PharmacyCoverageTests
         var pharmacy = Register();
         var membership = Invite(pharmacy, AnnaMail);
 
-        pharmacy.RenewInvitation(membership, Now.PlusDays(20)).IsSuccess.ShouldBeTrue();
+        pharmacy.RenewInvitation(membership, Now.PlusDays(20), InvitationMailLimits.Default).IsSuccess.ShouldBeTrue();
 
         pharmacy.DomainEvents.OfType<MemberInvited>().Last()
             .ShouldBe(new MemberInvited(pharmacy.Id, membership, Now.PlusDays(20 + Pharmacy.InvitationValidityDays)));
@@ -267,7 +267,7 @@ public class PharmacyCoverageTests
     /// <summary>Invites the address; with a token, its mail has issued that link too.</summary>
     private static MembershipId Invite(Pharmacy pharmacy, EmailAddress email, InvitationToken? token = null, MembershipRole role = MembershipRole.Employee)
     {
-        var membership = pharmacy.Invite(MembershipId.New(), email, JobFunction.Pta, role, Now).Value;
+        var membership = pharmacy.Invite(MembershipId.New(), email, JobFunction.Pta, role, Now, InvitationMailLimits.Default).Value;
         if (token is not null)
         {
             pharmacy.IssueInvitationLink(membership, token, Now).IsSuccess.ShouldBeTrue();
