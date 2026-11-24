@@ -196,6 +196,7 @@ test.each([
   expect(screen.getByText(intro())).toBeInTheDocument();
   expect(screen.queryByRole('list')).not.toBeInTheDocument();
   expect(listHeading()).not.toBeInTheDocument();
+  expect(within(alert).queryByRole('button')).not.toBeInTheDocument();
 });
 
 test('a caller who is no longer a member is told so in German', async () => {
@@ -214,18 +215,22 @@ test('a pharmacy the caller is no longer a member of reads the memberships again
   await waitFor(() => expect(readsOf(fetch, minePath).length).toBeGreaterThan(1));
 });
 
-test('another refusal of Compliance shows the host’s own words', async () => {
-  host.assignments = async () => problem(400, 'compliance.pharmacy-missing', 'Es wurde keine Apotheke angegeben.');
+// A module code the catalogs do not know shows the host's own words (#147, ADR 0007); reading again may help.
+test.each([
+  ['Compliance', () => problem(400, 'compliance.pharmacy-missing', 'Es wurde keine Apotheke angegeben.')],
+  ['another module', () => problem(403, 'organisation.x', 'Es wurde keine Apotheke angegeben.')],
+])('a refusal of %s the catalogs do not know shows the host’s own words, and Retry', async (_name, refusal) => {
+  host.assignments = async () => refusal();
   await renderMyCoursesPage();
 
-  await alertSaying('Es wurde keine Apotheke angegeben.');
+  const alert = await alertSaying('Es wurde keine Apotheke angegeben.');
   expect(screen.queryByRole('list')).not.toBeInTheDocument();
+  expect(within(alert).getByRole('button', { name: 'Erneut versuchen' })).toBeInTheDocument();
 });
 
 test.each([
   ['a failure of the host', () => Promise.resolve(new Response('', { status: 500 }))],
   ['a bad request without a code', () => Promise.resolve(problem(400))],
-  ['another module’s refusal', () => Promise.resolve(problem(403, 'organisation.x'))],
   ['the network', () => Promise.reject(new TypeError('Failed to fetch'))],
 ])('%s says the courses could not be loaded, and Retry reads them again', async (_name, failure) => {
   const user = userEvent.setup();
