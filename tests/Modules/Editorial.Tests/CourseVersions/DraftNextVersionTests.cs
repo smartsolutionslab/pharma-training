@@ -92,7 +92,7 @@ public class DraftNextVersionTests
         drafted.IsFailure.ShouldBeTrue();
         drafted.Error.Code.ShouldBe("editorial.next-version-exists");
         drafted.Error.Status.ShouldBe(HttpStatusCode.Conflict);
-        drafted.Error.Message.ShouldContain(existing.Id.Value.ToString());
+        drafted.Error.Message.ShouldBe("The next version of this course already exists; continue that one instead of drafting another.");
         store.Stored.Count.ShouldBe(2);
         store.Commits.ShouldBe(0);
     }
@@ -170,7 +170,7 @@ public class DraftNextVersionTests
         drafted.IsFailure.ShouldBeTrue();
         drafted.Error.Code.ShouldBe("editorial.next-version-exists");
         drafted.Error.Status.ShouldBe(HttpStatusCode.Conflict);
-        drafted.Error.Message.ShouldContain(concurrent.Id.Value.ToString());
+        drafted.Error.Message.ShouldBe("The next version of this course already exists; continue that one instead of drafting another.");
     }
 
     private static DraftNextVersionHandler Handler(InMemoryCourseVersionStore store, IEditorialUnitOfWork unitOfWork) => new(store, unitOfWork);
