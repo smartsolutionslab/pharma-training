@@ -1,4 +1,6 @@
 using Aspire.Hosting.Testing;
+using JasperFx;
+using Marten;
 using Npgsql;
 
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
@@ -161,6 +163,63 @@ internal static class LearningDatabase
             TimeProvider.System.GetElapsedTime(started).ShouldBeLessThan(WaitTimeout, $"Learning never heard that course version {courseVersionId} was retired.");
             await Task.Delay(PollInterval, cancellationToken);
         }
+    }
+
+    /// <summary>
+    /// Appends a <c>ContentCompleted</c> to the session's stream in Learning's event store, with no marker and no
+    /// announcement, as a crash between the report's append and its outbox commit leaves it (#277); answers the stream
+    /// version Marten stored it at. The session's view is not projected, as the report's own append would project it.
+    /// </summary>
+    public static async Task<long> PlantCompletionAsync(AspireFixture aspire, PlantedContentCompleted completed, CancellationToken cancellationToken)
+    {
+        Ensure.That(completed).IsNotNull();
+
+        var connectionString = await aspire.App.GetConnectionStringAsync("learning-database", cancellationToken)
+            ?? throw new InvalidOperationException("Learning's database has no connection string.");
+        await using var store = DocumentStore.For(options =>
+        {
+            options.Connection(connectionString);
+            options.DatabaseSchemaName = "learning";
+            options.Events.DatabaseSchemaName = "learning";
+            options.AutoCreateSchemaObjects = AutoCreate.None;
+            options.UseSystemTextJsonForSerialization();
+            options.Events.MapEventType<PlantedContentCompleted>("content_completed");
+        });
+        await using var session = store.LightweightSession();
+        var planted = session.Events.Append(completed.Session, completed).Events.ShouldHaveSingleItem();
+        await session.SaveChangesAsync(cancellationToken);
+
+        await using var connection = await OpenAsync(aspire, cancellationToken);
+        await using var command = new NpgsqlCommand("select version from learning.mt_events where id = @id", connection);
+        command.Parameters.AddWithValue("id", planted.Id);
+        return (long)(await command.ExecuteScalarAsync(cancellationToken) ?? throw new InvalidOperationException($"Learning's event store holds no event {planted.Id}."));
+    }
+
+    /// <summary>The stream version of the stream's only event of the stored type (<c>content_completed</c>).</summary>
+    public static async Task<long> StoredVersionAsync(AspireFixture aspire, Guid stream, string type, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(aspire, cancellationToken);
+        await using var command = new NpgsqlCommand("select version from learning.mt_events where stream_id = @stream and type = @type", connection);
+        command.Parameters.AddWithValue("stream", stream);
+        command.Parameters.AddWithValue("type", type);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        List<long> versions = [];
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            versions.Add(reader.GetInt64(0));
+        }
+
+        return versions.ShouldHaveSingleItem($"stream {stream} should hold one {type}");
+    }
+
+    /// <summary>How many markers Learning holds for the stored event at the stream's version (#277): one once it was announced.</summary>
+    public static async Task<long> CountAnnouncedAsync(AspireFixture aspire, Guid stream, long version, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(aspire, cancellationToken);
+        await using var command = new NpgsqlCommand("select count(*) from learning.announced_events where stream_id = @stream and stream_version = @version", connection);
+        command.Parameters.AddWithValue("stream", stream);
+        command.Parameters.AddWithValue("version", version);
+        return (long)(await command.ExecuteScalarAsync(cancellationToken))!;
     }
 
     /// <summary>How many sessions the learner has on the version, as Learning's session view holds them.</summary>

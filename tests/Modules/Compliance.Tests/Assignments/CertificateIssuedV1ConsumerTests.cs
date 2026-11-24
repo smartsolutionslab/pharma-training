@@ -6,6 +6,7 @@ using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application.Consumers;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Assignments;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Courses;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Members;
+using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Tests.Progress;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Tests.Assignments;
 
@@ -87,7 +88,7 @@ public class CertificateIssuedV1ConsumerTests
         assignment.Status.ShouldBe(AssignmentStatus.Open);
         assignment.Certificate.ShouldBeNull();
         store.Published.ShouldBeEmpty();
-        store.Commits.ShouldBe(0);
+        store.Commits.ShouldBe(1);
     }
 
     [Fact]
@@ -167,10 +168,11 @@ public class CertificateIssuedV1ConsumerTests
     }
 
     [Fact]
-    public async Task Another_certificate_for_an_assignment_already_completed_changes_nothing()
+    public async Task Another_certificate_for_an_assignment_already_completed_leaves_it_as_it_was_and_is_kept()
     {
         var store = new InMemoryAssignmentStore();
-        var consumer = Consumer(store);
+        var progress = new InMemoryLearnerProgressStore();
+        var consumer = Consumer(store, progress);
         var learner = PersonId.From(Guid.CreateVersion7());
         var course = CourseId.From(Guid.CreateVersion7());
         var assignment = Stored(store, learner, PharmacyId.From(Guid.CreateVersion7()), course, AssignedAt);
@@ -183,7 +185,8 @@ public class CertificateIssuedV1ConsumerTests
         assignment.Certificate.ShouldBe(CertificateId.From(first));
         assignment.CompletedAt.ShouldBe(Timestamp.From(IssuedAt));
         Completions(store).ShouldHaveSingleItem().CertificateId.ShouldBe(first);
-        store.Commits.ShouldBe(1);
+        progress.Certificates.Select(certificate => certificate.Id.Value).ShouldBe([first, second], ignoreOrder: true);
+        store.Commits.ShouldBe(2);
     }
 
     [Fact]
@@ -213,16 +216,19 @@ public class CertificateIssuedV1ConsumerTests
     }
 
     [Fact]
-    public async Task A_person_without_an_active_assignment_commits_nothing()
+    public async Task A_person_without_an_active_assignment_announces_nothing_and_keeps_the_certificate()
     {
         var store = new InMemoryAssignmentStore();
+        var progress = new InMemoryLearnerProgressStore();
         var course = CourseId.From(Guid.CreateVersion7());
         Stored(store, PersonId.From(Guid.CreateVersion7()), PharmacyId.From(Guid.CreateVersion7()), course, AssignedAt);
+        var issued = CertificateEvents.Issued(Guid.CreateVersion7(), course.Value, IssuedAt);
 
-        await Consumer(store).HandleAsync(CertificateEvents.Issued(Guid.CreateVersion7(), course.Value, IssuedAt), TestContext.Current.CancellationToken);
+        await Consumer(store, progress).HandleAsync(issued, TestContext.Current.CancellationToken);
 
         store.Published.ShouldBeEmpty();
-        store.Commits.ShouldBe(0);
+        store.Commits.ShouldBe(1);
+        progress.Certificates.ShouldHaveSingleItem().Id.ShouldBe(CertificateId.From(issued.CertificateId));
     }
 
     [Theory]
@@ -281,7 +287,9 @@ public class CertificateIssuedV1ConsumerTests
         store.Commits.ShouldBe(0);
     }
 
-    private static CertificateIssuedV1Consumer Consumer(InMemoryAssignmentStore store) => new(store, store);
+    private static CertificateIssuedV1Consumer Consumer(InMemoryAssignmentStore store) => Consumer(store, new InMemoryLearnerProgressStore());
+
+    private static CertificateIssuedV1Consumer Consumer(InMemoryAssignmentStore store, InMemoryLearnerProgressStore progress) => new(store, progress, store);
 
     private static Assignment Stored(InMemoryAssignmentStore store, PersonId learner, PharmacyId pharmacy, CourseId course, DateTimeOffset assignedAt)
     {

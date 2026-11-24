@@ -7,13 +7,13 @@ import type {
   ComplianceMatrixRowDto,
   PagedResultOfComplianceMatrixRowDto,
 } from '@/api/generated';
+import { statusLooks } from '@/components/status/assignmentStatus';
+import AssignmentStatusLabel from '@/components/status/AssignmentStatusLabel.vue';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { calendarDate } from '@/i18n/formats';
 import { cn } from '@/lib/utils';
 import { cellStatus } from './cellStatus';
-import MatrixStatus from './MatrixStatus.vue';
-import { statusLooks } from './matrixStatus';
 import { rateOf } from './useTeamMatrix';
 import { rateFigure } from './matrixRate';
 
@@ -180,7 +180,7 @@ const cellClass = 'border-b px-3 py-2 align-top';
                 <span class="sr-only">{{ t('compliance.matrix.table.notAssigned') }}</span>
               </template>
               <template v-else>
-                <MatrixStatus :status="shown.look.status" />
+                <AssignmentStatusLabel :status="shown.look.status" />
                 {{ ' ' }}
                 <span
                   v-if="shown.look.line !== undefined"

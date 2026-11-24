@@ -1,36 +1,70 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.Contracts;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application;
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.InvitationRecipients;
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.InvitationSenders;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Tests.Pharmacies;
 
 /// <summary>
-/// The pharmacies table in memory, and the module's unit of work over it: what is added is stored, and what is
-/// published is sent, only once committed. <see cref="LoseNextCommit"/> makes the next <see cref="TryCommitAsync"/>
+/// The pharmacies table in memory, with the invitation recipients and senders tables (#265), and the module's unit of
+/// work over them: what is added is stored, and what is published is sent, only once committed. <see cref="LoseNextCommit"/> makes the next <see cref="TryCommitAsync"/>
 /// lose a race, as a save does whose pharmacy another save changed since it was loaded; <see cref="FailNextCommit"/>
-/// makes the next <see cref="CommitAsync"/> throw, as <c>CommitAsync</c> lets a lost race through.
+/// makes the next <see cref="CommitAsync"/> throw, as <c>CommitAsync</c> lets a lost race through;
+/// <see cref="FailNextFind"/> makes the next no-tracking read (<see cref="FindAsync"/>) throw, as a dropped connection
+/// does, while <see cref="LoadAsync"/> still loads.
 /// </summary>
-internal sealed class InMemoryPharmacyStore : IPharmacyStore, IOrganisationUnitOfWork
+internal sealed class InMemoryPharmacyStore : IPharmacyStore, IInvitationRecipientStore, IInvitationSenderStore, IOrganisationUnitOfWork
 {
     private readonly List<Pharmacy> added = [];
+    private readonly List<InvitationRecipient> addedRecipients = [];
+    private readonly List<InvitationSender> addedSenders = [];
     private readonly List<IntegrationEvent> queued = [];
     private bool loseNextCommit;
+
+    private LostRace how = new VersionMovedOn();
     private Exception? failNextCommit;
+    private Exception? failNextFind;
     private Action? onCommit;
 
     public List<Pharmacy> Stored { get; } = [];
 
     public List<IntegrationEvent> Published { get; } = [];
 
+    public List<InvitationRecipient> StoredRecipients { get; } = [];
+
+    public List<InvitationSender> StoredSenders { get; } = [];
+
     public int Commits { get; private set; }
 
     public void Add(Pharmacy pharmacy) => added.Add(pharmacy);
 
-    public Task<Option<Pharmacy>> FindAsync(PharmacyId id, CancellationToken cancellationToken) =>
-        Task.FromResult(Stored.SingleOrDefault(pharmacy => pharmacy.Id == id) is { } pharmacy ? Option<Pharmacy>.Some(pharmacy) : Option<Pharmacy>.None);
+    public void Add(InvitationRecipient recipient) => addedRecipients.Add(recipient);
+
+    public void Add(InvitationSender sender) => addedSenders.Add(sender);
+
+    /// <summary>The stored recipient itself, so what a command changes on it is what the next read finds once committed.</summary>
+    public Task<Option<InvitationRecipient>> LoadAsync(InvitationRecipientId id, CancellationToken cancellationToken) =>
+        Task.FromResult(StoredRecipients.SingleOrDefault(recipient => recipient.Id == id) is { } recipient ? Option<InvitationRecipient>.Some(recipient) : Option<InvitationRecipient>.None);
+
+    /// <summary>The stored sender itself, so what a command changes on it is what the next read finds once committed.</summary>
+    public Task<Option<InvitationSender>> LoadAsync(PersonId id, CancellationToken cancellationToken) =>
+        Task.FromResult(StoredSenders.SingleOrDefault(sender => sender.Id == id) is { } sender ? Option<InvitationSender>.Some(sender) : Option<InvitationSender>.None);
+
+    public Task<Option<Pharmacy>> FindAsync(PharmacyId id, CancellationToken cancellationToken)
+    {
+        if (failNextFind is { } failure)
+        {
+            failNextFind = null;
+            return Task.FromException<Option<Pharmacy>>(failure);
+        }
+
+        return Task.FromResult(Lookup(id));
+    }
 
     /// <summary>The stored pharmacy itself, so what a command changes on it is what the next read finds once committed.</summary>
-    public Task<Option<Pharmacy>> LoadAsync(PharmacyId id, CancellationToken cancellationToken) => FindAsync(id, cancellationToken);
+    public Task<Option<Pharmacy>> LoadAsync(PharmacyId id, CancellationToken cancellationToken) => Task.FromResult(Lookup(id));
 
     /// <summary>The one stored pharmacy whose memberships hold the hash, as the database's unique index on it finds it.</summary>
     public Task<Option<Pharmacy>> LoadByInvitationAsync(InvitationTokenHash hash, CancellationToken cancellationToken) =>
@@ -77,13 +111,16 @@ internal sealed class InMemoryPharmacyStore : IPharmacyStore, IOrganisationUnitO
         if (failNextCommit is { } failure)
         {
             failNextCommit = null;
-            added.Clear();
-            queued.Clear();
+            Discard();
             throw failure;
         }
 
         Stored.AddRange(added);
         added.Clear();
+        StoredRecipients.AddRange(addedRecipients);
+        addedRecipients.Clear();
+        StoredSenders.AddRange(addedSenders);
+        addedSenders.Clear();
         Published.AddRange(queued);
         queued.Clear();
         Commits++;
@@ -97,21 +134,41 @@ internal sealed class InMemoryPharmacyStore : IPharmacyStore, IOrganisationUnitO
     /// <summary>The next <see cref="CommitAsync"/> throws the failure and stores and sends nothing.</summary>
     public void FailNextCommit(Exception failure) => failNextCommit = failure;
 
-    /// <summary>The next <see cref="TryCommitAsync"/> answers <see langword="false"/> and stores and sends nothing.</summary>
-    public void LoseNextCommit() => loseNextCommit = true;
+    /// <summary>The next <see cref="FindAsync"/> throws the failure; <see cref="LoadAsync"/> is not affected.</summary>
+    public void FailNextFind(Exception failure) => failNextFind = failure;
 
-    public async Task<bool> TryCommitAsync(CancellationToken cancellationToken)
+    /// <summary>
+    /// The next <see cref="TryCommitAsync"/> loses a race, as a version that moved on unless <paramref name="how"/>
+    /// says otherwise, and stores and sends nothing.
+    /// </summary>
+    public void LoseNextCommit(LostRace? how = null)
+    {
+        loseNextCommit = true;
+        this.how = how ?? new VersionMovedOn();
+    }
+
+    public async Task<Result<Unit, LostRace>> TryCommitAsync(CancellationToken cancellationToken)
     {
         if (loseNextCommit)
         {
             loseNextCommit = false;
-            added.Clear();
-            queued.Clear();
-            return false;
+            Discard();
+            return Failure(how);
         }
 
         await CommitAsync(cancellationToken);
-        return true;
+        return Success(Unit.Value);
+    }
+
+    private Option<Pharmacy> Lookup(PharmacyId id) =>
+        Stored.SingleOrDefault(pharmacy => pharmacy.Id == id) is { } pharmacy ? Option<Pharmacy>.Some(pharmacy) : Option<Pharmacy>.None;
+
+    private void Discard()
+    {
+        added.Clear();
+        addedRecipients.Clear();
+        addedSenders.Clear();
+        queued.Clear();
     }
 
     private static PagedResult<Membership> PageOf(List<Membership> all, Page page, PageSize pageSize)

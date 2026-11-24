@@ -1,3 +1,4 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.Contracts;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Assignments;
@@ -17,6 +18,8 @@ internal sealed class InMemoryAssignmentStore : IAssignmentStore, IComplianceUni
     private readonly List<Assignment> added = [];
     private readonly List<IntegrationEvent> queued = [];
     private bool loseNextCommit;
+
+    private LostRace how = new VersionMovedOn();
 
     public List<Assignment> Stored { get; } = [];
 
@@ -75,8 +78,23 @@ internal sealed class InMemoryAssignmentStore : IAssignmentStore, IComplianceUni
     public Task<Option<Assignment>> ReadInPharmacyAsync(PharmacyId pharmacy, AssignmentId assignment, CancellationToken cancellationToken) =>
         Task.FromResult(InPharmacy(pharmacy, assignment));
 
+    /// <summary>How often a tracked read of a learner's active assignments in a pharmacy was asked for; a query asks for none.</summary>
+    public int TrackedReadsOfLearnerInPharmacy { get; private set; }
+
+    public Task<IReadOnlyList<Assignment>> ReadActiveOfLearnerInPharmacyAsync(PersonId learner, PharmacyId pharmacy, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<Assignment> active =
+        [
+            .. Stored.Where(assignment => assignment.Learner == learner
+                && assignment.Pharmacy == pharmacy
+                && assignment.Status is AssignmentStatus.Open or AssignmentStatus.InProgress),
+        ];
+        return Task.FromResult(active);
+    }
+
     public Task<IReadOnlyList<Assignment>> ActiveOfLearnerInPharmacyAsync(PersonId learner, PharmacyId pharmacy, CancellationToken cancellationToken)
     {
+        TrackedReadsOfLearnerInPharmacy++;
         IReadOnlyList<Assignment> active =
         [
             .. Stored.Where(assignment => assignment.Learner == learner
@@ -102,21 +120,28 @@ internal sealed class InMemoryAssignmentStore : IAssignmentStore, IComplianceUni
         return Task.CompletedTask;
     }
 
-    /// <summary>The next <see cref="TryCommitAsync"/> answers <see langword="false"/> and stores and sends nothing.</summary>
-    public void LoseNextCommit() => loseNextCommit = true;
+    /// <summary>
+    /// The next <see cref="TryCommitAsync"/> loses a race, as a version that moved on unless <paramref name="how"/>
+    /// says otherwise, and stores and sends nothing.
+    /// </summary>
+    public void LoseNextCommit(LostRace? how = null)
+    {
+        loseNextCommit = true;
+        this.how = how ?? new VersionMovedOn();
+    }
 
-    public async Task<bool> TryCommitAsync(CancellationToken cancellationToken)
+    public async Task<Result<Unit, LostRace>> TryCommitAsync(CancellationToken cancellationToken)
     {
         if (loseNextCommit)
         {
             loseNextCommit = false;
             added.Clear();
             queued.Clear();
-            return false;
+            return Failure(how);
         }
 
         await CommitAsync(cancellationToken);
-        return true;
+        return Success(Unit.Value);
     }
 
     private Option<Assignment> InPharmacy(PharmacyId pharmacy, AssignmentId id)

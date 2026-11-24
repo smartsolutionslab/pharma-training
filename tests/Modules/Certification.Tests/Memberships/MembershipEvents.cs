@@ -13,7 +13,14 @@ internal static class MembershipEvents
         Started(membershipId, personId, pharmacyId, displayName, StartedAt);
 
     public static MembershipStartedV1 Started(Guid membershipId, Guid personId, Guid pharmacyId, string displayName, DateTimeOffset startedAt) =>
-        new(membershipId, personId, pharmacyId, displayName, JobFunctionV1.Pta, MembershipRoleV1.Employee, startedAt) { Metadata = NewMetadata() };
+        Started(membershipId, personId, pharmacyId, displayName, MembershipRoleV1.Employee, startedAt);
+
+    public static MembershipStartedV1 Started(Guid membershipId, Guid personId, Guid pharmacyId, string displayName, MembershipRoleV1 role, DateTimeOffset startedAt) =>
+        new(membershipId, personId, pharmacyId, displayName, JobFunctionV1.Pta, role, startedAt) { Metadata = NewMetadata() };
+
+    /// <summary>A change of the membership's role at the version, as Organisation counts them: the first change is 2.</summary>
+    public static MembershipChangedV1 Changed(Guid membershipId, Guid personId, Guid pharmacyId, MembershipRoleV1 role, int version) =>
+        new(membershipId, personId, pharmacyId, "Ada Lovelace", JobFunctionV1.Pta, role, version) { Metadata = NewMetadata() };
 
     public static MembershipEndedV1 Ended(Guid membershipId, Guid personId, Guid pharmacyId) =>
         new(membershipId, personId, pharmacyId, EndedAt) { Metadata = NewMetadata() };

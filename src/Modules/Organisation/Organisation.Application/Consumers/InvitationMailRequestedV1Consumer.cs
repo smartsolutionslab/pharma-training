@@ -14,16 +14,20 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Cons
 /// hold: every link of the version opens the invitation, up to <see cref="Pharmacy.MaxInvitationLinksPerVersion"/>, and
 /// a renewal clears them.
 /// <para>
-/// A send that fails takes its link back again and rethrows, unless the failure says the mail may be out
-/// (<see cref="MailNotSentException.MayHaveBeenDelivered"/> or <see cref="MailSendTimedOutException.MayHaveBeenDelivered"/>
-/// true): only links whose mails may be out count towards the cap, so an SMTP outage, a refusing server or a missing
-/// setting never reaches it, and Wolverine retries the message and then dead-letters it. At the cap it sends nothing,
-/// issues no link and throws <see cref="InvitationLinkLimitReachedException"/>, so the message dead-letters and stays
-/// visible. Once the send has returned nothing throws: a record that fails, whatever the failure, is logged.
+/// A re-read or a send that fails takes its link back again, commits that and rethrows the same exception, unless the
+/// failure says the mail may be out: only a <see cref="MailNotSentException"/> or <see cref="MailSendTimedOutException"/>
+/// whose <c>MayHaveBeenDelivered</c> is <see langword="true"/> does, and it keeps its link; any other exception, the
+/// re-read's included, cannot have delivered. Only links whose mails may be out count towards the cap, so an SMTP
+/// outage, a refusing server, a missing setting or a database that fails the re-read never reaches it, and Wolverine
+/// retries the message and then dead-letters it. At the cap it sends nothing, issues no link and throws
+/// <see cref="InvitationLinkLimitReachedException"/>, an <c>IPermanentMessageFailure</c>, so the host dead-letters the
+/// message on that first failure, without a retry, and it stays visible until a renewal. Once the send has returned
+/// nothing throws: a record that fails, whatever the failure, is logged.
 /// </para>
 /// <para>
 /// It does not deduplicate on <c>Metadata.EventIdentifier</c>: a send that failed must be sent again, and the
-/// invitation's version and its mailed mark are the key. An invitation that is no longer open or has run out is dropped.
+/// invitation's version and its mailed mark are the key. An invitation that is no longer open or has run out, on the
+/// database's clock that stamped its expiry, is dropped.
 /// Two gaps remain, in which both links work and nothing is lost: when the send returned but recording it failed, a
 /// redelivery mails the version again; and two runs of one version that overlap (an invite and a quick renewal's
 /// message, or a parallel redelivery) can each mail before either records it, each using up one of the cap's links.
@@ -34,7 +38,7 @@ public sealed partial class InvitationMailRequestedV1Consumer(
     IOrganisationUnitOfWork unitOfWork,
     IMailSender mails,
     IFrontendLinks links,
-    TimeProvider time,
+    IDatabaseClock clock,
     ILogger<InvitationMailRequestedV1Consumer> logger)
 {
     public async Task HandleAsync(InvitationMailRequestedV1 message, CancellationToken cancellationToken)
@@ -61,7 +65,7 @@ public sealed partial class InvitationMailRequestedV1Consumer(
         }
 
         var token = InvitationTokens.Next();
-        var issued = pharmacy.IssueInvitationLink(membership, token, Timestamp.From(time.GetUtcNow()));
+        var issued = pharmacy.IssueInvitationLink(membership, token, await clock.NowAsync(cancellationToken));
         if (issued.IsFailure)
         {
             switch (issued.Error)
@@ -89,25 +93,26 @@ public sealed partial class InvitationMailRequestedV1Consumer(
         // A lost race throws, so Wolverine retries and the retry reloads the pharmacy; nothing is mailed for it.
         await unitOfWork.CommitAsync(cancellationToken);
 
-        // A revoke, accept, end or renewal that committed after this commit killed the link just stored. Read the
-        // membership again from the store, no-tracking, so the read sees what others committed and not this run's own
-        // copy, and send only while it is still invited at this version with this run's hash among its links; only a
-        // change between this read and the server's acceptance of the mail still reaches the invitee (docs/adr/0004).
-        if (!await StillHoldsThisLinkAsync(pharmacy.Id, membership, version, InvitationTokenHash.Of(token), cancellationToken))
-        {
-            ClosedBeforeSend(logger, message.MembershipId);
-            return;
-        }
-
         try
         {
+            // A revoke, accept, end or renewal that committed after this commit killed the link just stored. Read the
+            // membership again from the store, no-tracking, so the read sees what others committed and not this run's own
+            // copy, and send only while it is still invited at this version with this run's hash among its links; only a
+            // change between this read and the server's acceptance of the mail still reaches the invitee (docs/adr/0004).
+            // The read sits inside the withdraw path: when it throws, nothing was sent, so its link is taken back too.
+            if (!await StillHoldsThisLinkAsync(pharmacy.Id, membership, version, InvitationTokenHash.Of(token), cancellationToken))
+            {
+                ClosedBeforeSend(logger, message.MembershipId);
+                return;
+            }
+
             await mails.SendAsync(mail, cancellationToken);
         }
         catch (Exception failed) when (!MayBeOut(failed))
         {
             // Unless the failure says the mail may be out, its link is taken back: it neither works nor counts towards the
-            // cap, which only links whose mails may be out reach. Whatever the withdrawal meets, the send's failure goes
-            // on, so Wolverine retries the mail and finally dead-letters it.
+            // cap, which only links whose mails may be out reach. A re-read that failed never sent, so it is one of them.
+            // Whatever the withdrawal meets, the failure goes on, so Wolverine retries the mail and finally dead-letters it.
             await WithdrawAsync(pharmacy, membership, version, token);
             throw;
         }
@@ -117,7 +122,7 @@ public sealed partial class InvitationMailRequestedV1Consumer(
         // changed since.
         try
         {
-            if (pharmacy.RecordInvitationMailed(membership, version).IsFailure || !await unitOfWork.TryCommitAsync(cancellationToken))
+            if (pharmacy.RecordInvitationMailed(membership, version).IsFailure || (await unitOfWork.TryCommitAsync(cancellationToken)).IsFailure)
             {
                 MailedButNotRecorded(logger, message.MembershipId, version.Value);
             }
@@ -146,7 +151,7 @@ public sealed partial class InvitationMailRequestedV1Consumer(
                 return;
             }
 
-            if (await unitOfWork.TryCommitAsync(CancellationToken.None))
+            if ((await unitOfWork.TryCommitAsync(CancellationToken.None)).IsSuccess)
             {
                 return;
             }

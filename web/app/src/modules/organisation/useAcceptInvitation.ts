@@ -9,6 +9,7 @@ import {
 } from '@/api/generated';
 import { ApiError } from '@/api/baseApi';
 import { t } from '@/i18n';
+import { type ErrorMessage, errorMessage } from '@/i18n/errorText';
 import { notify } from '@/lib/notify';
 import { takeInvitationToken } from './invitationLink';
 import { useOpenPharmacy } from './useOpenPharmacy';
@@ -29,13 +30,13 @@ export type AcceptRefusal =
 
 /**
  * What the page shows: a kept token ready to be accepted when the user presses the button, the invitation on its way
- * (or accepted and the page not moved on yet), or why it was not, with the module's own words for a refusal the page
- * has no text of its own for, and whether trying again can succeed.
+ * (or accepted and the page not moved on yet), or why it was not, with the message for a refusal's code the page has
+ * no state of its own for (src/i18n/errorText.ts, #147), and whether trying again can succeed.
  */
 export type AcceptState =
   | { kind: 'ready' }
   | { kind: 'accepting' }
-  | { kind: 'refused'; refusal: AcceptRefusal; serverMessage?: string; retryable?: boolean };
+  | { kind: 'refused'; refusal: AcceptRefusal; message?: ErrorMessage; retryable?: boolean };
 
 /** The organisation module's refusals the page knows, by code (POST /organisation/invitations/accept). */
 const refusalsByCode: Record<string, AcceptRefusal> = {
@@ -48,14 +49,17 @@ const refusalsByCode: Record<string, AcceptRefusal> = {
   'organisation.person-already-member': 'alreadyMember',
   // Lost a concurrent save (ADR 0002): worth trying again.
   'organisation.pharmacy-changed': 'failed',
+  // Lost to a save at the same moment (a deadlock): nothing was saved, worth trying again.
+  'organisation.concurrent-save': 'failed',
   // The invitation lost a concurrent save: worth trying again, with words of its own.
   'organisation.invitation-changed': 'invitationChanged',
 };
 
 /**
  * The state a failed acceptance leaves the page in: a known refusal by its code, too many attempts by its status
- * whatever its code, and anything else failed, with a module's own words where the host sent them (ADR 0007). Only
- * too many attempts, a lost concurrent save, the host unavailable (5xx) and the network can succeed when tried again;
+ * whatever its code, and anything else failed, with the message for its code (errorMessage, #147). Only
+ * too many attempts, a lost concurrent save (already-exists included), the host unavailable (5xx) and the network can
+ * succeed when tried again;
  * any other refusal of the request (a framework's invalid-argument, a module's code the page does not know) is final.
  * A Retry answered not found may follow a first attempt that was accepted although its answer never arrived.
  */
@@ -65,6 +69,11 @@ function refusedBy(error: unknown, afterRetry: boolean): AcceptState {
   }
   if (error.status === 429) {
     return { kind: 'refused', refusal: 'tooMany', retryable: true };
+  }
+  // Accepting creates nothing the user could reload to find: the unique index refused a membership saved at the same
+  // moment, a lost race like pharmacy-changed, with the failed state's own text.
+  if (error.failureCode === 'already-exists') {
+    return { kind: 'refused', refusal: 'failed', retryable: true };
   }
   const known = error.code === undefined ? undefined : refusalsByCode[error.code];
   if (known === 'notFound' && afterRetry) {
@@ -76,10 +85,12 @@ function refusedBy(error: unknown, afterRetry: boolean): AcceptState {
   if (known !== undefined) {
     return { kind: 'refused', refusal: known };
   }
-  const retryable = error.status >= 500;
-  return error.serverMessage === undefined
-    ? { kind: 'refused', refusal: 'failed', retryable }
-    : { kind: 'refused', refusal: 'failed', serverMessage: error.serverMessage, retryable };
+  return {
+    kind: 'refused',
+    refusal: 'failed',
+    message: errorMessage(error, 'organisation.accept.failed.text'),
+    retryable: error.status >= 500,
+  };
 }
 
 /** Where an employee goes once they have joined: Meine Schulungen. */

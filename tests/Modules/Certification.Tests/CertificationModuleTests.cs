@@ -1,6 +1,11 @@
-using SmartSolutionsLab.PharmaTraining.Modules.Certification.Api;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Mail;
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Storage;
+using SmartSolutionsLab.PharmaTraining.Modules.Certification.Api;
+using SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Documents;
+using SmartSolutionsLab.PharmaTraining.Modules.Certification.Infrastructure.Documents;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Tests;
 
@@ -22,5 +27,44 @@ public class CertificationModuleTests
         var buildContainer = () => services.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true }).Dispose();
 
         Should.NotThrow(buildContainer);
+    }
+
+    /// <summary>
+    /// The consumer that renders a certificate's PDF takes the renderer, the create-only writes into the module's own
+    /// container and the links into the web app, for the verification link the PDF prints (#50).
+    /// </summary>
+    [Fact]
+    public void The_module_registers_the_pdf_renderer_the_blob_writes_and_the_link_builder()
+    {
+        var services = new ServiceCollection().AddLogging();
+        services.AddSingleton<TimeProvider>(new FakeTimeProvider());
+        services.AddSingleton<Microsoft.Extensions.AI.IChatClient>(_ => new SmartSolutionsLab.PharmaTraining.Tests.Fakes.FakeChatClient("unused"));
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:database"] = "Host=localhost" })
+            .Build();
+
+        new CertificationModule().AddServices(services, configuration);
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<ICertificateRenderer>().ShouldBeOfType<CertificatePdfRenderer>();
+        provider.GetRequiredService<IBlobWrites>().ShouldBeOfType<AzureBlobWrites>();
+        provider.GetRequiredService<IFrontendLinks>().ShouldBeOfType<FrontendLinks>();
+    }
+
+    /// <summary>The export reads each stored PDF from the module's own container by its location (#52, docs/adr/0030).</summary>
+    [Fact]
+    public void The_module_registers_the_blob_reads()
+    {
+        var services = new ServiceCollection().AddLogging();
+        services.AddSingleton<TimeProvider>(new FakeTimeProvider());
+        services.AddSingleton<Microsoft.Extensions.AI.IChatClient>(_ => new SmartSolutionsLab.PharmaTraining.Tests.Fakes.FakeChatClient("unused"));
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:database"] = "Host=localhost" })
+            .Build();
+
+        new CertificationModule().AddServices(services, configuration);
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<IBlobReads>().ShouldBeOfType<AzureBlobReads>();
     }
 }

@@ -6,7 +6,7 @@ import { type EditorialChapterRequest, getGetEditorialCourseVersionsIdQueryKey }
 import { useChapterMutations } from './useChapterMutations';
 
 // Adding, replacing and deleting a chapter of a version, through the generated client. Each answers ok or a failure
-// with the host's words where a module sent some (ApiError.serverMessage), and afterwards the version is stale, also
+// carrying the error the call rejected with, which the page turns into text by its code (#147), and afterwards the version is stale, also
 // after a refusal: a 409 (NotADraft, a lost race) means the page shows something that is no longer so.
 const host = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>();
 vi.stubGlobal('fetch', host);
@@ -97,29 +97,29 @@ test.each([
   ['adding', (mutations: ReturnType<typeof useChapterMutations>) => mutations.add(request)],
   ['replacing', (mutations: ReturnType<typeof useChapterMutations>) => mutations.replace(chapterId, request)],
   ['deleting', (mutations: ReturnType<typeof useChapterMutations>) => mutations.remove(chapterId)],
-])("%s refused with a module's 409 answers the host's words and marks the version stale", async (_change, change) => {
-  host.mockImplementation(async () =>
-    refusal(409, 'editorial.not-a-draft', 'Die Version ist kein Entwurf mehr und kann nicht geändert werden.'),
-  );
-  const { mutations, queryClient } = renderMutations();
+])(
+  "%s refused with a module's 409 answers the refusal with its code and marks the version stale",
+  async (_change, change) => {
+    host.mockImplementation(async () => refusal(409, 'editorial.not-a-draft', 'SERVER WORDS'));
+    const { mutations, queryClient } = renderMutations();
 
-  await expect(change(mutations)).resolves.toEqual({
-    ok: false,
-    serverMessage: 'Die Version ist kein Entwurf mehr und kann nicht geändert werden.',
-  });
-  expect(queryClient.getQueryState(versionKey)?.isInvalidated).toBe(true);
-});
+    await expect(change(mutations)).resolves.toEqual({
+      ok: false,
+      error: expect.objectContaining({ status: 409, failureCode: 'editorial.not-a-draft' }),
+    });
+    expect(queryClient.getQueryState(versionKey)?.isInvalidated).toBe(true);
+  },
+);
 
 test.each([
   ['adding', (mutations: ReturnType<typeof useChapterMutations>) => mutations.add(request)],
   ['replacing', (mutations: ReturnType<typeof useChapterMutations>) => mutations.replace(chapterId, request)],
   ['deleting', (mutations: ReturnType<typeof useChapterMutations>) => mutations.remove(chapterId)],
-])('%s the host cannot do answers a failure without words of the host', async (_change, change) => {
+])('%s the host cannot do answers a failure with its error, without a code', async (_change, change) => {
   host.mockImplementation(async () => new Response('', { status: 500 }));
   const { mutations } = renderMutations();
 
   const result = await change(mutations);
 
-  expect(result.ok).toBe(false);
-  expect(result).not.toHaveProperty('serverMessage', expect.any(String));
+  expect(result).toEqual({ ok: false, error: expect.objectContaining({ status: 500, failureCode: undefined }) });
 });

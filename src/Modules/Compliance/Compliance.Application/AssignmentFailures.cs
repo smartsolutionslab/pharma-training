@@ -1,3 +1,4 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using System.Net;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Assignments;
 
@@ -9,6 +10,8 @@ public static class AssignmentFailures
     public static ApiError IdentityIncomplete() => new IdentityIncomplete();
 
     public static ApiError PharmacyNotFound(Guid id) => new PharmacyNotFound(id);
+
+    public static ApiError PharmacyMissing() => new PharmacyMissing();
 
     public static ApiError CapabilityMissing() => new CapabilityMissing();
 
@@ -40,13 +43,23 @@ public static class AssignmentFailures
     /// <summary>A change's reason is longer than <see cref="ChangeReason.MaxLength"/>.</summary>
     public static ApiError InvalidChangeReason() => new InvalidChangeReason();
 
-    /// <summary>A manager may not move or withdraw an assignment of their own (orchestrator's default on #269).</summary>
+    /// <summary>A manager may not move or withdraw an assignment of their own while another manager can (orchestrator's default on #269 and #284).</summary>
     public static ApiError OwnAssignment() => new OwnAssignment();
 
     public static ApiError LearnerNotAMember(Guid person) => new LearnerNotAMember(person);
 
-    /// <summary>The save lost a race to another, or deadlocked with it; nothing of it was saved or announced.</summary>
+    /// <summary>A row the save changed was changed by another since it was loaded; nothing of it was saved or announced.</summary>
     public static ApiError AssignmentsChanged() => new AssignmentsChanged();
+
+    /// <summary>Another save came at the same moment and PostgreSQL ended this one; try again.</summary>
+    public static ApiError ConcurrentSave() => new ComplianceConcurrentSave();
+
+    /// <summary>How a save of assignments lost a race.</summary>
+    public static ApiError LostRace(LostRace race) => race switch
+    {
+        VersionMovedOn => AssignmentsChanged(),
+        SaveDeadlocked => ConcurrentSave(),
+    };
 
     /// <summary>The learner already has an open or in-progress assignment of the course in the pharmacy.</summary>
     public static ApiError AlreadyActive(DomainError error) => ApiError.From(error, HttpStatusCode.Conflict);

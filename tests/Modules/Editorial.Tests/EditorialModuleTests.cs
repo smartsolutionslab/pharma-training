@@ -1,6 +1,8 @@
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Api;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.PdfText;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Infrastructure.PdfText;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -41,5 +43,32 @@ public class EditorialModuleTests
 
         services.Count(service => service.ServiceType == typeof(ReviewSettings)).ShouldBe(1);
         provider.GetRequiredService<ReviewSettings>().Policy.ShouldBe(ReviewPolicy.FourEyes);
+    }
+
+    /// <summary>
+    /// One bounded extractor reads every recorded PDF, so its slots bound the whole host (#316): it is registered once as
+    /// a singleton, over PdfPig as its parser, with the limit and deadline read once from the settings.
+    /// </summary>
+    [Fact]
+    public void The_module_registers_the_bounded_pdf_text_extractor_once_as_a_singleton_over_pdfpig()
+    {
+        var services = new ServiceCollection().AddLogging();
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:database"] = "Host=localhost" })
+            .Build();
+        services.AddSingleton<Microsoft.Extensions.AI.IChatClient>(_ => new SmartSolutionsLab.PharmaTraining.Tests.Fakes.FakeChatClient("unused"));
+
+        new EditorialModule().AddServices(services, configuration);
+        using var provider = services.BuildServiceProvider();
+
+        var registration = services.Where(service => service.ServiceType == typeof(IPdfTextExtractor)).ShouldHaveSingleItem();
+        registration.Lifetime.ShouldBe(ServiceLifetime.Singleton);
+        provider.GetRequiredService<IPdfTextExtractor>().ShouldBeOfType<BoundedPdfTextExtractor>();
+        services.Where(service => service.ServiceType == typeof(IPdfTextParser)).ShouldHaveSingleItem().Lifetime.ShouldBe(ServiceLifetime.Singleton);
+        provider.GetRequiredService<IPdfTextParser>().ShouldBeOfType<PdfPigTextExtractor>();
+        services.Count(service => service.ServiceType == typeof(PdfTextLimits)).ShouldBe(1);
+        var limits = provider.GetRequiredService<PdfTextLimits>();
+        limits.MaxConcurrentParses.ShouldBe(2);
+        limits.Timeout.ShouldBe(TimeSpan.FromSeconds(30));
     }
 }

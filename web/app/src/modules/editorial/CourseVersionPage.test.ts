@@ -12,10 +12,12 @@ import {
   getGetEditorialCourseVersionsQueryKey,
 } from '@/api/generated';
 import { setLanguage, t } from '@/i18n';
+import { authKey } from '@/auth/useAuth';
 import { createAppRouter } from '@/router';
 import CourseVersionPage from './CourseVersionPage.vue';
 import { FakeXhr } from './fakeXhr';
 import { route } from './routes';
+import { signedInAsEditor } from './workflowPageHost';
 
 const notify = vi.hoisted(() => ({ success: vi.fn(), failure: vi.fn() }));
 vi.mock('@/lib/notify', () => ({ notify }));
@@ -35,6 +37,7 @@ const introduction: EditorialChapterDto = {
   text: '# Willkommen\n\nDas ist **wichtig**.',
   file: null,
   durationSeconds: null,
+  pdfText: null,
 };
 const handout: EditorialChapterDto = {
   id: '0198c1a0-0000-7000-8000-0000000000e2',
@@ -44,6 +47,7 @@ const handout: EditorialChapterDto = {
   text: null,
   file: `course-versions/${versionId}/0198c1a0-0000-7000-8000-0000000000f2.pdf`,
   durationSeconds: null,
+  pdfText: null,
 };
 const handwashing: EditorialChapterDto = {
   id: '0198c1a0-0000-7000-8000-0000000000e3',
@@ -53,6 +57,7 @@ const handwashing: EditorialChapterDto = {
   text: null,
   file: `course-versions/${versionId}/0198c1a0-0000-7000-8000-0000000000f3.mp4`,
   durationSeconds: 725,
+  pdfText: null,
 };
 
 /** A question about the chapter, approved or not yet reviewed. */
@@ -68,6 +73,7 @@ function question(id: string, chapterId: string, review: 'Approved' | 'Unreviewe
       { id: `${id}-2`, text: '5 Sekunden', correct: false },
     ],
     provenance: 'Human',
+    origin: 'HandWritten',
     review,
     reviewedBy: null,
     reviewedAt: null,
@@ -114,6 +120,10 @@ beforeEach(() => {
     if (method === 'GET' && url.pathname === `/api/editorial/course-versions/${versionId}`) {
       return reading();
     }
+    // Every version's return history (#201) is empty here; CourseVersionPage.returns.test.ts shows one.
+    if (method === 'GET' && /^\/api\/editorial\/course-versions\/[0-9a-f-]{36}\/returns$/.test(url.pathname)) {
+      return Response.json({ items: [], totalCount: 0, page: 1, pageSize: 20 });
+    }
     if (url.pathname.startsWith(`/api/editorial/course-versions/${versionId}/`)) {
       return changing(method, url.pathname, init?.body === undefined ? undefined : JSON.parse(String(init.body)));
     }
@@ -132,14 +142,17 @@ const requests = () =>
     method: init?.method ?? 'GET',
     path: new URL(String(input), 'http://localhost').pathname.replace(/^\/api/, ''),
   }));
-const reads = () => requests().filter(({ method }) => method === 'GET');
+/** The version's reads: its return history (#201) is read beside it, and left out here. */
+const reads = () => requests().filter(({ method, path }) => method === 'GET' && !path.endsWith('/returns'));
 
 /** The page at its address, with a query client of its own that does not retry, so a failure shows at once. */
 async function renderPage(id = versionId) {
   const router = createAppRouter(createMemoryHistory());
   await router.push(`/editorial/versions/${id}`);
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  const { container } = render(CourseVersionPage, { global: { plugins: [router, [VueQueryPlugin, { queryClient }]] } });
+  const { container } = render(CourseVersionPage, {
+    global: { plugins: [router, [VueQueryPlugin, { queryClient }]], provide: { [authKey]: signedInAsEditor } },
+  });
   await screen.findByRole('heading', { level: 1, name: version.title });
   return { router, queryClient, container };
 }
@@ -305,15 +318,24 @@ describe.each([
       [],
     );
     expect(screen.queryByTitle(t('editorial.chapters.dragHint'))).not.toBeInTheDocument();
-    expect(container.querySelector('form, input, textarea, select, [draggable="true"]')).toBeNull();
+    // The return history's table (#201) has a column chooser, its fieldset's checkboxes: they change the table's view,
+    // not the version. Any other control, in the history or not, would.
+    const history = screen.getByRole('region', { name: t('editorial.returns.title') });
+    const columnChoosers = [...history.querySelectorAll('fieldset input[type="checkbox"]')];
+    const controls = [...container.querySelectorAll('form, input, textarea, select, [draggable="true"]')];
+    expect(controls.filter((control) => !columnChoosers.includes(control))).toEqual([]);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  test('asks the host for nothing but the version', async () => {
+  test('asks the host for nothing but the version and its return history', async () => {
     await renderPage();
 
-    await waitFor(() => expect(reads()).toEqual([{ method: 'GET', path: `/editorial/course-versions/${versionId}` }]));
-    expect(requests().filter(({ method }) => method !== 'GET')).toEqual([]);
+    await waitFor(() =>
+      expect(requests()).toEqual([
+        { method: 'GET', path: `/editorial/course-versions/${versionId}` },
+        { method: 'GET', path: `/editorial/course-versions/${versionId}/returns` },
+      ]),
+    );
   });
 
   test('shows its chapters read-only: position, title, kind, a video its duration, a file that it was uploaded', async () => {
@@ -390,7 +412,9 @@ test('while the version loads the page shows skeletons shaped like its header an
   await router.push(`/editorial/versions/${versionId}`);
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
-  const { container } = render(CourseVersionPage, { global: { plugins: [router, [VueQueryPlugin, { queryClient }]] } });
+  const { container } = render(CourseVersionPage, {
+    global: { plugins: [router, [VueQueryPlugin, { queryClient }]], provide: { [authKey]: signedInAsEditor } },
+  });
 
   await waitFor(() => expect(container.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThanOrEqual(4));
   expect(screen.queryByRole('heading', { level: 1, name: version.title })).not.toBeInTheDocument();
@@ -403,7 +427,9 @@ async function renderAnswering(response: () => Response) {
   const router = createAppRouter(createMemoryHistory());
   await router.push(`/editorial/versions/${versionId}`);
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(CourseVersionPage, { global: { plugins: [router, [VueQueryPlugin, { queryClient }]] } });
+  render(CourseVersionPage, {
+    global: { plugins: [router, [VueQueryPlugin, { queryClient }]], provide: { [authKey]: signedInAsEditor } },
+  });
 }
 
 test('a version the host does not know says it does not exist', async () => {
@@ -467,15 +493,15 @@ test('the editorial detail versions/:id opens the course version page', () => {
 });
 
 // Text chapters (T7): "Kapitel hinzufügen" and a chapter's edit button open the chapter form in a dialog; a chapter's
-// delete button asks first. A module's refusal is shown in the host's words (ApiError.serverMessage), else the
-// catalog's; either way the version is read again, so the page shows what is now so.
+// delete button asks first. A module's refusal is shown by its code in the catalog's words (#147, ADR 0007), the host's
+// only for a code the catalog does not know, else the action's own; either way the version is read again.
 
 const notADraft = () =>
   new Response(
     JSON.stringify({
       title: 'Conflict',
       status: 409,
-      detail: 'Die Version ist kein Entwurf mehr und kann nicht geändert werden.',
+      detail: 'SERVER WORDS',
       code: 'editorial.not-a-draft',
     }),
     { status: 409, headers: { 'Content-Type': 'application/problem+json' } },
@@ -612,8 +638,23 @@ describe('editing a text chapter', () => {
 });
 
 test.each([
-  ['a 409 of the module', notADraft, () => 'Die Version ist kein Entwurf mehr und kann nicht geändert werden.'],
+  ['a 409 of the module', notADraft, () => 'Nur ein Entwurf kann bearbeitet werden.'],
+  [
+    'a 400 invalid-chapter-title',
+    () => problem(400, 'editorial.invalid-chapter-title', 'Bad Request', 'SERVER WORDS'),
+    () => 'Der Titel eines Kapitels hat 1 bis 150 Zeichen und darf nicht leer sein.',
+  ],
+  [
+    'a module code the catalog does not know',
+    () => problem(400, 'editorial.zzz-unknown', 'Bad Request', 'SERVER WORDS'),
+    () => 'SERVER WORDS',
+  ],
   ['a 500', () => new Response('', { status: 500 }), () => t('editorial.chapters.saveFailed', { title: 'Lagerung' })],
+  [
+    'a 502 of the edge',
+    () => new Response('', { status: 502 }),
+    () => t('editorial.chapters.saveFailed', { title: 'Lagerung' }),
+  ],
 ])(
   'a chapter the host refuses with %s is reported, the dialog stays open with what was entered, and the version is read again',
   async (_answer, answer, message) => {
@@ -714,7 +755,12 @@ describe('deleting a chapter', () => {
   });
 
   test.each([
-    ['a 409 of the module', notADraft, () => 'Die Version ist kein Entwurf mehr und kann nicht geändert werden.'],
+    ['a 409 of the module', notADraft, () => 'Nur ein Entwurf kann bearbeitet werden.'],
+    [
+      'a 409 file-in-use',
+      () => problem(409, 'editorial.file-in-use', 'Conflict', 'SERVER WORDS'),
+      () => 'Diese Datei gehört schon zu einem anderen Kapitel der Version.',
+    ],
     [
       'a 500',
       () => new Response('', { status: 500 }),
@@ -846,12 +892,12 @@ describe('reordering the chapters', () => {
           JSON.stringify({
             title: 'Conflict',
             status: 409,
-            detail: 'Die Reihenfolge nennt nicht jedes Kapitel der Version genau einmal.',
-            code: 'editorial.order-does-not-match-chapters',
+            detail: 'SERVER WORDS',
+            code: 'editorial.order-does-not-match',
           }),
           { status: 409, headers: { 'Content-Type': 'application/problem+json' } },
         ),
-      () => 'Die Reihenfolge nennt nicht jedes Kapitel der Version genau einmal.',
+      () => 'Die Reihenfolge muss jedes Kapitel genau einmal enthalten. Laden Sie die Version neu.',
     ],
     [
       'a 500',
@@ -956,7 +1002,9 @@ test.each([['abc'], ['../../me'], [`${versionId}/chapters`]])(
     expect(router.currentRoute.value.params.id).toBe(id);
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
-    render(CourseVersionPage, { global: { plugins: [router, [VueQueryPlugin, { queryClient }]] } });
+    render(CourseVersionPage, {
+      global: { plugins: [router, [VueQueryPlugin, { queryClient }]], provide: { [authKey]: signedInAsEditor } },
+    });
 
     expect(await screen.findByText(t('editorial.version.notFound'))).toBeVisible();
     expect(screen.getByText('Diese Version gibt es nicht.')).toBeVisible();
@@ -1018,8 +1066,8 @@ test('while uploading, everything in the chapter dialog but "Upload abbrechen" i
 
 // A new version (#155): a published version offers "Neue Version anlegen", which drafts its successor
 // (POST /editorial/course-versions/{id}/next, #20) and opens it here. The successor is numbered one higher and carries
-// the chapters and questions over. A module's refusal is shown in the host's words (ApiError.serverMessage, ADR 0007,
-// until #147 translates codes), else the catalog's; either way the published version is read again.
+// the chapters and questions over. A refusal is shown by its code in the catalog's words (#147, ADR 0007), the host's
+// only for a module code the catalog does not know, else the action's own; either way the version is read again.
 
 const nextVersionId = '0198c1a0-0000-7000-8000-0000000000c2';
 /** The successor as the host answers it once drafted: a draft numbered 3, with the published version's chapters. */
@@ -1167,49 +1215,80 @@ describe('a new version', () => {
     await waitFor(() => expect(router.currentRoute.value.path).toBe(`/editorial/versions/${nextVersionId}`));
   });
 
-  // Every refusal of #20, as the host sends it: a module's code, and its message as the problem's title.
+  // Every refusal of #20, as the host sends it: a code, and its words, which only an unknown module code shows.
   test.each([
     [
       'the version already has its successor',
-      problem(
-        409,
-        'editorial.next-version-exists',
-        `Version 3 of this course already exists (${nextVersionId}); continue that one instead of drafting another from ${versionId}.`,
-      ),
+      problem(409, 'editorial.next-version-exists', 'SERVER WORDS'),
+      'Von dieser Schulung gibt es schon eine neuere Version. Bearbeiten Sie diese, statt eine weitere anzulegen.',
     ],
     [
       'the version is no longer published',
-      problem(409, 'editorial.not-published', 'Die Version ist nicht veröffentlicht.'),
+      problem(409, 'editorial.not-published', 'SERVER WORDS'),
+      'Die Version ist nicht veröffentlicht.',
     ],
     [
       'the version changed in the meantime',
-      problem(
-        409,
-        'editorial.course-version-changed',
-        `The course version ${versionId} changed in the meantime; load it again and repeat the change.`,
-      ),
+      problem(409, 'editorial.course-version-changed', 'SERVER WORDS'),
+      'Die Version wurde inzwischen geändert. Laden Sie sie neu und wiederholen Sie die Änderung.',
     ],
     [
       'the version does not exist',
-      problem(404, 'editorial.course-version-not-found', `There is no course version ${versionId}.`),
+      problem(404, 'editorial.course-version-not-found', 'SERVER WORDS'),
+      'Diese Version gibt es nicht mehr.',
     ],
     [
       'the token names no person',
-      problem(403, 'editorial.identity-incomplete', 'The access token names no subject that identifies a person.'),
+      problem(403, 'editorial.identity-incomplete', 'SERVER WORDS'),
+      'Ihre Anmeldung nennt keine Person. Melden Sie sich erneut an.',
     ],
-  ])("refused because %s, reports the host's words, stays and reads the version again", async (_, refusal) => {
-    const words = (JSON.parse(await refusal.clone().text()) as { title: string }).title;
-    changing = async () => refusal;
+    [
+      'another editor drafted it at the same moment',
+      problem(409, 'already-exists', 'Conflict', 'SERVER WORDS'),
+      'Das wurde gerade schon angelegt. Laden Sie die Seite neu und prüfen Sie den aktuellen Stand.',
+    ],
+  ])(
+    'refused because %s, reports the catalog text for its code, stays and reads the version again',
+    async (_, refusal, text) => {
+      changing = async () => refusal;
+      const user = userEvent.setup();
+      const { router } = await renderPage();
+
+      await user.click(newVersionButton());
+
+      await waitFor(() => expect(notify.failure).toHaveBeenCalledWith(text));
+      expect(String(notify.failure.mock.calls)).not.toContain('SERVER WORDS');
+      expect(notify.success).not.toHaveBeenCalled();
+      expect(router.currentRoute.value.path).toBe(`/editorial/versions/${versionId}`);
+      await waitFor(() => expect(reads().length).toBeGreaterThan(1));
+      expect(reads().every(({ path }) => path === `/editorial/course-versions/${versionId}`)).toBe(true);
+    },
+  );
+
+  test('refused because the version already has its successor, says so in English when switched', async () => {
+    changing = async () => problem(409, 'editorial.next-version-exists', 'SERVER WORDS');
     const user = userEvent.setup();
-    const { router } = await renderPage();
+    await renderPage();
+    setLanguage('en-GB', { remember: false });
+
+    await user.click(await screen.findByRole('button', { name: 'Create a new version' }));
+
+    await waitFor(() =>
+      expect(notify.failure).toHaveBeenCalledWith(
+        'A newer version of this course already exists. Continue that one instead of creating another.',
+      ),
+    );
+    expect(String(notify.failure.mock.calls)).not.toContain('SERVER WORDS');
+  });
+
+  test("refused with a module code the catalog does not know, reports the host's words", async () => {
+    changing = async () => problem(409, 'editorial.zzz-unknown', 'SERVER WORDS');
+    const user = userEvent.setup();
+    await renderPage();
 
     await user.click(newVersionButton());
 
-    await waitFor(() => expect(notify.failure).toHaveBeenCalledWith(words));
-    expect(notify.success).not.toHaveBeenCalled();
-    expect(router.currentRoute.value.path).toBe(`/editorial/versions/${versionId}`);
-    await waitFor(() => expect(reads().length).toBeGreaterThan(1));
-    expect(reads().every(({ path }) => path === `/editorial/course-versions/${versionId}`)).toBe(true);
+    await waitFor(() => expect(notify.failure).toHaveBeenCalledWith('SERVER WORDS'));
   });
 
   // Someone retired the version meanwhile: the host refuses, and the page, reading it again, offers nothing.
@@ -1227,15 +1306,11 @@ describe('a new version', () => {
     expect(newVersion()).not.toBeInTheDocument();
   });
 
-  // Refusals without a module's words (the framework's English titles, a 500, no answer at all) show the catalog's.
+  // Refusals without a code (a 500, the edge's 502, the policy's 403, no answer at all) show the action's own text.
   test.each([
     ['the host fails', () => Promise.resolve(new Response('', { status: 500 }))],
+    ['the edge fails', () => Promise.resolve(new Response('', { status: 502 }))],
     ['the policy forbids it', () => Promise.resolve(problem(403, undefined, 'Forbidden'))],
-    [
-      'another editor drafted it at the same moment',
-      () =>
-        Promise.resolve(problem(409, 'already-exists', 'Conflict', 'duplicate key value violates unique constraint')),
-    ],
     ['the network fails', () => Promise.reject(new TypeError('Failed to fetch'))],
   ])("when %s, reports it in the catalog's words and stays, ready to try again", async (_, answer) => {
     changing = answer;
@@ -1288,9 +1363,13 @@ describe('a new version', () => {
     await user.click(newVersionButton());
     await waitFor(() => expect(newVersion()).toBeDisabled());
     newVersionButton().blur();
-    answer(problem(409, 'editorial.course-version-changed', 'The course version changed in the meantime.'));
+    answer(problem(409, 'editorial.course-version-changed', 'SERVER WORDS'));
 
-    await waitFor(() => expect(notify.failure).toHaveBeenCalledWith('The course version changed in the meantime.'));
+    await waitFor(() =>
+      expect(notify.failure).toHaveBeenCalledWith(
+        'Die Version wurde inzwischen geändert. Laden Sie sie neu und wiederholen Sie die Änderung.',
+      ),
+    );
     await waitFor(() => expect(newVersion()).toHaveFocus());
   });
 

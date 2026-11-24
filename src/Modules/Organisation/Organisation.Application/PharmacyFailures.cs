@@ -1,5 +1,8 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using System.Diagnostics;
 using System.Net;
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.InvitationRecipients;
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.InvitationSenders;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application;
@@ -25,6 +28,23 @@ public static class PharmacyFailures
 
     /// <summary>An accept lost the race to another change of the invitation; it names no pharmacy, which the caller does not belong to.</summary>
     public static ApiError InvitationChanged() => new InvitationChanged();
+
+    /// <summary>Another save came at the same moment and PostgreSQL ended this one; try again.</summary>
+    public static ApiError ConcurrentSave() => new OrganisationConcurrentSave();
+
+    /// <summary>How a save of the pharmacy lost a race.</summary>
+    public static ApiError LostRace(LostRace race, Guid id) => race switch
+    {
+        VersionMovedOn => Changed(id),
+        SaveDeadlocked => ConcurrentSave(),
+    };
+
+    /// <summary>How the save of an acceptance lost a race.</summary>
+    public static ApiError InvitationLostRace(LostRace race) => race switch
+    {
+        VersionMovedOn => InvitationChanged(),
+        SaveDeadlocked => ConcurrentSave(),
+    };
 
     public static ApiError InvalidEmail() => new InvalidEmail();
 
@@ -55,8 +75,10 @@ public static class PharmacyFailures
             AlreadyMemberOrInvited => ApiError.From(error, HttpStatusCode.Conflict),
             NoOpenInvitation => ApiError.From(error, HttpStatusCode.NotFound),
             InvitationExpired => ApiError.From(error, HttpStatusCode.Gone),
-            InvitationRenewedTooSoon tooSoon => ApiError.RetryLater(tooSoon, tooSoon.RetryAt.Value),
-            TooManyInvitationsToday tooMany => ApiError.RetryLater(tooMany, tooMany.RetryAt.Value),
+            InvitationRenewedTooSoon tooSoon => ApiError.RetryLater(tooSoon, tooSoon.RetryAt.Value, tooSoon.RefusedAt.Value),
+            TooManyInvitationsToday tooMany => ApiError.RetryLater(tooMany, tooMany.RetryAt.Value, tooMany.RefusedAt.Value),
+            RecipientMailedRecently recently => ApiError.RetryLater(recently, recently.RetryAt.Value, recently.RefusedAt.Value),
+            TooManyInvitationsSentToday tooManySent => ApiError.RetryLater(tooManySent, tooManySent.RetryAt.Value, tooManySent.RefusedAt.Value),
             _ => throw new UnreachableException(
                 $"{error.Code} is not returned by an Organisation use case yet; map it where it is first returned."),
         };

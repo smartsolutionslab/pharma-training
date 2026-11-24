@@ -19,6 +19,16 @@ public abstract record ApiError(string Code, string Message, HttpStatusCode Stat
     public static ApiError RetryLater(DomainError error, DateTimeOffset retryAt)
     {
         Ensure.That(error).IsNotNull();
-        return new RetryLaterFailure(error, retryAt);
+        return new RetryLaterFailure(error, retryAt, Option<DateTimeOffset>.None);
+    }
+
+    /// <summary>
+    /// A domain rule's refusal for now, not for good: 429, the instant from which the caller may try again and the
+    /// instant it refused at, on the same clock, so the wait is counted from the refusal and not from the host's clock.
+    /// </summary>
+    public static ApiError RetryLater(DomainError error, DateTimeOffset retryAt, DateTimeOffset refusedAt)
+    {
+        Ensure.That(error).IsNotNull();
+        return new RetryLaterFailure(error, retryAt, Option<DateTimeOffset>.Some(refusedAt));
     }
 }

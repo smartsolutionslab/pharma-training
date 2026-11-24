@@ -1,2 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <!-- Reads a PDF chapter's page text when it is recorded (#157, ADR 0008 D11); Apache-2.0. -->
+    <PackageReference Include="PdfPig" />
+  </ItemGroup>
+
 </Project>

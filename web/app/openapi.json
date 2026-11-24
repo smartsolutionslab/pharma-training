@@ -501,6 +501,153 @@
         }
       }
     },
+    "/certification/certificates/{id}/pdf": {
+      "get": {
+        "tags": [
+          "CertificateDocumentEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificationDocumentUrlDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/certification/pharmacies/{id}/certificates/export": {
+      "get": {
+        "tags": [
+          "CertificateExportEndpoint"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stream"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/certification/me/certificates": {
+      "get": {
+        "tags": [
+          "MyCertificatesEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "maximum": 21474837,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedResultOfHeldCertificateDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/certification/samples": {
       "post": {
         "tags": [
@@ -938,6 +1085,55 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PagedResultOfComplianceMemberDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/compliance/me/assignments": {
+      "get": {
+        "tags": [
+          "MyAssignmentEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "pharmacyId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "maximum": 21474837,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedResultOfComplianceMyAssignmentDto"
                 }
               }
             }
@@ -3379,6 +3575,23 @@
           }
         }
       },
+      "CertificationDocumentUrlDto": {
+        "required": [
+          "url",
+          "expiresAt"
+        ],
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "CertificationSampleDto": {
         "required": [
           "id",
@@ -3456,7 +3669,8 @@
           "changedAt",
           "previousDueDate",
           "newDueDate",
-          "reason"
+          "reason",
+          "bySelf"
         ],
         "type": "object",
         "properties": {
@@ -3490,6 +3704,9 @@
               "null",
               "string"
             ]
+          },
+          "bySelf": {
+            "type": "boolean"
           }
         }
       },
@@ -3823,6 +4040,48 @@
           }
         }
       },
+      "ComplianceMyAssignmentDto": {
+        "required": [
+          "assignmentId",
+          "courseId",
+          "courseTitle",
+          "state",
+          "dueDate",
+          "startCourseVersionId",
+          "continuesSession"
+        ],
+        "type": "object",
+        "properties": {
+          "assignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "courseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "courseTitle": {
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ComplianceAssignmentState"
+          },
+          "dueDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "startCourseVersionId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "continuesSession": {
+            "type": "boolean"
+          }
+        }
+      },
       "ComplianceRefusedLearnerDto": {
         "required": [
           "personId",
@@ -4041,7 +4300,8 @@
           "kind",
           "text",
           "file",
-          "durationSeconds"
+          "durationSeconds",
+          "pdfText"
         ],
         "type": "object",
         "properties": {
@@ -4083,6 +4343,16 @@
               "string"
             ],
             "format": "int32"
+          },
+          "pdfText": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EditorialPdfText"
+              }
+            ]
           }
         }
       },
@@ -4200,7 +4470,9 @@
       "EditorialContentReviewDto": {
         "required": [
           "reviewedChapterIds",
-          "hints"
+          "hints",
+          "leftOutChapterIds",
+          "truncatedChapterIds"
         ],
         "type": "object",
         "properties": {
@@ -4215,6 +4487,20 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/EditorialContentHintDto"
+            }
+          },
+          "leftOutChapterIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "truncatedChapterIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
             }
           }
         }
@@ -4347,6 +4633,13 @@
           }
         }
       },
+      "EditorialPdfText": {
+        "enum": [
+          "Complete",
+          "Truncated",
+          "NoText"
+        ]
+      },
       "EditorialQuestionDto": {
         "required": [
           "id",
@@ -4356,6 +4649,7 @@
           "type",
           "options",
           "provenance",
+          "origin",
           "review",
           "reviewedBy",
           "reviewedAt",
@@ -4395,6 +4689,9 @@
           "provenance": {
             "$ref": "#/components/schemas/EditorialQuestionProvenance"
           },
+          "origin": {
+            "$ref": "#/components/schemas/EditorialQuestionOrigin"
+          },
           "review": {
             "$ref": "#/components/schemas/EditorialQuestionReview"
           },
@@ -4426,6 +4723,13 @@
             "format": "date-time"
           }
         }
+      },
+      "EditorialQuestionOrigin": {
+        "enum": [
+          "AiDraft",
+          "Copied",
+          "HandWritten"
+        ]
       },
       "EditorialQuestionProvenance": {
         "enum": [
@@ -4476,6 +4780,7 @@
         "required": [
           "courseVersions",
           "testDefinitions",
+          "fileReleases",
           "retirements"
         ],
         "type": "object",
@@ -4489,6 +4794,14 @@
             "format": "int32"
           },
           "testDefinitions": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "fileReleases": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
               "integer",
@@ -4559,7 +4872,8 @@
       "EditorialTestDraftDto": {
         "required": [
           "draftedQuestionIds",
-          "leftOutChapterIds"
+          "leftOutChapterIds",
+          "truncatedChapterIds"
         ],
         "type": "object",
         "properties": {
@@ -4571,6 +4885,13 @@
             }
           },
           "leftOutChapterIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "truncatedChapterIds": {
             "type": "array",
             "items": {
               "type": "string",
@@ -4608,6 +4929,40 @@
           },
           "clientId": {
             "type": "string"
+          }
+        }
+      },
+      "HeldCertificateDto": {
+        "required": [
+          "certificateId",
+          "courseTitle",
+          "issuedOn",
+          "validUntil",
+          "validity",
+          "documentReady"
+        ],
+        "type": "object",
+        "properties": {
+          "certificateId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "courseTitle": {
+            "type": "string"
+          },
+          "issuedOn": {
+            "type": "string",
+            "format": "date"
+          },
+          "validUntil": {
+            "type": "string",
+            "format": "date"
+          },
+          "validity": {
+            "$ref": "#/components/schemas/CertificateValidity"
+          },
+          "documentReady": {
+            "type": "boolean"
           }
         }
       },
@@ -5073,6 +5428,47 @@
           }
         }
       },
+      "PagedResultOfComplianceMyAssignmentDto": {
+        "required": [
+          "items",
+          "totalCount",
+          "page",
+          "pageSize"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComplianceMyAssignmentDto"
+            }
+          },
+          "totalCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "page": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "pageSize": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "PagedResultOfComplianceSampleDto": {
         "required": [
           "items",
@@ -5209,6 +5605,47 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/EditorialSampleDto"
+            }
+          },
+          "totalCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "page": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "pageSize": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "PagedResultOfHeldCertificateDto": {
+        "required": [
+          "items",
+          "totalCount",
+          "page",
+          "pageSize"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HeldCertificateDto"
             }
           },
           "totalCount": {
@@ -5639,6 +6076,10 @@
           }
         }
       },
+      "Stream": {
+        "type": "string",
+        "format": "binary"
+      },
       "Unit": {
         "type": "object"
       }
@@ -5652,6 +6093,15 @@
       "name": "ExaminationEndpoints"
     },
     {
+      "name": "CertificateDocumentEndpoints"
+    },
+    {
+      "name": "CertificateExportEndpoint"
+    },
+    {
+      "name": "MyCertificatesEndpoints"
+    },
+    {
       "name": "AssignmentChangeEndpoints"
     },
     {
@@ -5662,6 +6112,9 @@
     },
     {
       "name": "MemberEndpoints"
+    },
+    {
+      "name": "MyAssignmentEndpoints"
     },
     {
       "name": "LearningMediaEndpoints"

@@ -10,6 +10,7 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// 429 with the limit's code, a <c>Retry-After</c> and <c>retryAt</c>, and nothing is stored or mailed. The tests
 /// travel in time by moving the stored instants back, never by waiting.
 /// </summary>
+[Collection(InvitationSenders.Name)]
 public class OrganisationInvitationLimitsTests(AspireFixture aspire)
 {
     private static readonly Uri Pharmacies = new("/organisation/pharmacies", UriKind.Relative);
@@ -124,7 +125,8 @@ public class OrganisationInvitationLimitsTests(AspireFixture aspire)
             responses.Select(response => response.StatusCode).ShouldBe([HttpStatusCode.Created, HttpStatusCode.Conflict], ignoreOrder: true, described);
             var lost = responses.Single(response => response.StatusCode == HttpStatusCode.Conflict);
             using var problem = JsonDocument.Parse(await lost.Content.ReadAsStringAsync(cancellationToken));
-            problem.RootElement.GetProperty("code").GetString().ShouldBe("organisation.pharmacy-changed", described);
+            // The loser may also lose on the sender's row (#265): its first insert answers already-exists.
+            problem.RootElement.GetProperty("code").GetString().ShouldBeOneOf(["organisation.pharmacy-changed", "already-exists"], described);
             (await database.InvitationMailsThatDayAsync(pharmacy, cancellationToken)).ShouldBe(50, described);
         }
         finally
@@ -134,6 +136,95 @@ public class OrganisationInvitationLimitsTests(AspireFixture aspire)
                 response.Dispose();
             }
         }
+    }
+
+    /// <summary>
+    /// A request time a cooldown or more ahead of the database's now is not trusted (#294): a row edited by hand, or a
+    /// database clock that moved back, cannot block renewing for longer than two cooldowns.
+    /// </summary>
+    [Fact]
+    public async Task Renewing_an_invitation_whose_request_time_lies_a_year_ahead_is_ok_and_mails_again()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var owner = await aspire.CreateHostClientAsync("owner");
+        var pharmacy = await RegisterAsync(owner, cancellationToken);
+        var address = Invitee();
+        var membership = await InviteAsync(owner, pharmacy, address, cancellationToken);
+        (await mailpit.MessagesToAsync(address, 1, cancellationToken)).ShouldHaveSingleItem();
+        await database.SetInvitationRequestedAheadAsync(membership, TimeSpan.FromDays(365), cancellationToken);
+        await database.MoveRecipientMailBackAsync(address, TimeSpan.FromMinutes(10), cancellationToken);
+
+        using var renewed = await owner.PostAsync(RenewUri(pharmacy, membership), content: null, cancellationToken);
+
+        renewed.StatusCode.ShouldBe(HttpStatusCode.OK, await renewed.Content.ReadAsStringAsync(cancellationToken));
+        (await mailpit.MessagesToAsync(address, 2, cancellationToken)).Count.ShouldBe(2, "the renewal sent no second mail");
+    }
+
+    /// <summary>
+    /// A stored mail day beyond tomorrow is discarded (#158, #294): even at the end of the calendar and at the cap, the
+    /// pharmacy invites, and today's tally starts afresh. Characterizes behaviour that shipped with #158.
+    /// </summary>
+    [Fact]
+    public async Task A_pharmacy_whose_stored_mail_day_is_9999_12_31_at_the_cap_invites_and_today_starts_the_tally_afresh()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var owner = await aspire.CreateHostClientAsync("owner");
+        var pharmacy = await RegisterAsync(owner, cancellationToken);
+        var today = await database.TodayUtcAsync(cancellationToken);
+        await database.SetInvitationMailsAsync(pharmacy, new DateOnly(9999, 12, 31), 50, cancellationToken);
+        var address = Invitee();
+
+        await InviteAsync(owner, pharmacy, address, cancellationToken);
+
+        (await mailpit.MessagesToAsync(address, 1, cancellationToken)).ShouldHaveSingleItem();
+        (await database.InvitationMailsThatDayAsync(pharmacy, cancellationToken)).ShouldBe(1, "today's tally did not start afresh");
+        (await database.InvitationMailDayAsync(pharmacy, cancellationToken)).ShouldBeOneOf([today, today.AddDays(1)], "the stored day is not today");
+    }
+
+    /// <summary>
+    /// A recipient's stored instant within a cooldown of the end of the calendar is distrusted (#326), never added to:
+    /// the invite is created and the address mailed once, and the stored instant is replaced by the database's now.
+    /// </summary>
+    [Fact]
+    public async Task An_address_whose_stored_mail_instant_is_9999_12_31_is_invited_and_mailed_once()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var owner = await aspire.CreateHostClientAsync("owner");
+        var pharmacy = await RegisterAsync(owner, cancellationToken);
+        var address = Invitee();
+        await database.SetRecipientLastMailedAtAsync(address, new DateTimeOffset(9999, 12, 31, 23, 55, 0, TimeSpan.Zero), cancellationToken);
+
+        using var invited = await owner.PostAsJsonAsync(InvitationsUri(pharmacy), Invitation(address), cancellationToken);
+
+        invited.StatusCode.ShouldBe(HttpStatusCode.Created, await invited.Content.ReadAsStringAsync(cancellationToken));
+        (await mailpit.MessagesToAsync(address, 1, cancellationToken)).ShouldHaveSingleItem();
+        (await database.RecipientLastMailedAtAsync(address, cancellationToken)).ShouldNotBeNull().Year.ShouldBeLessThan(9999, "the stored instant at the end of the calendar was kept");
+    }
+
+    /// <summary>
+    /// <c>Retry-After</c> counts down from the instant the refusal was made on the database's clock (#294, #326): it is
+    /// exactly the whole seconds, rounded up, between <c>refusedAt</c> and <c>retryAt</c> of the problem.
+    /// </summary>
+    [Fact]
+    public async Task Retry_after_of_a_refused_renewal_is_the_whole_seconds_rounded_up_from_refused_at_to_retry_at()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var owner = await aspire.CreateHostClientAsync("owner");
+        var pharmacy = await RegisterAsync(owner, cancellationToken);
+        var membership = await InviteAsync(owner, pharmacy, Invitee(), cancellationToken);
+
+        using var tooSoon = await owner.PostAsync(RenewUri(pharmacy, membership), content: null, cancellationToken);
+
+        var body = await tooSoon.Content.ReadAsStringAsync(cancellationToken);
+        tooSoon.StatusCode.ShouldBe(HttpStatusCode.TooManyRequests, body);
+        using var problem = JsonDocument.Parse(body);
+        problem.RootElement.GetProperty("code").GetString().ShouldBe("organisation.invitation-renewed-too-soon", body);
+        problem.RootElement.TryGetProperty("retryAt", out var retryAt).ShouldBeTrue($"the problem carries no retryAt: {body}");
+        problem.RootElement.TryGetProperty("refusedAt", out var refusedAt).ShouldBeTrue($"the problem carries no refusedAt: {body}");
+        var expected = (long)Math.Ceiling((retryAt.GetDateTimeOffset() - refusedAt.GetDateTimeOffset()).TotalSeconds);
+        var retryAfter = tooSoon.Headers.RetryAfter?.Delta;
+        retryAfter.ShouldNotBeNull($"the 429 carries no Retry-After in seconds: {body}");
+        ((long)retryAfter.Value.TotalSeconds).ShouldBe(expected, $"Retry-After is not ceil(retryAt - refusedAt): {body}");
     }
 
     private static object Invitation(string address) => new { email = address, jobFunction = "Pta", role = "Employee" };

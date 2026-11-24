@@ -1,10 +1,11 @@
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Storage;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.PdfText;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.AddFileChapter;
 
-public sealed class AddFileChapterHandler(ICourseVersionStore versions, IEditorialUnitOfWork unitOfWork, IStoredBlobs blobs)
+public sealed class AddFileChapterHandler(ICourseVersionStore versions, IEditorialUnitOfWork unitOfWork, IStoredBlobs blobs, IPdfTextExtractor extractor)
     : ICommandHandler<AddFileChapter, Result<Guid, ApiError>>
 {
     public async Task<Result<Guid, ApiError>> HandleAsync(AddFileChapter command, CancellationToken cancellationToken)
@@ -33,15 +34,29 @@ public sealed class AddFileChapterHandler(ICourseVersionStore versions, IEditori
             return Failure(accepted.Error);
         }
 
-        var changed = found.Value.AddChapter(FileChapters.Of(chapter, command.Title, command.Kind, command.File, command.Duration));
+        // A PDF's text is read now, from the file just accepted, and saved with the chapter (ADR 0008 D11).
+        PdfChapterText? text = null;
+        if (command.Kind == ChapterKind.Pdf)
+        {
+            var extracted = await PdfChapterTexts.ExtractAsync(blobs, extractor, accepted.Value, cancellationToken);
+            if (extracted.IsFailure)
+            {
+                return Failure(extracted.Error);
+            }
+
+            text = extracted.Value;
+        }
+
+        var changed = found.Value.AddChapter(FileChapters.Of(chapter, command.Title, command.File, command.Duration, text));
         if (changed.IsFailure)
         {
             return Failure(CourseVersionFailures.From(changed.Error));
         }
 
-        if (!await unitOfWork.TryCommitAsync(cancellationToken))
+        var saved = await unitOfWork.TryCommitAsync(cancellationToken);
+        if (saved.IsFailure)
         {
-            return Failure(CourseVersionFailures.Changed(command.Version.Value));
+            return Failure(CourseVersionFailures.LostRace(saved.Error, command.Version.Value));
         }
 
         return Success(changed.Value.Value);

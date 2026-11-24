@@ -1,3 +1,4 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using System.Net;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
@@ -21,6 +22,24 @@ public class CourseVersionFailuresTests
         CourseVersionFailures.InvalidChapterOrder().Status.ShouldBe(HttpStatusCode.BadRequest);
         CourseVersionFailures.InvalidCourseVersionStatus().Code.ShouldBe("editorial.invalid-status");
         CourseVersionFailures.InvalidCourseVersionStatus().Status.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    /// <summary>
+    /// A draft reads the chapters with text, a PDF's extracted text as much as a text chapter's Markdown (#157): the
+    /// refusals say "chapters with text", one fixed English message per code.
+    /// </summary>
+    [Fact]
+    public void The_test_draft_refusals_speak_of_chapters_with_text_in_one_fixed_message()
+    {
+        var noText = CourseVersionFailures.NoTextChapters();
+        var tooMuch = CourseVersionFailures.TooMuchContentToDraft();
+
+        noText.Code.ShouldBe("editorial.no-text-chapters");
+        noText.Status.ShouldBe(HttpStatusCode.Conflict);
+        noText.Message.ShouldBe("The version has no chapter with text to draft test questions from.");
+        tooMuch.Code.ShouldBe("editorial.too-much-content-to-draft");
+        tooMuch.Status.ShouldBe(HttpStatusCode.UnprocessableEntity);
+        tooMuch.Message.ShouldBe("The version's chapters are too long to draft a test from in one request.");
     }
 
     [Fact]
@@ -243,4 +262,29 @@ public class CourseVersionFailuresTests
         nameof(MultipleChoiceNeedsACorrect) => CourseVersionErrors.MultipleChoiceNeedsACorrect(QuestionId.New()),
         _ => throw new System.Diagnostics.UnreachableException($"No rule of the version is named {rule}."),
     };
+
+    /// <summary>
+    /// A save PostgreSQL ended as a deadlock or a serialization failure rolled back with what the editor loaded maybe
+    /// still current, so it is told to try again (editorial.concurrent-save); a row version that moved on is still a
+    /// course version that changed, to load again.
+    /// </summary>
+    [Theory]
+    [InlineData("40P01")]
+    [InlineData("40001")]
+    public void A_deadlocked_save_is_a_concurrent_save_to_try_again(string sqlState)
+    {
+        var error = CourseVersionFailures.LostRace(new SaveDeadlocked(sqlState), Version.Value);
+
+        error.Code.ShouldBe("editorial.concurrent-save");
+        error.Status.ShouldBe(HttpStatusCode.Conflict);
+    }
+
+    [Fact]
+    public void A_version_that_moved_on_is_still_a_course_version_that_changed()
+    {
+        var error = CourseVersionFailures.LostRace(new VersionMovedOn(), Version.Value);
+
+        error.Code.ShouldBe("editorial.course-version-changed");
+        error.Status.ShouldBe(HttpStatusCode.Conflict);
+    }
 }

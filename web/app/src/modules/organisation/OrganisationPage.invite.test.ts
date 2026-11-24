@@ -249,7 +249,7 @@ test.each([
 
     await fields.user.click(fields.submit);
 
-    const message = t('organisation.team.errors.alreadyMemberOrInvited');
+    const message = t('errors.organisation.already-member-or-invited');
     expect(await fields.dialog.findByRole('alert')).toHaveTextContent(message);
     expect(notify.failure).toHaveBeenCalledWith(message);
     expect(notify.success).not.toHaveBeenCalled();
@@ -269,7 +269,7 @@ test('an address the host refuses becomes the address field’s message', async 
 
   await fields.user.click(fields.submit);
 
-  const message = t('organisation.team.errors.invalidEmail');
+  const message = t('errors.organisation.invalid-email');
   await waitFor(() => expect(fields.email).toHaveAccessibleDescription(expect.stringContaining(message)));
   expect(fields.email).toHaveAttribute('aria-invalid', 'true');
   expect(notify.failure).toHaveBeenCalledWith(message);

@@ -62,7 +62,8 @@ function showing(version: EditorialCourseVersionDto) {
 const renderPage = () => renderVersionPage(versionId, title);
 
 const posts = () => requestsOf(fetch).filter(({ method }) => method === 'POST');
-const reads = () => requestsOf(fetch).filter(({ method }) => method === 'GET');
+/** The version's reads: its return history (#201) is read beside it, and left out here. */
+const reads = () => requestsOf(fetch).filter(({ method, path }) => method === 'GET' && !path.endsWith('/returns'));
 
 const workflowSection = () => screen.getByRole('region', { name: t('editorial.workflow.title') });
 const checklist = () => screen.queryByRole('list', { name: t('editorial.workflow.checklist.title') });
@@ -739,7 +740,47 @@ describe('a step refused for a reason that does not change the version', () => {
   );
 });
 
-describe('a refusal of a module the page has no words of its own for', () => {
+// A code the page has no words of its own for, but the catalog has (#147): its errors.<code> text, never the host's.
+describe('a refusal with a code the catalog knows', () => {
+  const reviewerNameMissing = () =>
+    refusedWith(403, { title: 'Forbidden', detail: 'SERVER WORDS', code: 'editorial.reviewer-name-missing' });
+
+  test('says the catalog text for publishing refused for want of a reviewer name, never the host words', async () => {
+    showing(versionOf('InReview', { questions: complete() }));
+    host.step = async () => reviewerNameMissing();
+    const user = userEvent.setup();
+    await renderPage();
+    await user.click(actionButton('publish') ?? document.body);
+    const dialog = await screen.findByRole('dialog', { name: 'Version veröffentlichen?' });
+
+    await user.click(within(dialog).getByRole('button', { name: 'Veröffentlichen' }));
+
+    await waitFor(() =>
+      expect(notify.failure).toHaveBeenCalledWith(
+        'Ihr Konto nennt keinen anzeigbaren Namen. Ergänzen Sie Ihr Profil und melden Sie sich erneut an.',
+      ),
+    );
+    expect(String(notify.failure.mock.calls)).not.toContain('SERVER WORDS');
+  });
+
+  test('says it in English when the page speaks English', async () => {
+    setLanguage('en-GB', { remember: false });
+    host.step = async () => reviewerNameMissing();
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(actionButton('submit') ?? document.body);
+
+    await waitFor(() =>
+      expect(notify.failure).toHaveBeenCalledWith(
+        'Your account gives no name that can be shown. Complete your profile and sign in again.',
+      ),
+    );
+    expect(String(notify.failure.mock.calls)).not.toContain('SERVER WORDS');
+  });
+});
+
+describe('a refusal with a module code the catalog does not know', () => {
   const unknown = () => refusedWith(409, { title: 'Die Version ist gesperrt.', code: 'editorial.something-new' });
 
   test("says the host's title", async () => {
@@ -752,7 +793,7 @@ describe('a refusal of a module the page has no words of its own for', () => {
     await waitFor(() => expect(notify.failure).toHaveBeenCalledWith('Die Version ist gesperrt.'));
   });
 
-  test("says the host's title in English too, until #147 translates it", async () => {
+  test("says the host's title in English too", async () => {
     setLanguage('en-GB', { remember: false });
     host.step = async () => unknown();
     const user = userEvent.setup();

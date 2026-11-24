@@ -16,6 +16,7 @@ public sealed class OrganisationModule : IModule
         // its host says so with <SendsMail>, from which the AppHost gives it the mail settings (docs/adr/0004).
         services.AddModuleMail(configuration);
         services.AddSingleton(OrganisationLimits.InvitationMailsFrom(configuration));
+        services.AddSingleton(OrganisationLimits.RecipientAndSenderMailsFrom(configuration));
 
         // The per-user limit on accepting invitations, read once here like the line above (docs/adr/0004, docs/adr/0020).
         services.AddUserRateLimit(OrganisationLimits.AcceptFrom(configuration));

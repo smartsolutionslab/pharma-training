@@ -17,6 +17,7 @@ internal static class IssuedCertificates
             CourseId.From(Guid.CreateVersion7()),
             CourseVersionId.From(Guid.CreateVersion7()),
             CourseTitle.From("Hygiene 2027"),
+            CourseVersionNumber.From(1),
             RecurrenceInterval.Yearly,
             ScorePercent.From(90),
             VerificationCodes.Next(),

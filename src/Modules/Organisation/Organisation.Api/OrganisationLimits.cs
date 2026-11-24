@@ -1,6 +1,7 @@
 using System.Globalization;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.RateLimits;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application;
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.InvitationRecipients;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
 using Microsoft.Extensions.Configuration;
 
@@ -10,7 +11,10 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Api;
 /// The module's limits from the host's configuration, read once at start-up (docs/adr/0004, ADR 0007): an invitation
 /// is renewed at most every <c>Organisation:InvitationLimits:RenewCooldownMinutes</c> (1 to 1440, 10 without it) and
 /// a pharmacy requests at most <c>Organisation:InvitationLimits:MailsPerPharmacyPerDay</c> invitation mails a UTC day
-/// (1 to 10000, 50 without it). A user accepts invitations at most <c>Organisation:AcceptLimit:PerMinute</c> times a
+/// (1 to 10000, 50 without it). Across pharmacies, an address is mailed an invitation at most every
+/// <c>Organisation:InvitationLimits:RecipientCooldownMinutes</c> (1 to 1440, 10 without it) and a signed-in user
+/// requests at most <c>Organisation:InvitationLimits:MailsPerSenderPerDay</c> invitation mails a UTC day (1 to 10000,
+/// 100 without it). A user accepts invitations at most <c>Organisation:AcceptLimit:PerMinute</c> times a
 /// minute (10 without it) and <c>Organisation:AcceptLimit:PerDay</c> times a day (100 without it), counted in the
 /// service's memory (docs/adr/0020). A value that is no whole number in range stops the host, naming the key.
 /// </summary>
@@ -31,6 +35,10 @@ public static class OrganisationLimits
 
     public const string MailsPerPharmacyPerDayKey = "Organisation:InvitationLimits:MailsPerPharmacyPerDay";
 
+    public const string RecipientCooldownMinutesKey = "Organisation:InvitationLimits:RecipientCooldownMinutes";
+
+    public const string MailsPerSenderPerDayKey = "Organisation:InvitationLimits:MailsPerSenderPerDay";
+
     private const int MostCooldownMinutes = 24 * 60;
 
     public static InvitationMailLimits InvitationMailsFrom(IConfiguration configuration)
@@ -40,6 +48,16 @@ public static class OrganisationLimits
         var cooldown = WholeNumber(configuration, RenewCooldownMinutesKey, InvitationMailLimits.DefaultRenewCooldownMinutes, MostCooldownMinutes);
         var cap = WholeNumber(configuration, MailsPerPharmacyPerDayKey, InvitationMailLimits.DefaultMailsPerPharmacyPerDay, DailyMailCap.Maximum);
         return new InvitationMailLimits(RenewCooldown.From(TimeSpan.FromMinutes(cooldown)), DailyMailCap.From(cap));
+    }
+
+    /// <summary>The limits across pharmacies: how often an address is mailed and how many mails a sender requests a UTC day.</summary>
+    public static RecipientAndSenderMailLimits RecipientAndSenderMailsFrom(IConfiguration configuration)
+    {
+        Ensure.That(configuration).IsNotNull();
+
+        var cooldown = WholeNumber(configuration, RecipientCooldownMinutesKey, RecipientAndSenderMailLimits.DefaultRecipientCooldownMinutes, MostCooldownMinutes);
+        var cap = WholeNumber(configuration, MailsPerSenderPerDayKey, RecipientAndSenderMailLimits.DefaultMailsPerSenderPerDay, DailyMailCap.Maximum);
+        return new RecipientAndSenderMailLimits(RecipientCooldown.From(TimeSpan.FromMinutes(cooldown)), DailyMailCap.From(cap));
     }
 
     /// <summary>The per-user limit on accepting invitations: so many a minute and so many a day.</summary>

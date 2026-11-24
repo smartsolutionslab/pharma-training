@@ -8,7 +8,7 @@ import type {
   OrganisationJobFunction,
   OrganisationMembershipRole,
 } from '@/api/generated';
-import type { CellStatus } from '@/modules/compliance/cellStatus';
+import type { AssignmentStatus } from '@/components/status/assignmentStatus';
 
 // The German catalog, which defines the keys (MessageSchema). German follows docs/domain/README.md's glossary and
 // addresses the user as "Sie". vue-i18n reads @ { } | $ as syntax: write a literal one as {'@'}.
@@ -87,9 +87,15 @@ export const de = {
         player: { title: 'Schulung' },
       },
     },
-    assessment: { title: 'Tests' },
+    assessment: {
+      title: 'Tests',
+      details: {
+        test: { title: 'Test' },
+        result: { title: 'Ergebnis' },
+      },
+    },
     certification: {
-      title: 'Teilnahmebestätigungen',
+      title: 'Meine Teilnahmebestätigungen',
       entries: {
         verify: { title: 'Bestätigung prüfen' },
       },
@@ -138,13 +144,30 @@ export const de = {
       loadFailed: 'Die Bestätigung konnte nicht geprüft werden.',
     },
     retry: 'Erneut versuchen',
+    mine: {
+      columns: {
+        course: 'Schulung',
+        issuedOn: 'Ausgestellt am',
+        validUntil: 'Gültig bis',
+        validity: 'Status',
+        document: 'PDF',
+      },
+      documentReady: 'Bereit',
+      documentPending: 'Wird erstellt',
+      open: 'PDF öffnen',
+      openFor: 'PDF öffnen für {course}',
+      documentNotReady:
+        'Die Teilnahmebestätigung für {course} wird noch erstellt. Versuchen Sie es gleich noch einmal.',
+      documentFailed: 'Das PDF für {course} konnte nicht geöffnet werden.',
+      empty: 'Sie haben noch keine Teilnahmebestätigung.',
+      toCourses: 'Zu meinen Schulungen',
+      loadFailed: 'Ihre Teilnahmebestätigungen konnten nicht geladen werden.',
+    },
   },
   compliance: {
     matrix: {
       intro: 'Wer in {pharmacy} welche Schulung bis wann abschließen muss.',
       notAllowed: 'Sie dürfen den Schulungsstand des Teams in dieser Apotheke nicht sehen.',
-      pharmacyNotFound: 'Sie sind nicht mehr Mitglied dieser Apotheke.',
-      identityIncomplete: 'Ihr Konto nennt keinen Namen oder keine gültige E-Mail-Adresse. Ergänzen Sie Ihr Profil.',
       loadFailed: 'Die Team-Matrix konnte nicht geladen werden.',
       retry: 'Erneut versuchen',
       table: {
@@ -203,7 +226,7 @@ export const de = {
       Completed: 'Abgeschlossen',
       CompletedLate: 'Verspätet abgeschlossen',
       Expired: 'Abgelaufen',
-    } satisfies Record<CellStatus, string>,
+    } satisfies Record<AssignmentStatus, string>,
     assign: {
       notAllowed: 'Sie dürfen in dieser Apotheke keine Schulungen zuweisen.',
       steps: {
@@ -218,6 +241,8 @@ export const de = {
       submit: 'Zuweisen',
       retry: 'Erneut versuchen',
       changed: 'Die Zuweisungen wurden inzwischen geändert. Prüfen Sie die Angaben und weisen Sie erneut zu.',
+      concurrentSave:
+        'Gleichzeitig wurde eine andere Änderung an den Zuweisungen gespeichert; es wurde nichts zugewiesen. Weisen Sie erneut zu.',
       failed: 'Die Schulung konnte nicht zugewiesen werden. Versuchen Sie es erneut.',
       course: {
         title: 'Schulung wählen',
@@ -275,6 +300,7 @@ export const de = {
         alreadyActive: '{name}: Diese Schulung ist bereits zugewiesen.',
         notAMember: '{name}: nicht mehr Mitglied der Apotheke.',
         other: '{name}: {message}',
+        refusedUnknown: 'Nicht zugewiesen.',
         again: 'Weitere Schulung zuweisen',
         home: 'Zur Startseite',
       },
@@ -430,25 +456,8 @@ export const de = {
         endedSelf: 'Sie sind nicht mehr Mitglied von {pharmacy}.',
         failed: '{name} konnte nicht ausgetragen werden.',
       },
-      errors: {
-        lastManager: 'Die letzte Apothekenleitung kann nicht ausgetragen oder zum Mitarbeiter gemacht werden.',
-        alreadyMemberOrInvited: 'Diese Adresse ist schon Mitglied oder eingeladen.',
-        noOpenInvitation: 'Diese Einladung ist nicht mehr offen: Sie wurde angenommen oder zurückgezogen.',
-        noActiveMembership: 'Diese Mitgliedschaft ist nicht mehr aktiv.',
-        capabilityMissing: 'Ihre Rolle in dieser Apotheke erlaubt das nicht.',
-        pharmacyNotFound: 'Sie sind nicht mehr Mitglied dieser Apotheke.',
-        pharmacyChanged:
-          'Die Apotheke wurde gerade gleichzeitig geändert. Prüfen Sie die aktualisierte Liste und versuchen Sie es erneut.',
-        invalidEmail: 'Die E-Mail-Adresse fehlt, ist zu lang oder ist keine.',
-        invalidJobFunction: 'Die Tätigkeit fehlt oder ist unbekannt.',
-        invalidMembershipRole: 'Die Rolle fehlt oder ist unbekannt.',
-        identityIncomplete: 'Ihr Konto nennt keinen Namen oder keine gültige E-Mail-Adresse. Ergänzen Sie Ihr Profil.',
-        inPharmacy: 'In {pharmacy}: {reason}',
-        invitationRenewedTooSoon:
-          'Diese Einladung wurde gerade erst gesendet. Sie können sie in einigen Minuten erneut senden.',
-        tooManyInvitationsToday:
-          'Ihre Apotheke hat die Höchstzahl an Einladungs-E-Mails für heute erreicht. Versuchen Sie es später erneut.',
-      },
+      // A refusal answered after a switch to another pharmacy names the pharmacy that refused.
+      inPharmacy: 'In {pharmacy}: {reason}',
     },
   },
   editorial: {
@@ -466,6 +475,18 @@ export const de = {
         InReview: 'Keine Versionen in Prüfung.',
         Published: 'Keine veröffentlichten Versionen.',
       },
+    },
+    returns: {
+      title: 'Rückgaben',
+      columns: {
+        returnedAt: 'Zurückgegeben am',
+        returnedBy: 'Zurückgegeben von',
+        reason: 'Grund',
+      },
+      empty: 'Diese Version wurde noch nie zur Überarbeitung zurückgegeben.',
+      loadFailed: 'Die Rückgaben dieser Version konnten nicht geladen werden.',
+      byYou: 'Ihnen',
+      byAnotherEditor: 'einer anderen Person aus der Redaktion',
     },
     course: {
       new: 'Neue Schulung',
@@ -624,9 +645,11 @@ export const de = {
         },
       },
       draft: {
-        explain: 'Die KI entwirft die fehlenden Fragen aus den Textkapiteln. Sie prüfen jede Frage, bevor sie gilt.',
+        explain:
+          'Die KI entwirft die fehlenden Fragen aus den Textkapiteln und dem Text der PDF-Kapitel; Videos sieht sie sich nicht an. Sie prüfen jede Frage, bevor sie gilt.',
         start: 'KI-Entwurf erstellen',
-        noTextChapters: 'Die KI entwirft nur aus Textkapiteln. Legen Sie zuerst ein Textkapitel an.',
+        noTextChapters:
+          'Die KI entwirft nur aus Kapiteln mit Text: aus Textkapiteln und aus PDF-Kapiteln, deren Text sich lesen lässt. Legen Sie zuerst ein solches Kapitel an.',
         nothingToDraft: 'Die geprüften Fragen erfüllen die Vorgaben bereits; es gibt nichts zu entwerfen.',
         confirm: {
           title: 'KI-Entwurf erstellen?',
@@ -634,21 +657,22 @@ export const de = {
             'Die KI entwirft eine Frage. Geprüfte Fragen bleiben erhalten. | Die KI entwirft {count} Fragen. Geprüfte Fragen bleiben erhalten.',
           replaces:
             'Eine ungeprüfte Frage wird ersetzt, auch wenn sie von Hand geschrieben ist. | {count} ungeprüfte Fragen werden ersetzt, auch von Hand geschriebene.',
-          leftOut: 'PDF- und Videokapitel liest die KI nicht; Fragen dazu schreiben Sie von Hand.',
+          leftOut:
+            'Videokapitel und PDF-Kapitel ohne lesbaren Text liest die KI nicht; Fragen dazu schreiben Sie von Hand.',
           submit: 'Entwurf erstellen',
         },
         running: 'Die KI entwirft den Test. Das kann einige Minuten dauern; bitte lassen Sie die Seite geöffnet.',
         done: 'Die KI hat eine Frage entworfen. Bitte prüfen Sie sie. | Die KI hat {count} Fragen entworfen. Bitte prüfen Sie sie.',
         leftOut: 'Zu diesen Kapiteln hat die KI keine Fragen entworfen; schreiben Sie sie von Hand:',
+        truncated:
+          'Von diesen PDF-Kapiteln hat die KI nur den Anfang gelesen; Fragen zu den späteren Seiten schreiben Sie von Hand:',
+        leftOutSummary:
+          'Zu einem Kapitel hat die KI keine Fragen entworfen; siehe den Hinweis. | Zu {count} Kapiteln hat die KI keine Fragen entworfen; siehe den Hinweis.',
+        truncatedSummary:
+          'Von einem PDF-Kapitel hat die KI nur den Anfang gelesen; siehe den Hinweis. | Von {count} PDF-Kapiteln hat die KI nur den Anfang gelesen; siehe den Hinweis.',
         dismiss: 'Hinweis schließen',
         errors: {
-          modelNotConfigured:
-            'Für KI-Entwürfe ist kein Sprachmodell eingerichtet. Wenden Sie sich an den Betrieb der Plattform.',
           tooManyRequests: 'Sie haben in kurzer Zeit zu viele KI-Entwürfe angefordert. Versuchen Sie es später erneut.',
-          limitReached: 'Sie haben Ihr Limit für KI-Entwürfe erreicht. Versuchen Sie es später erneut.',
-          malformed: 'Die Antwort der KI war unbrauchbar; es wurde nichts geändert. Versuchen Sie es erneut.',
-          tooMuchContent:
-            'Die Textkapitel sind zu lang für einen KI-Entwurf. Kürzen Sie sie oder schreiben Sie die Fragen von Hand.',
           changed: 'Die Version wurde inzwischen geändert; der Entwurf wurde verworfen. Versuchen Sie es erneut.',
           notADraft: 'Diese Version ist kein Entwurf mehr; ihr Test kann nicht neu entworfen werden.',
           timedOut:
@@ -735,24 +759,15 @@ export const de = {
         reasonRequired: 'Geben Sie einen Grund an.',
         reasonTooLong: 'Der Grund darf höchstens {max} Zeichen lang sein.',
         reasonInvalid: 'Der Grund enthält unzulässige Steuer- oder Formatzeichen.',
+        reasonRefused:
+          'Der Grund muss ohne Leerraum am Anfang und Ende 1 bis {max} Zeichen lang sein und darf außer Zeilenumbrüchen und Tabulatoren keine Steuer- oder Formatzeichen enthalten.',
       },
       errors: {
         notADraft: 'Nur ein Entwurf kann eingereicht werden.',
-        notInReview: 'Die Version ist nicht mehr in Prüfung.',
         notPublished: 'Nur eine veröffentlichte Version kann zurückgezogen werden.',
-        noChapters: 'Die Version braucht mindestens ein Kapitel.',
-        testIncomplete: 'Der Test hat nicht die vorgegebene Anzahl Fragen.',
-        tooManyQuestions: 'Der Test hat mehr Fragen als erlaubt.',
-        questionNotApproved: 'Jede Frage muss vor der Veröffentlichung freigegeben sein.',
         questionDefect:
           'Eine Frage ist unvollständig. Prüfen Sie im Test ihre Antwortoptionen und richtigen Antworten.',
-        fourEyes:
-          'Mit Vier-Augen-Freigabe darf nicht veröffentlichen, wer die Version eingereicht hat. Bitten Sie eine andere Person aus der Redaktion.',
-        publisherApprovedQuestions:
-          'Mit Vier-Augen-Freigabe darf nicht veröffentlichen, wer Fragen dieser Version freigegeben hat. Bitten Sie eine andere Person aus der Redaktion.',
         changed: 'Die Version wurde inzwischen geändert. Sie sehen jetzt den aktuellen Stand; versuchen Sie es erneut.',
-        notFound: 'Diese Version gibt es nicht mehr.',
-        identityIncomplete: 'Ihre Anmeldung nennt keine Person. Melden Sie sich erneut an.',
         forbidden: 'Sie dürfen diesen Schritt nicht ausführen.',
         submitFailed: 'Die Version konnte nicht eingereicht werden. Versuchen Sie es erneut.',
         publishFailed: 'Die Version konnte nicht veröffentlicht werden. Versuchen Sie es erneut.',
@@ -762,6 +777,23 @@ export const de = {
     },
   },
   learning: {
+    myCourses: {
+      intro: 'Ihre Schulungen in {pharmacy}: Überfällige zuerst, dann nach Fälligkeit.',
+      list: { title: 'Zugewiesene Schulungen' },
+      due: 'Fällig am {date}',
+      dueOverdue: 'War fällig am {date}',
+      start: 'Starten',
+      continue: 'Fortsetzen',
+      startCourse: 'Starten: {title}',
+      continueCourse: 'Fortsetzen: {title}',
+      locked: 'Der Test ist gesperrt. Arbeiten Sie die Inhalte erneut durch, um ihn wieder freizuschalten.',
+      notStartable: 'Diese Schulung kann derzeit nicht gestartet werden: ihre Version ist zurückgezogen.',
+      empty: 'Ihnen ist in {pharmacy} derzeit keine Schulung zugewiesen.',
+      pharmacyNotFound: 'Sie sind nicht mehr Mitglied dieser Apotheke.',
+      identityIncomplete: 'Ihr Konto nennt keinen Namen oder keine gültige E-Mail-Adresse. Ergänzen Sie Ihr Profil.',
+      loadFailed: 'Ihre Schulungen konnten nicht geladen werden.',
+      retry: 'Erneut versuchen',
+    },
     player: {
       loadFailed: 'Die Schulung konnte nicht geladen werden.',
       notFound: 'Diese Schulung gibt es nicht.',
@@ -778,6 +810,7 @@ export const de = {
       previous: 'Vorheriges Kapitel',
       chapterDone: 'Kapitel „{title}“ erledigt.',
       contentCompleted: 'Sie haben alle Kapitel bearbeitet. Der Test ist jetzt freigeschaltet.',
+      toTest: 'Zum Test',
       text: {
         hint: 'Scrollen Sie bis zum Ende, um das Kapitel abzuschließen.',
       },
@@ -804,6 +837,72 @@ export const de = {
         saveNow: 'Jetzt speichern',
         finished: 'Dieser Lerndurchlauf ist bereits abgeschlossen. Weiterer Fortschritt wird nicht gespeichert.',
       },
+    },
+  },
+  assessment: {
+    test: {
+      heading: 'Test: {title}',
+      headingFallback: 'Test',
+      loadFailed: 'Der Test konnte nicht geladen werden.',
+      notFound: 'Diesen Test gibt es nicht.',
+      noIdentity: 'Ihr Konto ist unvollständig. Bitte melden Sie sich erneut an.',
+      notUnlocked:
+        'Der Test ist noch nicht freigeschaltet. Bearbeiten Sie zuerst alle Kapitel der Schulung; danach erscheint er hier nach wenigen Sekunden.',
+      toCourses: 'Zu meinen Schulungen',
+      notReady: 'Der Test wird gerade bereitgestellt. Versuchen Sie es in einem Moment erneut.',
+      intro: 'Versuch {number} von {max}. Es gibt kein Zeitlimit; jede Antwort wird sofort gespeichert.',
+      start: 'Test beginnen',
+      startFailed: 'Der Test konnte nicht begonnen werden.',
+      questions: 'Fragen',
+      question: 'Frage {number} von {total}',
+      singleHint: 'Wählen Sie eine Antwort.',
+      multipleHint: 'Wählen Sie alle zutreffenden Antworten.',
+      answered: '{answered} von {total} Fragen beantwortet',
+      save: {
+        saving: 'Wird gespeichert …',
+        saved: 'Gespeichert',
+        announced: 'Antwort auf Frage {number} gespeichert.',
+        failed: 'Ihre Antwort auf Frage {number} konnte nicht gespeichert werden.',
+        retry: 'Erneut speichern',
+        keepOne: 'Wählen Sie mindestens eine Antwort. Gespeichert bleibt Ihre vorige Auswahl.',
+        reload: 'Diese Antwort passt nicht zu Ihrem Testversuch. Laden Sie die Seite neu.',
+        singleChoice: 'Wählen Sie bei dieser Frage genau eine Antwort.',
+      },
+      submit: 'Test abgeben',
+      confirm: {
+        title: 'Test abgeben?',
+        text: 'Sie haben {answered} von {total} Fragen beantwortet. Nach der Abgabe können Sie Ihre Antworten nicht mehr ändern.',
+        unanswered: 'Unbeantwortete Fragen werden als falsch gewertet.',
+        confirm: 'Abgeben',
+        cancel: 'Weiter bearbeiten',
+      },
+      submitFailed: 'Der Test konnte nicht abgegeben werden.',
+      changed: 'Der Test wurde gerade an anderer Stelle geändert. Versuchen Sie es erneut.',
+      unsaved: 'Nicht alle Antworten sind gespeichert. Speichern Sie sie erneut, bevor Sie abgeben.',
+      alreadySubmitted: 'Dieser Testversuch ist bereits abgegeben.',
+      passed: 'Sie haben diesen Test bestanden.',
+      exhausted: 'Der Test ist gesperrt, bis Sie die genannten Kapitel erneut bearbeitet haben.',
+      toResult: 'Zum Ergebnis',
+    },
+    result: {
+      heading: 'Ergebnis: {title}',
+      loadFailed: 'Das Ergebnis konnte nicht geladen werden.',
+      none: 'Sie haben noch keinen Testversuch abgegeben.',
+      toTest: 'Zum Test',
+      outcome: {
+        Passed: 'Bestanden',
+        Failed: 'Nicht bestanden',
+      },
+      score: 'Ihr Ergebnis: {score}; zum Bestehen nötig: {passing}',
+      attempt: 'Versuch {number}',
+      attemptsLeft: 'Noch ein Versuch | Noch {count} Versuche',
+      retry: 'Nächsten Versuch beginnen',
+      repeatRecommended: 'Wiederholen Sie vor dem nächsten Versuch diese Kapitel:',
+      locked:
+        'Sie haben alle Versuche aufgebraucht; der Test ist gesperrt. Bearbeiten Sie diese Kapitel erneut, dann wird er wieder freigeschaltet:',
+      chaptersFailed: 'Die Kapitel konnten nicht geladen werden.',
+      unknownChapter: 'Ein Kapitel dieser Schulung',
+      passedNext: 'Ihre Teilnahmebestätigung wird ausgestellt.',
     },
   },
   samples: {
@@ -888,6 +987,209 @@ export const de = {
     breadcrumb: {
       label: 'Navigationspfad',
       more: 'Mehr',
+    },
+  },
+  // A refusal's text by its code (#147, ADR 0007): errors.<module>.<name> for a module's code, errors.<code> for the
+  // host's own. src/i18n/errorCatalog.test.ts keeps it to the codes in error-codes.json; errorValues fills its limits.
+  errors: {
+    'invalid-argument': 'Eine Angabe ist ungültig. Prüfen Sie Ihre Eingaben und versuchen Sie es erneut.',
+    'already-exists': 'Das wurde gerade schon angelegt. Laden Sie die Seite neu und prüfen Sie den aktuellen Stand.',
+    'model-not-configured':
+      'Es ist kein Sprachmodell eingerichtet; KI-Funktionen stehen nicht zur Verfügung. Wenden Sie sich an den Betrieb der Plattform.',
+    assessment: {
+      'examination-changed':
+        'Ihr Test wurde inzwischen geändert; es wurde nichts gespeichert. Versuchen Sie es erneut.',
+      'examination-not-found': 'Diesen Test gibt es für Sie nicht.',
+      'examination-not-unlocked':
+        'Der Test ist gerade nicht freigeschaltet. Laden Sie die Seite neu, um Ihren aktuellen Stand zu sehen.',
+      'identity-incomplete': 'Ihre Anmeldung nennt keine Person. Melden Sie sich erneut an.',
+      'invalid-sample-name': 'Der Name eines Beispiels hat 1 bis {max} Zeichen und darf nicht leer sein.',
+      'no-open-attempt': 'Gerade läuft kein Testversuch. Laden Sie die Seite neu, um Ihren aktuellen Stand zu sehen.',
+      'option-not-in-question':
+        'Diese Antwortoption gehört nicht zur Frage. Laden Sie die Seite neu und wählen Sie erneut.',
+      'question-not-in-attempt': 'Diese Frage gehört nicht zu Ihrem aktuellen Testversuch. Laden Sie die Seite neu.',
+      'sample-not-found': 'Dieses Beispiel gibt es nicht.',
+      'single-choice-takes-one-option': 'Bei dieser Frage wählen Sie genau eine Antwortoption.',
+      'test-definition-missing':
+        'Der Test dieser Schulungsversion ist noch nicht bereit. Versuchen Sie es später erneut.',
+    },
+    catalog: {
+      'course-version-not-found': 'Diese Schulungsversion gibt es nicht.',
+      'invalid-sample-name': 'Der Name eines Beispiels hat 1 bis {max} Zeichen und darf nicht leer sein.',
+      'sample-not-found': 'Dieses Beispiel gibt es nicht.',
+    },
+    certification: {
+      'capability-missing': 'Ihre Rolle in dieser Apotheke erlaubt das nicht.',
+      'certificate-not-found': 'Diese Teilnahmebestätigung gibt es nicht, oder sie gehört nicht Ihnen.',
+      'certificate-not-verifiable':
+        'Zu diesem Code gibt es keine Teilnahmebestätigung. Prüfen Sie, ob Sie den vollständigen Link aus dem QR-Code geöffnet haben.',
+      'document-not-ready':
+        'Das PDF der Teilnahmebestätigung wird gerade erstellt. Versuchen Sie es gleich noch einmal.',
+      'export-too-large':
+        'Ein Export enthält höchstens 2000 Teilnahmebestätigungen. Wählen Sie einen kürzeren Zeitraum.',
+      'identity-incomplete': 'Ihre Anmeldung nennt keine Person. Melden Sie sich erneut an.',
+      'invalid-export-period':
+        'Wählen Sie Beginn und Ende; das Ende darf nicht vor dem Beginn und höchstens fünf Jahre danach liegen.',
+      'invalid-sample-name': 'Der Name eines Beispiels hat 1 bis {max} Zeichen und darf nicht leer sein.',
+      'pharmacy-not-found': 'Sie sind nicht Mitglied dieser Apotheke, oder es gibt sie nicht.',
+      'sample-not-found': 'Dieses Beispiel gibt es nicht.',
+      'verification-limit-reached':
+        'Gerade werden zu viele Prüfungen angefragt. Versuchen Sie es in einer Minute erneut.',
+    },
+    compliance: {
+      'assignment-already-active': 'Für diese Schulung gibt es schon eine offene Zuweisung.',
+      'assignment-not-active': 'Die Zuweisung ist nicht mehr offen.',
+      'assignment-not-found': 'Diese Zuweisung gibt es in dieser Apotheke nicht mehr.',
+      'assignments-changed':
+        'Die Zuweisungen wurden inzwischen geändert. Prüfen Sie den aktuellen Stand und versuchen Sie es erneut.',
+      'concurrent-save':
+        'Gleichzeitig wurde eine andere Änderung an den Zuweisungen gespeichert; es wurde nichts gespeichert. Versuchen Sie es erneut.',
+      'capability-missing': 'Ihre Rolle in dieser Apotheke erlaubt das nicht.',
+      'certificate-predates-assignment': 'Eine Teilnahmebestätigung von vor der Zuweisung erfüllt sie nicht.',
+      'course-missing': 'Wählen Sie eine Schulung.',
+      'course-not-found': 'Diese Schulung gibt es nicht mehr.',
+      'course-retired': 'Diese Schulung wurde zurückgezogen und kann nicht zugewiesen werden.',
+      'due-date-in-the-past': 'Das Fälligkeitsdatum darf nicht in der Vergangenheit liegen.',
+      'due-date-missing': 'Geben Sie ein Fälligkeitsdatum an.',
+      'due-date-too-far': 'Das Fälligkeitsdatum darf höchstens {years} Jahre in der Zukunft liegen.',
+      'identity-incomplete': 'Ihr Konto nennt keinen Namen oder keine gültige E-Mail-Adresse. Ergänzen Sie Ihr Profil.',
+      'invalid-change-reason': 'Der Grund hat höchstens {max} Zeichen und keine Steuer- oder Formatzeichen.',
+      'invalid-job-function': 'Diese Tätigkeit gibt es nicht.',
+      'invalid-person': 'Eine der gewählten Personen ist ungültig. Laden Sie die Seite neu.',
+      'invalid-recurrence': 'Die Wiederholung liegt zwischen {min} und {max} Monaten.',
+      'invalid-sample-name': 'Der Name eines Beispiels hat 1 bis {max} Zeichen und darf nicht leer sein.',
+      'learner-not-a-member': 'Eine gewählte Person ist kein Mitglied dieser Apotheke mehr.',
+      'no-learners': 'Wählen Sie mindestens eine Person.',
+      'own-assignment': 'Ihre eigene Zuweisung kann nur ein anderer Apothekenleiter ändern oder zurückziehen.',
+      'pharmacy-missing': 'Wählen Sie eine Apotheke.',
+      'pharmacy-not-found': 'Sie sind nicht mehr Mitglied dieser Apotheke.',
+      'sample-not-found': 'Dieses Beispiel gibt es nicht.',
+      'too-many-learners': 'Weisen Sie höchstens {max} Personen auf einmal zu.',
+    },
+    editorial: {
+      'ai-draft-malformed': 'Die Antwort der KI war unbrauchbar; es wurde nichts geändert. Versuchen Sie es erneut.',
+      'ai-review-malformed':
+        'Die Antwort der KI auf die Inhaltsprüfung war unbrauchbar; es wurde nichts geändert. Versuchen Sie es erneut.',
+      'chapter-content-does-not-match-kind':
+        'Der Inhalt passt nicht zur Art des Kapitels: Ein Textkapitel hat Text, ein PDF-Kapitel eine PDF-Datei, ein Videokapitel ein Video mit seiner Dauer.',
+      'chapter-not-found': 'Dieses Kapitel gibt es in der Version nicht mehr.',
+      'course-version-changed':
+        'Die Version wurde inzwischen geändert. Laden Sie sie neu und wiederholen Sie die Änderung.',
+      'concurrent-save':
+        'Gleichzeitig wurde eine andere Änderung an der Version gespeichert; es wurde nichts gespeichert. Versuchen Sie es erneut.',
+      'course-version-not-found': 'Diese Version gibt es nicht mehr.',
+      'file-in-use': 'Diese Datei gehört schon zu einem anderen Kapitel der Version.',
+      'four-eyes':
+        'Mit Vier-Augen-Freigabe darf nicht veröffentlichen, wer die Version eingereicht hat. Bitten Sie eine andere Person aus der Redaktion.',
+      'identity-incomplete': 'Ihre Anmeldung nennt keine Person. Melden Sie sich erneut an.',
+      'invalid-answer-options': 'Eine Frage hat höchstens {max} Antwortoptionen, und keine davon darf fehlen.',
+      'invalid-answer-text': 'Eine Antwortoption hat 1 bis {max} Zeichen und darf nicht leer sein.',
+      'invalid-chapter-file': 'Die Datei des Kapitels ist ungültig. Laden Sie sie erneut hoch.',
+      'invalid-chapter-kind': 'Ein Kapitel ist ein Text-, PDF- oder Videokapitel.',
+      'invalid-chapter-order': 'Die Reihenfolge muss jedes Kapitel der Version nennen.',
+      'invalid-chapter-text': 'Der Text eines Kapitels hat 1 bis {max} Zeichen und darf nicht leer sein.',
+      'invalid-chapter-title': 'Der Titel eines Kapitels hat 1 bis {max} Zeichen und darf nicht leer sein.',
+      'invalid-course-title': 'Der Titel einer Schulung hat 1 bis {max} Zeichen und darf nicht leer sein.',
+      'invalid-passing-score': 'Die Bestehensgrenze liegt zwischen {min} und {max} Prozent.',
+      'invalid-question-count': 'Ein Test hat {min} bis {max} Fragen.',
+      'invalid-question-text': 'Eine Frage hat 1 bis {max} Zeichen und darf nicht leer sein.',
+      'invalid-question-type': 'Eine Frage ist Single Choice oder Multiple Choice.',
+      'invalid-return-reason': 'Der Grund enthält unzulässige Steuer- oder Formatzeichen oder ist zu lang.',
+      'invalid-sample-name': 'Der Name eines Beispiels hat 1 bis {max} Zeichen und darf nicht leer sein.',
+      'invalid-status': 'Diesen Status gibt es nicht.',
+      'invalid-upload-kind': 'Hochladen lassen sich nur Dateien für PDF- und Videokapitel.',
+      'invalid-validity': 'Die Gültigkeit liegt zwischen {min} und {max} Monaten.',
+      'invalid-video-duration': 'Ein Video dauert höchstens {hours} Stunden.',
+      'model-limit-reached': 'Sie haben Ihr Limit für KI-Anfragen erreicht. Versuchen Sie es später erneut.',
+      'multiple-choice-a-correct': 'Eine Multiple-Choice-Frage braucht mindestens eine richtige Antwort.',
+      'next-version-exists':
+        'Von dieser Schulung gibt es schon eine neuere Version. Bearbeiten Sie diese, statt eine weitere anzulegen.',
+      'no-chapters': 'Die Version braucht mindestens ein Kapitel.',
+      'no-text-chapters':
+        'Die KI entwirft nur aus Kapiteln mit Text: aus Textkapiteln und aus PDF-Kapiteln, deren Text sich lesen lässt. Legen Sie zuerst ein solches Kapitel an.',
+      'no-text-chapters-to-review': 'Die Version hat kein Kapitel mit Text, das die KI prüfen könnte.',
+      'not-a-draft': 'Nur ein Entwurf kann bearbeitet werden.',
+      'not-in-review': 'Die Version ist nicht mehr in Prüfung.',
+      'not-published': 'Die Version ist nicht veröffentlicht.',
+      'nothing-to-draft': 'Die geprüften Fragen erfüllen die Vorgaben bereits; es gibt nichts zu entwerfen.',
+      'order-does-not-match': 'Die Reihenfolge muss jedes Kapitel genau einmal enthalten. Laden Sie die Version neu.',
+      'pdf-readers-busy': 'Gerade werden zu viele PDFs gelesen. Versuchen Sie es in ein paar Sekunden erneut.',
+      'publisher-approved-questions':
+        'Mit Vier-Augen-Freigabe darf nicht veröffentlichen, wer Fragen dieser Version freigegeben hat. Bitten Sie eine andere Person aus der Redaktion.',
+      'question-already-approved': 'Diese Frage ist bereits freigegeben. Ändern Sie sie, um sie erneut freizugeben.',
+      'question-not-approved': 'Jede Frage muss vor der Veröffentlichung freigegeben sein.',
+      'question-not-found': 'Diese Frage gibt es in der Version nicht mehr.',
+      'republish-running': 'Eine Neuveröffentlichung läuft bereits. Bitte warten Sie, bis sie abgeschlossen ist.',
+      'reviewer-name-missing':
+        'Ihr Konto nennt keinen anzeigbaren Namen. Ergänzen Sie Ihr Profil und melden Sie sich erneut an.',
+      'sample-not-found': 'Dieses Beispiel gibt es nicht.',
+      'single-choice-one-correct': 'Eine Single-Choice-Frage hat genau eine richtige Antwort.',
+      'test-incomplete': 'Der Test hat nicht die vorgegebene Anzahl Fragen.',
+      'too-few-options': 'Eine Frage braucht mindestens {min} Antwortoptionen.',
+      'too-many-questions': 'Ein Test hat höchstens {max} Fragen.',
+      'too-much-content-to-draft':
+        'Die Textkapitel sind zusammen zu lang für einen KI-Entwurf; PDF-Kapitel werden dafür gekürzt, Textkapitel nicht. Kürzen Sie die Textkapitel oder schreiben Sie die Fragen von Hand.',
+      'too-much-content-to-review': 'Die Textkapitel sind zu lang für eine KI-Prüfung in einem Durchgang.',
+      'upload-not-accepted': 'Die Datei ist weder ein PDF noch ein MP4-Video.',
+      'upload-not-found': 'Die Datei ist noch nicht hochgeladen. Laden Sie sie hoch und speichern Sie dann erneut.',
+    },
+    learning: {
+      'chapter-has-no-media': 'Dieses Kapitel ist ein Textkapitel und hat keine Datei.',
+      'chapter-not-found': 'Dieses Kapitel gibt es nicht.',
+      'chapter-not-in-course': 'Dieses Kapitel gehört nicht zu dieser Schulungsversion.',
+      'course-version-not-found': 'Diese Schulung ist noch nicht verfügbar. Versuchen Sie es in Kürze erneut.',
+      'course-version-retired': 'Diese Schulungsversion wurde zurückgezogen; Sie können sie nicht neu beginnen.',
+      'identity-incomplete': 'Ihre Anmeldung nennt keine Person. Melden Sie sich erneut an.',
+      'invalid-sample-name': 'Der Name eines Beispiels hat 1 bis {max} Zeichen und darf nicht leer sein.',
+      'media-not-ready': 'Die Datei ist noch nicht bereit. Versuchen Sie es in Kürze erneut.',
+      'membership-missing':
+        'Sie sind in keiner Apotheke aktives Mitglied. Eine gerade begonnene Mitgliedschaft kann einen Moment brauchen.',
+      'no-session-on-version': 'Sie haben diese Schulung nicht begonnen.',
+      'progress-too-fast': 'Der Fortschritt wächst schneller, als das Video abgespielt werden kann.',
+      'sample-not-found': 'Dieses Beispiel gibt es nicht.',
+      'session-changed': 'Ihr Lerndurchlauf wurde inzwischen geändert. Versuchen Sie es erneut.',
+      'session-finished': 'Diese Schulung ist bereits abgeschlossen.',
+      'session-not-found': 'Diesen Lerndurchlauf gibt es nicht.',
+    },
+    organisation: {
+      'accept-limit-reached':
+        'Sie haben zu oft versucht, Einladungen anzunehmen. Versuchen Sie es in einigen Minuten erneut.',
+      'already-member-or-invited': 'Diese Adresse ist schon Mitglied oder eingeladen.',
+      'capability-missing': 'Ihre Rolle in dieser Apotheke erlaubt das nicht.',
+      'email-not-verified':
+        'Ihre E-Mail-Adresse ist noch nicht bestätigt. Bestätigen Sie sie über den Link in der Bestätigungs-E-Mail und versuchen Sie es dann erneut.',
+      'identity-incomplete': 'Ihr Konto nennt keinen Namen oder keine gültige E-Mail-Adresse. Ergänzen Sie Ihr Profil.',
+      'invalid-email': 'Die E-Mail-Adresse fehlt, ist zu lang oder ist keine.',
+      'invalid-invitation-token':
+        'Das ist kein gültiger Einladungslink. Öffnen Sie den Link aus Ihrer Einladungs-E-Mail erneut.',
+      'invalid-job-function': 'Die Tätigkeit fehlt oder ist unbekannt.',
+      'invalid-membership-role': 'Die Rolle fehlt oder ist unbekannt.',
+      'invalid-pharmacy-name':
+        'Der Name einer Apotheke hat 1 bis {max} Zeichen und enthält keine Steuer- oder Richtungszeichen.',
+      'invalid-sample-name': 'Der Name eines Beispiels hat 1 bis {max} Zeichen und darf nicht leer sein.',
+      'invitation-changed': 'Die Einladung wurde gerade gleichzeitig geändert. Versuchen Sie es erneut.',
+      'invitation-expired': 'Die Einladung ist abgelaufen. Bitten Sie Ihren Apothekenleiter, sie erneut zu senden.',
+      'invitation-for-another-address': 'Die Einladung gilt für eine andere E-Mail-Adresse als die Ihres Kontos.',
+      'invitation-not-found':
+        'Der Einladungslink gilt nicht mehr: Er wurde schon benutzt, zurückgezogen oder durch einen neueren ersetzt.',
+      'invitation-renewed-too-soon':
+        'Diese Einladung wurde gerade erst gesendet. Sie können sie in einigen Minuten erneut senden.',
+      'last-manager': 'Der letzte Apothekenleiter kann nicht ausgetragen oder zum Mitarbeiter gemacht werden.',
+      'no-active-membership': 'Diese Mitgliedschaft ist nicht mehr aktiv.',
+      'no-open-invitation': 'Diese Einladung ist nicht mehr offen: Sie wurde angenommen oder zurückgezogen.',
+      'person-already-member': 'Sie sind bereits Mitglied dieser Apotheke.',
+      'pharmacy-changed':
+        'Die Apotheke wurde gerade gleichzeitig geändert. Prüfen Sie den aktuellen Stand und versuchen Sie es erneut.',
+      'concurrent-save':
+        'Gleichzeitig wurde eine andere Änderung an der Apotheke gespeichert; es wurde nichts gespeichert. Versuchen Sie es erneut.',
+      'pharmacy-not-found': 'Sie sind nicht mehr Mitglied dieser Apotheke.',
+      'recipient-mailed-recently':
+        'An diese Adresse wurde gerade erst eine Einladung gesendet. Sie können sie nach einer kurzen Wartezeit erneut einladen.',
+      'sample-not-found': 'Dieses Beispiel gibt es nicht.',
+      'too-many-invitations-sent-today':
+        'Sie haben heute so viele Einladungs-E-Mails gesendet, wie Sie dürfen. Versuchen Sie es morgen erneut.',
+      'too-many-invitations-today':
+        'Ihre Apotheke hat die Höchstzahl an Einladungs-E-Mails für heute erreicht. Versuchen Sie es morgen erneut.',
     },
   },
 };

@@ -31,7 +31,10 @@ public sealed class QuestionConfiguration : IEntityTypeConfiguration<Question>
         builder.Property(question => question.Text).HasColumnName("text").HasMaxLength(QuestionText.MaxLength).IsRequired();
         builder.Property(question => question.Type).HasColumnName("type").HasConversion<string>().HasMaxLength(EnumLength).IsRequired();
         builder.Property(question => question.Provenance).HasColumnName("provenance").HasConversion<string>().HasMaxLength(EnumLength).IsRequired();
+        builder.Property(question => question.Origin).HasColumnName("origin").HasConversion<string>().HasMaxLength(EnumLength).IsRequired();
         builder.Property(question => question.Review).HasColumnName("review").HasConversion<string>().HasMaxLength(EnumLength).IsRequired();
+        builder.Property(question => question.EditHistory).HasColumnName("edit_history").HasConversion<string>().HasMaxLength(EnumLength).IsRequired();
+        builder.Property(question => question.ApprovalHistory).HasColumnName("approval_history").HasConversion<string>().HasMaxLength(EnumLength).IsRequired();
         builder.Property(question => question.ReviewedBy).HasColumnName("reviewed_by");
         builder.Property(question => question.ReviewedAt).HasColumnName("reviewed_at");
         builder.Property(question => question.ReviewedByName).HasColumnName("reviewed_by_name").HasMaxLength(ReviewerName.MaxLength);
@@ -48,8 +51,8 @@ public sealed class QuestionConfiguration : IEntityTypeConfiguration<Question>
         // DELETE chapter, then UPDATE version; adding a question to it saves INSERT question, UPDATE version, INSERT
         // options. When the addition's version UPDATE lands between the removal's two statements, the addition's
         // commit-time check of this key waits for the deleted chapter while the removal waits for the version row.
-        // PostgreSQL ends one of them after deadlock_timeout (40P01, an error in its log), and EFCore.PG reports that
-        // as a DbUpdateConcurrencyException, so the caller still gets 409 editorial.course-version-changed.
+        // PostgreSQL ends one of them after deadlock_timeout (40P01, an error in its log), which TryCommitAsync answers
+        // as a lost race to a deadlock, so the caller gets 409 editorial.concurrent-save and may try again.
         // EditorialQuestionRacesTests forces the interleaving and fails if a deadlocked round answers anything else.
         // Updating the version's row before its children would avoid it, but that is RowVersionBump, which every
         // module shares.

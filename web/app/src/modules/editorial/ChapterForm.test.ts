@@ -25,6 +25,7 @@ const introduction: EditorialChapterDto = {
   text: '# Willkommen\n\nDas ist **wichtig**.',
   file: null,
   durationSeconds: null,
+  pdfText: null,
 };
 
 /** A question about the chapter, approved or not yet reviewed. */
@@ -40,6 +41,7 @@ function question(id: string, chapterId: string, review: 'Approved' | 'Unreviewe
       { id: `${id}-2`, text: '5 Sekunden', correct: false },
     ],
     provenance: 'Human',
+    origin: 'HandWritten',
     review,
     reviewedBy: null,
     reviewedAt: null,

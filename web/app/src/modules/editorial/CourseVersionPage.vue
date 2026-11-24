@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { BookOpen } from '@lucide/vue';
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, ref, useTemplateRef, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { z } from 'zod';
@@ -15,6 +15,7 @@ import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from '@
 import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { t as translate } from '@/i18n';
+import { type ErrorMessage, errorText } from '@/i18n/errorText';
 import { notify } from '@/lib/notify';
 import ChapterForm from './ChapterForm.vue';
 import ChapterList from './ChapterList.vue';
@@ -23,12 +24,13 @@ import { inboxStatuses } from './inboxQuery';
 import { publishChecklist, type PublishRefusal } from './publishChecklist';
 import PublishChecklist from './PublishChecklist.vue';
 import RemoveChapterDialog from './RemoveChapterDialog.vue';
+import ReturnHistory from './ReturnHistory.vue';
 import ReturnVersionDialog from './ReturnVersionDialog.vue';
 import { useChapterMutations } from './useChapterMutations';
 import { useCourseVersionWorkflow, type WorkflowResult } from './useCourseVersionWorkflow';
 import { useDraftNextVersion } from './useDraftNextVersion';
 import { useReorderChapters } from './useReorderChapters';
-import { type WorkflowAction, type WorkflowFailure, workflowFailure, workflowFailureText } from './workflowErrors';
+import { type WorkflowAction, workflowFailure, workflowFailureText } from './workflowErrors';
 
 // A course version (/editorial/versions/:id): its title, number and status, the way back to its inbox tab, and its
 // chapters. Only a draft can be changed; any other status says why not and shows its chapters read-only.
@@ -41,7 +43,11 @@ const { data: version, isPending, error } = useGetEditorialCourseVersionsId(id, 
 const { add, replace, remove, isSaving } = useChapterMutations(id);
 const { reorder } = useReorderChapters(id);
 const { draftNext } = useDraftNextVersion(id);
-const workflow = useCourseVersionWorkflow(id);
+/** The version's return history: a return taken shows on its first page. */
+const returnHistory = useTemplateRef<InstanceType<typeof ReturnHistory>>('returnHistory');
+// A return taken turns the history to its first page before the returns are read again, so the page read again is
+// the one the new return is on, and no page shows as it was before.
+const workflow = useCourseVersionWorkflow(id, { onReturned: () => returnHistory.value?.showFirstPage() });
 const { t } = useI18n();
 
 /** The chapter form while it is open: with the chapter it replaces, or none to add one. */
@@ -115,7 +121,7 @@ async function save(request: EditorialChapterRequest) {
   const chapter = form.value?.chapter;
   const result = chapter === undefined ? await add(request) : await replace(chapter.id, request);
   if (!result.ok) {
-    notify.failure(result.serverMessage ?? translate('editorial.chapters.saveFailed', { title: request.title }));
+    notify.failure(errorText(result.error, 'editorial.chapters.saveFailed', { values: { title: request.title } }));
     return false;
   }
   notify.success(translate('editorial.chapters.saved', { title: request.title }));
@@ -151,7 +157,7 @@ async function draftNextVersion() {
     return;
   }
   draftingNext.value = false;
-  notify.failure(result.serverMessage ?? translate('editorial.version.newVersionFailed'));
+  notify.failure(errorText(result.error, 'editorial.version.newVersionFailed'));
   await nextTick();
   (document.getElementById(newVersionId) ?? document.getElementById(headingId))?.focus();
 }
@@ -231,8 +237,8 @@ function closeDialogs() {
 async function take(
   action: WorkflowAction,
   step: () => Promise<WorkflowResult>,
-  keepOpen?: (failure: WorkflowFailure) => boolean,
-): Promise<'done' | WorkflowFailure> {
+  keepOpen?: (failure: ErrorMessage) => boolean,
+): Promise<'done' | ErrorMessage> {
   const before = version.value;
   if (stepping.value !== undefined || draftingNext.value || before === undefined) {
     return 'done';
@@ -251,8 +257,8 @@ async function take(
     return failure;
   }
   const key = 'key' in failure ? failure.key : undefined;
-  if (key === 'editorial.workflow.errors.fourEyes' || key === 'editorial.workflow.errors.publisherApprovedQuestions') {
-    fourEyesRefusal.value = key === 'editorial.workflow.errors.fourEyes' ? 'fourEyes' : 'publisherApproved';
+  if (key === 'errors.editorial.four-eyes' || key === 'errors.editorial.publisher-approved-questions') {
+    fourEyesRefusal.value = key === 'errors.editorial.four-eyes' ? 'fourEyes' : 'publisherApproved';
   }
   closeDialogs();
   focusWhenReady.value = [stepButtonId(action), headingId];
@@ -287,7 +293,7 @@ function cancelDialog() {
   }
 }
 
-const isKey = (failure: WorkflowFailure, key: string) => 'key' in failure && failure.key === key;
+const isKey = (failure: ErrorMessage, key: string) => 'key' in failure && failure.key === key;
 
 /**
  * Returns the version with the reason. The dialog stays open with the reason when the host refused the reason itself
@@ -299,13 +305,13 @@ async function returnVersion(reason: string): Promise<'done' | 'reasonRefused' |
     'return',
     () => workflow.returnToDraft(reason),
     (failure) =>
-      isKey(failure, 'editorial.workflow.returnForm.reasonInvalid') ||
+      isKey(failure, 'editorial.workflow.returnForm.reasonRefused') ||
       (isKey(failure, 'editorial.workflow.errors.changed') && version.value?.status === 'InReview'),
   );
   if (outcome === 'done') {
     return 'done';
   }
-  if (isKey(outcome, 'editorial.workflow.returnForm.reasonInvalid')) {
+  if (isKey(outcome, 'editorial.workflow.returnForm.reasonRefused')) {
     return 'reasonRefused';
   }
   notify.failure(workflowFailureText(outcome));
@@ -321,7 +327,7 @@ async function confirmRemove(chapter: EditorialChapterDto) {
   if (result.ok) {
     notify.success(translate('editorial.chapters.removed', { title: chapter.title }));
   } else {
-    notify.failure(result.serverMessage ?? translate('editorial.chapters.removeFailed', { title: chapter.title }));
+    notify.failure(errorText(result.error, 'editorial.chapters.removeFailed', { values: { title: chapter.title } }));
   }
 }
 </script>
@@ -395,6 +401,7 @@ async function confirmRemove(chapter: EditorialChapterDto) {
           </Button>
         </div>
       </section>
+      <ReturnHistory ref="returnHistory" :version-id="id" />
       <section aria-labelledby="course-version-chapters" class="flex flex-col gap-4">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <h2 id="course-version-chapters">{{ t('editorial.chapters.title') }}</h2>

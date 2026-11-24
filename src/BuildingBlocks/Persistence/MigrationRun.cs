@@ -61,7 +61,7 @@ public static class MigrationRun
             throw new InvalidOperationException($"Connection string '{ApplicationConnectionString}' is missing; {OwnedSchemaSetting} ensures the role it logs in as.");
         }
 
-        await using (await MigrationGate.EnterAsync(administrator, cancellationToken))
+        await using (await MigrationGate.EnterAsync(administrator, logger, cancellationToken))
         {
             await OwnedSchemaRole.EnsureAsync(administrator, application, schema, logger, cancellationToken);
         }

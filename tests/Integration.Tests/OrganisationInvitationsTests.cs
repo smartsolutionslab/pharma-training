@@ -13,6 +13,7 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// A pharmacy's management invites an address, renews and revokes the invitation through the running application,
 /// and the database backs the rules the aggregate checks: one invited-or-active row per address, one row per token hash.
 /// </summary>
+[Collection(InvitationSenders.Name)]
 public partial class OrganisationInvitationsTests(AspireFixture aspire)
 {
     private const string UniqueViolation = "23505";
@@ -136,6 +137,8 @@ public partial class OrganisationInvitationsTests(AspireFixture aspire)
         await ShouldBeRefusedAsync(renewed, HttpStatusCode.NotFound, "organisation.no-open-invitation", cancellationToken);
         using var revokedAgain = await owner.DeleteAsync(InvitationUri(pharmacy, membership), cancellationToken);
         await ShouldBeRefusedAsync(revokedAgain, HttpStatusCode.NotFound, "organisation.no-open-invitation", cancellationToken);
+        // A revoke gives the address's recipient cooldown nothing back (#265): it is re-invited once 10 minutes have passed.
+        await database.MoveRecipientMailBackAsync(address, TimeSpan.FromMinutes(10), cancellationToken);
         await InviteAsync(owner, pharmacy, address, cancellationToken, earlierMails: 1);
         (await database.StatusesOfAsync(pharmacy, address, cancellationToken)).ShouldBe(["Revoked", "Invited"]);
     }
@@ -355,11 +358,11 @@ public partial class OrganisationInvitationsTests(AspireFixture aspire)
     /// in that same transaction afterwards. The gate holds the pharmacy's row, so the invitation waits for it while
     /// already holding its envelope's row; the gate then asks for the inbox, which waits for the invitation. The
     /// invitation has waited longest, so PostgreSQL's deadlock check, deadlock_timeout after it started to wait, ends it:
-    /// its save fails with 40P01, which <c>TryCommitAsync</c> answers as a lost race. The envelope rolls back with it,
+    /// its save fails with 40P01, which <c>TryCommitAsync</c> answers as a lost race to a deadlock, organisation.concurrent-save. The envelope rolls back with it,
     /// so the invitation is not stored and no mail goes out.
     /// </summary>
     [Fact]
-    public async Task An_invitation_whose_save_deadlocks_after_it_published_its_mail_request_is_told_the_pharmacy_changed_and_mails_nothing()
+    public async Task An_invitation_whose_save_deadlocks_after_it_published_its_mail_request_is_told_to_try_again_and_mails_nothing()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var owner = await aspire.CreateHostClientAsync("owner");
@@ -381,7 +384,7 @@ public partial class OrganisationInvitationsTests(AspireFixture aspire)
         {
             var body = await invited.Content.ReadAsStringAsync(cancellationToken);
             invited.StatusCode.ShouldBe(HttpStatusCode.Conflict, body);
-            (await CodeOfAsync(invited, cancellationToken)).ShouldBe("organisation.pharmacy-changed", body);
+            (await CodeOfAsync(invited, cancellationToken)).ShouldBe("organisation.concurrent-save", body);
         }
 
         await database.ShouldHaveDeadlockedSinceAsync(deadlocksBefore, cancellationToken);

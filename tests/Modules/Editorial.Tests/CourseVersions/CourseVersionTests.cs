@@ -173,7 +173,7 @@ public class CourseVersionTests
         var pdf = NewChapter();
         var video = NewChapter();
 
-        version.AddChapter(Chapter.OfPdf(pdf, ChapterTitle.From("Hygieneplan"), BlobReference.From("course-versions/a/plan.pdf"))).IsSuccess.ShouldBeTrue();
+        version.AddChapter(Chapter.OfPdf(pdf, ChapterTitle.From("Hygieneplan"), BlobReference.From("course-versions/a/plan.pdf"), PdfTextExtraction.NoText, null)).IsSuccess.ShouldBeTrue();
         version.AddChapter(Chapter.OfVideo(video, ChapterTitle.From("Vorführung"), BlobReference.From("course-versions/a/demo.mp4"), VideoDuration.From(90))).IsSuccess.ShouldBeTrue();
 
         version.Chapters[0].Kind.ShouldBe(ChapterKind.Pdf);
@@ -194,7 +194,7 @@ public class CourseVersionTests
         var asVideo = version.Chapters.Single();
         (asVideo.Kind, asVideo.File, asVideo.Duration, asVideo.Text).ShouldBe((ChapterKind.Video, BlobReference.From("course-versions/a/demo.mp4"), VideoDuration.From(90), (MarkdownText?)null));
 
-        version.ReplaceChapter(Chapter.OfPdf(chapter, ChapterTitle.From("Hygieneplan"), BlobReference.From("course-versions/a/plan.pdf"))).IsSuccess.ShouldBeTrue();
+        version.ReplaceChapter(Chapter.OfPdf(chapter, ChapterTitle.From("Hygieneplan"), BlobReference.From("course-versions/a/plan.pdf"), PdfTextExtraction.NoText, null)).IsSuccess.ShouldBeTrue();
         var asPdf = version.Chapters.Single();
         (asPdf.Kind, asPdf.File, asPdf.Duration, asPdf.Text).ShouldBe((ChapterKind.Pdf, BlobReference.From("course-versions/a/plan.pdf"), (VideoDuration?)null, (MarkdownText?)null));
     }

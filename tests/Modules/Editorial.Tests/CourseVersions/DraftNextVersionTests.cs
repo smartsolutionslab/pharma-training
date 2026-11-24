@@ -1,3 +1,4 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using System.Net;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.DraftNextVersion;
@@ -104,7 +105,7 @@ public class DraftNextVersionTests
         var source = Published();
         store.Stored.Add(source);
         var lostRace = Substitute.For<IEditorialUnitOfWork>();
-        lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(false);
+        lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(Failure(LostRaces.VersionMovedOn()));
 
         var drafted = await Handler(store, lostRace).HandleAsync(new DraftNextVersion(source.Id, Editor), TestContext.Current.CancellationToken);
 
@@ -120,7 +121,7 @@ public class DraftNextVersionTests
         var source = Published();
         store.Stored.Add(source);
         var unitOfWork = Substitute.For<IEditorialUnitOfWork>();
-        unitOfWork.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(true);
+        unitOfWork.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(Success(Unit.Value));
 
         var drafted = await Handler(store, unitOfWork).HandleAsync(new DraftNextVersion(source.Id, Editor), TestContext.Current.CancellationToken);
 
@@ -162,7 +163,7 @@ public class DraftNextVersionTests
         lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(_ =>
         {
             store.Stored.Add(concurrent);
-            return false;
+            return Failure(LostRaces.VersionMovedOn());
         });
 
         var drafted = await Handler(store, lostRace).HandleAsync(new DraftNextVersion(source.Id, Editor), TestContext.Current.CancellationToken);

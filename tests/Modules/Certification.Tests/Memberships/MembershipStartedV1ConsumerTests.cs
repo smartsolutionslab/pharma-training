@@ -5,7 +5,7 @@ using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Memberships;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Tests.Memberships;
 
-/// <summary>Certification's copy of a started membership: who it is, where, under which name and since when; stored once.</summary>
+/// <summary>Certification's copy of a started membership: who it is, where, under which name, in which role and since when; stored once.</summary>
 public class MembershipStartedV1ConsumerTests
 {
     [Fact]
@@ -124,19 +124,40 @@ public class MembershipStartedV1ConsumerTests
         await RefusedAsync(store, started, nameof(MembershipStartedV1.DisplayName));
     }
 
+    [Theory]
+    [InlineData(MembershipRoleV1.Manager, MembershipRole.Manager)]
+    [InlineData(MembershipRoleV1.Employee, MembershipRole.Employee)]
+    public async Task A_started_membership_keeps_its_role(MembershipRoleV1 sent, MembershipRole stored)
+    {
+        var store = new InMemoryMembershipStore();
+        var started = MembershipEvents.Started(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), "Ada", sent, MembershipEvents.StartedAt);
+
+        await new MembershipStartedV1Consumer(store, store).HandleAsync(started, TestContext.Current.CancellationToken);
+
+        store.Memberships.ShouldHaveSingleItem().Role.ShouldBe(stored);
+    }
+
     [Fact]
-    public async Task A_job_function_or_role_certification_does_not_keep_is_not_checked()
+    public async Task A_job_function_certification_does_not_keep_is_not_checked()
     {
         var store = new InMemoryMembershipStore();
         var started = MembershipEvents.Started(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), "Ada") with
         {
             JobFunction = (JobFunctionV1)99,
-            Role = (MembershipRoleV1)99,
         };
 
         await new MembershipStartedV1Consumer(store, store).HandleAsync(started, TestContext.Current.CancellationToken);
 
         store.Memberships.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task An_undefined_role_is_refused_by_its_name_and_nothing_stored()
+    {
+        var store = new InMemoryMembershipStore();
+        var started = MembershipEvents.Started(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), "Ada", (MembershipRoleV1)99, MembershipEvents.StartedAt);
+
+        await RefusedAsync(store, started, nameof(MembershipStartedV1.Role));
     }
 
     [Fact]

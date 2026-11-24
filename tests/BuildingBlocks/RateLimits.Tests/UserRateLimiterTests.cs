@@ -160,6 +160,86 @@ public class UserRateLimiterTests
         admitted.ShouldBe(10);
     }
 
+    /// <summary>
+    /// #292: once callers have real addresses, a client rotating through IPv6 /64s would add a counter per prefix for good.
+    /// A counter whose windows have all ended counts nothing any more, so the limiter forgets it.
+    /// </summary>
+    [Fact]
+    public void Counters_whose_windows_have_all_ended_are_forgotten()
+    {
+        var limiter = new UserRateLimiter(time);
+        var limit = Limit("test.verify", UserRateWindow.Of(30, TimeSpan.FromMinutes(1)), UserRateWindow.Of(500, TimeSpan.FromDays(1)));
+        for (var prefix = 0; prefix < 1000; prefix++)
+        {
+            limiter.TryAcquire(limit, $"address:2001:db8:{prefix:x}::/64").IsAdmitted.ShouldBeTrue();
+        }
+
+        limiter.TrackedCallers.ShouldBe(1000);
+        time.Advance(TimeSpan.FromDays(1) + TimeSpan.FromSeconds(1));
+
+        limiter.TryAcquire(limit, "address:203.0.113.9").IsAdmitted.ShouldBeTrue();
+
+        limiter.TrackedCallers.ShouldBe(1, "Every counter but the new caller's had all its windows ended.");
+    }
+
+    [Fact]
+    public void A_counter_with_a_window_still_running_is_kept_with_its_count()
+    {
+        var limiter = new UserRateLimiter(time);
+        var limit = Limit("test.verify", UserRateWindow.Of(30, TimeSpan.FromMinutes(1)), UserRateWindow.Of(1, TimeSpan.FromDays(1)));
+        limiter.TryAcquire(limit, Caller).IsAdmitted.ShouldBeTrue();
+        time.Advance(TimeSpan.FromHours(1));
+
+        limiter.TryAcquire(limit, Other).IsAdmitted.ShouldBeTrue();
+        var again = limiter.TryAcquire(limit, Caller);
+
+        again.IsAdmitted.ShouldBeFalse("The caller's day window is still running; forgetting it would hand the caller a fresh day.");
+        again.RetryAfter.ShouldBe(TimeSpan.FromHours(23));
+        limiter.TrackedCallers.ShouldBe(2);
+    }
+
+    [Fact]
+    public void A_forgotten_caller_starts_afresh()
+    {
+        var limiter = new UserRateLimiter(time);
+        var limit = Limit("test.verify", UserRateWindow.Of(1, TimeSpan.FromMinutes(1)));
+        limiter.TryAcquire(limit, Caller).IsAdmitted.ShouldBeTrue();
+        time.Advance(TimeSpan.FromMinutes(2));
+        limiter.TryAcquire(limit, Other).IsAdmitted.ShouldBeTrue();
+        limiter.TrackedCallers.ShouldBe(1);
+
+        limiter.TryAcquire(limit, Caller).IsAdmitted.ShouldBeTrue();
+        limiter.TryAcquire(limit, Caller).IsAdmitted.ShouldBeFalse("A caller counted afresh is still limited.");
+    }
+
+    [Fact]
+    public async Task Callers_counted_while_others_are_forgotten_are_never_counted_twice_or_lost()
+    {
+        var limiter = new UserRateLimiter(time);
+        var limit = Limit("test.verify", UserRateWindow.Of(1000, TimeSpan.FromMinutes(1)));
+        for (var caller = 0; caller < 200; caller++)
+        {
+            limiter.TryAcquire(limit, $"old-{caller}");
+        }
+
+        time.Advance(TimeSpan.FromMinutes(2));
+        var admitted = 0;
+
+        await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => Task.Run(() =>
+        {
+            for (var request = 0; request < 250; request++)
+            {
+                if (limiter.TryAcquire(limit, Caller).IsAdmitted)
+                {
+                    Interlocked.Increment(ref admitted);
+                }
+            }
+        }, TestContext.Current.CancellationToken)));
+
+        admitted.ShouldBe(1000, "Exactly the window's permits are admitted, however the forgetting interleaves.");
+        limiter.TrackedCallers.ShouldBe(1);
+    }
+
     private static UserRateLimit Limit(string name, params UserRateWindow[] windows) =>
         UserRateLimit.Of(name, new TestLimitReached(), windows);
 }

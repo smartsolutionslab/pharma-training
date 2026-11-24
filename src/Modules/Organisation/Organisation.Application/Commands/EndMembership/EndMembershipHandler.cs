@@ -37,9 +37,10 @@ public sealed class EndMembershipHandler(IPharmacyStore pharmacies, IOrganisatio
             await unitOfWork.PublishAsync(membershipEnded.ToIntegrationEvent());
         }
 
-        if (!await unitOfWork.TryCommitAsync(cancellationToken))
+        var saved = await unitOfWork.TryCommitAsync(cancellationToken);
+        if (saved.IsFailure)
         {
-            return Failure(PharmacyFailures.Changed(command.Pharmacy.Value));
+            return Failure(PharmacyFailures.LostRace(saved.Error, command.Pharmacy.Value));
         }
 
         return Success(Unit.Value);

@@ -40,9 +40,10 @@ public sealed class ChangeMembershipHandler(IPharmacyStore pharmacies, IOrganisa
             await unitOfWork.PublishAsync(change.ToIntegrationEvent());
         }
 
-        if (!await unitOfWork.TryCommitAsync(cancellationToken))
+        var saved = await unitOfWork.TryCommitAsync(cancellationToken);
+        if (saved.IsFailure)
         {
-            return Failure(PharmacyFailures.Changed(command.Pharmacy.Value));
+            return Failure(PharmacyFailures.LostRace(saved.Error, command.Pharmacy.Value));
         }
 
         return Success(Unit.Value);

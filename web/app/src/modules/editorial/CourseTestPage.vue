@@ -11,8 +11,9 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
-import type { EditorialQuestionDto, EditorialQuestionRequest } from '@/api/generated';
+import type { EditorialChapterDto, EditorialQuestionDto, EditorialQuestionRequest } from '@/api/generated';
 import { type MessageKey, t as translate } from '@/i18n';
+import { errorText } from '@/i18n/errorText';
 import { notify } from '@/lib/notify';
 import QuestionCard from './QuestionCard.vue';
 import QuestionForm from './QuestionForm.vue';
@@ -72,7 +73,7 @@ async function save(request: EditorialQuestionRequest) {
   const question = form.value?.question;
   const result = question === undefined ? await add(request) : await replace(question.id, request);
   if (!result.ok) {
-    notify.failure(result.serverMessage ?? translate('editorial.test.questions.saveFailed'));
+    notify.failure(errorText(result.error, 'editorial.test.questions.saveFailed'));
     return false;
   }
   notify.success(translate('editorial.test.questions.saved'));
@@ -91,27 +92,65 @@ const changing = useIsMutating(() => {
 const busy = computed(() => changing.value > 0 || isDrafting.value || isSaving.value || isRemoving.value);
 /** Whether the AI draft is being confirmed. */
 const confirmingDraft = ref(false);
-/** The chapters the last draft left out, by id, until the note is dismissed; never stored. */
+/** The chapters the last draft left out and those it cut, by id, until the note is dismissed; never stored. */
 const leftOutIds = ref<string[]>([]);
-/** Their titles, in the draft's order: an id the version does not have is skipped. */
-const leftOutTitles = computed(() =>
-  leftOutIds.value.flatMap((chapterId) => {
+const truncatedIds = ref<string[]>([]);
+/** The titles of the chapters by id, in the draft's order: an id the version does not have is skipped. */
+const titlesOf = (ids: string[]) =>
+  ids.flatMap((chapterId) => {
     const chapter = chapters.value.get(chapterId);
     return chapter === undefined ? [] : [chapter.title];
-  }),
-);
+  });
+const leftOutTitles = computed(() => titlesOf(leftOutIds.value));
+const truncatedTitles = computed(() => titlesOf(truncatedIds.value));
+/**
+ * Whether the AI drafts from a chapter, as the host decides (TestDraftRequest, #157): a text chapter's Markdown, or a
+ * PDF chapter's text, extracted whole or cut at a limit. Videos and PDFs without text are left out.
+ */
+const hasText = (chapter: EditorialChapterDto) =>
+  (chapter.kind === 'Text' && chapter.text !== null) ||
+  (chapter.kind === 'Pdf' && (chapter.pdfText === 'Complete' || chapter.pdfText === 'Truncated'));
 /** Why the host would refuse a draft, when the page can tell without asking the model. */
 const draftRefusal = computed((): MessageKey | undefined => {
-  if (!(version.value?.chapters ?? []).some((chapter) => chapter.kind === 'Text')) {
+  if (!(version.value?.chapters ?? []).some(hasText)) {
     return 'editorial.test.draft.noTextChapters';
   }
   return counts.value?.toDraft === 0 ? 'editorial.test.draft.nothingToDraft' : undefined;
 });
-const hasFileChapters = computed(() => (version.value?.chapters ?? []).some((chapter) => chapter.kind !== 'Text'));
+/** Whether the draft leaves chapters out for want of text: a video, a PDF without text. */
+const hasChaptersWithoutText = computed(() => (version.value?.chapters ?? []).some((chapter) => !hasText(chapter)));
+function dismissDraftNote() {
+  leftOutIds.value = [];
+  truncatedIds.value = [];
+}
+/** The note in brief, for the draft's polite status: those who do not see the note hear what it names. */
+const draftSummary = computed(() =>
+  [
+    ...(leftOutTitles.value.length > 0
+      ? [
+          t(
+            'editorial.test.draft.leftOutSummary',
+            { count: n(leftOutTitles.value.length, 'integer') },
+            leftOutTitles.value.length,
+          ),
+        ]
+      : []),
+    ...(truncatedTitles.value.length > 0
+      ? [
+          t(
+            'editorial.test.draft.truncatedSummary',
+            { count: n(truncatedTitles.value.length, 'integer') },
+            truncatedTitles.value.length,
+          ),
+        ]
+      : []),
+  ].join(' '),
+);
 
 // Where focus goes after an action (S4): the button pressed may be gone once the version is read again, so focus goes
 // where the editor goes on, never to the body.
 const draftStatus = 'course-test-draft-status';
+const draftExplanation = 'course-test-draft-explain';
 const questionsHeading = 'course-test-questions';
 const cardOf = (questionId: string) => `question-${questionId}`;
 const approveButtonOf = (questionId: string) => `question-${questionId}-approve`;
@@ -143,6 +182,16 @@ function focusPending() {
 }
 watch([focusWhenReady, questions, locked], focusPending, { flush: 'post' });
 
+/**
+ * Dismisses the draft's note; its button goes with it, so focus goes to the draft's explanation, visible and named
+ * (#361): the status is empty by then, and the start button is often disabled after a draft.
+ */
+async function dismissNote() {
+  dismissDraftNote();
+  await nextTick();
+  document.getElementById(draftExplanation)?.focus();
+}
+
 /** Asks for the draft once confirmed; it cannot be cancelled, since the model's call would go on. */
 async function startDraft() {
   if (busy.value) {
@@ -150,12 +199,13 @@ async function startDraft() {
   }
   focusOnClose = draftStatus;
   confirmingDraft.value = false;
-  leftOutIds.value = [];
+  dismissDraftNote();
   const outcome = await draft();
   switch (outcome.status) {
     case 'drafted':
       notify.success(translate('editorial.test.draft.done', { count: n(outcome.drafted, 'integer') }, outcome.drafted));
       leftOutIds.value = outcome.leftOutChapterIds;
+      truncatedIds.value = outcome.truncatedChapterIds;
       break;
     case 'unreadable':
       // The host's answer is not the draft's shape: nothing of it is shown, whether it was applied is not known, and
@@ -182,7 +232,7 @@ async function approveQuestion(question: EditorialQuestionDto) {
   if (result.ok) {
     notify.success(translate('editorial.test.questions.approved', { position }));
   } else {
-    notify.failure(result.serverMessage ?? translate('editorial.test.questions.approveFailed', { position }));
+    notify.failure(errorText(result.error, 'editorial.test.questions.approveFailed', { values: { position } }));
   }
 }
 
@@ -200,7 +250,7 @@ async function confirmRemove(question: EditorialQuestionDto) {
   if (result.ok) {
     notify.success(translate('editorial.test.questions.removed'));
   } else {
-    notify.failure(result.serverMessage ?? translate('editorial.test.questions.removeFailed'));
+    notify.failure(errorText(result.error, 'editorial.test.questions.removeFailed'));
   }
 }
 </script>
@@ -246,7 +296,9 @@ async function confirmRemove(question: EditorialQuestionDto) {
       </p>
       <TestBlueprintSection :version-id="id" :blueprint="version.blueprint" :editable="editable" :locked="locked">
         <div v-if="editable" class="flex flex-col gap-3 border-t pt-4">
-          <p class="text-body text-muted-foreground">{{ t('editorial.test.draft.explain') }}</p>
+          <p :id="draftExplanation" tabindex="-1" class="text-body text-muted-foreground">
+            {{ t('editorial.test.draft.explain') }}
+          </p>
           <Button
             type="button"
             class="self-start"
@@ -267,20 +319,33 @@ async function confirmRemove(question: EditorialQuestionDto) {
           </p>
           <p :id="draftStatus" role="status" tabindex="-1" class="text-body">
             <template v-if="isDrafting">{{ t('editorial.test.draft.running') }}</template>
+            <!-- The note below shows the same to the eye; the summary is for those who hear the status. -->
+            <span v-else class="sr-only">{{ draftSummary }}</span>
           </p>
-          <div v-if="leftOutTitles.length > 0" class="bg-muted flex items-start justify-between gap-2 rounded-md p-3">
-            <div class="text-body flex flex-col gap-2">
-              <p>{{ t('editorial.test.draft.leftOut') }}</p>
-              <ul class="list-disc pl-5">
-                <li v-for="(title, index) in leftOutTitles" :key="index">{{ title }}</li>
-              </ul>
+          <div
+            v-if="leftOutTitles.length > 0 || truncatedTitles.length > 0"
+            class="bg-muted flex items-start justify-between gap-2 rounded-md p-3"
+          >
+            <div class="text-body flex flex-col gap-3">
+              <div v-if="leftOutTitles.length > 0" class="flex flex-col gap-2">
+                <p>{{ t('editorial.test.draft.leftOut') }}</p>
+                <ul class="list-disc pl-5">
+                  <li v-for="(title, index) in leftOutTitles" :key="index">{{ title }}</li>
+                </ul>
+              </div>
+              <div v-if="truncatedTitles.length > 0" class="flex flex-col gap-2">
+                <p>{{ t('editorial.test.draft.truncated') }}</p>
+                <ul class="list-disc pl-5">
+                  <li v-for="(title, index) in truncatedTitles" :key="index">{{ title }}</li>
+                </ul>
+              </div>
             </div>
             <Button
               type="button"
               variant="ghost"
               size="icon"
               :aria-label="t('editorial.test.draft.dismiss')"
-              @click="leftOutIds = []"
+              @click="dismissNote"
             >
               <X aria-hidden="true" />
             </Button>
@@ -381,7 +446,7 @@ async function confirmRemove(question: EditorialQuestionDto) {
           :open="confirmingDraft"
           :to-draft="counts?.toDraft ?? 0"
           :unreviewed="counts?.unreviewed ?? 0"
-          :has-file-chapters="hasFileChapters"
+          :has-chapters-without-text="hasChaptersWithoutText"
           @confirm="startDraft"
           @cancel="confirmingDraft = false"
           @closed="dialogClosed"

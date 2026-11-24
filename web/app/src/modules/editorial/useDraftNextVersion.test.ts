@@ -77,14 +77,14 @@ test.each([
   [404, 'editorial.course-version-not-found', 'There is no course version.'],
   [403, 'editorial.identity-incomplete', 'The access token names no subject that identifies a person.'],
 ])(
-  "a next version the host refuses with %i %s answers a failure carrying the host's words, and the version is stale",
+  'a next version the host refuses with %i %s answers a failure carrying the refusal with its code, and the version is stale',
   async (status, code, title) => {
     host.mockImplementation(async () => refusal(status, code, title));
     const { drafting, queryClient } = renderDrafting();
 
     const result = await drafting.draftNext();
 
-    expect(result).toEqual({ ok: false, serverMessage: title });
+    expect(result).toEqual({ ok: false, error: expect.objectContaining({ status, failureCode: code }) });
     expect(queryClient.getQueryState(sourceKey)?.isInvalidated).toBe(true);
   },
 );
@@ -94,14 +94,13 @@ test.each([
   ['a policy 403 without a code', () => Promise.resolve(refusal(403, '', 'Forbidden'))],
   ["the unique index's 409 already-exists", () => Promise.resolve(refusal(409, 'already-exists', 'Conflict'))],
   ['a network failure', () => Promise.reject(new TypeError('Failed to fetch'))],
-])('%s answers a failure without words of the host', async (_, answer) => {
+])('%s answers a failure carrying the error it rejected with', async (_, answer) => {
   host.mockImplementation(answer);
   const { drafting } = renderDrafting();
 
   const result = await drafting.draftNext();
 
-  expect(result.ok).toBe(false);
-  expect(result).not.toHaveProperty('serverMessage', expect.any(String));
+  expect(result).toEqual({ ok: false, error: expect.any(Error) });
 });
 
 test('is drafting while the host has not answered, and no longer once it has', async () => {

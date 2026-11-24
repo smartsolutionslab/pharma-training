@@ -166,14 +166,18 @@ describe('a refusal of the whole request', () => {
     }
   });
 
+  // The page's own words for capability-missing, the catalog's for pharmacy-not-found (#147), never the host's.
   test.each([
-    [403, 'compliance.capability-missing', 'Sie dürfen hier keine Schulungen zuweisen.'],
-    [404, 'compliance.pharmacy-not-found', 'Die Apotheke wurde nicht gefunden.'],
-  ])("%i %s means the user cannot assign here at all, in the host's words", async (status, code, message) => {
-    host.mockImplementation(async () => problem(status, code, message));
+    [403, 'compliance.capability-missing', 'compliance.assign.notAllowed'],
+    [404, 'compliance.pharmacy-not-found', 'errors.compliance.pharmacy-not-found'],
+  ])('%i %s means the user cannot assign here at all, in the words of %s', async (status, code, key) => {
+    host.mockImplementation(async () => problem(status, code, 'SERVER WORDS'));
     const { assignment } = renderAssignment();
 
-    await expect(assignment.assign(pharmacy, request)).resolves.toEqual({ kind: 'notAvailable', message });
+    await expect(assignment.assign(pharmacy, request)).resolves.toEqual({
+      kind: 'notAvailable',
+      message: { key, values: expect.any(Object) },
+    });
   });
 
   test.each([
@@ -184,6 +188,16 @@ describe('a refusal of the whole request', () => {
     const { assignment, queryClient } = renderAssignment();
 
     await expect(assignment.assign(pharmacy, request)).resolves.toEqual({ kind: 'changed' });
+    for (const key of catalogKeys) {
+      expect(queryClient.getQueryState(key)?.isInvalidated).toBe(false);
+    }
+  });
+
+  test('409 compliance.concurrent-save means another save came at the same moment, to try again', async () => {
+    host.mockImplementation(async () => problem(409, 'compliance.concurrent-save', 'Gleichzeitig gespeichert.'));
+    const { assignment, queryClient } = renderAssignment();
+
+    await expect(assignment.assign(pharmacy, request)).resolves.toEqual({ kind: 'concurrentSave' });
     for (const key of catalogKeys) {
       expect(queryClient.getQueryState(key)?.isInvalidated).toBe(false);
     }

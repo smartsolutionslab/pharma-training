@@ -6,18 +6,22 @@ using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Memberships;
 namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Tests.Memberships;
 
 /// <summary>
-/// The memberships and their endings in memory, and the module's unit of work over them: what is added is stored only
-/// once committed. The holder's name is read as the store in Infrastructure reads it: the name of the person's
-/// membership that started last, ended or not, and of the one with the highest id where two started at once.
+/// The memberships, their endings and their changes in memory, and the module's unit of work over them: what is added is
+/// stored only once committed. The holder's name is read as the store in Infrastructure reads it: the name of the
+/// person's membership that started last, ended or not, and of the one with the highest id where two started at once.
+/// A membership is active while no ending of it is stored; its current role is the one its newest change gives it.
 /// </summary>
 internal sealed class InMemoryMembershipStore : IMembershipStore, ICertificationUnitOfWork
 {
     private readonly List<Membership> addedMemberships = [];
     private readonly List<MembershipEnding> addedEndings = [];
+    private readonly List<MembershipChange> addedChanges = [];
 
     public List<Membership> Memberships { get; } = [];
 
     public List<MembershipEnding> Endings { get; } = [];
+
+    public List<MembershipChange> Changes { get; } = [];
 
     public int Commits { get; private set; }
 
@@ -30,6 +34,33 @@ internal sealed class InMemoryMembershipStore : IMembershipStore, ICertification
         Task.FromResult(Endings.Any(ending => ending.Id == membership));
 
     public void Add(MembershipEnding ending) => addedEndings.Add(ending);
+
+    public Task<bool> HasChangeAsync(MembershipId membership, MembershipVersion version, CancellationToken cancellationToken) =>
+        Task.FromResult(Changes.Any(change => change.Membership == membership && change.Version == version));
+
+    public void Add(MembershipChange change) => addedChanges.Add(change);
+
+    public Task<IReadOnlyList<MembershipRole>> ActiveRolesAsync(PersonId person, PharmacyId pharmacy, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<MembershipRole> roles = Memberships
+            .Where(membership => membership.Person == person && membership.Pharmacy == pharmacy)
+            .Where(membership => !Endings.Any(ending => ending.Id == membership.Id))
+            .Select(membership => membership.CurrentRole(Changes.Where(change => change.Membership == membership.Id).ToList()))
+            .ToList();
+        return Task.FromResult(roles);
+    }
+
+    public Task<IReadOnlyList<MembershipPeriod>> PeriodsInPharmacyAsync(PharmacyId pharmacy, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<MembershipPeriod> periods = Memberships
+            .Where(membership => membership.Pharmacy == pharmacy)
+            .Select(membership => MembershipPeriod.Of(
+                membership.Person,
+                membership.StartedAt,
+                Endings.FirstOrDefault(ending => ending.Id == membership.Id)?.EndedAt))
+            .ToList();
+        return Task.FromResult(periods);
+    }
 
     public Task<Option<HolderName>> FindHolderNameAsync(PersonId person, CancellationToken cancellationToken) =>
         Task.FromResult(Memberships
@@ -48,6 +79,8 @@ internal sealed class InMemoryMembershipStore : IMembershipStore, ICertification
         addedMemberships.Clear();
         Endings.AddRange(addedEndings);
         addedEndings.Clear();
+        Changes.AddRange(addedChanges);
+        addedChanges.Clear();
         Commits++;
         return Task.CompletedTask;
     }

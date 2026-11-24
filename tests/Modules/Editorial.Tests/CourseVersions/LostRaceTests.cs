@@ -1,3 +1,4 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using System.Net;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.AddFileChapter;
@@ -23,7 +24,7 @@ public class LostRaceTests
     {
         version = DraftWithChapter(out chapter);
         store.Stored.Add(version);
-        lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(false);
+        lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(Failure(LostRaces.VersionMovedOn()));
     }
 
     [Fact]
@@ -51,7 +52,7 @@ public class LostRaceTests
         var file = AddFileChapterTests.IssuedName(version.Id, ".pdf");
         blobs.Upload(file, "application/pdf", 1024);
 
-        var added = await new AddFileChapterHandler(store, lostRace, blobs)
+        var added = await new AddFileChapterHandler(store, lostRace, blobs, new FakePdfTextExtractor())
             .HandleAsync(new AddFileChapter(version.Id, ChapterTitle.From("Neu"), ChapterKind.Pdf, BlobReference.From(file), null), TestContext.Current.CancellationToken);
 
         added.IsFailure.ShouldBeTrue();
@@ -65,7 +66,7 @@ public class LostRaceTests
         var file = AddFileChapterTests.IssuedName(version.Id, ".mp4");
         blobs.Upload(file, "video/mp4", 1024);
 
-        var replaced = await new ReplaceFileChapterHandler(store, lostRace, blobs)
+        var replaced = await new ReplaceFileChapterHandler(store, lostRace, blobs, new FakePdfTextExtractor())
             .HandleAsync(new ReplaceFileChapter(version.Id, chapter, ChapterTitle.From("Neu"), ChapterKind.Video, BlobReference.From(file), VideoDuration.From(90)), TestContext.Current.CancellationToken);
 
         replaced.IsFailure.ShouldBeTrue();
@@ -95,7 +96,7 @@ public class LostRaceTests
     {
         IEditorialUnitOfWork unitOfWork = store;
 
-        (await unitOfWork.TryCommitAsync(TestContext.Current.CancellationToken)).ShouldBeTrue();
+        (await unitOfWork.TryCommitAsync(TestContext.Current.CancellationToken)).IsSuccess.ShouldBeTrue();
 
         store.Commits.ShouldBe(1);
     }

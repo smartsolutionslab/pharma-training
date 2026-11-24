@@ -57,6 +57,35 @@ public class ChapterFilesReleasedV1ConsumerTests
             Arg.Any<CancellationToken>());
     }
 
+    /// <summary>
+    /// #264: a republish releases a version's files again, under a new event identifier and with newly signed URLs. The
+    /// consumer keeps no URL and no row: it copies from the release in hand to the same derived name, so a file the
+    /// first release already brought stays as it is, and one it never brought (its URL expired first) is copied from the
+    /// new URL. Nothing is copied twice, and an older release arriving later changes nothing either.
+    /// </summary>
+    [Fact]
+    public async Task A_second_release_of_a_version_copies_from_its_own_urls_to_the_same_names_and_leaves_copied_files_as_they_are()
+    {
+        var version = Guid.CreateVersion7();
+        var chapter = Guid.CreateVersion7();
+        var expired = File(ChapterKindV1.Pdf) with { ChapterId = chapter };
+        var fresh = File(ChapterKindV1.Pdf) with { ChapterId = chapter, ExpiresAt = ExpiresAt.AddHours(2) };
+        var target = BlobName.From($"course-versions/{version:D}/chapters/{chapter:D}.pdf");
+        var refused = new InvalidOperationException("The storage service refused the source: it expired.");
+        copies.CopyFromAsync(new BlobUrl(expired.ReadUrl, expired.ExpiresAt), target, Arg.Any<CancellationToken>()).Returns<BlobCopyOutcome>(_ => throw refused);
+        copies.CopyFromAsync(new BlobUrl(fresh.ReadUrl, fresh.ExpiresAt), target, Arg.Any<CancellationToken>()).Returns(BlobCopyOutcome.Copied, BlobCopyOutcome.AlreadyThere);
+        var consumer = new ChapterFilesReleasedV1Consumer(copies);
+        var cancellationToken = TestContext.Current.CancellationToken;
+
+        await Should.ThrowAsync<InvalidOperationException>(() => consumer.HandleAsync(Released(version, expired), cancellationToken));
+        await consumer.HandleAsync(Released(version, fresh), cancellationToken);
+        await consumer.HandleAsync(Released(version, fresh), cancellationToken);
+
+        await copies.Received(2).CopyFromAsync(new BlobUrl(fresh.ReadUrl, fresh.ExpiresAt), target, Arg.Any<CancellationToken>());
+        copies.ReceivedCalls().Select(call => call.GetArguments()[1]).ShouldAllBe(name => Equals(name, target));
+        copies.ReceivedCalls().Count().ShouldBe(3);
+    }
+
     [Fact]
     public async Task A_failed_copy_throws_so_the_message_is_retried()
     {

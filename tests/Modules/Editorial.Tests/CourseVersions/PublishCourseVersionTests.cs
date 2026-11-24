@@ -1,6 +1,8 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using System.Net;
 using Microsoft.Extensions.Time.Testing;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Storage;
+using SmartSolutionsLab.PharmaTraining.Contracts;
 using SmartSolutionsLab.PharmaTraining.Contracts.Editorial;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.PublishCourseVersion;
@@ -187,7 +189,7 @@ public class PublishCourseVersionTests
         var version = InReview();
         store.Stored.Add(version);
         var lostRace = Substitute.For<IEditorialUnitOfWork>();
-        lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(false);
+        lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(Failure(LostRaces.VersionMovedOn()));
 
         var published = await new PublishCourseVersionHandler(store, lostRace, urls, ReviewSettings.Default, time)
             .HandleAsync(new PublishCourseVersion(version.Id, Reviewer), TestContext.Current.CancellationToken);
@@ -236,7 +238,7 @@ public class PublishCourseVersionTests
         var version = InReview();
         store.Stored.Add(version);
         var lostRace = Substitute.For<IEditorialUnitOfWork>();
-        lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(false);
+        lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(Failure(LostRaces.VersionMovedOn()));
 
         var published = await new PublishCourseVersionHandler(store, lostRace, urls, ReviewSettings.Default, time)
             .HandleAsync(new PublishCourseVersion(version.Id, Reviewer), TestContext.Current.CancellationToken);
@@ -299,6 +301,34 @@ public class PublishCourseVersionTests
         store.Published.Count.ShouldBe(2);
     }
 
+    /// <summary>
+    /// The outbox opens its transaction with the first publish, so every read URL is signed before it: signing, which may
+    /// ask the storage service for a key, never runs inside the transaction that holds the version's rows.
+    /// </summary>
+    [Fact]
+    public async Task Every_read_url_is_signed_before_the_first_event_is_published()
+    {
+        var version = InReviewWithFiles(out _, out _);
+        store.Stored.Add(version);
+        List<string> calls = [];
+        var signer = Substitute.For<IBlobUrls>();
+        signer.CreateReadUrlAsync(Arg.Any<BlobName>(), Arg.Any<BlobUrlLifetime>(), Arg.Any<BlobReadHeaders>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                calls.Add("sign");
+                return urls.UrlFor(call.Arg<BlobName>(), call.Arg<BlobUrlLifetime>(), "r");
+            });
+        var unitOfWork = Substitute.For<IEditorialUnitOfWork>();
+        unitOfWork.When(work => work.PublishAsync(Arg.Any<IntegrationEvent>())).Do(_ => calls.Add("publish"));
+        unitOfWork.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(Success(Unit.Value));
+
+        var published = await new PublishCourseVersionHandler(store, unitOfWork, signer, ReviewSettings.Default, time)
+            .HandleAsync(new PublishCourseVersion(version.Id, Reviewer), TestContext.Current.CancellationToken);
+
+        published.IsSuccess.ShouldBeTrue();
+        calls.ShouldBe(["sign", "sign", "publish", "publish", "publish"]);
+    }
+
     /// <summary>A read URL is a bearer credential: a publish that is refused signs none, and sends no file.</summary>
     [Fact]
     public async Task A_refused_publish_signs_and_releases_nothing()
@@ -324,7 +354,7 @@ public class PublishCourseVersionTests
         var version = DraftWithChapter(out var text);
         pdf = ChapterId.New();
         video = ChapterId.New();
-        version.AddChapter(Chapter.OfPdf(pdf, ChapterTitle.From("Merkblatt"), BlobReference.From(PdfFile(version)))).IsSuccess.ShouldBeTrue();
+        version.AddChapter(Chapter.OfPdf(pdf, ChapterTitle.From("Merkblatt"), BlobReference.From(PdfFile(version)), PdfTextExtraction.NoText, null)).IsSuccess.ShouldBeTrue();
         version.AddChapter(Chapter.OfVideo(video, ChapterTitle.From("Praxis"), BlobReference.From(VideoFile(version)), VideoDuration.From(754))).IsSuccess.ShouldBeTrue();
         version.SetBlueprint(new TestBlueprint(QuestionCount.From(1), ScorePercent.From(80), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
         var question = version.AddQuestion(QuestionId.New(), SingleChoice(text), AnswerOptionId.New).Value;

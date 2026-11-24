@@ -2,7 +2,14 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Testing;
+using Npgsql;
 using RabbitMQ.Client;
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Persistence;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Infrastructure;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Infrastructure.Persistence;
 using static SmartSolutionsLab.PharmaTraining.Integration.Tests.EditorialWorkflow;
 
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
@@ -10,7 +17,8 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// <summary>
 /// Republishing Editorial's course-version events (#189): a queue bound after a version went out receives, once an
 /// editor republishes, the version, its test definition and its retirement, with the payload they were first announced
-/// with and under new event identifiers; and the consumers that already hold them keep one copy however often it runs.
+/// with and under new event identifiers; the consumers that already hold them keep one copy however often it runs; and
+/// one run goes at a time.
 /// The database is shared with the other tests, so every queue is read for the test's own versions only.
 /// </summary>
 [Collection(EditorialDrafts.Name)]
@@ -23,6 +31,8 @@ public class EditorialRepublishTests(AspireFixture aspire)
     private const string ComplianceVersionsById = "select count(*) from compliance.course_versions where id = @id";
     private const string ComplianceRetirementsById = "select count(*) from compliance.course_version_retirements where id = @id";
     private const string LearningVersionsById = "select count(*) from learning.course_versions where id = @id";
+    private const string CatalogVersionsById = "select count(*) from catalog.course_versions where id = @id";
+    private const string CatalogRetirementsById = "select count(*) from catalog.course_version_retirements where course_version_id = @id";
     private const string DeadLettersById = "select count(*) from wolverine.wolverine_dead_letters where id = @id";
 
     private static readonly Uri Republish = new("/editorial/course-versions/republish", UriKind.Relative);
@@ -116,10 +126,11 @@ public class EditorialRepublishTests(AspireFixture aspire)
 
     /// <summary>
     /// The second run's events are read off queues of the test's own under the message-id Wolverine gave them, which is
-    /// the envelope id each consumer's inbox stores, so the test waits until Compliance and Learning handled exactly them.
+    /// the envelope id each consumer's inbox stores, so the test waits until Compliance, Learning and Catalog handled
+    /// exactly them.
     /// </summary>
     [Fact]
-    public async Task Republishing_twice_leaves_one_copy_of_the_version_and_one_retirement_in_compliance_and_learning()
+    public async Task Republishing_twice_leaves_one_copy_of_the_version_and_one_retirement_in_compliance_learning_and_catalog()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await aspire.CreateHostClientAsync("editor");
@@ -140,13 +151,82 @@ public class EditorialRepublishTests(AspireFixture aspire)
         await ComplianceDatabase.WaitUntilHandledAsync(aspire, courseMessage, cancellationToken);
         await ComplianceDatabase.WaitUntilHandledAsync(aspire, retiredMessage, cancellationToken);
         await LearningDatabase.WaitUntilHandledAsync(aspire, courseMessage, cancellationToken);
+        await CatalogDatabase.WaitUntilHandledAsync(aspire, courseMessage, cancellationToken);
+        await CatalogDatabase.WaitUntilHandledAsync(aspire, retiredMessage, cancellationToken);
 
         (await ComplianceDatabase.CountAsync(aspire, ComplianceVersionsById, published.Id, cancellationToken)).ShouldBe(1);
         (await ComplianceDatabase.CountAsync(aspire, ComplianceRetirementsById, published.Id, cancellationToken)).ShouldBe(1);
         (await LearningDatabase.CountAsync(aspire, LearningVersionsById, published.Id, cancellationToken)).ShouldBe(1);
+        (await CatalogDatabase.CountAsync(aspire, CatalogVersionsById, published.Id, cancellationToken)).ShouldBe(1);
+        (await CatalogDatabase.CountAsync(aspire, CatalogRetirementsById, published.Id, cancellationToken)).ShouldBe(1);
         (await ComplianceDatabase.CountAsync(aspire, DeadLettersById, courseMessage, cancellationToken)).ShouldBe(0);
         (await ComplianceDatabase.CountAsync(aspire, DeadLettersById, retiredMessage, cancellationToken)).ShouldBe(0);
         (await LearningDatabase.CountAsync(aspire, DeadLettersById, courseMessage, cancellationToken)).ShouldBe(0);
+        (await CatalogDatabase.CountAsync(aspire, DeadLettersById, courseMessage, cancellationToken)).ShouldBe(0);
+        (await CatalogDatabase.CountAsync(aspire, DeadLettersById, retiredMessage, cancellationToken)).ShouldBe(0);
+    }
+
+    /// <summary>
+    /// One run at a time (ADR 0019): while the test holds the run's advisory lock as another run would, a republish is
+    /// refused as running at once; once the lock is released, the next run goes through.
+    /// </summary>
+    [Fact]
+    public async Task A_republish_while_another_run_holds_the_lock_answers_409_republish_running()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var connectionString = await EditorialDatabase.ConnectionStringAsync(aspire, cancellationToken);
+
+        await using (await EditorialDatabase.HoldRepublishLockAsync(connectionString, cancellationToken))
+        {
+            using var refused = await client.PostAsync(Republish, null, cancellationToken);
+            var body = await refused.Content.ReadAsStringAsync(cancellationToken);
+
+            refused.StatusCode.ShouldBe(HttpStatusCode.Conflict, $"POST {Republish} answered {(int)refused.StatusCode} {body}");
+            using var problem = JsonDocument.Parse(body);
+            problem.RootElement.GetProperty("code").GetString().ShouldBe("editorial.republish-running");
+            problem.RootElement.GetProperty("title").GetString().ShouldBe(ErrorCodeCatalog.MessageOf("editorial.republish-running"));
+        }
+
+        await RepublishAsync(client, cancellationToken);
+    }
+
+    /// <summary>
+    /// A run whose release fails leaves nothing held (ADR 0019): the test takes the lock through
+    /// <see cref="EditorialRepublishLock"/> on a context and a connection pool of its own, as a run's scope would, and
+    /// leaves the session in a failed transaction EF Core does not know of, so the run's rollback is skipped and its
+    /// unlock fails. Disposing the lock still frees it at once, not when the pool prunes the connection minutes later,
+    /// so the next republish, from the service's own pool, goes through.
+    /// </summary>
+    [Fact]
+    public async Task A_run_whose_release_fails_leaves_the_lock_free_for_the_next_run()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var connectionString = await EditorialDatabase.ConnectionStringAsync(aspire, cancellationToken);
+        var options = new DbContextOptionsBuilder<EditorialDbContext>().UseNpgsql(connectionString).Options;
+        await using var context = new EditorialDbContext(options, NoServices.Instance);
+
+        var logger = new FakeLogger<EditorialRepublishLock>();
+
+        var taken = await new EditorialRepublishLock(context, logger).TryTakeAsync(cancellationToken);
+        taken.HasValue.ShouldBeTrue("no other run may hold the republish's lock while this test takes it");
+        await context.Database.ExecuteSqlRawAsync("BEGIN", cancellationToken);
+        await Should.ThrowAsync<PostgresException>(() => context.Database.ExecuteSqlRawAsync("SELECT 1 / 0", cancellationToken));
+        Exception? released = null;
+        try
+        {
+            await taken.Value.DisposeAsync();
+        }
+        catch (PostgresException exception)
+        {
+            released = exception;
+        }
+
+        await EditorialDatabase.WaitUntilRepublishLockIsFreeAsync(connectionString, cancellationToken);
+        await RepublishAsync(client, cancellationToken);
+        released.ShouldBeNull("a failed release is logged, never thrown out of the run's dispose");
+        logger.Collector.GetSnapshot().ShouldHaveSingleItem().Level.ShouldBe(LogLevel.Warning);
     }
 
     private static async Task<RepublishedCounts> RepublishAsync(HttpClient client, CancellationToken cancellationToken)

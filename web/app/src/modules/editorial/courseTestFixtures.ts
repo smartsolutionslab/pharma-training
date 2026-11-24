@@ -19,6 +19,7 @@ export const introduction: EditorialChapterDto = {
   text: '# Willkommen\n\nHände werden **30 Sekunden** gewaschen.',
   file: null,
   durationSeconds: null,
+  pdfText: null,
 };
 
 export const handout: EditorialChapterDto = {
@@ -29,6 +30,8 @@ export const handout: EditorialChapterDto = {
   text: null,
   file: `course-versions/${versionId}/0198c1a0-0000-7000-8000-0000000000f2.pdf`,
   durationSeconds: null,
+  // The host never sends null for a PDF: one without text says so.
+  pdfText: 'NoText',
 };
 
 /** Approved by another editor, Emma Editor, on 20 November 2026. */
@@ -43,6 +46,7 @@ export const approvedAi: EditorialQuestionDto = {
     { id: '0198c1a0-0000-7000-8000-0000000000b2', text: '5 Sekunden', correct: false },
   ],
   provenance: 'AiDrafted',
+  origin: 'AiDraft',
   review: 'Approved',
   reviewedBy: '0198c1a0-0000-7000-8000-0000000000d9',
   reviewedAt: '2026-11-20T09:30:00Z',
@@ -62,6 +66,7 @@ export const unreviewedAi: EditorialQuestionDto = {
     { id: '0198c1a0-0000-7000-8000-0000000000b5', text: 'Kaltes Wasser allein', correct: false },
   ],
   provenance: 'AiDrafted',
+  origin: 'AiDraft',
   review: 'Unreviewed',
   reviewedBy: null,
   reviewedAt: null,
@@ -80,6 +85,7 @@ export const handWritten: EditorialQuestionDto = {
     { id: '0198c1a0-0000-7000-8000-0000000000b7', text: 'Im Labor', correct: false },
   ],
   provenance: 'Human',
+  origin: 'HandWritten',
   review: 'Unreviewed',
   reviewedBy: null,
   reviewedAt: null,

@@ -1,5 +1,6 @@
 using System.Net;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.PdfText;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.AddFileChapter;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 using static SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersions.CourseVersionBuilder;
@@ -14,6 +15,7 @@ public class AddFileChapterTests
 {
     private readonly InMemoryCourseVersionStore store = new();
     private readonly InMemoryStoredBlobs blobs = new();
+    private readonly FakePdfTextExtractor extractor = new();
 
     public static TheoryData<ChapterKind, string, long, bool, string> NotAccepted { get; } = new()
     {
@@ -275,6 +277,120 @@ public class AddFileChapterTests
         store.Commits.ShouldBe(0);
     }
 
+    [Theory]
+    [InlineData(PdfTextExtraction.Complete)]
+    [InlineData(PdfTextExtraction.Truncated)]
+    public async Task A_pdf_is_recorded_with_the_text_extracted_from_its_whole_file(PdfTextExtraction extraction)
+    {
+        var version = Draft();
+        store.Stored.Add(version);
+        var file = IssuedName(version.Id, ".pdf");
+        byte[] content = [.. InMemoryStoredBlobs.PdfStart, .. "2 0 obj << /Type /Pages >> endobj\n%%EOF\n"u8];
+        blobs.Upload(file, "application/pdf", content.Length, content: content);
+        var outcome = new PdfChapterText(extraction, PdfText.From("Zytostatika werden getrennt von anderen Arzneimitteln gelagert."));
+        var reads = new FakePdfTextExtractor(outcome);
+
+        var added = await Handler(reads).HandleAsync(Command(version.Id, ChapterKind.Pdf, file), TestContext.Current.CancellationToken);
+
+        added.IsSuccess.ShouldBeTrue(added.IsFailure ? added.Error.Code : string.Empty);
+        reads.Read.ShouldHaveSingleItem().ShouldBe(content, "the extractor reads the whole uploaded file, not only its leading bytes");
+        blobs.ReadCounts.ShouldContain(content.Length);
+        var chapter = version.Chapters.ShouldHaveSingleItem();
+        chapter.Extraction.ShouldBe(extraction);
+        chapter.ExtractedText.ShouldBe(outcome.Text);
+        chapter.Text.ShouldBeNull();
+        store.Commits.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task A_scanned_pdf_without_text_is_recorded_not_refused()
+    {
+        var version = Draft();
+        store.Stored.Add(version);
+        var file = IssuedName(version.Id, ".pdf");
+        blobs.Upload(file, "application/pdf", 1024);
+
+        var added = await Handler(new FakePdfTextExtractor(FakePdfTextExtractor.NoText)).HandleAsync(Command(version.Id, ChapterKind.Pdf, file), TestContext.Current.CancellationToken);
+
+        added.IsSuccess.ShouldBeTrue(added.IsFailure ? added.Error.Code : string.Empty);
+        var chapter = version.Chapters.ShouldHaveSingleItem();
+        chapter.Id.Value.ShouldBe(added.Value);
+        chapter.Extraction.ShouldBe(PdfTextExtraction.NoText);
+        chapter.ExtractedText.ShouldBeNull();
+        store.Commits.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task A_pdf_refused_by_busy_readers_is_refused_with_retry_later_and_nothing_is_added_or_committed()
+    {
+        var version = Draft();
+        store.Stored.Add(version);
+        var file = IssuedName(version.Id, ".pdf");
+        blobs.Upload(file, "application/pdf", 1024);
+        var retryAt = new DateTimeOffset(2026, 11, 24, 9, 0, 5, TimeSpan.Zero);
+
+        var added = await Handler(FakePdfTextExtractor.Busy(retryAt)).HandleAsync(Command(version.Id, ChapterKind.Pdf, file), TestContext.Current.CancellationToken);
+
+        ShouldBeRefused(added.IsFailure ? added.Error : null, "editorial.pdf-readers-busy", HttpStatusCode.TooManyRequests, "every PDF reader is busy");
+        added.Error.ShouldBeOfType<RetryLaterFailure>().RetryAt.ShouldBe(retryAt);
+        version.Chapters.ShouldBeEmpty();
+        store.Commits.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task A_video_is_recorded_without_asking_the_extractor()
+    {
+        var version = Draft();
+        store.Stored.Add(version);
+        var file = IssuedName(version.Id, ".mp4");
+        blobs.Upload(file, "video/mp4", 10_000_000);
+        var reads = new FakePdfTextExtractor(FakePdfTextExtractor.Complete("Ein Video hat keinen Text, den der Extraktor lesen dürfte."));
+
+        var added = await Handler(reads).HandleAsync(Command(version.Id, ChapterKind.Video, file, VideoDuration.From(90)), TestContext.Current.CancellationToken);
+
+        added.IsSuccess.ShouldBeTrue(added.IsFailure ? added.Error.Code : string.Empty);
+        reads.Read.ShouldBeEmpty();
+        blobs.StartReads.ShouldBe(1, "only the video's leading bytes are read");
+        var chapter = version.Chapters.ShouldHaveSingleItem();
+        chapter.Extraction.ShouldBeNull();
+        chapter.ExtractedText.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task A_pdf_replaced_after_its_leading_bytes_were_checked_is_refused_and_nothing_is_recorded()
+    {
+        var version = Draft();
+        store.Stored.Add(version);
+        var file = IssuedName(version.Id, ".pdf");
+        blobs.Upload(file, "application/pdf", 1024);
+        // Another PUT under the name once its leading bytes were checked: the whole file is no longer the one checked.
+        blobs.AfterNextStartRead(() => blobs.Upload(file, "application/pdf", 1024));
+        var reads = new FakePdfTextExtractor(FakePdfTextExtractor.Complete("Zytostatika werden getrennt von anderen Arzneimitteln gelagert."));
+
+        var added = await Handler(reads).HandleAsync(Command(version.Id, ChapterKind.Pdf, file), TestContext.Current.CancellationToken);
+
+        ShouldBeRefused(added.IsFailure ? added.Error : null, "editorial.upload-not-accepted", HttpStatusCode.BadRequest, "fewer bytes than the file had when it was found are no file to record");
+        reads.Read.ShouldBeEmpty();
+        version.Chapters.ShouldBeEmpty();
+        store.Commits.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task An_upload_that_is_refused_never_reaches_the_extractor()
+    {
+        var version = Draft();
+        store.Stored.Add(version);
+        var file = IssuedName(version.Id, ".pdf");
+        blobs.Upload(file, "application/pdf", 1024, content: InMemoryStoredBlobs.HtmlStart);
+        var reads = new FakePdfTextExtractor();
+
+        var added = await Handler(reads).HandleAsync(Command(version.Id, ChapterKind.Pdf, file), TestContext.Current.CancellationToken);
+
+        ShouldBeRefused(added.IsFailure ? added.Error : null, "editorial.upload-not-accepted", HttpStatusCode.BadRequest);
+        reads.Read.ShouldBeEmpty();
+        blobs.StartReads.ShouldBe(1, "only the leading bytes are read before the upload is refused");
+    }
+
     internal static string IssuedName(CourseVersionId version, string extension) =>
         $"course-versions/{version.Value:D}/{Guid.CreateVersion7():D}{extension}";
 
@@ -284,7 +400,7 @@ public class AddFileChapterTests
     internal static Chapter FileChapter(ChapterId id, ChapterKind kind, BlobReference file) =>
         kind == ChapterKind.Video
             ? Chapter.OfVideo(id, ChapterTitle.From("Vorführung"), file, VideoDuration.From(90))
-            : Chapter.OfPdf(id, ChapterTitle.From("Hygieneplan"), file);
+            : Chapter.OfPdf(id, ChapterTitle.From("Hygieneplan"), file, PdfTextExtraction.NoText, null);
 
     internal static void ShouldBeRefused(ApiError? error, string code, HttpStatusCode status, string because = "")
     {
@@ -296,5 +412,5 @@ public class AddFileChapterTests
     private static AddFileChapter Command(CourseVersionId version, ChapterKind kind, string file, VideoDuration? duration = null) =>
         new(version, ChapterTitle.From("Hygieneplan"), kind, BlobReference.From(file), duration);
 
-    private AddFileChapterHandler Handler() => new(store, store, blobs);
+    private AddFileChapterHandler Handler(IPdfTextExtractor? reads = null) => new(store, store, blobs, reads ?? extractor);
 }

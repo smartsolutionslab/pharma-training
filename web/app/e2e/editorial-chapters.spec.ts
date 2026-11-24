@@ -158,6 +158,10 @@ test('an editor drags the first chapter by its handle onto the last; a reload ke
     await addTextChapter(page, title, `# ${title}`);
   }
 
+  // Both ends of the drag in view before it starts: a page scrolled during a native drag drops nothing, and the list
+  // may start below the fold, under the version's return history (#201).
+  await chapters(page).last().scrollIntoViewIfNeeded();
+  await expect(chapters(page).first()).toBeInViewport();
   const saved = hostHasOrder(page, ['Zweites', 'Drittes', 'Erstes']);
   await chapters(page)
     .filter({ hasText: 'Erstes' })

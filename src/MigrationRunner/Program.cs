@@ -1,4 +1,5 @@
 using System.Reflection;
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.EventStore;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -22,12 +23,18 @@ using (var loggers = LoggerFactory.Create(logging => logging.AddConfiguration(bu
 
 var module = builder.Configuration[MigrationRun.ModuleSetting]
     ?? throw new InvalidOperationException("Migrations:Module is missing; the AppHost names the module whose database this run migrates.");
+// How long the swept event indexes' build and drop may wait for each lock (#359): read now, so a bad value fails the run
+// before it migrates anything.
+var indexLockTimeout = IndexLockTimeout.From(builder.Configuration);
 // Every session the runner opens as the administrator, EF Core's and Marten's too (both read ConnectionStrings:database),
 // resolves unqualified names in pg_catalog alone: defence in depth, should a role ever hold CREATE on the database and plant
 // code on the administrator's search_path that these sessions would run with the administrator's rights (CVE-2018-1058,
 // AdministratorSession). What they make names the module's schema explicitly.
-var administrator = AdministratorSession.Pinned(builder.Configuration.GetConnectionString("database")
-    ?? throw new InvalidOperationException("Connection string 'database' is missing; the AppHost gives the administrator's for the module's database."));
+var database = builder.Configuration.GetConnectionString("database")
+    ?? throw new InvalidOperationException("Connection string 'database' is missing; the AppHost gives the administrator's for the module's database.");
+// The runner never starts its host, so it checks here what a service's host checks as it starts (DatabaseErrorDetailGuard).
+DatabaseErrorDetail.RefuseOutsideDevelopment(database, builder.Environment);
+var administrator = AdministratorSession.Pinned(database);
 builder.Configuration.AddInMemoryCollection([new("ConnectionStrings:database", administrator)]);
 var application = builder.Configuration.GetConnectionString("application");
 var infrastructure = Assembly.LoadFrom(Path.Combine(AppContext.BaseDirectory, $"SmartSolutionsLab.PharmaTraining.Modules.{Namespace(module)}.Infrastructure.dll"));
@@ -42,7 +49,7 @@ foreach (var context in contexts)
 
 using var host = builder.Build();
 // Every replica's init container runs this; one at a time per database.
-await using (await MigrationGate.EnterAsync(administrator, host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("MigrationGate"), CancellationToken.None))
+await using (await MigrationGate.EnterAsync(administrator, host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("MigrationGate"), host.Services.GetRequiredService<TimeProvider>(), CancellationToken.None))
 {
     // Published, where a module role exists: the schema named after the administrator is the administrator's before the
     // role could take it, so no other administrator session (an operator's psql) runs what a role planted there either.
@@ -57,7 +64,7 @@ await using (await MigrationGate.EnterAsync(administrator, host.Services.GetRequ
         await ((ModuleDbContext)scope.ServiceProvider.GetRequiredService(context)).MigrateModuleAsync();
     }
 
-    await host.Services.ApplyEventStoreSchemasAsync(infrastructure);
+    await host.Services.ApplyEventStoreSchemasAsync(infrastructure, indexLockTimeout);
 
     // Wolverine's inbox, outbox and dead letters, with the service hosts' own configuration, owned by the administrator;
     // the role's grants below cover it like every schema the administrator owns. A schema of that name some other role

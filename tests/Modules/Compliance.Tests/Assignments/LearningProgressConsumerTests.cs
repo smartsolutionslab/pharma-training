@@ -6,6 +6,7 @@ using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application.Consumers;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Assignments;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Courses;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Members;
+using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Tests.Progress;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Tests.Assignments;
 
@@ -20,6 +21,7 @@ public class LearningProgressConsumerTests
     private static readonly PersonId Manager = PersonId.From(Guid.CreateVersion7());
 
     private readonly InMemoryAssignmentStore store = new();
+    private readonly InMemoryLearnerProgressStore progress = new();
 
     // Compliance's clock reads a week after Monday, later than every event below happened, unless a test moves it.
     private readonly FakeTimeProvider time = new(Monday.AddDays(7));
@@ -54,7 +56,6 @@ public class LearningProgressConsumerTests
     }
 
     [Theory]
-    [InlineData("Started")]
     [InlineData("ContentCompleted")]
     [InlineData("Exhausted")]
     public async Task Progress_of_a_person_without_an_active_assignment_changes_nothing_and_commits_nothing(string kind)
@@ -170,7 +171,7 @@ public class LearningProgressConsumerTests
             CourseVersionId = Emptied(field, nameof(started.CourseVersionId), started.CourseVersionId),
         };
 
-        var refused = await Should.ThrowAsync<GuardException>(() => new LearningSessionStartedV1Consumer(store, store, time).HandleAsync(started, TestContext.Current.CancellationToken));
+        var refused = await Should.ThrowAsync<GuardException>(() => new LearningSessionStartedV1Consumer(store, progress, store, time).HandleAsync(started, TestContext.Current.CancellationToken));
 
         refused.ParamName.ShouldBe(field);
         assignment.Status.ShouldBe(AssignmentStatus.Open);
@@ -233,7 +234,7 @@ public class LearningProgressConsumerTests
     {
         var cancellationToken = TestContext.Current.CancellationToken;
 
-        await Should.ThrowAsync<GuardException>(() => new LearningSessionStartedV1Consumer(store, store, time).HandleAsync(null!, cancellationToken));
+        await Should.ThrowAsync<GuardException>(() => new LearningSessionStartedV1Consumer(store, progress, store, time).HandleAsync(null!, cancellationToken));
         await Should.ThrowAsync<GuardException>(() => new ContentCompletedV1Consumer(store, store, time).HandleAsync(null!, cancellationToken));
         await Should.ThrowAsync<GuardException>(() => new AttemptsExhaustedV1Consumer(store, store, time).HandleAsync(null!, cancellationToken));
 
@@ -309,7 +310,7 @@ public class LearningProgressConsumerTests
         var cancellationToken = TestContext.Current.CancellationToken;
         return message switch
         {
-            LearningSessionStartedV1 started => new LearningSessionStartedV1Consumer(store, store, time).HandleAsync(started, cancellationToken),
+            LearningSessionStartedV1 started => new LearningSessionStartedV1Consumer(store, progress, store, time).HandleAsync(started, cancellationToken),
             ContentCompletedV1 completed => new ContentCompletedV1Consumer(store, store, time).HandleAsync(completed, cancellationToken),
             AttemptsExhaustedV1 exhausted => new AttemptsExhaustedV1Consumer(store, store, time).HandleAsync(exhausted, cancellationToken),
             _ => throw new InvalidOperationException($"No consumer takes {message.GetType().Name}."),

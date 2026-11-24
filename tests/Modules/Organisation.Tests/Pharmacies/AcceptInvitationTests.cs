@@ -197,6 +197,43 @@ public class AcceptInvitationTests
         accepted.IsSuccess.ShouldBeTrue();
     }
 
+    // #294: the expiry is stamped on the database's clock and checked on it, whatever the host's clock says.
+    [Fact]
+    public async Task An_invitation_is_accepted_on_the_database_clock_while_the_host_clock_is_past_its_expiry()
+    {
+        var expiresAt = TestPharmacies.RegisteredAt.Value.AddDays(Pharmacy.InvitationValidityDays);
+        var host = new FakeTimeProvider(expiresAt.AddDays(1));
+        var database = new FakeTimeProvider(expiresAt.AddMinutes(-1));
+
+        var accepted = await BothClocks.Accept(store, host, database)
+            .HandleAsync(new AcceptInvitation(token, Anna, AnnaName, AccountEmail.From(AnnaMail, verified: true)), TestContext.Current.CancellationToken);
+
+        accepted.IsSuccess.ShouldBeTrue("the invitation was checked on the host's clock, a day past its expiry, not on the database's, a minute before it");
+        var membership = pharmacy.Membership(invitation);
+        membership.Status.ShouldBe(MembershipStatus.Active);
+        membership.StartedAt.ShouldBe(Timestamp.From(expiresAt.AddMinutes(-1)), "the membership did not start at the database's instant");
+        store.Commits.ShouldBe(1);
+        store.Published.ShouldHaveSingleItem().ShouldBeOfType<MembershipStartedV1>().StartedAt.ShouldBe(expiresAt.AddMinutes(-1));
+    }
+
+    [Fact]
+    public async Task An_invitation_run_out_on_the_database_clock_is_gone_while_the_host_clock_is_before_its_expiry()
+    {
+        var expiresAt = TestPharmacies.RegisteredAt.Value.AddDays(Pharmacy.InvitationValidityDays);
+        var host = new FakeTimeProvider(expiresAt.AddDays(-1));
+        var database = new FakeTimeProvider(expiresAt.AddTicks(1));
+
+        var accepted = await BothClocks.Accept(store, host, database)
+            .HandleAsync(new AcceptInvitation(token, Anna, AnnaName, AccountEmail.From(AnnaMail, verified: true)), TestContext.Current.CancellationToken);
+
+        accepted.IsFailure.ShouldBeTrue("the invitation was checked on the host's clock, a day before its expiry, not on the database's, a tick past it");
+        accepted.Error.Code.ShouldBe("organisation.invitation-expired");
+        accepted.Error.Status.ShouldBe(HttpStatusCode.Gone);
+        pharmacy.Membership(invitation).Status.ShouldBe(MembershipStatus.Invited);
+        store.Commits.ShouldBe(0);
+        store.Published.ShouldBeEmpty();
+    }
+
     [Fact]
     public async Task A_forwarded_link_is_forbidden_and_the_invited_person_can_still_accept_it()
     {
@@ -281,6 +318,6 @@ public class AcceptInvitationTests
     private static InvitationToken Token() => InvitationToken.From(Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(32)));
 
     private Task<Result<Guid, ApiError>> AcceptAsync(InvitationToken presented, PersonId person, EmailAddress email, bool verified = true) =>
-        new AcceptInvitationHandler(store, store, time)
+        BothClocks.Accept(store, time)
             .HandleAsync(new AcceptInvitation(presented, person, AnnaName, AccountEmail.From(email, verified)), TestContext.Current.CancellationToken);
 }
