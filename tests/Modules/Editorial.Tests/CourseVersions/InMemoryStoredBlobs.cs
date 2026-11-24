@@ -21,6 +21,8 @@ internal sealed class InMemoryStoredBlobs : IStoredBlobs
 
     private Action? afterNextLookup;
 
+    private Action? afterNextStartRead;
+
     private int versions;
 
     public int Lookups { get; private set; }
@@ -28,11 +30,15 @@ internal sealed class InMemoryStoredBlobs : IStoredBlobs
     /// <summary>How often a handler read a blob's leading bytes.</summary>
     public int StartReads { get; private set; }
 
+    /// <summary>How many bytes each read asked for, in the order asked.</summary>
+    public List<int> ReadCounts { get; } = [];
+
     /// <summary>
     /// Stores a blob as the browser would have uploaded it: a block blob, put directly, with no content disposition or
     /// encoding, unless told otherwise. Without
     /// <paramref name="content"/> its bytes start as a file of the declared content type does: a PDF's header for
-    /// <c>application/pdf</c>, an MP4's <c>ftyp</c> box for <c>video/mp4</c>, an HTML page for any other.
+    /// <c>application/pdf</c>, an MP4's <c>ftyp</c> box for <c>video/mp4</c>, an HTML page for any other. A blob is
+    /// <paramref name="length"/> bytes long however short its content: the bytes after the content read as zeros.
     /// </summary>
     public void Upload(string name, string contentType, long length, bool isBlockBlob = true, bool isCopy = false, byte[]? content = null, string? contentDisposition = null, string? contentEncoding = null)
     {
@@ -47,6 +53,15 @@ internal sealed class InMemoryStoredBlobs : IStoredBlobs
     /// module's lookup and its read of the blob's leading bytes would.
     /// </summary>
     public void AfterNextLookup(Action change) => afterNextLookup = change;
+
+    /// <summary>
+    /// Runs <paramref name="change"/> once the next read has answered, as another PUT under the name between the
+    /// module's check of the leading bytes and its read of the whole file would.
+    /// </summary>
+    public void AfterNextStartRead(Action change) => afterNextStartRead = change;
+
+    /// <summary>The blob under the name as a lookup would answer it now, without counting a lookup.</summary>
+    public StoredBlob Current(string name) => blobs[BlobName.From(name)];
 
     public Task<Option<StoredBlob>> FindAsync(BlobName name, CancellationToken cancellationToken)
     {
@@ -66,9 +81,24 @@ internal sealed class InMemoryStoredBlobs : IStoredBlobs
     public Task<ReadOnlyMemory<byte>> ReadStartAsync(StoredBlob blob, int count, CancellationToken cancellationToken)
     {
         StartReads++;
-        var isTheFoundVersion = blobs.TryGetValue(blob.Name, out var current) && string.Equals(current.ETag, blob.ETag, StringComparison.Ordinal);
-        var content = isTheFoundVersion && contents.TryGetValue(blob.Name, out var bytes) ? bytes : [];
-        return Task.FromResult(new ReadOnlyMemory<byte>(content, 0, Math.Min(count, content.Length)));
+        ReadCounts.Add(count);
+        var read = blobs.TryGetValue(blob.Name, out var current)
+            && string.Equals(current.ETag, blob.ETag, StringComparison.Ordinal)
+            && contents.TryGetValue(blob.Name, out var bytes)
+                ? Read(bytes, current.Length, count)
+                : [];
+        var change = afterNextStartRead;
+        afterNextStartRead = null;
+        change?.Invoke();
+        return Task.FromResult(new ReadOnlyMemory<byte>(read));
+    }
+
+    /// <summary>The first <paramref name="count"/> of the blob's <paramref name="length"/> bytes: its content, then zeros.</summary>
+    private static byte[] Read(byte[] content, long length, int count)
+    {
+        var read = new byte[(int)Math.Min(count, length)];
+        content.AsSpan(0, Math.Min(content.Length, read.Length)).CopyTo(read);
+        return read;
     }
 
     private static byte[] StartOf(string contentType)

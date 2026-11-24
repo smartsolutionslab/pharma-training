@@ -22,14 +22,30 @@ public sealed class Chapter : Entity<ChapterId>
 
     public VideoDuration? Duration { get; private set; }
 
+    /// <summary>
+    /// What was extracted from a PDF chapter's pages when it was recorded; null for text and video chapters, and for a
+    /// PDF chapter recorded before extraction existed (#157).
+    /// </summary>
+    public PdfTextExtraction? Extraction { get; private set; }
+
+    /// <summary>A PDF chapter's extracted text, present exactly when its extraction is complete or truncated.</summary>
+    public PdfText? ExtractedText { get; private set; }
+
     public static Chapter OfText(ChapterId id, ChapterTitle title, MarkdownText text) => new(id, title, ChapterKind.Text) { Text = text };
 
-    public static Chapter OfPdf(ChapterId id, ChapterTitle title, BlobReference pdf) => new(id, title, ChapterKind.Pdf) { File = pdf };
+    /// <summary>A PDF chapter with what was extracted from its pages: a text exactly when the extraction found one.</summary>
+    public static Chapter OfPdf(ChapterId id, ChapterTitle title, BlobReference pdf, PdfTextExtraction extraction, PdfText? text)
+    {
+        Ensure.That((int)extraction, nameof(extraction)).Satisfies(
+            _ => (extraction == PdfTextExtraction.NoText) == (text is null),
+            "A PDF chapter has an extracted text exactly when its extraction found one.");
+        return new(id, title, ChapterKind.Pdf) { File = pdf, Extraction = extraction, ExtractedText = text };
+    }
 
     public static Chapter OfVideo(ChapterId id, ChapterTitle title, BlobReference video, VideoDuration duration) =>
         new(id, title, ChapterKind.Video) { File = video, Duration = duration };
 
-    internal Chapter CopyFor(ChapterId id) => new(id, Title, Kind) { Text = Text, File = File, Duration = Duration };
+    internal Chapter CopyFor(ChapterId id) => new(id, Title, Kind) { Text = Text, File = File, Duration = Duration, Extraction = Extraction, ExtractedText = ExtractedText };
 
     /// <summary>
     /// Takes the replacement's content in place, so the stored chapter stays the one instance with its id (EF Core
@@ -42,5 +58,7 @@ public sealed class Chapter : Entity<ChapterId>
         Text = replacement.Text;
         File = replacement.File;
         Duration = replacement.Duration;
+        Extraction = replacement.Extraction;
+        ExtractedText = replacement.ExtractedText;
     }
 }

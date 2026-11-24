@@ -1,5 +1,6 @@
 using System.Net;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.PdfText;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.ReplaceFileChapter;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 using static SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersions.AddFileChapterTests;
@@ -13,8 +14,11 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersion
 /// </summary>
 public class ReplaceFileChapterTests
 {
+    private const string Extracted = "Der Hygieneplan regelt, wann Flächen und Hände desinfiziert werden.";
+
     private readonly InMemoryCourseVersionStore store = new();
     private readonly InMemoryStoredBlobs blobs = new();
+    private readonly FakePdfTextExtractor extractor = new();
 
     [Fact]
     public async Task A_text_chapter_becomes_an_uploaded_pdf_in_its_place_once_committed()
@@ -83,7 +87,7 @@ public class ReplaceFileChapterTests
         var file = IssuedName(version.Id, ".pdf");
         blobs.Upload(file, "application/pdf", 1024);
         var pdf = ChapterId.New();
-        version.AddChapter(Chapter.OfPdf(pdf, ChapterTitle.From("Hygieneplan"), BlobReference.From(file))).IsSuccess.ShouldBeTrue();
+        version.AddChapter(Chapter.OfPdf(pdf, ChapterTitle.From("Hygieneplan"), BlobReference.From(file), PdfTextExtraction.NoText, null)).IsSuccess.ShouldBeTrue();
 
         var replaced = await Handler().HandleAsync(Command(version.Id, text, ChapterKind.Pdf, file), TestContext.Current.CancellationToken);
 
@@ -101,7 +105,7 @@ public class ReplaceFileChapterTests
         var file = IssuedName(version.Id, ".pdf");
         blobs.Upload(file, "application/pdf", 1024);
         var pdf = ChapterId.New();
-        version.AddChapter(Chapter.OfPdf(pdf, ChapterTitle.From("Hygieneplan"), BlobReference.From(file))).IsSuccess.ShouldBeTrue();
+        version.AddChapter(Chapter.OfPdf(pdf, ChapterTitle.From("Hygieneplan"), BlobReference.From(file), PdfTextExtraction.NoText, null)).IsSuccess.ShouldBeTrue();
 
         var replaced = await Handler().HandleAsync(
             new ReplaceFileChapter(version.Id, pdf, ChapterTitle.From("Hygieneplan 2028"), ChapterKind.Pdf, BlobReference.From(file), null),
@@ -295,13 +299,157 @@ public class ReplaceFileChapterTests
         store.Commits.ShouldBe(0);
     }
 
+    [Fact]
+    public async Task A_text_chapter_becomes_a_pdf_with_the_text_extracted_from_the_new_file()
+    {
+        var version = DraftWithChapter(out var chapter);
+        store.Stored.Add(version);
+        var file = IssuedName(version.Id, ".pdf");
+        byte[] content = [.. InMemoryStoredBlobs.PdfStart, .. "%%EOF\n"u8];
+        blobs.Upload(file, "application/pdf", content.Length, content: content);
+        var reads = new FakePdfTextExtractor(FakePdfTextExtractor.Complete(Extracted));
+
+        var replaced = await Handler(reads).HandleAsync(Command(version.Id, chapter, ChapterKind.Pdf, file), TestContext.Current.CancellationToken);
+
+        replaced.IsSuccess.ShouldBeTrue(replaced.IsFailure ? replaced.Error.Code : string.Empty);
+        reads.Read.ShouldHaveSingleItem().ShouldBe(content);
+        var stored = version.Chapters.ShouldHaveSingleItem();
+        stored.Kind.ShouldBe(ChapterKind.Pdf);
+        stored.Extraction.ShouldBe(PdfTextExtraction.Complete);
+        stored.ExtractedText.ShouldBe(PdfText.From(Extracted));
+        stored.Text.ShouldBeNull();
+        store.Commits.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task A_pdf_chapter_given_a_new_pdf_takes_the_new_files_extraction()
+    {
+        var version = Draft();
+        store.Stored.Add(version);
+        var pdf = ChapterId.New();
+        version.AddChapter(Chapter.OfPdf(pdf, ChapterTitle.From("Hygieneplan"), BlobReference.From(IssuedName(version.Id, ".pdf")), PdfTextExtraction.Complete, PdfText.From(Extracted))).IsSuccess.ShouldBeTrue();
+        var file = IssuedName(version.Id, ".pdf");
+        blobs.Upload(file, "application/pdf", 2048);
+        const string Cut = "Die neue Fassung des Hygieneplans, bis zur Grenze gelesen und dort abgeschnitten.";
+        var reads = new FakePdfTextExtractor(FakePdfTextExtractor.Truncated(Cut));
+
+        var replaced = await Handler(reads).HandleAsync(Command(version.Id, pdf, ChapterKind.Pdf, file), TestContext.Current.CancellationToken);
+
+        replaced.IsSuccess.ShouldBeTrue(replaced.IsFailure ? replaced.Error.Code : string.Empty);
+        reads.Read.ShouldHaveSingleItem().Length.ShouldBe(2048, "the whole new file is read");
+        var stored = version.Chapters.ShouldHaveSingleItem();
+        stored.File.ShouldBe(BlobReference.From(file));
+        stored.Extraction.ShouldBe(PdfTextExtraction.Truncated);
+        stored.ExtractedText.ShouldBe(PdfText.From(Cut));
+    }
+
+    [Fact]
+    public async Task A_pdf_chapter_given_a_scanned_pdf_is_recorded_without_text()
+    {
+        var version = Draft();
+        store.Stored.Add(version);
+        var pdf = ChapterId.New();
+        version.AddChapter(Chapter.OfPdf(pdf, ChapterTitle.From("Hygieneplan"), BlobReference.From(IssuedName(version.Id, ".pdf")), PdfTextExtraction.Complete, PdfText.From(Extracted))).IsSuccess.ShouldBeTrue();
+        var file = IssuedName(version.Id, ".pdf");
+        blobs.Upload(file, "application/pdf", 1024);
+
+        var replaced = await Handler(new FakePdfTextExtractor(FakePdfTextExtractor.NoText)).HandleAsync(Command(version.Id, pdf, ChapterKind.Pdf, file), TestContext.Current.CancellationToken);
+
+        replaced.IsSuccess.ShouldBeTrue(replaced.IsFailure ? replaced.Error.Code : string.Empty);
+        var stored = version.Chapters.ShouldHaveSingleItem();
+        stored.Extraction.ShouldBe(PdfTextExtraction.NoText);
+        stored.ExtractedText.ShouldBeNull();
+        store.Commits.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task A_pdf_chapter_that_keeps_its_own_file_keeps_its_extraction_without_reading_the_file()
+    {
+        var version = Draft();
+        store.Stored.Add(version);
+        var file = IssuedName(version.Id, ".pdf");
+        blobs.Upload(file, "application/pdf", 1024);
+        var pdf = ChapterId.New();
+        version.AddChapter(Chapter.OfPdf(pdf, ChapterTitle.From("Hygieneplan"), BlobReference.From(file), PdfTextExtraction.Truncated, PdfText.From(Extracted))).IsSuccess.ShouldBeTrue();
+        var reads = new FakePdfTextExtractor(FakePdfTextExtractor.NoText);
+
+        var replaced = await Handler(reads).HandleAsync(
+            new ReplaceFileChapter(version.Id, pdf, ChapterTitle.From("Hygieneplan 2028"), ChapterKind.Pdf, BlobReference.From(file), null),
+            TestContext.Current.CancellationToken);
+
+        replaced.IsSuccess.ShouldBeTrue(replaced.IsFailure ? replaced.Error.Code : string.Empty);
+        reads.Read.ShouldBeEmpty();
+        blobs.StartReads.ShouldBe(0);
+        var stored = version.Chapters.ShouldHaveSingleItem();
+        stored.Title.ShouldBe(ChapterTitle.From("Hygieneplan 2028"));
+        stored.Extraction.ShouldBe(PdfTextExtraction.Truncated);
+        stored.ExtractedText.ShouldBe(PdfText.From(Extracted));
+    }
+
+    [Fact]
+    public async Task A_chapter_copied_into_the_next_version_keeps_its_extraction_with_its_file()
+    {
+        var (next, chapter, file) = NextOfPublishedWithPdf(PdfTextExtraction.Complete, PdfText.From(Extracted));
+        store.Stored.Add(next);
+        var reads = new FakePdfTextExtractor(FakePdfTextExtractor.NoText);
+
+        var replaced = await Handler(reads).HandleAsync(
+            new ReplaceFileChapter(next.Id, chapter, ChapterTitle.From("Hygieneplan 2028"), ChapterKind.Pdf, file, null),
+            TestContext.Current.CancellationToken);
+
+        replaced.IsSuccess.ShouldBeTrue(replaced.IsFailure ? replaced.Error.Code : string.Empty);
+        reads.Read.ShouldBeEmpty();
+        var stored = next.Chapters.ShouldHaveSingleItem();
+        stored.Extraction.ShouldBe(PdfTextExtraction.Complete);
+        stored.ExtractedText.ShouldBe(PdfText.From(Extracted));
+    }
+
+    [Fact]
+    public async Task A_pdf_chapter_that_becomes_a_video_is_not_extracted_and_drops_its_text()
+    {
+        var version = Draft();
+        store.Stored.Add(version);
+        var pdf = ChapterId.New();
+        version.AddChapter(Chapter.OfPdf(pdf, ChapterTitle.From("Hygieneplan"), BlobReference.From(IssuedName(version.Id, ".pdf")), PdfTextExtraction.Complete, PdfText.From(Extracted))).IsSuccess.ShouldBeTrue();
+        var file = IssuedName(version.Id, ".mp4");
+        blobs.Upload(file, "video/mp4", 10_000_000);
+        var reads = new FakePdfTextExtractor(FakePdfTextExtractor.Complete(Extracted));
+
+        var replaced = await Handler(reads).HandleAsync(Command(version.Id, pdf, ChapterKind.Video, file, VideoDuration.From(90)), TestContext.Current.CancellationToken);
+
+        replaced.IsSuccess.ShouldBeTrue(replaced.IsFailure ? replaced.Error.Code : string.Empty);
+        reads.Read.ShouldBeEmpty();
+        var stored = version.Chapters.ShouldHaveSingleItem();
+        stored.Kind.ShouldBe(ChapterKind.Video);
+        stored.Extraction.ShouldBeNull();
+        stored.ExtractedText.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task A_pdf_replaced_after_its_leading_bytes_were_checked_is_refused_and_the_chapter_stays_as_it_was()
+    {
+        var version = DraftWithChapter(out var chapter);
+        store.Stored.Add(version);
+        var file = IssuedName(version.Id, ".pdf");
+        blobs.Upload(file, "application/pdf", 1024);
+        blobs.AfterNextStartRead(() => blobs.Upload(file, "application/pdf", 1024));
+        var reads = new FakePdfTextExtractor(FakePdfTextExtractor.Complete(Extracted));
+
+        var replaced = await Handler(reads).HandleAsync(Command(version.Id, chapter, ChapterKind.Pdf, file), TestContext.Current.CancellationToken);
+
+        ShouldBeRefused(replaced.IsFailure ? replaced.Error : null, "editorial.upload-not-accepted", HttpStatusCode.BadRequest, "fewer bytes than the file had when it was found are no file to record");
+        reads.Read.ShouldBeEmpty();
+        version.Chapters.Single().Kind.ShouldBe(ChapterKind.Text);
+        store.Commits.ShouldBe(0);
+    }
+
     /// <summary>The next draft of a published version whose one chapter is a PDF, named under the published version.</summary>
-    internal static (CourseVersion Next, ChapterId Chapter, BlobReference File) NextOfPublishedWithPdf()
+    internal static (CourseVersion Next, ChapterId Chapter, BlobReference File) NextOfPublishedWithPdf(PdfTextExtraction extraction = PdfTextExtraction.NoText, PdfText? text = null)
     {
         var first = Draft();
         var chapter = ChapterId.New();
         var file = BlobReference.From(IssuedName(first.Id, ".pdf"));
-        first.AddChapter(Chapter.OfPdf(chapter, ChapterTitle.From("Hygieneplan"), file)).IsSuccess.ShouldBeTrue();
+        first.AddChapter(Chapter.OfPdf(chapter, ChapterTitle.From("Hygieneplan"), file, extraction, text)).IsSuccess.ShouldBeTrue();
         first.SetBlueprint(new TestBlueprint(QuestionCount.From(1), ScorePercent.From(80), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
         var question = first.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
         first.ApproveQuestion(question, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
@@ -314,5 +462,5 @@ public class ReplaceFileChapterTests
     private static ReplaceFileChapter Command(CourseVersionId version, ChapterId chapter, ChapterKind kind, string file, VideoDuration? duration = null) =>
         new(version, chapter, ChapterTitle.From("Hygieneplan"), kind, BlobReference.From(file), duration);
 
-    private ReplaceFileChapterHandler Handler() => new(store, store, blobs);
+    private ReplaceFileChapterHandler Handler(IPdfTextExtractor? reads = null) => new(store, store, blobs, reads ?? extractor);
 }

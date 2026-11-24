@@ -110,7 +110,7 @@ public partial class TestDrafterAskTests
     }
 
     [Fact]
-    public async Task Pdf_and_video_chapters_are_never_sent_to_the_model()
+    public async Task Pdf_chapters_without_text_and_video_chapters_are_never_sent_to_the_model()
     {
         var version = TestDraftVersions.WithTextPdfAndVideoChapters(2);
         using var model = new FakeChatClient(Sound(1, 2));

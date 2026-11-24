@@ -73,11 +73,14 @@ public class CertificationVerificationTests(AspireFixture aspire)
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
             response.StatusCode.ShouldBe(HttpStatusCode.NotFound, $"{code}: {body}");
             NoStore(response).ShouldBeTrue($"{code} is never cached");
-            body.ShouldNotContain(code);
             var problem = JsonNode.Parse(body).ShouldNotBeNull().AsObject();
             problem["code"]!.GetValue<string>().ShouldBe("certification.certificate-not-verifiable");
             problem["title"]!.GetValue<string>().ShouldBe("No certificate matches this code.");
+
+            // The trace id is random hex, so it may contain a short code such as "abc" by chance; the code must not be
+            // echoed anywhere else in the answer.
             problem.Remove("traceId");
+            problem.ToJsonString().ShouldNotContain(code);
             bodies.Add(problem);
         }
 

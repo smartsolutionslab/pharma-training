@@ -197,6 +197,24 @@ public class EditorialNextVersionTests(AspireFixture aspire)
             .ShouldBe(previous.Questions.Select(question => (question.ApprovedByName, question.ApprovedAt)));
     }
 
+    /// <summary>The next version drafts from the same extracted text, which it copies with the chapter, not from its file (#157).</summary>
+    [Fact]
+    public async Task The_next_version_copies_a_pdf_chapter_with_whether_its_text_was_extracted()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var (first, _) = await PublishedWithPdfChapterAsync(client, EditorialPdfs.WithText(), cancellationToken);
+
+        var id = await DraftNextAsync(client, first, cancellationToken);
+
+        var previous = await ReadContentAsync(client, first, cancellationToken);
+        var next = await ReadContentAsync(client, id, cancellationToken);
+        previous.Chapters.ShouldHaveSingleItem().PdfText.ShouldBe("Complete");
+        var copied = next.Chapters.ShouldHaveSingleItem();
+        copied.Kind.ShouldBe("Pdf");
+        copied.PdfText.ShouldBe("Complete");
+    }
+
     private static Uri NextOf(Guid id) => new($"/editorial/course-versions/{id}/next", UriKind.Relative);
 
     private static async Task<Guid> CreateAsync(HttpClient client, CancellationToken cancellationToken)
@@ -239,7 +257,7 @@ public class EditorialNextVersionTests(AspireFixture aspire)
 
     private sealed record VersionContent(Guid Id, Guid CourseId, int Number, string Status, IReadOnlyList<ChapterContent> Chapters, IReadOnlyList<QuestionContent> Questions);
 
-    private sealed record ChapterContent(Guid Id, string Title, string? Text);
+    private sealed record ChapterContent(Guid Id, string Title, string? Text, string Kind, string? PdfText);
 
     private sealed record QuestionContent(Guid Id, Guid ChapterId, string Review, Guid? ReviewedBy, DateTimeOffset? ReviewedAt, string? ApprovedByName, DateTimeOffset? ApprovedAt);
 }

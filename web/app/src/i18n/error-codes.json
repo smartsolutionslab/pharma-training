@@ -215,6 +215,11 @@
     "message": "Only another manager of the pharmacy can change or withdraw your own assignment."
   },
   {
+    "code": "compliance.pharmacy-missing",
+    "status": 400,
+    "message": "The pharmacy is missing."
+  },
+  {
     "code": "compliance.pharmacy-not-found",
     "status": 404,
     "message": "There is no pharmacy of yours with this id."
@@ -387,7 +392,7 @@
   {
     "code": "editorial.no-text-chapters",
     "status": 409,
-    "message": "The version has no text chapter to draft test questions from."
+    "message": "The version has no chapter with text to draft test questions from."
   },
   {
     "code": "editorial.no-text-chapters-to-review",
@@ -472,7 +477,7 @@
   {
     "code": "editorial.too-much-content-to-draft",
     "status": 422,
-    "message": "The version's text chapters are too long to draft a test from in one request."
+    "message": "The version's chapters are too long to draft a test from in one request."
   },
   {
     "code": "editorial.too-much-content-to-review",

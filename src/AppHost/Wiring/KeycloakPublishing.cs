@@ -97,7 +97,7 @@ public static class KeycloakPublishing
     /// <summary>
     /// The published image: built for PostgreSQL with health checks in one stage, run from another with the published realm
     /// in Keycloak's import directory, and <c>kcadm-otp.sh</c> beside kcadm.sh, which signs the administrator in with a
-    /// one-time code kcadm.sh cannot send (#278). The script keeps its mode from the build context, executable.
+    /// one-time code kcadm.sh cannot send (#278), executable whatever mode the checkout gave it (#331).
     /// </summary>
     private static string Dockerfile() =>
         $"""
@@ -107,7 +107,8 @@ public static class KeycloakPublishing
         FROM {PinnedImage}
         COPY --from=builder /opt/keycloak/ /opt/keycloak/
         COPY realm.json {RealmImport}/realm.json
-        COPY KcadmOtp.java kcadm-otp.sh {AdminTools}/
+        COPY KcadmOtp.java {AdminTools}/
+        COPY --chmod=0755 kcadm-otp.sh {AdminTools}/
 
         """;
 }

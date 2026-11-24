@@ -77,7 +77,7 @@ public static class TestDrafter
             return Failure(drafted.Error);
         }
 
-        return Success(new TestDraft(drafted.Value, request.Value.LeftOutChapters));
+        return Success(new TestDraft(drafted.Value, request.Value.LeftOutChapters, request.Value.TruncatedChapters));
     }
 
     private static Result<TestDraftAnswer, ApiError> Read(string text)
