@@ -350,6 +350,36 @@
         }
       }
     },
+    "/certification/certificates/{id}/pdf": {
+      "get": {
+        "tags": [
+          "CertificateDocumentEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificationDocumentUrlDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/certification/samples": {
       "post": {
         "tags": [
@@ -2897,6 +2927,23 @@
           }
         }
       },
+      "CertificationDocumentUrlDto": {
+        "required": [
+          "url",
+          "expiresAt"
+        ],
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "CertificationSampleDto": {
         "required": [
           "id",
@@ -5150,6 +5197,9 @@
   "tags": [
     {
       "name": "Host"
+    },
+    {
+      "name": "CertificateDocumentEndpoints"
     },
     {
       "name": "AssignmentChangeEndpoints"
