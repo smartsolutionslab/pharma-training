@@ -17,7 +17,7 @@ partial class EditorialModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261124061016_RecordQuestionOrigin";
+    public override string LastMigrationId => "20261124065811_RecordQuestionOrigin";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -245,6 +245,12 @@ partial class EditorialModelSnapshot : ModelSnapshot
                     .HasColumnType("uuid")
                     .HasColumnName("id");
 
+                b.Property<string>("ApprovalHistory")
+                    .IsRequired()
+                    .HasMaxLength(20)
+                    .HasColumnType("character varying(20)")
+                    .HasColumnName("approval_history");
+
                 b.Property<Guid>("Chapter")
                     .HasColumnType("uuid")
                     .HasColumnName("chapter_id");
@@ -252,6 +258,12 @@ partial class EditorialModelSnapshot : ModelSnapshot
                 b.Property<Guid>("CourseVersionId")
                     .HasColumnType("uuid")
                     .HasColumnName("course_version_id");
+
+                b.Property<string>("EditHistory")
+                    .IsRequired()
+                    .HasMaxLength(20)
+                    .HasColumnType("character varying(20)")
+                    .HasColumnName("edit_history");
 
                 b.Property<string>("Origin")
                     .IsRequired()

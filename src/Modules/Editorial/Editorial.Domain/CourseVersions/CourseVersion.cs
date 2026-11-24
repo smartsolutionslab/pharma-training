@@ -261,10 +261,12 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
     }
 
     /// <summary>
-    /// Takes the LLM's draft of the whole test. Only unreviewed AI-drafted questions are replaced (#245, the owner's
-    /// decision of 2026-11-23): approved questions stay, and so do copied and hand-written ones even while unreviewed, so
-    /// a new draft never throws away work an editor signed off or wrote, nor the test a settings change sent back to
-    /// review. Answers the drafted questions' new ids, in the draft's order, after the questions it keeps.
+    /// Takes the LLM's draft of the whole test. Only AI-drafted questions that are unreviewed (#245, the owner's decision
+    /// of 2026-11-23), untouched by an editor and never approved (the owner's decision of 2026-11-24) are replaced:
+    /// approved questions stay, so do copied and hand-written ones even while unreviewed, and so do AI-drafted ones an
+    /// editor edited or approved once, even after a settings change sent them back to review, so a new draft never
+    /// throws away work an editor signed off, changed or wrote. Answers the drafted questions' new ids, in the draft's
+    /// order, after the questions it keeps.
     /// </summary>
     public Result<IReadOnlyList<QuestionId>, DomainError> ApplyAiTestDraft(IReadOnlyList<DraftedQuestion> drafted, Func<QuestionId> newQuestionId, Func<AnswerOptionId> newOptionId)
     {

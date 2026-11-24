@@ -41,7 +41,8 @@ public sealed record TestDraftRequest(IReadOnlyList<TestDraftChapter> Chapters, 
             return Failure(CourseVersionFailures.NoTextChapters());
         }
 
-        // Every question the draft keeps counts: approved ones, and copied or hand-written ones even while unreviewed (#245).
+        // Every question the draft keeps counts: approved ones, copied or hand-written ones even while unreviewed, and AI-drafted
+        // ones an editor edited or approved once (#245).
         var kept = version.Questions.Count(question => !question.IsReplacedByAiDraft());
         var requested = version.Blueprint.Questions.Value - kept;
         if (requested <= 0)

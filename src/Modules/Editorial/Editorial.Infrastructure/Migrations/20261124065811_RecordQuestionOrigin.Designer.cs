@@ -13,8 +13,8 @@ using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Infrastructure.Persiste
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Infrastructure.Migrations;
 
 [DbContext(typeof(EditorialDbContext))]
-[Migration("20261124061016_RecordQuestionOrigin")]
-partial class _20261124061016_RecordQuestionOrigin
+[Migration("20261124065811_RecordQuestionOrigin")]
+partial class _20261124065811_RecordQuestionOrigin
 {
     /// <inheritdoc />
     protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -243,6 +243,12 @@ partial class _20261124061016_RecordQuestionOrigin
                     .HasColumnType("uuid")
                     .HasColumnName("id");
 
+                b.Property<string>("ApprovalHistory")
+                    .IsRequired()
+                    .HasMaxLength(20)
+                    .HasColumnType("character varying(20)")
+                    .HasColumnName("approval_history");
+
                 b.Property<Guid>("Chapter")
                     .HasColumnType("uuid")
                     .HasColumnName("chapter_id");
@@ -250,6 +256,12 @@ partial class _20261124061016_RecordQuestionOrigin
                 b.Property<Guid>("CourseVersionId")
                     .HasColumnType("uuid")
                     .HasColumnName("course_version_id");
+
+                b.Property<string>("EditHistory")
+                    .IsRequired()
+                    .HasMaxLength(20)
+                    .HasColumnType("character varying(20)")
+                    .HasColumnName("edit_history");
 
                 b.Property<string>("Origin")
                     .IsRequired()
