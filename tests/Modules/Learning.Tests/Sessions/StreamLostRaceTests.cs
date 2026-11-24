@@ -1,6 +1,8 @@
 using System.Data;
 using JasperFx.Events;
 using Marten;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Testing;
 using Npgsql;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.EventSourcing;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
@@ -47,6 +49,24 @@ public class StreamLostRaceTests
         ShouldHaveLostTo(Deadlock, await store.TrySaveAsync(Loaded(), TestContext.Current.CancellationToken));
     }
 
+    /// <summary>
+    /// A deadlock is logged as a warning naming its SqlState, with the PostgresException attached, as the EF modules log
+    /// it, so one that keeps happening shows in the telemetry; a stream that moved on is ordinary and logs nothing.
+    /// </summary>
+    [Fact]
+    public async Task A_deadlock_is_logged_as_a_warning_naming_its_sql_state_and_a_stream_that_moved_on_is_not()
+    {
+        var ended = Ended(PostgresErrorCodes.DeadlockDetected);
+
+        await StoreFailingWith(new InvalidOperationException("The session could not be saved.", ended)).TrySaveAsync(Loaded(), TestContext.Current.CancellationToken);
+        await StoreFailingWith(new EventStreamUnexpectedMaxEventIdException("The stream moved on.")).TrySaveAsync(Loaded(), TestContext.Current.CancellationToken);
+
+        var record = logger.Collector.GetSnapshot().ShouldHaveSingleItem();
+        record.Level.ShouldBe(LogLevel.Warning);
+        record.Message.ShouldContain("40P01");
+        record.Exception.ShouldBeSameAs(ended);
+    }
+
     [Fact]
     public async Task Any_other_database_error_still_throws()
     {
@@ -83,12 +103,14 @@ public class StreamLostRaceTests
         return aggregate;
     }
 
-    private static LearningAggregateStore StoreFailingWith(Exception failure)
+    private readonly FakeLogger<LearningAggregateStore> logger = new();
+
+    private LearningAggregateStore StoreFailingWith(Exception failure)
     {
         var session = Substitute.For<IDocumentSession>();
         session.SaveChangesAsync(Arg.Any<CancellationToken>()).Returns(Task.FromException(failure));
         var documents = Substitute.For<IDocumentStore>();
         documents.LightweightSession(Arg.Any<IsolationLevel>()).Returns(session);
-        return new LearningAggregateStore(documents);
+        return new LearningAggregateStore(documents, logger);
     }
 }
