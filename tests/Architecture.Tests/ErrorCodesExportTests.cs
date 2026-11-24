@@ -9,6 +9,22 @@ public class ErrorCodesExportTests
 {
     private static readonly ArchitectureModel Model = ArchitectureModel.Load();
 
+    /// <summary>
+    /// Domain codes no endpoint answers yet, so no <c>*Failures</c> method gives them a status and the export leaves them
+    /// out; they are still bound by the rules on their messages. Assessment's four examination errors wait for #271,
+    /// which maps them; <c>organisation.invitation-link-limit-reached</c> is only thrown inside a message consumer. Take
+    /// a code off this list once an endpoint answers it.
+    /// </summary>
+    private static readonly HashSet<string> NoEndpointAnswers = new(
+        [
+            "assessment.definition-of-another-version",
+            "assessment.examination-not-unlocked",
+            "assessment.no-open-attempt",
+            "assessment.question-not-in-attempt",
+            "organisation.invitation-link-limit-reached",
+        ],
+        StringComparer.Ordinal);
+
     private static IReadOnlyList<ErrorCatalogEntry> Entries => ErrorCatalog.Entries(ErrorCatalog.ErrorTypes(Model));
 
     [Fact]
@@ -36,9 +52,9 @@ public class ErrorCodesExportTests
     {
         var types = ErrorCatalog.ErrorTypes(Model);
 
-        ErrorCatalog.WithoutStatus(types).Select(probe => probe.Describe()).ShouldBeEmpty();
+        ErrorCatalog.WithoutStatus(types).Where(probe => !NoEndpointAnswers.Contains(probe.Code!)).Select(probe => probe.Describe()).ShouldBeEmpty();
         Entries.Select(entry => entry.Code).ShouldBe(
-            ErrorCatalog.Probe(types).Select(probe => probe.Code).OfType<string>().Distinct().Order(StringComparer.Ordinal));
+            ErrorCatalog.Probe(types).Select(probe => probe.Code).OfType<string>().Where(code => !NoEndpointAnswers.Contains(code)).Distinct().Order(StringComparer.Ordinal));
     }
 
     [Fact]
