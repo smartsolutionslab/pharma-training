@@ -19,12 +19,12 @@ public static class CertificateMappings
     }
 
     /// <summary>What the holder sees of their certificate on <paramref name="today"/>, a German day.</summary>
-    public static CertificateDto ToDto(this Certificate certificate, CalendarDate today)
+    public static HeldCertificateDto ToHeldCertificateDto(this Certificate certificate, CalendarDate today)
     {
         Ensure.That(certificate).IsNotNull();
         Ensure.That(today).IsNotNull();
 
-        return new CertificateDto(
+        return new HeldCertificateDto(
             certificate.Id.Value,
             certificate.CourseTitle.Value,
             certificate.IssuedAt.DayInGermany().Value,

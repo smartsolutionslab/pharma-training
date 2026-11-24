@@ -97,7 +97,7 @@ public class ListMyCertificatesTests
 
         var listed = await ListAsync(caller.Value, Page.First, PageSize.Default);
 
-        listed.Value.Items.ShouldHaveSingleItem().ShouldBe(new CertificateDto(
+        listed.Value.Items.ShouldHaveSingleItem().ShouldBe(new HeldCertificateDto(
             certificate.Id.Value,
             "Hygiene 2027",
             new DateOnly(2027, 3, 2),
@@ -170,7 +170,7 @@ public class ListMyCertificatesTests
 
     private static PageSize PageSizeOf(int value) => PageSize.TryFrom(value, out var pageSize) ? pageSize : throw new InvalidOperationException($"No page size {value}.");
 
-    private Task<Result<PagedResult<CertificateDto>, ApiError>> ListAsync(Guid person, Page page, PageSize pageSize) =>
+    private Task<Result<PagedResult<HeldCertificateDto>, ApiError>> ListAsync(Guid person, Page page, PageSize pageSize) =>
         new ListMyCertificatesHandler(certificates, time).HandleAsync(new ListMyCertificates(person, page, pageSize), TestContext.Current.CancellationToken);
 
     private Certificate Stored(PersonId holder, string courseTitle, DateTimeOffset passedAt)

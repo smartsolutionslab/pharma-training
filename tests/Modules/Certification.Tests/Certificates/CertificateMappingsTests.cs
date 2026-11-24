@@ -78,9 +78,9 @@ public class CertificateMappingsTests
     {
         var certificate = IssuedCertificates.Yearly();
 
-        var listed = certificate.ToDto(CalendarDate.From(new DateOnly(2028, 3, 2)));
+        var listed = certificate.ToHeldCertificateDto(CalendarDate.From(new DateOnly(2028, 3, 2)));
 
-        listed.ShouldBe(new CertificateDto(
+        listed.ShouldBe(new HeldCertificateDto(
             certificate.Id.Value,
             "Hygiene 2027",
             new DateOnly(2027, 3, 2),
@@ -92,7 +92,7 @@ public class CertificateMappingsTests
     [Fact]
     public void A_holder_sees_a_certificate_expired_the_day_after_its_last_valid_day()
     {
-        var listed = IssuedCertificates.Yearly().ToDto(CalendarDate.From(new DateOnly(2028, 3, 3)));
+        var listed = IssuedCertificates.Yearly().ToHeldCertificateDto(CalendarDate.From(new DateOnly(2028, 3, 3)));
 
         listed.Validity.ShouldBe(CertificateValidity.Expired);
     }
@@ -103,13 +103,13 @@ public class CertificateMappingsTests
         var certificate = IssuedCertificates.Yearly();
         certificate.AttachDocument(DocumentReference.From("certificates/anna.pdf"));
 
-        certificate.ToDto(CalendarDate.From(new DateOnly(2028, 3, 2))).DocumentReady.ShouldBeTrue();
+        certificate.ToHeldCertificateDto(CalendarDate.From(new DateOnly(2028, 3, 2))).DocumentReady.ShouldBeTrue();
     }
 
     [Fact]
     public void The_holders_answer_has_exactly_six_fields()
     {
-        typeof(CertificateDto).GetProperties().Select(property => property.Name)
+        typeof(HeldCertificateDto).GetProperties().Select(property => property.Name)
             .ShouldBe(["CertificateId", "CourseTitle", "IssuedOn", "ValidUntil", "Validity", "DocumentReady"], ignoreOrder: true);
     }
 
@@ -118,7 +118,7 @@ public class CertificateMappingsTests
     {
         var certificate = IssuedCertificates.Yearly();
 
-        using var json = JsonDocument.Parse(JsonSerializer.Serialize(certificate.ToDto(CalendarDate.From(new DateOnly(2028, 3, 3))), Web));
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(certificate.ToHeldCertificateDto(CalendarDate.From(new DateOnly(2028, 3, 3))), Web));
 
         json.RootElement.GetProperty("certificateId").GetGuid().ShouldBe(certificate.Id.Value);
         json.RootElement.GetProperty("issuedOn").GetString().ShouldBe("2027-03-02");

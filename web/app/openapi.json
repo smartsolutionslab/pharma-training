@@ -564,7 +564,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PagedResultOfCertificateDto"
+                  "$ref": "#/components/schemas/PagedResultOfHeldCertificateDto"
                 }
               }
             }
@@ -3464,40 +3464,6 @@
           }
         }
       },
-      "CertificateDto": {
-        "required": [
-          "certificateId",
-          "courseTitle",
-          "issuedOn",
-          "validUntil",
-          "validity",
-          "documentReady"
-        ],
-        "type": "object",
-        "properties": {
-          "certificateId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "courseTitle": {
-            "type": "string"
-          },
-          "issuedOn": {
-            "type": "string",
-            "format": "date"
-          },
-          "validUntil": {
-            "type": "string",
-            "format": "date"
-          },
-          "validity": {
-            "$ref": "#/components/schemas/CertificateValidity"
-          },
-          "documentReady": {
-            "type": "boolean"
-          }
-        }
-      },
       "CertificateValidity": {
         "enum": [
           "Valid",
@@ -4837,6 +4803,40 @@
           }
         }
       },
+      "HeldCertificateDto": {
+        "required": [
+          "certificateId",
+          "courseTitle",
+          "issuedOn",
+          "validUntil",
+          "validity",
+          "documentReady"
+        ],
+        "type": "object",
+        "properties": {
+          "certificateId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "courseTitle": {
+            "type": "string"
+          },
+          "issuedOn": {
+            "type": "string",
+            "format": "date"
+          },
+          "validUntil": {
+            "type": "string",
+            "format": "date"
+          },
+          "validity": {
+            "$ref": "#/components/schemas/CertificateValidity"
+          },
+          "documentReady": {
+            "type": "boolean"
+          }
+        }
+      },
       "InviteOrganisationMemberRequest": {
         "required": [
           "email",
@@ -5176,47 +5176,6 @@
           }
         }
       },
-      "PagedResultOfCertificateDto": {
-        "required": [
-          "items",
-          "totalCount",
-          "page",
-          "pageSize"
-        ],
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/CertificateDto"
-            }
-          },
-          "totalCount": {
-            "pattern": "^-?(?:0|[1-9]\\d*)$",
-            "type": [
-              "integer",
-              "string"
-            ],
-            "format": "int32"
-          },
-          "page": {
-            "pattern": "^-?(?:0|[1-9]\\d*)$",
-            "type": [
-              "integer",
-              "string"
-            ],
-            "format": "int32"
-          },
-          "pageSize": {
-            "pattern": "^-?(?:0|[1-9]\\d*)$",
-            "type": [
-              "integer",
-              "string"
-            ],
-            "format": "int32"
-          }
-        }
-      },
       "PagedResultOfCertificationSampleDto": {
         "required": [
           "items",
@@ -5517,6 +5476,47 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/EditorialSampleDto"
+            }
+          },
+          "totalCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "page": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "pageSize": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "PagedResultOfHeldCertificateDto": {
+        "required": [
+          "items",
+          "totalCount",
+          "page",
+          "pageSize"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HeldCertificateDto"
             }
           },
           "totalCount": {

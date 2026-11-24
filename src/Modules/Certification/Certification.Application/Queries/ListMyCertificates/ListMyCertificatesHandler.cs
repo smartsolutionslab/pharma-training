@@ -11,9 +11,9 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Que
 /// depends on today.
 /// </summary>
 public sealed class ListMyCertificatesHandler(ICertificateStore certificates, TimeProvider time)
-    : IQueryHandler<ListMyCertificates, Result<PagedResult<CertificateDto>, ApiError>>
+    : IQueryHandler<ListMyCertificates, Result<PagedResult<HeldCertificateDto>, ApiError>>
 {
-    public async Task<Result<PagedResult<CertificateDto>, ApiError>> HandleAsync(ListMyCertificates query, CancellationToken cancellationToken)
+    public async Task<Result<PagedResult<HeldCertificateDto>, ApiError>> HandleAsync(ListMyCertificates query, CancellationToken cancellationToken)
     {
         Ensure.That(query).IsNotNull();
 
@@ -24,8 +24,8 @@ public sealed class ListMyCertificatesHandler(ICertificateStore certificates, Ti
 
         var (items, totalCount) = await certificates.ListForHolderAsync(PersonId.From(query.Caller), query.Page, query.PageSize, cancellationToken);
         var today = Timestamp.From(time.GetUtcNow()).DayInGermany();
-        return Success(new PagedResult<CertificateDto>(
-            [.. items.Select(certificate => certificate.ToDto(today))],
+        return Success(new PagedResult<HeldCertificateDto>(
+            [.. items.Select(certificate => certificate.ToHeldCertificateDto(today))],
             totalCount,
             query.Page.Value,
             query.PageSize.Value));

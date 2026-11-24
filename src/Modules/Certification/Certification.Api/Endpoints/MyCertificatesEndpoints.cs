@@ -24,7 +24,7 @@ public sealed class MyCertificatesEndpoints : IEndpoint
         endpoints.MapGet("/me/certificates", ListAsync).RequireAuthorization();
     }
 
-    private static async Task<Results<Ok<PagedResult<CertificateDto>>, ProblemHttpResult>> ListAsync(
+    private static async Task<Results<Ok<PagedResult<HeldCertificateDto>>, ProblemHttpResult>> ListAsync(
         Page? page,
         PageSize? pageSize,
         ClaimsPrincipal user,
@@ -34,7 +34,7 @@ public sealed class MyCertificatesEndpoints : IEndpoint
         var caller = CertificationCaller.PersonOf(user);
         if (!caller.HasValue)
         {
-            return Result<PagedResult<CertificateDto>, ApiError>.Failure(CertificateFailures.IdentityIncomplete()).ToHttpResult();
+            return Result<PagedResult<HeldCertificateDto>, ApiError>.Failure(CertificateFailures.IdentityIncomplete()).ToHttpResult();
         }
 
         var query = new ListMyCertificates(caller.Value.Value, page ?? Page.First, pageSize ?? PageSize.Default);
