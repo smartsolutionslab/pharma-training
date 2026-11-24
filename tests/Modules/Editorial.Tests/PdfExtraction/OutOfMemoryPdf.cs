@@ -10,15 +10,15 @@ internal sealed class OutOfMemoryPdf : MemoryManager<byte>
 {
     public override Memory<byte> Memory => CreateMemory(1024);
 
-    public override Span<byte> GetSpan() => throw new OutOfMemoryException();
+    public override Span<byte> GetSpan() => throw Activator.CreateInstance<OutOfMemoryException>();
 
-    public override MemoryHandle Pin(int elementIndex = 0) => throw new OutOfMemoryException();
+    public override MemoryHandle Pin(int elementIndex = 0) => throw Activator.CreateInstance<OutOfMemoryException>();
 
     public override void Unpin()
     {
     }
 
-    protected override bool TryGetArray(out ArraySegment<byte> segment) => throw new OutOfMemoryException();
+    protected override bool TryGetArray(out ArraySegment<byte> segment) => throw Activator.CreateInstance<OutOfMemoryException>();
 
     protected override void Dispose(bool disposing)
     {

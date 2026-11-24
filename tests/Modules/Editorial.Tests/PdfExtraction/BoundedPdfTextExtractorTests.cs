@@ -144,7 +144,7 @@ public sealed class BoundedPdfTextExtractorTests : IDisposable
 
         var extracting = extractor.ExtractAsync(Pdf, Cancellation);
         await honouring.Started(0);
-        honouring.Fail(0, new OutOfMemoryException());
+        honouring.Fail(0, Activator.CreateInstance<OutOfMemoryException>());
 
         await Should.ThrowAsync<OutOfMemoryException>(extracting);
     }
