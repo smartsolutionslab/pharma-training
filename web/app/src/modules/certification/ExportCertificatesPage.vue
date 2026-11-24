@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useForm } from 'vee-validate';
-import { ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useQueryClient } from '@tanstack/vue-query';
 import {
@@ -23,6 +23,9 @@ import { defaultPeriod, type ExportPeriod, exportSchema } from './exportSchema';
 // the page from anyone but a manager is the shell's convenience; the host decides who may export (ADR 0003).
 const clock = () => new Date();
 
+/** How long a saved ZIP's object URL lives: Safari fails a download whose URL is revoked in the task of the click. */
+const objectUrlLifetime = 30_000;
+
 const fromField = 'export-from';
 const toField = 'export-to';
 
@@ -41,19 +44,46 @@ const [to, toAttributes] = defineField('to');
 const failure = ref<ErrorMessage>();
 /** The request is on its way: from the moment it is sent, after the range was checked, to its answer. */
 const sending = ref(false);
+/** A press now sends nothing; the button stays enabled, so it keeps the keyboard's focus. */
+const busy = computed(() => isSubmitting.value || sending.value);
+/** The error at to is the host's period refusal, not the schema's. */
+const hostRefusedTo = ref(false);
 
 // Another pharmacy's refusal says nothing about this one; the range stays.
 watch(
   () => current.value?.id,
   () => {
     failure.value = undefined;
+    if (hostRefusedTo.value) {
+      hostRefusedTo.value = false;
+      setFieldError('to', undefined);
+    }
   },
 );
+
+/** The object URLs of saved ZIPs not let go yet, with the timer that lets each go. */
+const pendingUrls = new Map<string, ReturnType<typeof setTimeout>>();
+
+function release(url: string) {
+  const timer = pendingUrls.get(url);
+  if (timer === undefined) {
+    return;
+  }
+  clearTimeout(timer);
+  pendingUrls.delete(url);
+  URL.revokeObjectURL(url);
+}
+
+onBeforeUnmount(() => {
+  for (const url of [...pendingUrls.keys()]) {
+    release(url);
+  }
+});
 
 /** A field's error: a key of the catalog, as the schema gives it. */
 const fieldText = (error: string) => (i18n.global.te(error) ? translate(error as MessageKey) : error);
 
-/** Saves the bytes under the name through a temporary link, then lets the object URL go. */
+/** Saves the bytes under the name through a temporary link; the object URL goes 30 seconds later or with the page. */
 function save(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -62,8 +92,10 @@ function save(blob: Blob, name: string) {
   document.body.append(link);
   link.click();
   link.remove();
-  // The click has handed the file to the download by now.
-  URL.revokeObjectURL(url);
+  pendingUrls.set(
+    url,
+    setTimeout(() => release(url), objectUrlLifetime),
+  );
 }
 
 /** Shows the refusal by its code: the period's at to, any other in the alert under the form. */
@@ -71,6 +103,7 @@ function refuse(error: unknown) {
   const refusal = exportRefusal(error);
   if (refusal.kind === 'period') {
     setFieldError('to', messageText(refusal.message));
+    hostRefusedTo.value = true;
     return;
   }
   failure.value = refusal.message;
@@ -87,6 +120,7 @@ async function send(period: ExportPeriod): Promise<boolean> {
     return false;
   }
   failure.value = undefined;
+  hostRefusedTo.value = false;
   sending.value = true;
   try {
     const answer = await getCertificationPharmaciesIdCertificatesExport(pharmacy.id, period);
@@ -106,7 +140,7 @@ const submitForm = handleSubmit(send);
 
 /** Sends once, however often the button is pressed: a press while one is on its way does nothing. */
 async function submit(event: Event) {
-  if (isSubmitting.value) {
+  if (busy.value) {
     event.preventDefault();
     return;
   }
@@ -159,10 +193,18 @@ async function submit(event: Event) {
         </div>
       </div>
       <div>
-        <Button type="submit" :disabled="isSubmitting || sending">
+        <Button
+          type="submit"
+          :aria-disabled="busy ? 'true' : undefined"
+          :aria-busy="busy ? 'true' : undefined"
+          class="aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+        >
           {{ sending ? t('certification.export.preparing') : t('certification.export.submit') }}
         </Button>
       </div>
+      <p role="status" class="sr-only">
+        <template v-if="sending">{{ t('certification.export.preparing') }}</template>
+      </p>
       <p v-if="failure !== undefined" role="alert" class="text-body text-destructive">{{ messageText(failure) }}</p>
     </form>
   </main>
