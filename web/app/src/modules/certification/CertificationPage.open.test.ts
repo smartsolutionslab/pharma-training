@@ -118,3 +118,33 @@ test('in English the failure reads in English', async () => {
     expect(notify.failure).toHaveBeenCalledWith('The PDF for Hygiene in der Apotheke could not be opened.'),
   );
 });
+
+// The tab follows only a web address the host signed: anything else it answers is a failure like any other, and the
+// tab never goes there.
+test.each([
+  ['a script', 'javascript:alert(document.cookie)'],
+  ['a data URL', 'data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg=='],
+  ['a file', 'file:///etc/passwd'],
+  ['something that is no URL', 'not a url'],
+])('a signed URL that is %s says the PDF could not be opened, and the tab stays', async (_name, url) => {
+  documentUrl = async () => Response.json({ url, expiresAt: '2026-11-24T12:05:00Z' });
+  const { open } = await renderPage();
+
+  await userEvent.click(await screen.findByRole('button', { name: 'PDF öffnen für Hygiene in der Apotheke' }));
+
+  await waitFor(() =>
+    expect(notify.failure).toHaveBeenCalledWith('Das PDF für Hygiene in der Apotheke konnte nicht geöffnet werden.'),
+  );
+  expect(open).not.toHaveBeenCalled();
+});
+
+test('a signed URL over plain http is followed too', async () => {
+  const plain = 'http://storage.example/certification/certificates/e1.pdf?sig=x';
+  documentUrl = async () => Response.json({ url: plain, expiresAt: '2026-11-24T12:05:00Z' });
+  const { open } = await renderPage();
+
+  await userEvent.click(await screen.findByRole('button', { name: 'PDF öffnen für Hygiene in der Apotheke' }));
+
+  await waitFor(() => expect(open).toHaveBeenCalledWith(plain));
+  expect(notify.failure).not.toHaveBeenCalled();
+});
