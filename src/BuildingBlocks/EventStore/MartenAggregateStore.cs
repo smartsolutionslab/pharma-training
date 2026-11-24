@@ -2,12 +2,13 @@ using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.EventSourcing;
 using JasperFx.Events;
 using Marten;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 
 namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.EventStore;
 
 /// <summary>A module's aggregate store over its Marten event store: one stream per aggregate, in the module's schema.</summary>
-public abstract class MartenAggregateStore(IDocumentStore store) : IAggregateStore
+public abstract partial class MartenAggregateStore(IDocumentStore store, ILogger logger) : IAggregateStore
 {
     public async Task<Option<TAggregate>> LoadAsync<TAggregate>(IAggregateId id, CancellationToken cancellationToken)
         where TAggregate : class, IEventSourced
@@ -51,6 +52,7 @@ public abstract class MartenAggregateStore(IDocumentStore store) : IAggregateSto
         }
         catch (Exception exception) when (Deadlocked(exception) is { } ended)
         {
+            LogDeadlocked(logger, ended, ended.SqlState, aggregate.GetType().Name);
             return Failure(LostRaces.Deadlocked(ended.SqlState));
         }
         catch (Exception exception) when (MovedOn(exception))
@@ -104,4 +106,9 @@ public abstract class MartenAggregateStore(IDocumentStore store) : IAggregateSto
         await session.SaveChangesAsync(cancellationToken);
         aggregate.MarkStored();
     }
+
+    // As the EF modules' unit of work logs it (#162): a deadlock that keeps happening shows in the telemetry, not only as
+    // 409s, with the PostgresException attached (its Detail redacted, docs/adr 0002); a stream that moved on is ordinary.
+    [LoggerMessage(Level = LogLevel.Warning, Message = "PostgreSQL ended a save of {Aggregate}'s stream with SqlState {SqlState}; answered as a lost race.")]
+    private static partial void LogDeadlocked(ILogger logger, Exception exception, string sqlState, string aggregate);
 }
