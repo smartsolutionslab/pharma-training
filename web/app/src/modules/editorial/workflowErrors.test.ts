@@ -6,8 +6,8 @@ import { type WorkflowAction, workflowFailure, workflowFailureText } from './wor
 // What the course version page says when a step of the workflow (#26: submit, publish, return, retire) is refused or
 // fails, as an ErrorMessage of src/i18n/errorText.ts (#147): the page's own key where its words depend on the step
 // (not-a-draft, not-published, course-version-changed, the three defects of a question publishing finds, a return's
-// refused reason), else the catalog's errors.<code>; a policy's 403 without a code says the editor may not take the
-// step. Only a module code the catalog does not know says the host's words; anything else, a network failure
+// refused reason, which states the host's whole rule for a reason), else the catalog's errors.<code>; a policy's 403
+// without a code says the editor may not take the step. Only a module code the catalog does not know says the host's words; anything else, a network failure
 // included, says the step failed.
 
 /** Problem details as the host sends them, with a code where it has one. */
@@ -132,12 +132,12 @@ const answers: [string, WorkflowAction, () => unknown, string, string, string][]
     'Only a published version can be retired.',
   ],
   [
-    '400 invalid-return-reason, the reason field’s own message',
+    '400 invalid-return-reason, the reason field’s message stating the host’s whole rule',
     'return',
     refusal(400, 'editorial.invalid-return-reason'),
-    'editorial.workflow.returnForm.reasonInvalid',
-    'Der Grund enthält unzulässige Steuer- oder Formatzeichen.',
-    'The reason contains control or format characters that are not allowed.',
+    'editorial.workflow.returnForm.reasonRefused',
+    'Der Grund muss ohne Leerraum am Anfang und Ende 1 bis 1.000 Zeichen lang sein und darf außer Zeilenumbrüchen und Tabulatoren keine Steuer- oder Formatzeichen enthalten.',
+    'The reason must be 1 to 1,000 characters long without leading or trailing spaces, and may contain no control or format characters other than line breaks and tabs.',
   ],
   [
     '403 reviewer-name-missing, a code the page has no words of its own for',
@@ -306,6 +306,43 @@ test("the host's words are never what the page says for a code it knows or a fai
 // no-chapters folds into the catalog's errors.editorial.no-chapters, with the checklist's text.
 test('a refused submit without chapters says what the checklist says', () => {
   expect(t('errors.editorial.no-chapters')).toBe(t('editorial.workflow.checklist.chaptersMissing'));
+});
+
+// The host refuses a reason for more than a control character (ADR 0013): missing, empty or over 1000 characters once
+// trimmed, or holding a control or format character other than a line break or a tab. The page cannot tell which, so
+// the reason field states the whole rule (#201); reasonInvalid stays the client's own check for such a character.
+describe('a return refused for its reason (400 invalid-return-reason)', () => {
+  const reasonRefused = 'editorial.workflow.returnForm.reasonRefused';
+  const rule = {
+    de: 'Der Grund muss ohne Leerraum am Anfang und Ende 1 bis 1000 Zeichen lang sein und darf außer Zeilenumbrüchen und Tabulatoren keine Steuer- oder Formatzeichen enthalten.',
+    en: 'The reason must be 1 to 1000 characters long without leading or trailing spaces, and may contain no control or format characters other than line breaks and tabs.',
+  };
+
+  test("is the reason field's message stating the host's whole rule", () => {
+    expect(workflowFailure('return', refusal(400, 'editorial.invalid-return-reason')())).toEqual({
+      key: reasonRefused,
+      values: { max: 1000 },
+    });
+  });
+
+  test('states the rule with its maximum in German', () => {
+    const key: string = reasonRefused;
+
+    expect(t(key, { max: 1000 })).toBe(rule.de);
+  });
+
+  test('states the rule with its maximum in English', () => {
+    setLanguage('en-GB', { remember: false });
+    const key: string = reasonRefused;
+
+    expect(t(key, { max: 1000 })).toBe(rule.en);
+  });
+
+  test("keeps reasonInvalid for the client's own check of a control or format character", () => {
+    const key: string = 'editorial.workflow.returnForm.reasonInvalid';
+
+    expect(t(key)).toBe('Der Grund enthält unzulässige Steuer- oder Formatzeichen.');
+  });
 });
 
 // A failure is an ErrorMessage of src/i18n/errorText.ts: its key with the values errorValues has for the code.

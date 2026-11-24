@@ -1,5 +1,5 @@
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query';
-import { cleanup, render, screen } from '@testing-library/vue';
+import { cleanup, render, screen, within } from '@testing-library/vue';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { createMemoryHistory } from 'vue-router';
@@ -134,6 +134,18 @@ async function renderPage() {
       shownVersion.status !== 'Published',
     );
     expect(screen.queryByRole('dialog')).toBeNull();
+    // The return history (#201) shows in every status, and axe checks it: its rows where the example has returns, its
+    // empty state where it has none.
+    const history = screen.getByRole('region', { name: t('editorial.returns.title') });
+    const returns = shown.examples?.useGetEditorialCourseVersionsIdReturns as { items: unknown[] } | undefined;
+    if (returns !== undefined) {
+      const rows = within(within(history).getByRole('table')).getAllByRole('row').slice(1);
+      if (returns.items.length > 0) {
+        expect(rows).toHaveLength(returns.items.length);
+      } else {
+        expect(within(history).getByText(t('editorial.returns.empty'))).toBeInTheDocument();
+      }
+    }
   }
   return container;
 }

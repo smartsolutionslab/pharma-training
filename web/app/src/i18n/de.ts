@@ -455,6 +455,18 @@ export const de = {
         Published: 'Keine veröffentlichten Versionen.',
       },
     },
+    returns: {
+      title: 'Rückgaben',
+      columns: {
+        returnedAt: 'Zurückgegeben am',
+        returnedBy: 'Zurückgegeben von',
+        reason: 'Grund',
+      },
+      empty: 'Diese Version wurde noch nie zur Überarbeitung zurückgegeben.',
+      loadFailed: 'Die Rückgaben dieser Version konnten nicht geladen werden.',
+      byYou: 'Ihnen',
+      byAnotherEditor: 'einer anderen Person aus der Redaktion',
+    },
     course: {
       new: 'Neue Schulung',
       form: {
@@ -726,6 +738,8 @@ export const de = {
         reasonRequired: 'Geben Sie einen Grund an.',
         reasonTooLong: 'Der Grund darf höchstens {max} Zeichen lang sein.',
         reasonInvalid: 'Der Grund enthält unzulässige Steuer- oder Formatzeichen.',
+        reasonRefused:
+          'Der Grund muss ohne Leerraum am Anfang und Ende 1 bis {max} Zeichen lang sein und darf außer Zeilenumbrüchen und Tabulatoren keine Steuer- oder Formatzeichen enthalten.',
       },
       errors: {
         notADraft: 'Nur ein Entwurf kann eingereicht werden.',

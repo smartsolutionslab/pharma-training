@@ -444,6 +444,18 @@ export const en: MessageSchema = {
         Published: 'No published versions.',
       },
     },
+    returns: {
+      title: 'Returns',
+      columns: {
+        returnedAt: 'Returned on',
+        returnedBy: 'Returned by',
+        reason: 'Reason',
+      },
+      empty: 'This version has never been returned to draft.',
+      loadFailed: 'The returns of this version could not be loaded.',
+      byYou: 'You',
+      byAnotherEditor: 'Another person in the editorial team',
+    },
     course: {
       new: 'New course',
       form: {
@@ -710,6 +722,8 @@ export const en: MessageSchema = {
         reasonRequired: 'Please give a reason.',
         reasonTooLong: 'The reason can be at most {max} characters long.',
         reasonInvalid: 'The reason contains control or format characters that are not allowed.',
+        reasonRefused:
+          'The reason must be 1 to {max} characters long without leading or trailing spaces, and may contain no control or format characters other than line breaks and tabs.',
       },
       errors: {
         notADraft: 'Only a draft can be submitted.',
