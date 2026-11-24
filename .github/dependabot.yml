@@ -31,6 +31,11 @@ updates:
       - dependency-name: Microsoft.CodeAnalysis.CSharp
         update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
 
+      # PDFsharp stays at 6.2.4, its last MIT release: 6.5.0+ is AGPL-3.0-only (nuget.org); any bump needs a licence
+      # check (#50, docs/adr/0027).
+      - dependency-name: PDFsharp
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
