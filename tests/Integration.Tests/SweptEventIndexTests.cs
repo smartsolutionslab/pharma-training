@@ -31,6 +31,23 @@ public sealed class SweptEventIndexTests(AspireFixture aspire) : IAsyncDisposabl
         (await IsValidAsync(administrator, module, storedType)).ShouldBe(true, $"{module}.{SweptEventIndex.NameOf(storedType)} is invalid after a second run.");
     }
 
+    /// <summary>
+    /// The line before a build is there to say why a run waits (#351); a run that finds the index valid builds nothing, so
+    /// it says nothing of a build either.
+    /// </summary>
+    [Fact]
+    public async Task A_run_logs_the_index_build_only_when_it_builds_the_index()
+    {
+        var administrator = await DatabaseAsync();
+        var line = $"Building the index {SweptEventIndex.NameOf("content_completed")}";
+
+        var building = await RunTheMigrationRunnerAsync("learning", administrator);
+        var valid = await RunTheMigrationRunnerAsync("learning", administrator);
+
+        building.ShouldContain(line, Case.Sensitive, $"The first run built the index without logging it:\n{building}");
+        valid.ShouldNotContain(line, Case.Sensitive, $"The second run found the index valid and still logged a build:\n{valid}");
+    }
+
     [Fact]
     public async Task An_invalid_swept_event_index_a_failed_build_left_behind_is_built_again()
     {
@@ -40,8 +57,9 @@ public sealed class SweptEventIndexTests(AspireFixture aspire) : IAsyncDisposabl
         await ExecuteAsync(administrator, $"update pg_catalog.pg_index set indisvalid = false where indexrelid = 'learning.{SweptEventIndex.NameOf("content_completed")}'::regclass");
         (await IsValidAsync(administrator, "learning", "content_completed")).ShouldBe(false, "The index is still valid; the test proves nothing.");
 
-        await RunTheMigrationRunnerAsync("learning", administrator);
+        var rebuilt = await RunTheMigrationRunnerAsync("learning", administrator);
 
+        rebuilt.ShouldContain($"Building the index {SweptEventIndex.NameOf("content_completed")}", Case.Sensitive, $"The run rebuilt the index without logging it:\n{rebuilt}");
         (await IsValidAsync(administrator, "learning", "content_completed")).ShouldBe(
             true,
             "The second run kept the invalid index a failed concurrent build left behind; it must drop it and build it again.");
@@ -161,11 +179,13 @@ public sealed class SweptEventIndexTests(AspireFixture aspire) : IAsyncDisposabl
         }
     }
 
-    private static async Task RunTheMigrationRunnerAsync(string module, string administrator)
+    /// <summary>Runs the MigrationRunner to a successful end and answers everything it printed.</summary>
+    private static async Task<string> RunTheMigrationRunnerAsync(string module, string administrator)
     {
         // No module role: the runner ensures one only when given its connection string.
         var (exitCode, output) = await MigrationRunnerProcess.RunAsync(module, administrator, string.Empty, TestContext.Current.CancellationToken);
         exitCode.ShouldBe(0, $"The MigrationRunner failed for {module}:\n{output}");
+        return output;
     }
 
     private static async Task<List<string>> IndexesAsync(string connectionString, string schema)

@@ -84,6 +84,15 @@ public static partial class EventStoreRegistration
 
         foreach (var index in module.SweptEventIndexes)
         {
+            // Nothing to drop or build, so nothing to wait for or to say: the line is there for a run that may wait.
+            await using (var isValid = new NpgsqlCommand(index.IsValidQuery, connection))
+            {
+                if (await isValid.ExecuteScalarAsync() is true)
+                {
+                    continue;
+                }
+            }
+
             LogBuilding(logger, index.Name, index.Schema, SweptEventIndex.LockTimeout);
             await using (var isInvalid = new NpgsqlCommand(index.IsInvalidQuery, connection))
             {
@@ -102,6 +111,6 @@ public static partial class EventStoreRegistration
 
     [LoggerMessage(
         Level = LogLevel.Information,
-        Message = "Building the index {Index} on {Schema}.mt_events concurrently, if it is missing: it waits for the transactions writing to the table and for every older snapshot, a session idle in a transaction included, at most {LockTimeout} each, and the run fails on a lock timeout.")]
+        Message = "Building the index {Index} on {Schema}.mt_events concurrently: it waits for the transactions writing to the table and for every older snapshot, a session idle in a transaction included, at most {LockTimeout} each, and the run fails on a lock timeout.")]
     private static partial void LogBuilding(ILogger logger, string index, string schema, TimeSpan lockTimeout);
 }

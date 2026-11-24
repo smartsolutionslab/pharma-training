@@ -31,6 +31,13 @@ public sealed class SweptEventIndex
         Schema = schema;
         Name = NameOf(storedType);
         CreateStatement = $"create index concurrently if not exists {Name} on {schema}.mt_events (timestamp) where type = '{storedType}'";
+        IsValidQuery = $"""
+            select exists (select 1
+                             from pg_catalog.pg_index i
+                             join pg_catalog.pg_class c on c.oid = i.indexrelid
+                             join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+                            where n.nspname = '{schema}' and c.relname = '{Name}' and i.indisvalid)
+            """;
         IsInvalidQuery = $"""
             select exists (select 1
                              from pg_catalog.pg_index i
@@ -51,6 +58,9 @@ public sealed class SweptEventIndex
     /// runs outside a transaction, and waits for the transactions that write to <c>mt_events</c> without stopping them.
     /// </summary>
     public string CreateStatement { get; }
+
+    /// <summary>Answers whether an index of this name exists and is valid: a run then neither drops nor builds it.</summary>
+    public string IsValidQuery { get; }
 
     /// <summary>Answers whether an index of this name exists and is invalid, as a concurrent build that failed leaves it.</summary>
     public string IsInvalidQuery { get; }

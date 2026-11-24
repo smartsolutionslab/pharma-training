@@ -71,7 +71,7 @@ public sealed partial class MigrationGate : IAsyncDisposable
                 // Once, not per try (#351): an init container's log then says why it has not finished.
                 if (!waiting)
                 {
-                    Waiting(logger);
+                    Waiting(logger, RetryDelay);
                     waiting = true;
                 }
 
@@ -107,8 +107,8 @@ public sealed partial class MigrationGate : IAsyncDisposable
         }
     }
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Waiting for another run at the migration gate: another replica's MigrationRunner is changing this database; trying again every second until it is done.")]
-    private static partial void Waiting(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Waiting for another run at the migration gate: another replica's MigrationRunner is changing this database; trying again every {RetryDelay} until it is done.")]
+    private static partial void Waiting(ILogger logger, TimeSpan retryDelay);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Leaving the migration gate could not unlock it; closing the session releases the lock.")]
     private static partial void UnlockFailed(ILogger logger, Exception failure);
