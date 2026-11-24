@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { createMemoryHistory } from 'vue-router';
 import { createPinia } from 'pinia';
-import type { CertificateDto, MyPharmacyDto } from '@/api/generated';
+import type { HeldCertificateDto, MyPharmacyDto } from '@/api/generated';
 import { signedInAsDeveloper } from '@/auth/signedInAsDeveloper';
 import { setLanguage, t } from '@/i18n';
 import { createAppRouter } from '@/router';
@@ -18,7 +18,7 @@ vi.mock('@/lib/notify', () => ({ notify }));
 const host = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>();
 vi.stubGlobal('fetch', host);
 
-const hygiene: CertificateDto = {
+const hygiene: HeldCertificateDto = {
   certificateId: '0198c1a0-0000-7000-8000-0000000000e1',
   courseTitle: 'Hygiene in der Apotheke',
   issuedOn: '2026-01-15',
@@ -26,7 +26,7 @@ const hygiene: CertificateDto = {
   validity: 'Valid',
   documentReady: true,
 };
-const privacy: CertificateDto = {
+const privacy: HeldCertificateDto = {
   certificateId: '0198c1a0-0000-7000-8000-0000000000e2',
   courseTitle: 'Datenschutz',
   issuedOn: '2024-03-02',
