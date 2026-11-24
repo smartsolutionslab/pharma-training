@@ -293,6 +293,24 @@ public class CertificateValueObjectTests
         date.Plus(RecurrenceInterval.From(months)).ShouldBe(CalendarDate.From(DateOnly.Parse(expected, CultureInfo.InvariantCulture)));
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void A_course_version_number_below_one_is_refused(int number)
+    {
+        Should.Throw<GuardException>(() => CourseVersionNumber.From(number));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(37)]
+    public void A_course_version_number_from_one_comes_back_from_its_value(int number)
+    {
+        CourseVersionNumber.From(number).Value.ShouldBe(number);
+        CourseVersionNumber.From(number).ShouldBe(CourseVersionNumber.From(number));
+        CourseVersionNumber.Minimum.ShouldBe(1);
+    }
+
     private static string? Repeated(string? value, int repeat) =>
         value is null ? null : string.Concat(Enumerable.Repeat(value, repeat));
 }
