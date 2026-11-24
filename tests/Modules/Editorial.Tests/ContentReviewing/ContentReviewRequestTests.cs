@@ -324,6 +324,27 @@ public class ContentReviewRequestTests
         }
     }
 
+    [Fact]
+    public void A_pdf_left_out_for_a_blank_cut_spends_nothing_and_the_pdfs_after_it_share_its_characters()
+    {
+        // Two PDFs of one length each, so "A" is shared out first: its text is blank for longer than its half of the
+        // limit, so its cut is blank and it is left out. It costs nothing, so "B" has the whole limit and is sent whole,
+        // not cut to the half that "A" did not use (#358's review).
+        var version = Draft();
+        var blank = ChapterId.New();
+        var whole = ChapterId.New();
+        version.AddChapter(TestDraftVersions.PdfWithText(blank, "A", new string(' ', PdfText.MaxLength - 1) + "a")).IsSuccess.ShouldBeTrue();
+        version.AddChapter(TestDraftVersions.PdfWithText(whole, "B", new string('b', PdfText.MaxLength))).IsSuccess.ShouldBeTrue();
+
+        var result = ContentReviewRequest.For(version);
+
+        result.IsSuccess.ShouldBeTrue(result.IsFailure ? result.Error.Code : string.Empty);
+        result.Value.Chapters.ShouldHaveSingleItem().Id.ShouldBe(whole);
+        result.Value.Chapters[0].Text.Length.ShouldBe(PdfText.MaxLength, "the blank PDF's share is left to the PDF after it");
+        result.Value.LeftOutChapters.ShouldBe([blank]);
+        result.Value.TruncatedChapters.ShouldBeEmpty();
+    }
+
     private static long Characters(ContentReviewRequest request) =>
         request.Chapters.Sum(chapter => (long)chapter.Title.Value.Length + chapter.Text.Length);
 }

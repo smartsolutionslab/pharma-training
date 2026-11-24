@@ -88,6 +88,9 @@ export const en: MessageSchema = {
       entries: {
         verify: { title: 'Verify a certificate' },
       },
+      pages: {
+        export: { title: 'Export records' },
+      },
     },
     compliance: {
       title: 'Team matrix',
@@ -133,6 +136,21 @@ export const en: MessageSchema = {
       loadFailed: 'The certificate could not be verified.',
     },
     retry: 'Try again',
+    export: {
+      intro:
+        "Download the certificates of {pharmacy}'s members as a ZIP: the PDFs and a CSV overview. It holds only certificates issued while the person was a member of this pharmacy; a PDF still being made is listed in the overview only.",
+      from: 'Issued from',
+      to: 'Issued until',
+      period: {
+        invalid: 'Enter a valid date.',
+        order: 'The end cannot be before the start.',
+        tooLong: 'An export covers at most five years.',
+      },
+      submit: 'Download ZIP',
+      preparing: 'Preparing…',
+      done: 'The export has been downloaded.',
+      failed: 'The export could not be created. Try again.',
+    },
     mine: {
       columns: {
         course: 'Course',
@@ -719,7 +737,8 @@ export const en: MessageSchema = {
         approvedSome: 'One of {held} questions is approved. | {count} of {held} questions are approved.',
         submitted: 'The version has been submitted for review.',
         notSubmitted: 'The version still has to be submitted for review.',
-        fourEyes: 'You submitted this version. Four-eyes approval requires someone else to publish it.',
+        fourEyes:
+          'You submitted this version or last changed its test blueprint. Four-eyes approval requires someone else to publish it.',
         publisherApproved:
           'You approved questions of this version. Four-eyes approval requires someone else to publish it.',
       },
@@ -1047,7 +1066,8 @@ export const en: MessageSchema = {
       'concurrent-save': 'Another change to the version was saved at the same moment; nothing was saved. Try again.',
       'course-version-not-found': 'This version no longer exists.',
       'file-in-use': 'This file already belongs to another chapter of the version.',
-      'four-eyes': 'Four-eyes approval does not let whoever submitted the version publish it. Ask another editor.',
+      'four-eyes':
+        'Four-eyes approval does not let whoever submitted the version or last changed its test blueprint publish it. Ask another editor.',
       'identity-incomplete': 'Your sign-in names no person. Please sign in again.',
       'invalid-answer-options': 'A question has at most {max} answer options, and none of them may be missing.',
       'invalid-answer-text': 'An answer option has 1 to {max} characters and must not be blank.',

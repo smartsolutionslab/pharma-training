@@ -152,7 +152,8 @@ public static class TestDraftExamples
 
         public CourseVersion Build()
         {
-            var version = CourseVersion.DraftFirst(CourseVersionId.New(), CourseId.New(), CourseTitle.From(Title), PersonId.From(Guid.CreateVersion7()));
+            var editor = PersonId.From(Guid.CreateVersion7());
+            var version = CourseVersion.DraftFirst(CourseVersionId.New(), CourseId.New(), CourseTitle.From(Title), editor);
             List<ChapterId> drafted = [];
             foreach (var chapter in Chapters)
             {
@@ -164,7 +165,7 @@ public static class TestDraftExamples
                 }
             }
 
-            Succeed(version.SetBlueprint(new TestBlueprint(QuestionCount.From(Blueprint), ScorePercent.From(80), RecurrenceInterval.Yearly)));
+            Succeed(version.SetBlueprint(new TestBlueprint(QuestionCount.From(Blueprint), ScorePercent.From(80), RecurrenceInterval.Yearly), editor));
             for (var index = 0; index < Approved; index++)
             {
                 var question = new DraftedQuestion(

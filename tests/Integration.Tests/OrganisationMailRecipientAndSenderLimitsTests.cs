@@ -216,6 +216,53 @@ public class OrganisationMailRecipientAndSenderLimitsTests(AspireFixture aspire)
         }
     }
 
+    /// <summary>
+    /// A sender's very first two mails at once (#369): both find no sender row, since the gate holds the senders' table
+    /// until both wait on it, and both are let go together. The row is created once and both are counted on it, one
+    /// after the other; neither loses on the row's key. The two invitations are for two pharmacies and two addresses,
+    /// so they share nothing but their sender. <c>owner</c>'s row is deleted first, which only this collection may do.
+    /// </summary>
+    [Fact]
+    public async Task A_senders_first_two_invitations_at_once_are_both_created_and_both_counted_on_one_new_row()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var owner = await aspire.CreateHostClientAsync("owner");
+        var person = await database.SubjectOfAsync("owner");
+        var first = await RegisterAsync(owner, cancellationToken);
+        var second = await RegisterAsync(owner, cancellationToken);
+        await database.ForgetSenderAsync(person, cancellationToken);
+
+        HttpResponseMessage[] responses;
+        await using (var gate = await database.LockInvitationSendersAsync(cancellationToken))
+        {
+            var one = owner.PostAsJsonAsync(InvitationsUri(first), Invitation(Invitee()), cancellationToken);
+            var other = owner.PostAsJsonAsync(InvitationsUri(second), Invitation(Invitee()), cancellationToken);
+            await database.WaitUntilBlockedAsync(gate, 2, cancellationToken);
+            await gate.CommitAsync(cancellationToken);
+            responses = await Task.WhenAll(one, other);
+        }
+
+        try
+        {
+            List<string> answers = [];
+            foreach (var response in responses)
+            {
+                answers.Add($"{(int)response.StatusCode} {await response.Content.ReadAsStringAsync(cancellationToken)}");
+            }
+
+            var described = string.Join(" | ", answers);
+            responses.Select(response => response.StatusCode).ShouldBe([HttpStatusCode.Created, HttpStatusCode.Created], described);
+            (await database.SenderMailsThatDayAsync(person, cancellationToken)).ShouldBe(2, $"both first mails must count on the one new row; {described}");
+        }
+        finally
+        {
+            foreach (var response in responses)
+            {
+                response.Dispose();
+            }
+        }
+    }
+
     private static object Invitation(string address) => new { email = address, jobFunction = "Pta", role = "Employee" };
 
     private static string Invitee() => $"invitee-{Guid.CreateVersion7()}@example.com";

@@ -10,14 +10,17 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Content
 /// whole, title and Markdown; too many of them are refused. The PDFs share what they leave of
 /// <see cref="MaxCharacters"/>, each its title and text: a PDF shorter than its even share is sent whole, the longer ones
 /// are cut to an even share of the rest and named as cut, and a PDF whose share does not hold its title and some text
-/// that is not blank is left out and named, so PDFs never cost the version its review.
+/// that is not blank is left out and named, costing the PDFs after it nothing, so PDFs never cost the version its review.
 /// </summary>
 public sealed record ContentReviewRequest(
     IReadOnlyList<ContentReviewChapter> Chapters,
     IReadOnlyList<ChapterId> LeftOutChapters,
     IReadOnlyList<ChapterId> TruncatedChapters)
 {
-    /// <summary>The most characters of chapter titles and texts one request sends, about 100k tokens.</summary>
+    /// <summary>
+    /// The most characters of chapter titles and texts one request sends, about 100k tokens, counted before JSON escaping,
+    /// which can lengthen them, so the message itself can be longer.
+    /// </summary>
     public const int MaxCharacters = 400_000;
 
     public static Result<ContentReviewRequest, ApiError> For(CourseVersion version)
@@ -66,7 +69,7 @@ public sealed record ContentReviewRequest(
             if (source == ContentReviewSource.Pdf)
             {
                 sent = Cut(text, allowances[id]);
-                if (string.IsNullOrWhiteSpace(sent))
+                if (sent.Length == 0)
                 {
                     leftOut.Add(id);
                     truncated.Remove(id);
@@ -93,7 +96,8 @@ public sealed record ContentReviewRequest(
     /// <summary>
     /// How many characters of its text each PDF chapter may send out of <paramref name="budget"/>, which pays for its title
     /// too: shortest title and text first, a PDF within an even share of what is left keeps its whole text, and the rest
-    /// split what remains evenly. A PDF whose share does not hold its title gets nothing and costs nothing.
+    /// split what remains evenly. A PDF whose share does not hold its title, or whose cut to its share would be blank, gets
+    /// nothing and costs nothing, so the PDFs after it share its characters.
     /// </summary>
     private static Dictionary<ChapterId, int> PdfAllowances(
         IReadOnlyList<(ChapterId Id, ChapterTitle Title, ContentReviewSource Source, string Text)> texts,
@@ -116,6 +120,12 @@ public sealed record ContentReviewRequest(
             }
 
             var allowance = (int)Math.Min(pdfs[index].Text.Length, share - title);
+            if (string.IsNullOrWhiteSpace(Cut(pdfs[index].Text, allowance)))
+            {
+                allowances[pdfs[index].Id] = 0;
+                continue;
+            }
+
             allowances[pdfs[index].Id] = allowance;
             left -= title + allowance;
         }

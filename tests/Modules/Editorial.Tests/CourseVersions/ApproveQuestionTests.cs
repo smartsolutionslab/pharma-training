@@ -72,7 +72,7 @@ public class ApproveQuestionTests
     public async Task A_question_of_a_version_in_review_can_be_approved()
     {
         var version = DraftWithQuestion(out _, out _);
-        version.SetBlueprint(new TestBlueprint(QuestionCount.From(1), ScorePercent.From(80), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(new TestBlueprint(QuestionCount.From(1), ScorePercent.From(80), RecurrenceInterval.Yearly), Author).IsSuccess.ShouldBeTrue();
         version.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
         var question = version.Questions.ShouldHaveSingleItem();
         store.Stored.Add(version);

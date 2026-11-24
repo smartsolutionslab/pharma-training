@@ -5,6 +5,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Command
 
 /// <summary>
 /// Gives a draft the test blueprint it is to be tested by: how many questions, the passing score and how long a
-/// certificate is valid. A changed blueprint sends every question back to review.
+/// certificate is valid. A changed blueprint sends every question back to review, and under four eyes the editor
+/// who changed it does not publish the version.
 /// </summary>
-public sealed record SetTestBlueprint(CourseVersionId Version, TestBlueprint Blueprint) : ICommand<Result<Unit, ApiError>>;
+public sealed record SetTestBlueprint(CourseVersionId Version, TestBlueprint Blueprint, PersonId Editor) : ICommand<Result<Unit, ApiError>>;

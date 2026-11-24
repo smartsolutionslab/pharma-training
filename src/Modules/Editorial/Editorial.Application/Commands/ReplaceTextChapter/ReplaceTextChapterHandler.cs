@@ -16,7 +16,7 @@ public sealed class ReplaceTextChapterHandler(ICourseVersionStore versions, IEdi
             return Failure(CourseVersionFailures.NotFound(command.Version.Value));
         }
 
-        var changed = found.Value.ReplaceChapter(Chapter.OfText(command.Chapter, command.Title, command.Text));
+        var changed = found.Value.ReplaceChapter(Chapter.OfText(command.Chapter, command.Title, command.Text), command.Editor);
         if (changed.IsFailure)
         {
             return Failure(CourseVersionFailures.From(changed.Error));

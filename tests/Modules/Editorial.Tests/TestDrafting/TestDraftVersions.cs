@@ -15,7 +15,7 @@ internal static class TestDraftVersions
             version.AddChapter(TextChapter(ChapterId.New(), title, $"Inhalt von {title}: was in der Apotheke dazu gilt.")).IsSuccess.ShouldBeTrue();
         }
 
-        version.SetBlueprint(new TestBlueprint(QuestionCount.From(questions), ScorePercent.From(80), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(new TestBlueprint(QuestionCount.From(questions), ScorePercent.From(80), RecurrenceInterval.Yearly), Author).IsSuccess.ShouldBeTrue();
         return version;
     }
 
@@ -41,7 +41,7 @@ internal static class TestDraftVersions
         version.AddChapter(PdfChapter(firstPdf, "Merkblatt Hautschutz")).IsSuccess.ShouldBeTrue();
         version.AddChapter(TextChapter(ChapterId.New(), "Flächen", "Rezepturtisch und Waage täglich desinfizieren.")).IsSuccess.ShouldBeTrue();
         version.AddChapter(PdfChapter(secondPdf, "Merkblatt Flächendesinfektion")).IsSuccess.ShouldBeTrue();
-        version.SetBlueprint(new TestBlueprint(QuestionCount.From(questions), ScorePercent.From(80), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(new TestBlueprint(QuestionCount.From(questions), ScorePercent.From(80), RecurrenceInterval.Yearly), Author).IsSuccess.ShouldBeTrue();
         leftOutInOrder = [video, firstPdf, secondPdf];
         return version;
     }
@@ -104,7 +104,7 @@ internal static class TestDraftVersions
             added.Add(id);
         }
 
-        version.SetBlueprint(new TestBlueprint(QuestionCount.From(questions), ScorePercent.From(80), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(new TestBlueprint(QuestionCount.From(questions), ScorePercent.From(80), RecurrenceInterval.Yearly), Author).IsSuccess.ShouldBeTrue();
         ids = added;
         return version;
     }

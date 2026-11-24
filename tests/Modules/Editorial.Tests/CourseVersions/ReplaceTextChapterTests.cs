@@ -1,7 +1,9 @@
 using System.Net;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.ReplaceTextChapter;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions.Events;
 using static SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersions.CourseVersionBuilder;
+using static SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersions.QuestionDrafts;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersions;
 
@@ -66,8 +68,26 @@ public class ReplaceTextChapterTests
         store.Commits.ShouldBe(0);
     }
 
+    /// <summary>The reset names the editor the command carries, who need not be the one who approved (#246).</summary>
+    [Fact]
+    public async Task The_reset_names_the_commands_editor()
+    {
+        var store = new InMemoryCourseVersionStore();
+        var version = DraftWithApprovedQuestion(out var chapter, out _);
+        store.Stored.Add(version);
+
+        var replaced = await Handler(store).HandleAsync(
+            new ReplaceTextChapter(version.Id, chapter, ChapterTitle.From("Händehygiene, überarbeitet"), MarkdownText.From("Neu: **vor** und nach …"), Reviewer),
+            TestContext.Current.CancellationToken);
+
+        replaced.IsSuccess.ShouldBeTrue();
+        version.DomainEvents.OfType<QuestionApprovalsReset>().ShouldHaveSingleItem()
+            .ShouldBe(new QuestionApprovalsReset(version.Id, Reviewer, ApprovalResetReason.ChapterReplaced));
+        store.Commits.ShouldBe(1);
+    }
+
     private static ReplaceTextChapterHandler Handler(InMemoryCourseVersionStore store) => new(store, store);
 
     private static ReplaceTextChapter Command(CourseVersionId version, ChapterId chapter) =>
-        new(version, chapter, ChapterTitle.From("Händehygiene, überarbeitet"), MarkdownText.From("Neu: **vor** und nach …"));
+        new(version, chapter, ChapterTitle.From("Händehygiene, überarbeitet"), MarkdownText.From("Neu: **vor** und nach …"), Author);
 }
