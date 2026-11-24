@@ -192,6 +192,7 @@ public class RenewInvitationTests
         warning.Message.ShouldContain(pharmacy.Id.Value.ToString());
         warning.Message.ShouldContain("2027-04-04");
         warning.Message.ShouldContain("2027-04-01");
+        warning.Message.ShouldContain("the database's clock moved back");
     }
 
     // #294: a request time a cooldown or more ahead is not trusted, and that is logged like a mail day beyond tomorrow.
