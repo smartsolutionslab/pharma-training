@@ -4,9 +4,9 @@ import { codeMessage, errorMessage, errorText, messageText, resetWarnedCodes } f
 import { i18n, type Language, setLanguage, t } from './index';
 
 // A refusal is shown by its code (#147, ADR 0007), in this order: the page's own text for the code (an override), the
-// catalog's errors.<code>, the host's own words, in whatever language the host wrote them, only for a module's code the
-// catalog does not know (a newer host than this SPA; warned once per code in development), and else the action's own
-// failed text.
+// catalog's errors.<code>, the host's English fallback message only for a module's code the catalog does not know (a
+// newer host than this SPA; warned once per code in development, and English in either language), and else the
+// action's own failed text.
 
 /** Problem details as the host sends them: its words in the detail, which only an unknown code may show. */
 // A blank detail falls back to the title (baseApi.test.ts pins it; the host writes title: error.Message), so a refusal

@@ -1,8 +1,8 @@
 import ts from 'typescript';
 import { describe, expect, test } from 'vitest';
 
-// ApiError.serverMessage is the host's own words, in whatever language the host wrote them, shown only for a module
-// code the catalog does not know (#147, ADR 0007): only the helper, src/i18n/errorText.ts, reads it, so a refusal is
+// ApiError.serverMessage is the host's English fallback message, shown only for a module code the catalog does not
+// know (#147, ADR 0007): only the helper, src/i18n/errorText.ts, reads it, so a refusal is
 // shown by its code everywhere else. baseApi.ts sets it.
 const sources = import.meta.glob<string>('../**/*.{ts,vue}', { query: '?raw', import: 'default', eager: true });
 
