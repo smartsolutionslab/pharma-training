@@ -1,19 +1,25 @@
 import { CalendarX, Circle, CircleAlert, CircleCheck, CircleDot, Lock } from '@lucide/vue';
 import type { Component } from 'vue';
-import type { CellStatus } from './cellStatus';
+import type { ComplianceAssignmentState } from '@/api/generated';
 
-/** How a status looks in the team matrix: an icon and the colour of its word, which only repeat what the word says. */
+/**
+ * The status an assignment shows: its state, or Expired, a completion past its last valid day, which the host does not
+ * name.
+ */
+export type AssignmentStatus = ComplianceAssignmentState | 'Expired';
+
+/** How an assignment's status looks: an icon and the colour of its word, which only repeat what the word says. */
 export interface StatusLook {
   icon: Component;
   /** The word's and the icon's classes, theme tokens only. */
   tone: string;
-  /** The date a cell shows under the word: when it is due, or until when its completion holds. */
+  /** The date shown under the word: when it is due, or until when its completion holds. */
   line: 'due' | 'validUntil';
-  /** A status that needs action: its cell is highlighted by a border, not only by colour. */
+  /** A status that needs action: where it is shown is highlighted by a border, not only by colour. */
   needsAction: boolean;
 }
 
-export const statusLooks: Record<CellStatus, StatusLook> = {
+export const statusLooks: Record<AssignmentStatus, StatusLook> = {
   Open: { icon: Circle, tone: 'text-muted-foreground', line: 'due', needsAction: false },
   InProgress: { icon: CircleDot, tone: 'text-foreground', line: 'due', needsAction: false },
   // Locked waits like Open and counts as compliant: the neutral tone of the pending states, told apart by icon and word.
@@ -25,7 +31,7 @@ export const statusLooks: Record<CellStatus, StatusLook> = {
 };
 
 /** The statuses in the legend's order: pending, needing action, done, run out. */
-export const statusOrder: CellStatus[] = [
+export const statusOrder: AssignmentStatus[] = [
   'Open',
   'InProgress',
   'Locked',
