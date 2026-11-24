@@ -2,6 +2,7 @@ import type { QueryClient } from '@tanstack/vue-query';
 import { computed, type MaybeRefOrGetter, toValue } from 'vue';
 import {
   getGetEditorialCourseVersionsIdQueryKey,
+  getGetEditorialCourseVersionsIdReturnsQueryKey,
   getGetEditorialCourseVersionsQueryKey,
   usePostEditorialCourseVersionsIdPublish,
   usePostEditorialCourseVersionsIdRetire,
@@ -21,7 +22,8 @@ const stepTaken = (_data: unknown, _variables: unknown, _result: unknown, { clie
 /**
  * A refusal may mean the version changed meanwhile: a conflict (409), a request the version no longer allows (422), or
  * a module's refusal the page knows of a version that is still there (four eyes, an incomplete identity). Then the
- * version alone (not its returns) is read again, and the step answers once it has been, so the page shows why. Any
+ * version and its returns are read again (another tab may have returned it meanwhile, #376), and the step answers once
+ * they have been, so the page shows why. Any
  * other failure (an edge's 5xx, a policy's 403, a 404, the network) changed nothing and the host may be out of reach:
  * the version is marked stale, but the step answers at once, not after the read's retries.
  */
@@ -33,8 +35,12 @@ function mayHaveChanged(error: unknown): boolean {
 }
 
 const stepRefused = (error: unknown, { id }: { id: string }, _result: unknown, { client }: { client: QueryClient }) => {
-  const read = client.invalidateQueries({ queryKey: getGetEditorialCourseVersionsIdQueryKey(id), exact: true });
-  return mayHaveChanged(error) ? read : undefined;
+  const version = client.invalidateQueries({ queryKey: getGetEditorialCourseVersionsIdQueryKey(id), exact: true });
+  if (!mayHaveChanged(error)) {
+    return undefined;
+  }
+  const returns = client.invalidateQueries({ queryKey: getGetEditorialCourseVersionsIdReturnsQueryKey(id) });
+  return Promise.all([version, returns]);
 };
 
 const mutation = { mutation: { onSuccess: stepTaken, onError: stepRefused } };
