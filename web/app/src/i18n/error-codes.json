@@ -307,7 +307,7 @@
   {
     "code": "editorial.next-version-exists",
     "status": 409,
-    "message": "Version 7 of this course already exists (01a20b05-1146-74bd-97f3-74b93a91a91b); continue that one instead of drafting another from 01a20b05-1146-75bd-89d5-704859659b28."
+    "message": "The next version of this course already exists; continue that one instead of drafting another."
   },
   {
     "code": "editorial.no-chapters",
