@@ -17,6 +17,7 @@
 
 ## Consequences
 
-- **Deployed, every caller shares one partition until the edge trusts the ingress.** In Azure Container Apps the edge's remote address is the ingress, so all public verifiers share one 30-a-minute bucket: stricter than intended, never weaker. Trusting exactly one forwarded hop from the ingress (publish mode only) is a separate decision, left to a follow-up and observed under #129. Locally every caller shares one partition too (Aspire's proxy).
+- **Deployed, every caller shares one partition until the edge trusts the ingress, and that is a denial of service.** In Azure Container Apps the edge's remote address is the ingress, so all public verifiers share one bucket per replica: one client sending 500 requests locks every verifier out for the rest of the day, and one request every two seconds keeps the minute window full. **Trusting exactly one forwarded hop from the ingress (publish mode only) must land before Certification is deployed (#114)**; it is filed for the infra lane and observed under #129. Locally every caller shares one partition too (Aspire's proxy), which is harmless.
+- **Counters live in memory per replica without eviction (ADR 0020).** While all callers share one partition that costs nothing; once real addresses arrive, a client rotating through IPv6 /64s adds about 150–200 bytes per prefix. **Evicting counters whose windows have all ended must land together with the ingress trust**, before deployment.
 - Counters live in memory per replica without eviction (ADR 0020); memory grows by about 100 bytes per distinct address. Revisit with eviction of expired windows if the public page sees heavy traffic.
 - The limit bounds load and abuse; guessing is defeated by the 192-bit verification code (#49), not by the limit.
