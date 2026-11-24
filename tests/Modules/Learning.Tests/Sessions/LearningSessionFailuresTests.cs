@@ -49,6 +49,7 @@ public class LearningSessionFailuresTests
 
         mapped.Code.ShouldBe("learning.session-changed");
         mapped.Status.ShouldBe(HttpStatusCode.Conflict);
-        mapped.Message.ShouldContain(Session.Value.ToString());
+        mapped.Message.ShouldBe("The learning session changed in the meantime; report again.");
+        mapped.Message.ShouldNotContain(Session.Value.ToString());
     }
 }

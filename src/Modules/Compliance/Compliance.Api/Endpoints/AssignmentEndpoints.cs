@@ -62,7 +62,7 @@ public sealed class AssignmentEndpoints : IEndpoint
         // are bound; the handler's own cap counts distinct people.
         if (request.PersonIds is { Count: > MaximumPersonIds })
         {
-            return Refused(AssignmentFailures.TooManyLearners(AssignCourse.MaximumLearners));
+            return Refused(AssignmentFailures.TooManyLearners());
         }
 
         // The empty Guid is no pharmacy and no course Compliance holds; each is not found like any other.

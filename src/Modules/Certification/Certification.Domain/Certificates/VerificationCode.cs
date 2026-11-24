@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Certificates;
 
 /// <summary>
@@ -17,5 +19,12 @@ public sealed record VerificationCode : IValueObject<string>
     {
         Ensure.That(value).IsNotNullOrWhiteSpace().HasMinLength(MinLength).HasMaxLength(MaxLength);
         return new VerificationCode(value);
+    }
+
+    /// <summary>Reads a caller's code by the rules of <see cref="From"/>; a missing, blank, short or long one is refused, never thrown.</summary>
+    public static bool TryFrom(string? value, [NotNullWhen(true)] out VerificationCode? code)
+    {
+        code = string.IsNullOrWhiteSpace(value) || value.Length < MinLength || value.Length > MaxLength ? null : new VerificationCode(value);
+        return code is not null;
     }
 }
