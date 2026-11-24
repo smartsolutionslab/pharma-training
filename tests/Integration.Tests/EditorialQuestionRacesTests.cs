@@ -306,8 +306,8 @@ public class EditorialQuestionRacesTests(AspireFixture aspire)
             await EditorialDatabase.WaitUntilBlockedAsync(connectionString, gate, 1, cancellationToken);
             await using (var landing = new NpgsqlCommand(
                 """
-                INSERT INTO editorial.course_version_questions (id, chapter_id, course_version_id, position, provenance, review, reviewed_at, reviewed_by, text, type)
-                SELECT @landed, chapter_id, course_version_id, position + 1, provenance, review, reviewed_at, reviewed_by, 'Wie lange wirkt das Mittel ein?', type
+                INSERT INTO editorial.course_version_questions (id, chapter_id, course_version_id, position, provenance, origin, edit_history, approval_history, review, reviewed_at, reviewed_by, text, type)
+                SELECT @landed, chapter_id, course_version_id, position + 1, provenance, 'HandWritten', 'Untouched', CASE WHEN review = 'Approved' THEN 'ApprovedOnce' ELSE 'NeverApproved' END, review, reviewed_at, reviewed_by, 'Wie lange wirkt das Mittel ein?', type
                 FROM editorial.course_version_questions WHERE id = @question;
                 INSERT INTO editorial.course_version_answer_options (id, correctness, position, question_id, text)
                 SELECT gen_random_uuid(), correctness, position, @landed, text
