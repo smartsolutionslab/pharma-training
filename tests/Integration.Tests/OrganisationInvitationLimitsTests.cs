@@ -138,6 +138,28 @@ public class OrganisationInvitationLimitsTests(AspireFixture aspire)
         }
     }
 
+    /// <summary>
+    /// A request time a cooldown or more ahead of the database's now is not trusted (#294): a row edited by hand, or a
+    /// database clock that moved back, cannot block renewing for longer than two cooldowns.
+    /// </summary>
+    [Fact]
+    public async Task Renewing_an_invitation_whose_request_time_lies_a_year_ahead_is_ok_and_mails_again()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var owner = await aspire.CreateHostClientAsync("owner");
+        var pharmacy = await RegisterAsync(owner, cancellationToken);
+        var address = Invitee();
+        var membership = await InviteAsync(owner, pharmacy, address, cancellationToken);
+        (await mailpit.MessagesToAsync(address, 1, cancellationToken)).ShouldHaveSingleItem();
+        await database.SetInvitationRequestedAheadAsync(membership, TimeSpan.FromDays(365), cancellationToken);
+        await database.MoveRecipientMailBackAsync(address, TimeSpan.FromMinutes(10), cancellationToken);
+
+        using var renewed = await owner.PostAsync(RenewUri(pharmacy, membership), content: null, cancellationToken);
+
+        renewed.StatusCode.ShouldBe(HttpStatusCode.OK, await renewed.Content.ReadAsStringAsync(cancellationToken));
+        (await mailpit.MessagesToAsync(address, 2, cancellationToken)).Count.ShouldBe(2, "the renewal sent no second mail");
+    }
+
     private static object Invitation(string address) => new { email = address, jobFunction = "Pta", role = "Employee" };
 
     private static string Invitee() => $"invitee-{Guid.CreateVersion7()}@example.com";

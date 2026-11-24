@@ -154,6 +154,22 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
     }
 
     /// <summary>
+    /// Puts the instant the membership's newest invitation mail was requested the span given ahead of the database's
+    /// now (#294), as a hand-edited row or a database clock that moved back leaves it. The membership row only: the
+    /// recipient cooldown of its address is left as it is.
+    /// </summary>
+    public async Task SetInvitationRequestedAheadAsync(Guid membership, TimeSpan ahead, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            "UPDATE organisation.memberships SET invitation_requested_at = now() + @ahead WHERE id = @id AND invitation_requested_at IS NOT NULL",
+            connection);
+        command.Parameters.AddWithValue("id", membership);
+        command.Parameters.AddWithValue("ahead", ahead);
+        (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1, $"There is no membership {membership} whose invitation mail was requested.");
+    }
+
+    /// <summary>
     /// The id of an address's invitation recipient row (#265): a name-based UUID version 8 (RFC 9562), the first 16
     /// bytes of the SHA-256 of Organisation's namespace and the address as the domain stores it (trimmed, lower-case),
     /// with the version and variant set. A copy of <c>InvitationRecipientId.For</c>, which it must match; the
