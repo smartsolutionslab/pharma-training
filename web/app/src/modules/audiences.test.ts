@@ -104,6 +104,16 @@ test('every detail below a module declares its audience and its title by key', (
     ),
   ).toEqual([
     {
+      address: '/assessment/sessions/:sessionId',
+      titleKey: 'modules.assessment.details.test.title',
+      audience: 'employee',
+    },
+    {
+      address: '/assessment/sessions/:sessionId/result',
+      titleKey: 'modules.assessment.details.result.title',
+      audience: 'employee',
+    },
+    {
       address: '/editorial/versions/:id',
       titleKey: 'modules.editorial.details.version.title',
       audience: 'editor',
@@ -121,9 +131,13 @@ test('every detail below a module declares its audience and its title by key', (
   ]);
   expect(t('modules.editorial.details.version.title')).toBe('Schulungsversion');
   expect(t('modules.learning.details.player.title')).toBe('Schulung');
+  expect(t('modules.assessment.details.test.title')).toBe('Test');
+  expect(t('modules.assessment.details.result.title')).toBe('Ergebnis');
   setLanguage('en-GB', { remember: false });
   expect(t('modules.editorial.details.version.title')).toBe('Course version');
   expect(t('modules.learning.details.player.title')).toBe('Course');
+  expect(t('modules.assessment.details.test.title')).toBe('Test');
+  expect(t('modules.assessment.details.result.title')).toBe('Result');
 });
 
 // An entry page (its routes.ts's entries) is a page a link from outside the app opens, at an address of its own outside
