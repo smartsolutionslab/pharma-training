@@ -683,6 +683,12 @@ const retryable = [
       ),
     state: 'failed',
   },
+  // The unique index refused a membership saved at the same moment: a lost race, like pharmacy-changed.
+  {
+    answer: "the unique index's 409 already-exists",
+    refusal: async () => problem(409, 'already-exists', 'Conflict'),
+    state: 'failed',
+  },
   { answer: 'a 503', refusal: async () => problem(503, undefined, 'Service Unavailable'), state: 'failed' },
   { answer: 'a 500 without a body', refusal: async () => new Response('', { status: 500 }), state: 'failed' },
   {
@@ -756,6 +762,17 @@ test('a 409 pharmacy-changed still shows the failed text', async () => {
 
   expect(await screen.findByText(t('organisation.accept.failed.text'))).toBeInTheDocument();
   expect(screen.queryByText(t('organisation.accept.invitationChanged'))).not.toBeInTheDocument();
+});
+
+// Accepting creates nothing the user could reload to find: the catalog's already-exists text would be wrong here.
+test("a 409 already-exists shows the failed text, not the catalog's already-exists text", async () => {
+  acceptance = async () => problem(409, 'already-exists', 'Conflict');
+  await openAndAccept();
+
+  const main = within(await screen.findByRole('main'));
+  expect(await main.findByText(t('organisation.accept.failed.text'))).toBeInTheDocument();
+  expect(main.queryByText(t('errors.already-exists'))).not.toBeInTheDocument();
+  expect(main.getByRole('button', { name: t('shell.retry') })).toBeInTheDocument();
 });
 
 test('too many attempts says so in German', async () => {

@@ -155,14 +155,6 @@ const answers: [string, WorkflowAction, () => unknown, string, string, string][]
     'Diesen Status gibt es nicht.',
     'This status does not exist.',
   ],
-  [
-    "the unique index's 409 already-exists",
-    'submit',
-    refusal(409, 'already-exists'),
-    'errors.already-exists',
-    'Das wurde gerade schon angelegt. Laden Sie die Seite neu und prüfen Sie den aktuellen Stand.',
-    'This was just created already. Reload the page and check its current state.',
-  ],
   ...(['submit', 'publish', 'return', 'retire'] as const).map(
     (action): [string, WorkflowAction, () => unknown, string, string, string] => [
       `a policy's 403 without a code on ${action}`,
@@ -210,6 +202,8 @@ const fallbacks: [string, () => unknown][] = [
   ['a 401', () => new ApiError(401, '')],
   ['a 413 without a code', () => new ApiError(413, '')],
   ['a 502 with a module code', refusal(502, 'editorial.something-else')],
+  // A step creates nothing: the catalog's already-exists text, that something was created, would be wrong here.
+  ["the unique index's 409 already-exists", refusal(409, 'already-exists')],
   [
     'a 409 with a module code the page does not know but no words',
     () => new ApiError(409, JSON.stringify({ status: 409, code: 'editorial.something-new' })),

@@ -198,6 +198,49 @@ test.each([
   await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
 });
 
+// Retry shows for any failure to load the matrix but the two a second read cannot turn round: the member may not see it,
+// or is no member any more. A refusal keeps its own text beside Retry.
+test.each([
+  ['a framework’s invalid-argument', () => problem(400, 'invalid-argument'), () => t('errors.invalid-argument')],
+  [
+    'another module’s code',
+    () => problem(403, 'organisation.capability-missing'),
+    () => t('errors.organisation.capability-missing'),
+  ],
+  [
+    'a code of the module’s the catalog knows',
+    () => problem(403, 'compliance.identity-incomplete'),
+    () => t('errors.compliance.identity-incomplete'),
+  ],
+  [
+    'a code of the module’s the catalog does not know',
+    () => problem(409, 'compliance.something-new', 'Etwas Neues aus dem Host.'),
+    () => 'Etwas Neues aus dem Host.',
+  ],
+])('%s keeps its text, and Retry reads the matrix again', async (_name, failure, text) => {
+  const user = userEvent.setup();
+  host.matrix = async () => failure();
+  await renderMatrixPage();
+
+  const alert = await alertSaying(text());
+  host.matrix = async () => Response.json(matrixOf());
+  await user.click(within(alert).getByRole('button', { name: t('compliance.matrix.retry') }));
+
+  await waitFor(() => expect(readsOf(fetch, matrixPath())).toHaveLength(2));
+  await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+});
+
+test.each([
+  [403, 'compliance.capability-missing', 'compliance.matrix.notAllowed'],
+  [404, 'compliance.pharmacy-not-found', 'errors.compliance.pharmacy-not-found'],
+])('a %i %s offers no Retry: reading again cannot help', async (status, code, key) => {
+  host.matrix = async () => problem(status, code);
+  await renderMatrixPage();
+
+  const alert = await alertSaying(t(key));
+  expect(within(alert).queryByRole('button', { name: t('compliance.matrix.retry') })).not.toBeInTheDocument();
+});
+
 test('a refusal is shown in English once switched', async () => {
   setLanguage('en-GB', { remember: false });
   host.matrix = async () => problem(403, 'compliance.capability-missing');

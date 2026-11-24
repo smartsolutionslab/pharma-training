@@ -156,7 +156,7 @@ const exported = z
 const codes = exported.map(({ code }) => code);
 
 // The host's own codes (src/BuildingBlocks), which error-codes.json, a list of the modules' codes, does not hold: a
-// catalog may have a text for each, so a page can translate them too, and that text is no stale key.
+// catalog has a text for each, so a page can translate them too, and that text is no stale key.
 const hostCodes = ['already-exists', 'invalid-argument', 'model-not-configured'];
 const known = [...codes, ...hostCodes];
 
@@ -165,6 +165,11 @@ const catalogs = { de, en };
 describe('the catalogs', () => {
   test('have a German and an English text for every exported code', () => {
     expect(missingTranslations(codes, catalogs)).toEqual([]);
+  });
+
+  // Every page may meet them, so a text for each is required, not only allowed.
+  test("have a German and an English text for each of the host's own codes", () => {
+    expect(missingTranslations(hostCodes, catalogs)).toEqual([]);
   });
 
   test('have no text under errors for a code the host does not answer', () => {

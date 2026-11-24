@@ -2,7 +2,7 @@ import { expect, test } from 'vitest';
 import { ApiError } from '@/api/baseApi';
 import { setLanguage } from '@/i18n';
 import { messageText } from '@/i18n/errorText';
-import { matrixFailure } from './matrixErrors';
+import { matrixFailure, matrixRetryable } from './matrixErrors';
 
 // What the team matrix (#36) says when the host refuses it or fails, as an ErrorMessage of src/i18n/errorText.ts
 // (#147): the page's own words for capability-missing, else the catalog's errors.<code>; a module code the catalog does
@@ -58,4 +58,19 @@ test.each([
   ['anything else', () => new Error('Something broke.')],
 ])('%s says the matrix could not be loaded', (_name, failure) => {
   expect(matrixFailure(failure())).toMatchObject({ key: 'compliance.matrix.loadFailed' });
+});
+
+// Reading again helps unless the member may not see the matrix or is no member any more (#147).
+test.each([
+  ['capability-missing', false, () => new ApiError(403, problem(403, 'compliance.capability-missing'))],
+  ['pharmacy-not-found', false, () => new ApiError(404, problem(404, 'compliance.pharmacy-not-found'))],
+  ['identity-incomplete', true, () => new ApiError(403, problem(403, 'compliance.identity-incomplete'))],
+  ['invalid-argument', true, () => new ApiError(400, problem(400, 'invalid-argument'))],
+  ["another module's code", true, () => new ApiError(403, problem(403, 'organisation.capability-missing'))],
+  ['a code the catalog does not know', true, () => new ApiError(409, problem(409, 'compliance.something-new'))],
+  ['a failure of the host', true, () => new ApiError(500, '')],
+  ['a bad request without a code', true, () => new ApiError(400, problem(400))],
+  ['the network', true, () => new TypeError('Failed to fetch')],
+])('%s is worth reading again: %s', (_name, retryable, failure) => {
+  expect(matrixRetryable(failure())).toBe(retryable);
 });

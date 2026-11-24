@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ApiError } from '@/api/baseApi';
-import { codeMessage, errorMessage, errorText, messageText } from './errorText';
+import { codeMessage, errorMessage, errorText, messageText, resetWarnedCodes } from './errorText';
 import { i18n, type Language, setLanguage, t } from './index';
 
 // A refusal is shown by its code (#147, ADR 0007), in this order: the page's own text for the code (an override), the
@@ -120,6 +120,17 @@ describe('a module code the catalog does not know', () => {
     expect([first, second]).toEqual(['server words', 'server words']);
     expect(warn).toHaveBeenCalledOnce();
     expect(warn.mock.calls[0]?.map(String).join(' ')).toContain('editorial.zzz');
+  });
+
+  test('warns again about a code once the warned codes are reset, as a test may need', () => {
+    vi.stubEnv('DEV', true);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    errorText(refusal(409, 'editorial.vvv'), 'editorial.version.newVersionFailed');
+    resetWarnedCodes();
+    errorText(refusal(409, 'editorial.vvv'), 'editorial.version.newVersionFailed');
+
+    expect(warn).toHaveBeenCalledTimes(2);
   });
 
   test('keeps the server words as the message', () => {
