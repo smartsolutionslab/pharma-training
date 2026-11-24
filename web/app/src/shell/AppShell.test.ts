@@ -98,6 +98,7 @@ const home = () => t('shell.home');
 const organisation = () => t('modules.organisation.title');
 const learning = () => t('modules.learning.title');
 const editorial = () => t('modules.editorial.title');
+const certification = () => t('modules.certification.title');
 const reportsTitle = () => t('modules.reports.title');
 const newReport = () => t('modules.reports.pages.new.title');
 const reviewReports = () => t('modules.reports.pages.review.title');
@@ -240,7 +241,7 @@ const audiences = [
     who: 'an editor of no pharmacy',
     roles: ['editor'],
     memberships: [],
-    pages: ['shell.home', 'modules.editorial.title'],
+    pages: ['shell.home', 'modules.certification.title', 'modules.editorial.title'],
     below: forEditors,
   },
   {
@@ -257,7 +258,14 @@ const audiences = [
     ],
     below: forEditors,
   },
-  { who: 'a user of no pharmacy and no role', roles: [], memberships: [], pages: ['shell.home'], below: forEveryone },
+  // Certification's page (#296) is every signed-in user's: a certificate is the person's, whatever their pharmacy.
+  {
+    who: 'a user of no pharmacy and no role',
+    roles: [],
+    memberships: [],
+    pages: ['shell.home', 'modules.certification.title'],
+    below: forEveryone,
+  },
 ];
 
 test.each(audiences)('the sidebar shows $who the pages for them', async ({ roles, memberships, pages }) => {
@@ -292,7 +300,7 @@ test('the start page is there for a user with no pharmacy and no role', async ()
 
   await renderAt('/', { roles: [] });
 
-  expect(sidebarLinks()).toEqual([home()]);
+  expect(sidebarLinks()).toEqual([home(), certification()]);
   expect(screen.getByRole('heading', { name: t('app.name'), level: 1 })).toBeInTheDocument();
 });
 
@@ -357,7 +365,7 @@ test('an editor of no pharmacy reaches the editorial page', async () => {
 
   expect(await screen.findByRole('heading', { name: editorial(), level: 1 })).toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: t('shell.gate.notAvailable') })).not.toBeInTheDocument();
-  expect(sidebarLinks()).toEqual([home(), editorial()]);
+  expect(sidebarLinks()).toEqual([home(), certification(), editorial()]);
 });
 
 test("switching from a pharmacy the user manages to one they work in closes the manager's page", async () => {
@@ -573,7 +581,7 @@ test('a page for every signed-in user is there for a user of no pharmacy and no 
 
   expect(await screen.findByRole('heading', { name: newReport(), level: 1 })).toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: t('shell.gate.notAvailable') })).not.toBeInTheDocument();
-  expect(sidebarLinks()).toEqual([home()]);
+  expect(sidebarLinks()).toEqual([home(), certification()]);
 });
 
 test('the page to register a pharmacy is there for a user of no pharmacy and no role', async () => {
@@ -705,7 +713,7 @@ test('the sidebar and the breadcrumbs name the pages in German by default', asyn
     'Startseite',
     'Tests',
     'Schulungskatalog',
-    'Teilnahmebestätigungen',
+    'Meine Teilnahmebestätigungen',
     'Team-Matrix',
     'Redaktion',
     'Meine Schulungen',
@@ -732,7 +740,7 @@ test('switching the language renames the pages in the sidebar, the breadcrumbs a
       'Home',
       'Tests',
       'Course catalogue',
-      'Certificates',
+      'My certificates',
       'Team matrix',
       'Editorial',
       'My courses',
@@ -856,7 +864,7 @@ test("a course version's page is there for an editor and listed neither in the s
 
   expect(await screen.findByRole('heading', { name: courseVersion(), level: 1 })).toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: t('shell.gate.notAvailable') })).not.toBeInTheDocument();
-  expect(sidebarLinks()).toEqual([home(), editorial()]);
+  expect(sidebarLinks()).toEqual([home(), certification(), editorial()]);
   const navigation = within(screen.getByRole('navigation', { name: t('shell.navigation.label') }));
   for (const link of navigation.getAllByRole('link')) {
     expect(link.getAttribute('href')).not.toMatch(/^\/editorial\/versions/);
@@ -867,7 +875,9 @@ test("a course version's page is there for an editor and listed neither in the s
   const options = within(dialog)
     .getAllByRole('option')
     .map((option) => option.textContent.trim());
-  expect(options).toEqual(titles(['shell.home', 'modules.editorial.title', ...forEditors]));
+  expect(options).toEqual(
+    titles(['shell.home', 'modules.certification.title', 'modules.editorial.title', ...forEditors]),
+  );
   expect(options).not.toContain(courseVersion());
   expect(options).not.toContain(reportEntry());
 });
