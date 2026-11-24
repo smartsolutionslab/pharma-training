@@ -110,11 +110,15 @@ public class BrokerPublisherIntegrityTests(AspireFixture aspire)
     }
 
     /// <summary>
-    /// A header Wolverine reads sent as an AMQP void (null) makes its own mapping throw a <c>NullReferenceException</c>;
-    /// refused like any message Wolverine cannot read, it is dead-lettered and never handled.
+    /// A <c>reply-uri</c> Wolverine's own mapping cannot read makes it throw before the envelope is received: sent as an
+    /// AMQP void (null), it ends in a <c>NullReferenceException</c>; sent as text that is no URI, in its <c>new Uri</c>.
+    /// Wolverine 6.64 cannot dead-letter such an envelope, so it would be tried again without end. The message is refused
+    /// like any other that is no plain integration event: dead-lettered, never handled.
     /// </summary>
-    [Fact]
-    public async Task An_event_with_a_void_header_wolverine_reads_is_dead_lettered_and_never_stored()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("not a uri")]
+    public async Task An_event_whose_reply_uri_wolverine_cannot_read_is_dead_lettered_and_never_stored(string? replyUri)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var started = MembershipStartedEvent();
@@ -126,40 +130,13 @@ public class BrokerPublisherIntegrityTests(AspireFixture aspire)
         await using (var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken))
         {
             var properties = Properties(MembershipStarted, messageId, BrokerUsers.UserOf(organisation));
-            properties.Headers = new Dictionary<string, object?> { ["reply-uri"] = null };
+            properties.Headers = new Dictionary<string, object?> { ["reply-uri"] = replyUri };
             await channel.BasicPublishAsync(MembershipStarted, string.Empty, mandatory: false, properties, JsonSerializer.SerializeToUtf8Bytes(started, JsonSerializerOptions.Web), cancellationToken);
         }
 
         var outcome = await OutcomeAsync(messageId, cancellationToken);
-        outcome.State.ShouldStartWith("dead-lettered", customMessage: $"Compliance's inbox holds the membership {messageId} with a void reply-uri as {outcome}.");
-        (await MembersAsync(started.MembershipId, cancellationToken)).ShouldBe(0);
-    }
-
-    /// <summary>
-    /// A header Wolverine's own mapping cannot read (a <c>reply-uri</c> that is no URI) makes it throw before the envelope
-    /// is received, and Wolverine 6.64 cannot dead-letter such an envelope, so it would be tried again without end. The
-    /// message is refused like any other that is no plain integration event: dead-lettered, never handled.
-    /// </summary>
-    [Fact]
-    public async Task An_event_whose_headers_wolverine_cannot_read_is_dead_lettered_and_never_stored()
-    {
-        var cancellationToken = TestContext.Current.CancellationToken;
-        var started = MembershipStartedEvent();
-        var messageId = Guid.CreateVersion7();
-        var organisation = await BrokerUsers.ConnectionStringOfAsync(aspire, Organisation, cancellationToken);
-        await ExchangeExistsAsync(MembershipStarted, cancellationToken);
-
-        await using (var connection = await BrokerUsers.ConnectAsync(organisation, cancellationToken))
-        await using (var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken))
-        {
-            var properties = Properties(MembershipStarted, messageId, BrokerUsers.UserOf(organisation));
-            properties.Headers = new Dictionary<string, object?> { ["reply-uri"] = "not a uri" };
-            await channel.BasicPublishAsync(MembershipStarted, string.Empty, mandatory: false, properties, JsonSerializer.SerializeToUtf8Bytes(started, JsonSerializerOptions.Web), cancellationToken);
-        }
-
-        var outcome = await OutcomeAsync(messageId, cancellationToken);
-        outcome.State.ShouldStartWith("dead-lettered", customMessage: $"Compliance's inbox holds the membership {messageId} with an unreadable reply-uri as {outcome}.");
-        (await MembersAsync(started.MembershipId, cancellationToken)).ShouldBe(0);
+        outcome.State.ShouldStartWith("dead-lettered", customMessage: $"Compliance's inbox holds the membership {messageId} with the reply-uri {replyUri ?? "(void)"} as {outcome}.");
+        (await MembersAsync(started.MembershipId, cancellationToken)).ShouldBe(0, $"Compliance stored the membership {started.MembershipId} with the reply-uri {replyUri ?? "(void)"}.");
     }
 
     /// <summary>
