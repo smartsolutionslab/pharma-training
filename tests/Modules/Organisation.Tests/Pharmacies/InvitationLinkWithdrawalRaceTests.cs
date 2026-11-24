@@ -62,5 +62,5 @@ public class InvitationLinkWithdrawalRaceTests
         .AddInMemoryCollection([new KeyValuePair<string, string?>("Frontend:BaseUrl", "https://app.example")])
         .Build());
 
-    private InvitationMailRequestedV1Consumer Consumer() => new(store, store, mails, Links(), time, logger);
+    private InvitationMailRequestedV1Consumer Consumer() => BothClocks.Consumer(store, mails, Links(), time, logger);
 }

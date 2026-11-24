@@ -281,6 +281,6 @@ public class AcceptInvitationTests
     private static InvitationToken Token() => InvitationToken.From(Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(32)));
 
     private Task<Result<Guid, ApiError>> AcceptAsync(InvitationToken presented, PersonId person, EmailAddress email, bool verified = true) =>
-        new AcceptInvitationHandler(store, store, time)
+        BothClocks.Accept(store, time)
             .HandleAsync(new AcceptInvitation(presented, person, AnnaName, AccountEmail.From(email, verified)), TestContext.Current.CancellationToken);
 }

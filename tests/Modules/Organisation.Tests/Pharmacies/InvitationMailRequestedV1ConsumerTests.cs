@@ -1,6 +1,5 @@
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 using NSubstitute.ExceptionExtensions;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Mail;
@@ -348,5 +347,5 @@ public partial class InvitationMailRequestedV1ConsumerTests
     }
 
     private InvitationMailRequestedV1Consumer Consumer(FrontendLinks? links = null) =>
-        new(store, store, mails, links ?? Links(), time, NullLogger<InvitationMailRequestedV1Consumer>.Instance);
+        BothClocks.Consumer(store, mails, links ?? Links(), time);
 }
