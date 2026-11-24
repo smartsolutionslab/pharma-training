@@ -43,18 +43,26 @@ public static partial class Messaging
     /// connection strings need, and needing no escape in JSON; spelled out, so no locale widens it), when two user
     /// variables name the same user, or when anything that looks like a placeholder is left. No value holds <c>@</c>, so no
     /// value can bring in another placeholder. It writes the document to the container's own layer (never the data
-    /// volume), readable by RabbitMQ's user alone, removing what is at either file's path first and changing a symlink's
-    /// owner rather than its target's, so a symlink left by an earlier boot is never followed, has RabbitMQ load it at boot, and starts the image's own entrypoint in its
-    /// place without the admin's password or any <c>BROKER_*</c> variable, as <c>env</c> lists them: bash does not see one
-    /// whose name is not a shell identifier, so it could not unset it, yet would hand it on. The image starts as root and
-    /// its entrypoint runs RabbitMQ as the user rabbitmq.
+    /// volume) and has RabbitMQ load it at boot. Both files are root's and readable by the group rabbitmq alone (0640), so
+    /// the broker can read its definitions but not change them. The image lets the user rabbitmq own <c>/etc/rabbitmq</c>
+    /// and its <c>conf.d</c>, so a process of an earlier boot of the same container could have left a symlink at either
+    /// directory or at either file: the boot fails unless both directories are directories of their own, each file's path
+    /// is cleared before it is written, a write never replaces a file that reappeared meanwhile (<c>noclobber</c>), and a
+    /// symlink's owner is changed rather than its target's. It then starts the image's own entrypoint in its place without
+    /// the admin's password or any <c>BROKER_*</c> variable, as <c>env</c> lists them: bash does not see one whose name is
+    /// not a shell identifier, so it could not unset it, yet would hand it on. The image starts as root and its entrypoint
+    /// runs RabbitMQ as the user rabbitmq.
     /// </summary>
     private const string Entrypoint = """
         set -eu
+        set -o noclobber
         umask 077
         placeholder='@@([A-Za-z0-9_]+)@@'
         safe='^[ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._~-]+$'
         refuse() { printf '%s\n' "$1" >&2; exit 1; }
+        for directory in /etc/rabbitmq /etc/rabbitmq/conf.d; do
+          [ -d "$directory" ] && [ ! -L "$directory" ] || refuse "$directory is not a directory of its own (missing, or a symlink); the broker's config is written there."
+        done
         declare -A users=()
         definitions="$BROKER_DEFINITIONS"
         while [[ "$definitions" =~ $placeholder ]]; do
@@ -81,7 +89,10 @@ public static partial class Messaging
         unset definitions
         rm -f /etc/rabbitmq/conf.d/90-definitions.conf
         printf 'load_definitions = /tmp/rabbitmq-definitions.json\n' > /etc/rabbitmq/conf.d/90-definitions.conf
-        if [ "$(id -u)" = 0 ]; then chown -h rabbitmq:rabbitmq /tmp/rabbitmq-definitions.json /etc/rabbitmq/conf.d/90-definitions.conf; fi
+        if [ "$(id -u)" = 0 ]; then
+          chown -h root:rabbitmq /tmp/rabbitmq-definitions.json /etc/rabbitmq/conf.d/90-definitions.conf
+          chmod 0640 /tmp/rabbitmq-definitions.json /etc/rabbitmq/conf.d/90-definitions.conf
+        fi
         unset RABBITMQ_DEFAULT_PASS
         drop=()
         while IFS= read -r -d '' entry; do

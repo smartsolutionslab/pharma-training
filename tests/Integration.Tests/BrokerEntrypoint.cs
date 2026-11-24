@@ -6,8 +6,9 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// <summary>
 /// Runs the broker's entrypoint script, as the AppHost publishes it, in the broker's own image (Docker required). The
 /// image's <c>docker-entrypoint.sh</c> is replaced by a stub on the <c>PATH</c> that prints its arguments, the definitions
-/// file, the names of the variables it was handed and, where the run planted one (<c>PLANT_LINKS</c>), the owner, size and
-/// content of the file the planted symlinks point to, as <c>env</c> lists them (bash's own <c>compgen -e</c> leaves out a
+/// file, the names of the variables it was handed and the type, owner, group, mode and size of the two files and of what a
+/// run planted (<c>PLANT_LINKS</c>: <c>files</c> links each file to a target of its own, <c>conf.d</c> and <c>etc</c> link
+/// the directory to another), as <c>env</c> lists them (bash's own <c>compgen -e</c> leaves out a
 /// name that is not a shell identifier, which still reaches the process), and starts no RabbitMQ.
 /// </summary>
 public static class BrokerEntrypoint
@@ -25,15 +26,25 @@ public static class BrokerEntrypoint
         printf '\n%s\n' '{{Separator}}'
         env | cut -d= -f1
         printf '%s\n' '{{Separator}}'
-        if [ -e /tmp/planted ]; then stat -c '%U %s' /tmp/planted; cat /tmp/planted; fi
+        for file in /tmp/rabbitmq-definitions.json /etc/rabbitmq/conf.d/90-definitions.conf /tmp/planted-definitions /tmp/planted-config; do
+          if [ -e "$file" ] || [ -L "$file" ]; then printf '%s %s\n' "$file" "$(stat -c '%F %U:%G %a %s' "$file")"; fi
+        done
         STUB
         chmod +x /stub/docker-entrypoint.sh
-        if [ -n "${PLANT_LINKS-}" ]; then
-          printf 'planted' > /tmp/planted
-          mkdir -p /etc/rabbitmq/conf.d
-          ln -sf /tmp/planted /etc/rabbitmq/conf.d/90-definitions.conf
-          ln -sf /tmp/planted /tmp/rabbitmq-definitions.json
-        fi
+        case "${PLANT_LINKS-}" in
+          files)
+            printf 'planted' > /tmp/planted-definitions
+            printf 'planted' > /tmp/planted-config
+            ln -sf /tmp/planted-definitions /tmp/rabbitmq-definitions.json
+            ln -sf /tmp/planted-config /etc/rabbitmq/conf.d/90-definitions.conf;;
+          conf.d)
+            mkdir -p /tmp/elsewhere
+            rm -rf /etc/rabbitmq/conf.d
+            ln -s /tmp/elsewhere /etc/rabbitmq/conf.d;;
+          etc)
+            mv /etc/rabbitmq /tmp/etc-rabbitmq
+            ln -s /tmp/etc-rabbitmq /etc/rabbitmq;;
+        esac
         export PATH="/stub:$PATH"
         exec /bin/bash -c "$1"
         """;
@@ -95,7 +106,7 @@ public static class BrokerEntrypoint
 
         var parts = (await output).Split(Separator + "\n");
         return parts.Length == 4
-            ? new EntrypointRun(process.ExitCode, await output, await error, parts[0].TrimEnd('\n'), parts[1].TrimEnd('\n'), [.. parts[2].Split('\n', StringSplitOptions.RemoveEmptyEntries)], parts[3].TrimEnd('\n'))
-            : new EntrypointRun(process.ExitCode, await output, await error, string.Empty, string.Empty, [], string.Empty);
+            ? new EntrypointRun(process.ExitCode, await output, await error, parts[0].TrimEnd('\n'), parts[1].TrimEnd('\n'), [.. parts[2].Split('\n', StringSplitOptions.RemoveEmptyEntries)], [.. parts[3].Split('\n', StringSplitOptions.RemoveEmptyEntries)])
+            : new EntrypointRun(process.ExitCode, await output, await error, string.Empty, string.Empty, [], []);
     }
 }
