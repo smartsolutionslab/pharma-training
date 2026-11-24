@@ -35,6 +35,7 @@ const introduction: EditorialChapterDto = {
   text: '# Willkommen\n\nDas ist **wichtig**.',
   file: null,
   durationSeconds: null,
+  pdfText: null,
 };
 const handout: EditorialChapterDto = {
   id: '0198c1a0-0000-7000-8000-0000000000e2',
@@ -44,6 +45,7 @@ const handout: EditorialChapterDto = {
   text: null,
   file: `course-versions/${versionId}/0198c1a0-0000-7000-8000-0000000000f2.pdf`,
   durationSeconds: null,
+  pdfText: null,
 };
 const handwashing: EditorialChapterDto = {
   id: '0198c1a0-0000-7000-8000-0000000000e3',
@@ -53,6 +55,7 @@ const handwashing: EditorialChapterDto = {
   text: null,
   file: `course-versions/${versionId}/0198c1a0-0000-7000-8000-0000000000f3.mp4`,
   durationSeconds: 725,
+  pdfText: null,
 };
 
 /** A question about the chapter, approved or not yet reviewed. */

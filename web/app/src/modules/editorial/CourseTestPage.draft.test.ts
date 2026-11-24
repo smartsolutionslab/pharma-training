@@ -408,6 +408,7 @@ describe('the draft', () => {
       text: null,
       file: `course-versions/${versionId}/0198c1a0-0000-7000-8000-0000000000f3.mp4`,
       durationSeconds: 95,
+      pdfText: null,
     };
     version = versionOf('Draft', { chapters: [introduction, handout, video] });
     drafting = async () => {
