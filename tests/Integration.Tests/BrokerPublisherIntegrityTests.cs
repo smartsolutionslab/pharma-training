@@ -225,6 +225,28 @@ public class BrokerPublisherIntegrityTests(AspireFixture aspire)
     public async Task A_refused_event_with_a_nul_in_a_field_its_publisher_chose_is_dead_lettered_and_the_next_event_is_still_handled(string field) =>
         await NulInPublisherFieldAsync(field, Forged);
 
+    /// <summary>
+    /// #232: the dead letter's <c>source</c> column is text and takes the envelope's <c>Source</c>, read from the
+    /// publisher's <c>source</c> header. With a NUL in it, PostgreSQL refused the insert (22021) and Wolverine completed
+    /// the refused message: neither handled nor kept. The mapper escapes it, so the dead letter is there to be found.
+    /// </summary>
+    [Fact]
+    public async Task A_refused_event_with_a_nul_in_its_source_is_found_in_the_dead_letters()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var refused = MembershipStartedEvent();
+        var refusedId = Guid.CreateVersion7();
+        var organisation = await BrokerUsers.ConnectionStringOfAsync(aspire, Organisation, cancellationToken);
+        var properties = Properties(Forged, refusedId, BrokerUsers.UserOf(organisation));
+        properties.Headers = new Dictionary<string, object?> { ["source"] = System.Text.Encoding.UTF8.GetBytes("pharma\0source") };
+
+        await PublishAsync(organisation, MembershipStarted, properties, refused, cancellationToken);
+
+        var outcome = await OutcomeAsync(refusedId, cancellationToken);
+        outcome.State.ShouldStartWith("dead-lettered", customMessage: $"The refused membership {refusedId} with a NUL in its source is not in wolverine_dead_letters, but {outcome}.");
+        (await DeadLetterSourceAsync(refusedId, cancellationToken)).ShouldBe("pharma\\u0000source");
+    }
+
     private async Task NulInPublisherFieldAsync(string field, string type)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -381,6 +403,15 @@ public class BrokerPublisherIntegrityTests(AspireFixture aspire)
 
             await Task.Delay(PollInterval, cancellationToken);
         }
+    }
+
+    /// <summary>The source column of the envelope's dead letter in Compliance's database.</summary>
+    private async Task<string?> DeadLetterSourceAsync(Guid messageId, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenComplianceDatabaseAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("select source from wolverine.wolverine_dead_letters where id = @id", connection);
+        command.Parameters.AddWithValue("id", messageId);
+        return await command.ExecuteScalarAsync(cancellationToken) as string;
     }
 
     private async Task<long> CourseVersionsAsync(Guid courseVersionId, CancellationToken cancellationToken) =>
