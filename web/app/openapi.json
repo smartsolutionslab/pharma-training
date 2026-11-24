@@ -607,6 +607,47 @@
         }
       }
     },
+    "/certification/me/certificates": {
+      "get": {
+        "tags": [
+          "MyCertificatesEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "maximum": 21474837,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedResultOfHeldCertificateDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/certification/samples": {
       "post": {
         "tags": [
@@ -4864,6 +4905,40 @@
           }
         }
       },
+      "HeldCertificateDto": {
+        "required": [
+          "certificateId",
+          "courseTitle",
+          "issuedOn",
+          "validUntil",
+          "validity",
+          "documentReady"
+        ],
+        "type": "object",
+        "properties": {
+          "certificateId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "courseTitle": {
+            "type": "string"
+          },
+          "issuedOn": {
+            "type": "string",
+            "format": "date"
+          },
+          "validUntil": {
+            "type": "string",
+            "format": "date"
+          },
+          "validity": {
+            "$ref": "#/components/schemas/CertificateValidity"
+          },
+          "documentReady": {
+            "type": "boolean"
+          }
+        }
+      },
       "InviteOrganisationMemberRequest": {
         "required": [
           "email",
@@ -5531,6 +5606,47 @@
           }
         }
       },
+      "PagedResultOfHeldCertificateDto": {
+        "required": [
+          "items",
+          "totalCount",
+          "page",
+          "pageSize"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HeldCertificateDto"
+            }
+          },
+          "totalCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "page": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "pageSize": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "PagedResultOfLearningSampleDto": {
         "required": [
           "items",
@@ -5954,6 +6070,9 @@
     },
     {
       "name": "CertificateExportEndpoint"
+    },
+    {
+      "name": "MyCertificatesEndpoints"
     },
     {
       "name": "AssignmentChangeEndpoints"

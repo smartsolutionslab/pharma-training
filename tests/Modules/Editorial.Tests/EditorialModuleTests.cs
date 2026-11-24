@@ -45,9 +45,12 @@ public class EditorialModuleTests
         provider.GetRequiredService<ReviewSettings>().Policy.ShouldBe(ReviewPolicy.FourEyes);
     }
 
-    /// <summary>The PDF text extractor holds no state: one instance, registered once, reads every recorded PDF (#157).</summary>
+    /// <summary>
+    /// One bounded extractor reads every recorded PDF, so its slots bound the whole host (#316): it is registered once as
+    /// a singleton, over PdfPig as its parser, with the limit and deadline read once from the settings.
+    /// </summary>
     [Fact]
-    public void The_module_registers_pdfpig_as_its_pdf_text_extractor_once_as_a_singleton()
+    public void The_module_registers_the_bounded_pdf_text_extractor_once_as_a_singleton_over_pdfpig()
     {
         var services = new ServiceCollection().AddLogging();
         var configuration = new ConfigurationBuilder()
@@ -60,6 +63,12 @@ public class EditorialModuleTests
 
         var registration = services.Where(service => service.ServiceType == typeof(IPdfTextExtractor)).ShouldHaveSingleItem();
         registration.Lifetime.ShouldBe(ServiceLifetime.Singleton);
-        provider.GetRequiredService<IPdfTextExtractor>().ShouldBeOfType<PdfPigTextExtractor>();
+        provider.GetRequiredService<IPdfTextExtractor>().ShouldBeOfType<BoundedPdfTextExtractor>();
+        services.Where(service => service.ServiceType == typeof(IPdfTextParser)).ShouldHaveSingleItem().Lifetime.ShouldBe(ServiceLifetime.Singleton);
+        provider.GetRequiredService<IPdfTextParser>().ShouldBeOfType<PdfPigTextExtractor>();
+        services.Count(service => service.ServiceType == typeof(PdfTextLimits)).ShouldBe(1);
+        var limits = provider.GetRequiredService<PdfTextLimits>();
+        limits.MaxConcurrentParses.ShouldBe(2);
+        limits.Timeout.ShouldBe(TimeSpan.FromSeconds(30));
     }
 }

@@ -20,6 +20,9 @@ internal sealed class InMemoryCourseVersionStore : ICourseVersionStore, IEditori
 
     public int Commits { get; private set; }
 
+    /// <summary>The commits made through <see cref="CommitOneOfSeveralAsync"/>, which <see cref="Commits"/> counts too.</summary>
+    public int CommitsOfSeveral { get; private set; }
+
     /// <summary>The integration events published through the unit of work and committed with it.</summary>
     public List<IntegrationEvent> Published { get; } = [];
 
@@ -108,6 +111,12 @@ internal sealed class InMemoryCourseVersionStore : ICourseVersionStore, IEditori
         pendingReturns.Clear();
         Commits++;
         return Task.CompletedTask;
+    }
+
+    public Task CommitOneOfSeveralAsync(CancellationToken cancellationToken)
+    {
+        CommitsOfSeveral++;
+        return CommitAsync(cancellationToken);
     }
 
     private Task<Option<CourseVersion>> Find(CourseVersionId id) =>

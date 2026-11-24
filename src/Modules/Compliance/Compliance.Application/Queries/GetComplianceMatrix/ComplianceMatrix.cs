@@ -2,6 +2,8 @@ using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Assignments;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Courses;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Members;
 
+using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Progress;
+
 namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application.Queries.GetComplianceMatrix;
 
 /// <summary>
@@ -35,12 +37,16 @@ public sealed class ComplianceMatrix
         IReadOnlyCollection<CurrentMembership> members,
         IReadOnlyCollection<Assignment> assignments,
         IReadOnlyCollection<PublishedCourse> courses,
+        IReadOnlyCollection<IssuedCertificate> certificates,
         CalendarDate today)
     {
         Ensure.That(members).IsNotNull();
         Ensure.That(assignments).IsNotNull();
         Ensure.That(courses).IsNotNull();
+        Ensure.That(certificates).IsNotNull();
         Ensure.That(today).IsNotNull();
+
+        var certifiedVersions = certificates.DistinctBy(certificate => certificate.Id).ToDictionary(certificate => certificate.Id, certificate => certificate.Version);
 
         var assigned = assignments
             .Where(assignment => assignment.Status != AssignmentStatus.Cancelled)
@@ -61,7 +67,7 @@ public sealed class ComplianceMatrix
             .. members
                 .OrderBy(member => member.Name.Value, StringComparer.InvariantCultureIgnoreCase)
                 .ThenBy(member => member.Person.Value)
-                .Select(member => new ComplianceMatrixRow(member, CellsOf(member.Person, columns, byLearnerAndCourse, today))),
+                .Select(member => new ComplianceMatrixRow(member, CellsOf(member.Person, columns, byLearnerAndCourse, certifiedVersions, today))),
         ];
 
         var cells = rows.SelectMany(row => row.Cells).ToList();
@@ -80,6 +86,7 @@ public sealed class ComplianceMatrix
         PersonId person,
         IReadOnlyList<PublishedCourse> columns,
         ILookup<(PersonId Learner, CourseId Course), Assignment> byLearnerAndCourse,
+        IReadOnlyDictionary<CertificateId, CourseVersionId> certifiedVersions,
         CalendarDate today)
     {
         List<ComplianceMatrixCell> cells = [];
@@ -100,11 +107,30 @@ public sealed class ComplianceMatrix
                 .LastOrDefault();
             var state = shown.StateOn(today);
             var validUntil = state is AssignmentState.Completed or AssignmentState.CompletedLate && shown.CompletedAt is { } completedAt
-                ? CalendarDate.From(completedAt.DayInGermany().Value.AddMonths(column.Latest.Validity.Value))
+                ? CalendarDate.From(completedAt.DayInGermany().Value.AddMonths(ValidityOf(shown, column, certifiedVersions).Value))
                 : null;
             cells.Add(new ComplianceMatrixCell(column.Course, shown.Id, state, shown.DueDate, lastCompleted?.DayInGermany(), validUntil));
         }
 
         return cells;
+    }
+
+    /// <summary>
+    /// The months a completion stays valid (#287): the validity of the version the certificate that completed it was
+    /// issued for, from Compliance's copy of CertificateIssued; without a copy, or for a version Compliance has not
+    /// received, the latest version's.
+    /// </summary>
+    private static ValidityMonths ValidityOf(Assignment shown, PublishedCourse course, IReadOnlyDictionary<CertificateId, CourseVersionId> certifiedVersions)
+    {
+        if (shown.Certificate is not { } certificate || !certifiedVersions.TryGetValue(certificate, out var version))
+        {
+            return course.Latest.Validity;
+        }
+
+        return course.FindVersion(version) switch
+        {
+            Some<CourseVersion> certified => certified.Value.Validity,
+            None => course.Latest.Validity,
+        };
     }
 }

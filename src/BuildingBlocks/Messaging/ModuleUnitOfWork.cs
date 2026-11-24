@@ -20,7 +20,7 @@ public abstract partial class ModuleUnitOfWork<TContext>(IServiceProvider servic
 
     private ILogger? logger;
 
-    private IDbContextOutbox<TContext> Outbox => outbox ??= Resolve(services);
+    private IDbContextOutbox<TContext> Outbox => outbox ??= services.GetRequiredService<IDbContextOutbox<TContext>>();
 
     private ILogger Logger => logger ??= services.GetService<ILogger<ModuleUnitOfWork<TContext>>>() ?? NullLogger<ModuleUnitOfWork<TContext>>.Instance;
 
@@ -30,7 +30,24 @@ public abstract partial class ModuleUnitOfWork<TContext>(IServiceProvider servic
         await Outbox.PublishAsync(IntegrationEventMetadata.Fill(integrationEvent, services));
     }
 
+    /// <summary>
+    /// Saves and flushes with Wolverine's default, <see cref="MultiFlushMode.OnlyOnce"/>: a scope's outbox flushes once,
+    /// and what a later commit in the same scope stores is sent by a durability pass, not at once (Wolverine logs a
+    /// warning). So the envelopes of a save that lost its race, which stay in the context, are never sent at once by a
+    /// later commit in the scope.
+    /// </summary>
     public Task CommitAsync(CancellationToken cancellationToken) => Outbox.SaveChangesAndFlushMessagesAsync(cancellationToken);
+
+    /// <summary>
+    /// <see cref="CommitAsync"/> for a use case that commits several times in one scope and must send each commit's
+    /// events at once: the flush of this call alone is <see cref="MultiFlushMode.AllowMultiples"/>, so it sends exactly
+    /// the envelopes stored since the scope's last flush, and the scope keeps <see cref="MultiFlushMode.OnlyOnce"/> for
+    /// every other commit. Only a save that cannot lose a race may use it (nothing tracked changes), since the envelopes of
+    /// a failed attempt would go out with the next one. A module offers it by declaring it on its own unit of work's
+    /// interface for the one use case that needs it; today that is Editorial's republish (ADR 0019).
+    /// </summary>
+    public Task CommitOneOfSeveralAsync(CancellationToken cancellationToken) =>
+        Outbox.SaveChangesAndFlushMessagesAsync(MultiFlushMode.AllowMultiples, cancellationToken);
 
     /// <summary>
     /// <see cref="CommitAsync"/> for a save that can lose a race: <see langword="false"/> when the row version of an
@@ -125,23 +142,6 @@ public abstract partial class ModuleUnitOfWork<TContext>(IServiceProvider servic
         { InnerException: { } inner } => Leaves(inner),
         _ => [exception],
     };
-
-    /// <summary>
-    /// The scope's outbox, allowed to flush after every commit. Wolverine's default flushes a message context once and
-    /// keeps what a later commit stores in the outbox unsent (with a warning) until a durability pass finds it, so a use
-    /// case that commits more than once in a scope (a republish, one commit per course version) would send only its first
-    /// commit's events at once. Each flush sends only the envelopes stored since the last one.
-    /// </summary>
-    private static IDbContextOutbox<TContext> Resolve(IServiceProvider services)
-    {
-        var resolved = services.GetRequiredService<IDbContextOutbox<TContext>>();
-        if (resolved is MessageContext context)
-        {
-            context.MultiFlushMode = MultiFlushMode.AllowMultiples;
-        }
-
-        return resolved;
-    }
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "PostgreSQL ended a save of {Context} with SqlState {SqlState}; answered as a lost race.")]
     private static partial void LogLostRace(ILogger logger, Exception exception, string sqlState, string context);

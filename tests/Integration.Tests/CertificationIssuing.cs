@@ -19,6 +19,15 @@ internal static class CertificationIssuing
     public static async Task<CertificateRow> IssueAsync(AspireFixture aspire, int validityMonths, DateTimeOffset passedAt, CancellationToken cancellationToken)
     {
         var started = Started(Guid.CreateVersion7(), TimeProvider.System.GetUtcNow());
+        return await IssueToAsync(aspire, started, validityMonths, passedAt, cancellationToken);
+    }
+
+    /// <summary>
+    /// The membership starts (delivering it again is harmless) and its person passes a course version of its own,
+    /// published with the validity; answers the certificate issued.
+    /// </summary>
+    public static async Task<CertificateRow> IssueToAsync(AspireFixture aspire, StartedEvent started, int validityMonths, DateTimeOffset passedAt, CancellationToken cancellationToken)
+    {
         var published = Published(validityMonths);
         var passed = Passed(started, published, passedAt);
         await CertificationDatabase.DeliverAsync(aspire, StartedType, started, cancellationToken);

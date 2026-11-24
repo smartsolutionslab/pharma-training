@@ -30,7 +30,8 @@ export const handout: EditorialChapterDto = {
   text: null,
   file: `course-versions/${versionId}/0198c1a0-0000-7000-8000-0000000000f2.pdf`,
   durationSeconds: null,
-  pdfText: null,
+  // The host never sends null for a PDF: one without text says so.
+  pdfText: 'NoText',
 };
 
 /** Approved by another editor, Emma Editor, on 20 November 2026. */

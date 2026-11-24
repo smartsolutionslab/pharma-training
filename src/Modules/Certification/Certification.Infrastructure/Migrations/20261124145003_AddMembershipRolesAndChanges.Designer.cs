@@ -12,8 +12,8 @@ using SmartSolutionsLab.PharmaTraining.Modules.Certification.Infrastructure.Pers
 namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Infrastructure.Migrations;
 
 [DbContext(typeof(CertificationDbContext))]
-[Migration("20261124113324_AddMembershipRolesAndChanges")]
-partial class _20261124113324_AddMembershipRolesAndChanges
+[Migration("20261124145003_AddMembershipRolesAndChanges")]
+partial class _20261124145003_AddMembershipRolesAndChanges
 {
     /// <inheritdoc />
     protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -99,6 +99,9 @@ partial class _20261124113324_AddMembershipRolesAndChanges
                 b.HasIndex("Attempt")
                     .IsUnique()
                     .HasDatabaseName("ix_certificates_attempt_id");
+
+                b.HasIndex("Holder")
+                    .HasDatabaseName("ix_certificates_holder_id");
 
                 b.HasIndex("VerificationCode")
                     .IsUnique()

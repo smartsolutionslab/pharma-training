@@ -27,6 +27,12 @@ public sealed record AnnouncementSweepSettings
 
     public const int MostBatchSize = 1000;
 
+    /// <summary>
+    /// The most pages of <see cref="BatchSize"/> events one pass reads: it reads on past events it cannot read or map,
+    /// so that a batch of them holds up no newer event, but never reads more than this many batches' worth in one pass.
+    /// </summary>
+    public const int MostPagesPerPass = 10;
+
     public static readonly TimeSpan DefaultInterval = TimeSpan.FromMinutes(1);
 
     public static readonly TimeSpan DefaultGracePeriod = TimeSpan.FromMinutes(2);

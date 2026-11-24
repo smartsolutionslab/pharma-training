@@ -37,5 +37,7 @@ public sealed class CertificateConfiguration : IEntityTypeConfiguration<Certific
         // Backs an export reading the holders' certificates issued in a period.
         builder.HasIndex(certificate => new { certificate.Holder, certificate.IssuedAt }).HasDatabaseName("ix_certificates_holder_id_issued_at");
         builder.HasIndex(certificate => certificate.VerificationCode).IsUnique().HasDatabaseName("ix_certificates_verification_code");
+        // A person lists their own certificates (#295), filtered by holder.
+        builder.HasIndex(certificate => certificate.Holder).HasDatabaseName("ix_certificates_holder_id");
     }
 }

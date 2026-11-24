@@ -79,6 +79,14 @@ public sealed class PublisherEnvelopeMapper(IRabbitMqEnvelopeMapper inner, strin
             Refuse(envelope, incoming, "no integration event of a module in " + Json);
         }
 
+        // The publisher's source header becomes the dead letter's source column, text, which PostgreSQL refuses with a NUL
+        // (22021): the event could then never be dead-lettered (#338). The other fields a publisher chooses reach no text
+        // column (BrokerPublisherIntegrityTests).
+        if (envelope.Source is not null)
+        {
+            envelope.Source = Printable(envelope.Source);
+        }
+
         if (string.IsNullOrEmpty(incoming.UserId))
         {
             envelope.Headers.Remove(PublisherHeader);
@@ -98,7 +106,8 @@ public sealed class PublisherEnvelopeMapper(IRabbitMqEnvelopeMapper inner, strin
 
     /// <summary>
     /// The text with every control character written as <c>\uXXXX</c>: what a publisher chose reaches the dead letters in
-    /// PostgreSQL, whose text columns refuse a NUL (22021), which would stop the listener instead (#230).
+    /// PostgreSQL, whose text columns refuse a NUL (22021), which would stop the listener instead (#230), or leave the
+    /// message neither handled nor dead-lettered (#338).
     /// </summary>
     private static string Printable(string text)
     {

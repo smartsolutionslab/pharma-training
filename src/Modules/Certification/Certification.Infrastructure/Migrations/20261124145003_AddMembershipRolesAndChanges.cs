@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Infrastructure.Migrations;
 
 /// <inheritdoc />
-public partial class _20261124113324_AddMembershipRolesAndChanges : Migration
+public partial class _20261124145003_AddMembershipRolesAndChanges : Migration
 {
     /// <inheritdoc />
     protected override void Up(MigrationBuilder migrationBuilder)

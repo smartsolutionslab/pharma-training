@@ -6,7 +6,8 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersion
 
 /// <summary>
 /// How a recorded PDF's bytes reach the extractor (#157): the whole blob, read as the version its lookup found, and
-/// refused as not accepted when fewer bytes come back than that version had, since another upload replaced it.
+/// refused as not accepted when fewer bytes come back than that version had, since another upload replaced it. An
+/// extractor whose readers are all busy refuses it for now, to retry later (#316).
 /// </summary>
 public class PdfChapterTextsTests
 {
@@ -59,5 +60,22 @@ public class PdfChapterTextsTests
         extracted.IsSuccess.ShouldBeTrue(extracted.IsFailure ? extracted.Error.Code : string.Empty);
         extracted.Value.Extraction.ShouldBe(PdfTextExtraction.NoText);
         extracted.Value.Text.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task Busy_pdf_readers_refuse_the_pdf_with_429_retry_later_and_its_instant()
+    {
+        var file = AddFileChapterTests.IssuedName(Version, ".pdf");
+        blobs.Upload(file, "application/pdf", 512);
+        var retryAt = new DateTimeOffset(2026, 11, 24, 9, 0, 5, TimeSpan.Zero);
+        var busy = FakePdfTextExtractor.Busy(retryAt);
+
+        var extracted = await PdfChapterTexts.ExtractAsync(blobs, busy, blobs.Current(file), TestContext.Current.CancellationToken);
+
+        extracted.IsFailure.ShouldBeTrue("busy readers refuse the PDF for now");
+        extracted.Error.Code.ShouldBe("editorial.pdf-readers-busy");
+        extracted.Error.Status.ShouldBe(HttpStatusCode.TooManyRequests);
+        extracted.Error.ShouldBeOfType<RetryLaterFailure>().RetryAt.ShouldBe(retryAt);
+        busy.Read.ShouldHaveSingleItem();
     }
 }

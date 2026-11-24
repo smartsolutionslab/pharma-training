@@ -13,11 +13,11 @@ public static class PharmacyErrors
     /// <summary>Issuing a link for an invitation version that holds <see cref="Pharmacy.MaxInvitationLinksPerVersion"/> already.</summary>
     public static DomainError InvitationLinkLimitReached(PharmacyId pharmacy, MembershipId membership) => new InvitationLinkLimitReached(pharmacy, membership);
 
-    /// <summary>Renewing an invitation within its cooldown, before <paramref name="retryAt"/>.</summary>
-    public static DomainError InvitationRenewedTooSoon(PharmacyId pharmacy, MembershipId membership, Timestamp retryAt) => new InvitationRenewedTooSoon(pharmacy, membership, retryAt);
+    /// <summary>Renewing an invitation within its cooldown, before <paramref name="retryAt"/>, refused at <paramref name="refusedAt"/>.</summary>
+    public static DomainError InvitationRenewedTooSoon(PharmacyId pharmacy, MembershipId membership, Timestamp retryAt, Timestamp refusedAt) => new InvitationRenewedTooSoon(pharmacy, membership, retryAt, refusedAt);
 
-    /// <summary>Requesting an invitation mail beyond the pharmacy's daily cap, before <paramref name="retryAt"/>.</summary>
-    public static DomainError TooManyInvitationsToday(PharmacyId pharmacy, Timestamp retryAt) => new TooManyInvitationsToday(pharmacy, retryAt);
+    /// <summary>Requesting an invitation mail beyond the pharmacy's daily cap, before <paramref name="retryAt"/>, refused at <paramref name="refusedAt"/>.</summary>
+    public static DomainError TooManyInvitationsToday(PharmacyId pharmacy, Timestamp retryAt, Timestamp refusedAt) => new TooManyInvitationsToday(pharmacy, retryAt, refusedAt);
 
     public static AcceptInvitationError InvitationNotFound(PharmacyId pharmacy) => new InvitationNotFound(pharmacy);
 

@@ -39,7 +39,7 @@ public sealed class InvitationRecipient : AggregateRoot<InvitationRecipientId>
         var retryAt = LastMailedAt.Plus(cooldown.Value);
         if (now < retryAt && LastMailedAt < now.Plus(cooldown.Value))
         {
-            return Failure(InvitationRecipientErrors.MailedRecently(Id, retryAt));
+            return Failure(InvitationRecipientErrors.MailedRecently(Id, retryAt, now));
         }
 
         LastMailedAt = now;
