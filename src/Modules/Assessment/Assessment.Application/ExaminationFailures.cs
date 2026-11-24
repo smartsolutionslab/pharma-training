@@ -1,3 +1,4 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using System.Net;
 using SmartSolutionsLab.PharmaTraining.Modules.Assessment.Domain.Examinations;
 
@@ -13,6 +14,16 @@ public static class ExaminationFailures
 
     /// <summary>A write that lost the append race on the examination's stream; nothing of it was stored or announced.</summary>
     public static ApiError Changed(Guid id) => new ExaminationChanged(id);
+
+    /// <summary>Another save came at the same moment and PostgreSQL ended this one; try again.</summary>
+    public static ApiError ConcurrentSave() => new AssessmentConcurrentSave();
+
+    /// <summary>How a save of the stream lost a race: a stream that moved on is the changed code, a deadlock a concurrent save.</summary>
+    public static ApiError LostRace(LostRace race, Guid id) => race switch
+    {
+        VersionMovedOn => Changed(id),
+        SaveDeadlocked => ConcurrentSave(),
+    };
 
     public static ApiError TestDefinitionMissing(Guid courseVersionId) => new TestDefinitionMissing(courseVersionId);
 

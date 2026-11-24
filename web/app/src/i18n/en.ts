@@ -977,6 +977,7 @@ export const en: MessageSchema = {
       "No language model is set up, so AI features are not available. Contact the platform's operators.",
     assessment: {
       'examination-changed': 'Your test has changed in the meantime; nothing was saved. Try again.',
+      'concurrent-save': 'Another change to your test was saved at the same moment; nothing was saved. Try again.',
       'examination-not-found': 'This test does not exist for you.',
       'examination-not-unlocked': 'The test is not unlocked at the moment. Reload the page to see where you stand.',
       'identity-incomplete': 'Your sign-in names no person. Please sign in again.',
@@ -1115,6 +1116,8 @@ export const en: MessageSchema = {
       'progress-too-fast': 'The progress grows faster than the video can play.',
       'sample-not-found': 'This sample does not exist.',
       'session-changed': 'Your learning session changed in the meantime. Try again.',
+      'concurrent-save':
+        'Another change to your learning session was saved at the same moment; nothing was saved. Try again.',
       'session-finished': 'This course is already completed.',
       'session-not-found': 'This learning session does not exist.',
     },

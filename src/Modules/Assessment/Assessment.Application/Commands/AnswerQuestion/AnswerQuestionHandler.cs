@@ -45,9 +45,10 @@ public sealed class AnswerQuestionHandler(IAssessmentAggregateStore store, ITest
             return Failure(refused.Value);
         }
 
-        if (!await store.TrySaveAsync(examination, cancellationToken))
+        var saved = await store.TrySaveAsync(examination, cancellationToken);
+        if (saved.IsFailure)
         {
-            return Failure(ExaminationFailures.Changed(command.Examination.Value));
+            return Failure(ExaminationFailures.LostRace(saved.Error, command.Examination.Value));
         }
 
         return Success(Unit.Value);
