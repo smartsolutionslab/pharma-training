@@ -303,6 +303,16 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         return (int)(await command.ExecuteScalarAsync(cancellationToken) ?? throw new InvalidOperationException($"There is no pharmacy {pharmacy}."));
     }
 
+    /// <summary>The UTC day the pharmacy's stored tally of invitation mails counts (#294), or null while it has counted none.</summary>
+    public async Task<DateOnly?> InvitationMailDayAsync(Guid pharmacy, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("SELECT invitation_mail_day FROM organisation.pharmacies WHERE id = @id", connection);
+        command.Parameters.AddWithValue("id", pharmacy);
+        var day = await command.ExecuteScalarAsync(cancellationToken) ?? throw new InvalidOperationException($"There is no pharmacy {pharmacy}.");
+        return day is DBNull ? null : (DateOnly)day;
+    }
+
     /// <summary>The number of the pharmacy's memberships, whatever their status.</summary>
     public async Task<long> MembershipsOfAsync(Guid pharmacy, CancellationToken cancellationToken)
     {
