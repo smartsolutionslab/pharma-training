@@ -13,7 +13,7 @@ const developer = 'Local Developer';
 const employee = 'Anna Employee';
 const employeeAddress = 'employee-a@example.com';
 
-const lastManager = 'Die letzte Apothekenleitung kann nicht ausgetragen oder zum Mitarbeiter gemacht werden.';
+const lastManager = 'Der letzte Apothekenleiter kann nicht ausgetragen oder zum Mitarbeiter gemacht werden.';
 
 /** Signs in as the developer on the start page. */
 async function signIn(page: Page) {
