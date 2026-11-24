@@ -683,6 +683,16 @@ const retryable = [
       ),
     state: 'failed',
   },
+  {
+    answer: 'a 409 concurrent-save',
+    refusal: async () =>
+      problem(
+        409,
+        'organisation.concurrent-save',
+        'Another change to the pharmacy was saved at the same moment; try again.',
+      ),
+    state: 'failed',
+  },
   { answer: 'a 503', refusal: async () => problem(503, undefined, 'Service Unavailable'), state: 'failed' },
   { answer: 'a 500 without a body', refusal: async () => new Response('', { status: 500 }), state: 'failed' },
   {

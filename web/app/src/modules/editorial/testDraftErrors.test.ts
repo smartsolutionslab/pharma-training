@@ -79,6 +79,13 @@ const answers: [string, () => unknown, Parameters<typeof t>[0], string, string][
     'The version changed in the meantime; the draft was discarded. Try again.',
   ],
   [
+    '409 concurrent-save',
+    () => new ApiError(409, problem(409, 'editorial.concurrent-save')),
+    'editorial.test.draft.errors.concurrentSave',
+    'Gleichzeitig wurde eine andere Änderung an der Version gespeichert; der Entwurf wurde nicht übernommen. Versuchen Sie es erneut.',
+    'Another change to the version was saved at the same moment; the draft was not applied. Try again.',
+  ],
+  [
     '409 not-a-draft',
     () => new ApiError(409, problem(409, 'editorial.not-a-draft')),
     'editorial.test.draft.errors.notADraft',
