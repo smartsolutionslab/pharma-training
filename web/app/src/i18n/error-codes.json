@@ -362,7 +362,7 @@
   {
     "code": "editorial.no-text-chapters",
     "status": 409,
-    "message": "The version has no text chapter to draft test questions from."
+    "message": "The version has no chapter with text to draft test questions from."
   },
   {
     "code": "editorial.no-text-chapters-to-review",
@@ -447,7 +447,7 @@
   {
     "code": "editorial.too-much-content-to-draft",
     "status": 422,
-    "message": "The version's text chapters are too long to draft a test from in one request."
+    "message": "The version's chapters are too long to draft a test from in one request."
   },
   {
     "code": "editorial.too-much-content-to-review",
