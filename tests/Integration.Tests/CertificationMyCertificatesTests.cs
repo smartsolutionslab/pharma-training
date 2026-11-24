@@ -139,14 +139,36 @@ public class CertificationMyCertificatesTests(AspireFixture aspire)
         page.Items.Select(item => item.CertificateId).ShouldContain(certificate.Id);
     }
 
-    private static Uri Mine() => new("/certification/me/certificates?page=1&pageSize=100", UriKind.Relative);
+    private static Uri Mine(int page = 1) => new($"/certification/me/certificates?page={page}&pageSize=100", UriKind.Relative);
 
     private static DateOnly DayInGermany(DateTimeOffset instant) => DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(instant, GermanTime).DateTime);
 
+    /// <summary>
+    /// Every page of the caller's list, walked to its total, so a test sees all of the caller's certificates however many
+    /// other tests issued to them; answers them as one page, with the first page's number, size and total.
+    /// </summary>
     private static async Task<CertificatesPage> ListAsync(HttpClient client, CancellationToken cancellationToken)
     {
-        using var response = await client.GetAsync(Mine(), cancellationToken);
-        response.StatusCode.ShouldBe(HttpStatusCode.OK, $"GET {Mine()} answered {(int)response.StatusCode} {await response.Content.ReadAsStringAsync(cancellationToken)}");
+        var first = await PageAsync(client, 1, cancellationToken);
+        List<CertificateBody> items = [.. first.Items];
+        for (var page = 2; items.Count < first.TotalCount; page++)
+        {
+            var next = await PageAsync(client, page, cancellationToken);
+            if (next.Items.Count == 0)
+            {
+                break;
+            }
+
+            items.AddRange(next.Items);
+        }
+
+        return first with { Items = items };
+    }
+
+    private static async Task<CertificatesPage> PageAsync(HttpClient client, int page, CancellationToken cancellationToken)
+    {
+        using var response = await client.GetAsync(Mine(page), cancellationToken);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, $"GET {Mine(page)} answered {(int)response.StatusCode} {await response.Content.ReadAsStringAsync(cancellationToken)}");
         return (await response.Content.ReadFromJsonAsync<CertificatesPage>(cancellationToken)).ShouldNotBeNull();
     }
 
@@ -174,7 +196,7 @@ public class CertificationMyCertificatesTests(AspireFixture aspire)
         }
     }
 
-    private sealed record CertificatesPage(IReadOnlyList<CertificateBody> Items, int TotalCount, int Page, int PageSize);
+    private sealed record CertificatesPage(List<CertificateBody> Items, int TotalCount, int Page, int PageSize);
 
     private sealed record CertificateBody(Guid CertificateId, string CourseTitle, DateOnly IssuedOn, DateOnly ValidUntil, string Validity, bool DocumentReady);
 }
