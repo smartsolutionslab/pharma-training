@@ -84,7 +84,7 @@ export const en: MessageSchema = {
       },
     },
     certification: {
-      title: 'Certificates',
+      title: 'My certificates',
       entries: {
         verify: { title: 'Verify a certificate' },
       },
@@ -133,6 +133,25 @@ export const en: MessageSchema = {
       loadFailed: 'The certificate could not be verified.',
     },
     retry: 'Try again',
+    mine: {
+      columns: {
+        course: 'Course',
+        issuedOn: 'Issued on',
+        validUntil: 'Valid until',
+        validity: 'Status',
+        document: 'PDF',
+      },
+      documentReady: 'Ready',
+      documentPending: 'Being prepared',
+      download: 'Download PDF',
+      downloadFor: 'Download PDF for {course}',
+      downloadNotReady: 'The certificate for {course} is still being prepared. Please try again in a moment.',
+      downloadFailed: 'The PDF for {course} could not be downloaded.',
+      empty: 'You have no certificates yet.',
+      toCourses: 'Go to my courses',
+      identityIncomplete: 'Your sign-in names no person. Please sign in again.',
+      loadFailed: 'Your certificates could not be loaded.',
+    },
   },
   compliance: {
     matrix: {
