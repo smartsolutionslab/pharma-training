@@ -1,3 +1,4 @@
+using System.Data.Common;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
@@ -37,12 +38,13 @@ public sealed partial class ReannounceTestPassesHandler(
         var found = await unannounced.FindAsync(now - settings.Lookback, now - settings.GracePeriod, settings.BatchSize, cancellationToken);
         foreach (var stored in found)
         {
-            if (await AnnouncementOfAsync(stored, cancellationToken) is not { } announcement)
+            var announcement = await AnnouncementOfAsync(stored, cancellationToken);
+            if (!announcement.HasValue)
             {
                 continue;
             }
 
-            await unitOfWork.PublishAsync(announcement);
+            await unitOfWork.PublishAsync(announcement.Value);
             announced.Add(new AnnouncedEvent { StreamId = stored.StreamId, StreamVersion = stored.StreamVersion, AnnouncedAt = now });
             LogReannounced(logger, EventType, stored.StreamId, stored.StreamVersion, stored.StoredAt);
             await unitOfWork.CommitAsync(cancellationToken);
@@ -52,21 +54,21 @@ public sealed partial class ReannounceTestPassesHandler(
     }
 
     /// <summary>
-    /// The announcement of a stored test pass, or null when it cannot be read or mapped: logged and skipped, so one event
-    /// that always fails holds up none behind it. It keeps no marker, so every pass tries it again until the lookback.
+    /// The announcement of a stored test pass, or none when it cannot be read or mapped: logged and skipped, so one event
+    /// that always fails holds up none behind it. A database failure is no unreadable data: it ends the pass. It keeps no marker, so every pass tries it again until the lookback.
     /// </summary>
-    private async Task<TestPassedV1?> AnnouncementOfAsync(UnannouncedEvent stored, CancellationToken cancellationToken)
+    private async Task<Option<TestPassedV1>> AnnouncementOfAsync(UnannouncedEvent stored, CancellationToken cancellationToken)
     {
         try
         {
             var passed = await unannounced.LoadAsync(stored, cancellationToken);
-            return passed.ToIntegrationEvent();
+            return Option<TestPassedV1>.Some(passed.ToIntegrationEvent());
         }
-        catch (Exception exception) when (exception is not OperationCanceledException)
+        catch (Exception exception) when (exception is not (OperationCanceledException or DbException))
         {
             // The type alone: a message about the stored data may quote it, and it is about a learner.
             LogUnreadable(logger, EventType, stored.StreamId, stored.StreamVersion, exception.GetType().Name);
-            return null;
+            return Option<TestPassedV1>.None;
         }
     }
 
