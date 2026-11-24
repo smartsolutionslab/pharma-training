@@ -32,7 +32,7 @@ const isVideo = (values: ChapterFields) => values.kind === 'Video';
 
 /** A duration as minutes:seconds (12:05, minutes not capped at 59), from 0:01 to 240:00 (VideoDuration). */
 const durationFormat = /^(\d{1,3}):([0-5]\d)$/;
-const maxDurationSeconds = 14_400;
+export const maxDurationSeconds = 14_400;
 
 /** The seconds a duration typed as minutes:seconds stands for, or undefined when it is none or out of range. */
 export function durationSeconds(typed: string): number | undefined {

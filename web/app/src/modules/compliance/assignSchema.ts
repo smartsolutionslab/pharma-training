@@ -5,7 +5,7 @@ import { i18n, type MessageKey } from '@/i18n';
 export const maximumLearners = 100;
 
 /** How many years ahead a due date may lie, as the host takes it. */
-const maximumYearsAhead = 10;
+export const maximumYearsAhead = 10;
 
 const calendarDateFormat = /^(\d{4})-(\d{2})-(\d{2})$/;
 
