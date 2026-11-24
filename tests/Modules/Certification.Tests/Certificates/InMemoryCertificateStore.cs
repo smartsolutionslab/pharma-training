@@ -45,6 +45,17 @@ internal sealed class InMemoryCertificateStore : ICertificateStore, ICertificati
         return Task.FromResult(Option<Certificate>.Some(found));
     }
 
+    /// <summary>The holders' certificates issued from <paramref name="issuedFrom"/> on and before <paramref name="issuedBefore"/>, oldest first, then by id, as the store in Infrastructure reads them.</summary>
+    public Task<IReadOnlyList<Certificate>> IssuedToAsync(IReadOnlyCollection<PersonId> holders, Timestamp issuedFrom, Timestamp issuedBefore, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<Certificate> issued = Stored
+            .Where(certificate => holders.Contains(certificate.Holder) && issuedFrom <= certificate.IssuedAt && certificate.IssuedAt < issuedBefore)
+            .OrderBy(certificate => certificate.IssuedAt.Value)
+            .ThenBy(certificate => certificate.Id.Value)
+            .ToList();
+        return Task.FromResult(issued);
+    }
+
     public void Add(Certificate certificate) => added.Add(certificate);
 
     public Task PublishAsync(IntegrationEvent integrationEvent)
