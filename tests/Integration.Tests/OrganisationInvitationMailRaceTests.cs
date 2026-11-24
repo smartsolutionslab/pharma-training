@@ -47,6 +47,9 @@ public partial class OrganisationInvitationMailRaceTests(AspireFixture aspire)
 
         // Unmarked, the redelivered request issues a link for the first version again instead of being skipped as mailed.
         await database.ClearInvitationMailedAsync(membership, cancellationToken);
+
+        // Past the renew cooldown (docs/adr/0004), so the renewal reaches the pharmacy's rows instead of being refused first.
+        await database.MoveInvitationRequestBackAsync(membership, TimeSpan.FromMinutes(10), cancellationToken);
         await using var log = await ServiceLog.WatchAsync(aspire, OrganisationService, cancellationToken);
 
         HttpResponseMessage renewed;
