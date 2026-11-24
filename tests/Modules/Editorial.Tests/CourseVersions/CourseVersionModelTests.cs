@@ -53,5 +53,37 @@ public sealed class CourseVersionModelTests : IDisposable
         name.GetMaxLength().ShouldBe(100);
     }
 
+    /// <summary>
+    /// A PDF chapter's extraction (#157) is two nullable columns of the chapters' table: the outcome by name, and the
+    /// text unbounded like a text chapter's. Rows recorded before #157 hold null in both.
+    /// </summary>
+    [Fact]
+    public void A_pdf_chapters_extraction_is_stored_in_two_nullable_columns_of_its_own()
+    {
+        var chapter = context.Model.FindEntityType(typeof(Chapter));
+        chapter.ShouldNotBeNull();
+
+        var extraction = chapter.FindProperty(nameof(Chapter.Extraction));
+        var text = chapter.FindProperty(nameof(Chapter.ExtractedText));
+
+        extraction.ShouldNotBeNull("Chapter.Extraction is not mapped");
+        extraction.GetColumnName().ShouldBe("pdf_text_extraction");
+        extraction.IsNullable.ShouldBeTrue();
+        extraction.GetProviderClrType().ShouldBe(typeof(string), "the outcome is stored by name");
+        extraction.GetMaxLength().ShouldBe(20);
+        text.ShouldNotBeNull("Chapter.ExtractedText is not mapped");
+        text.GetColumnName().ShouldBe("pdf_text");
+        text.IsNullable.ShouldBeTrue();
+        text.GetColumnType().ShouldBe("text");
+    }
+
+    /// <summary>The runner fails on a model without its migration: the columns come with <c>AddChapterPdfText</c>.</summary>
+    [Fact]
+    public void The_model_has_no_change_its_migrations_lack()
+    {
+        context.Database.GetMigrations().ShouldContain(migration => migration.EndsWith("_AddChapterPdfText", StringComparison.Ordinal));
+        context.Database.HasPendingModelChanges().ShouldBeFalse();
+    }
+
     public void Dispose() => context.Dispose();
 }

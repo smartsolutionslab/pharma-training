@@ -324,7 +324,7 @@ public class PublishCourseVersionTests
         var version = DraftWithChapter(out var text);
         pdf = ChapterId.New();
         video = ChapterId.New();
-        version.AddChapter(Chapter.OfPdf(pdf, ChapterTitle.From("Merkblatt"), BlobReference.From(PdfFile(version)))).IsSuccess.ShouldBeTrue();
+        version.AddChapter(Chapter.OfPdf(pdf, ChapterTitle.From("Merkblatt"), BlobReference.From(PdfFile(version)), PdfTextExtraction.NoText, null)).IsSuccess.ShouldBeTrue();
         version.AddChapter(Chapter.OfVideo(video, ChapterTitle.From("Praxis"), BlobReference.From(VideoFile(version)), VideoDuration.From(754))).IsSuccess.ShouldBeTrue();
         version.SetBlueprint(new TestBlueprint(QuestionCount.From(1), ScorePercent.From(80), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
         var question = version.AddQuestion(QuestionId.New(), SingleChoice(text), AnswerOptionId.New).Value;
