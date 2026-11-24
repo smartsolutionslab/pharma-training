@@ -3,7 +3,9 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/vue';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { createMemoryHistory } from 'vue-router';
-import type { CertificationCertificateDto } from '@/api/generated';
+import { createPinia } from 'pinia';
+import type { CertificationCertificateDto, MyPharmacyDto } from '@/api/generated';
+import { signedInAsDeveloper } from '@/auth/signedInAsDeveloper';
 import { setLanguage, t } from '@/i18n';
 import { createAppRouter } from '@/router';
 import CertificationPage from './CertificationPage.vue';
@@ -11,8 +13,8 @@ import CertificationPage from './CertificationPage.vue';
 const notify = vi.hoisted(() => ({ success: vi.fn(), failure: vi.fn() }));
 vi.mock('@/lib/notify', () => ({ notify }));
 
-// The host, as GET /certification/me/certificates and GET /certification/certificates/{id}/pdf reach it through the
-// generated client, and storage, which serves the URL the host signed. Each answers as the test says.
+// The host, as GET /certification/me/certificates, GET /certification/certificates/{id}/pdf and the shell's
+// GET /organisation/pharmacies/mine reach it through the generated client. Each answers as the test says.
 const host = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>();
 vi.stubGlobal('fetch', host);
 
@@ -34,10 +36,21 @@ const privacy: CertificationCertificateDto = {
 };
 
 const signedUrl = 'https://storage.example/certification/certificates/0198c1a0-0000-7000-8000-0000000000e1.pdf?sig=x';
-const pdfBytes = '%PDF-1.7 fake';
+
+/** A pharmacy the developer works in: with it, the pages for employees (My courses among them) are theirs. */
+const dom: MyPharmacyDto = {
+  id: '0198c1a0-0000-7000-8000-0000000000a2',
+  name: 'Apotheke am Dom',
+  membershipId: '0198c1a0-0000-7000-8000-0000000000b2',
+  role: 'Employee',
+  jobFunction: 'Pta',
+  canManageMembers: false,
+  canAssignCourses: false,
+};
 
 let listing: (page: number) => Promise<Response>;
 let documentUrl: () => Promise<Response>;
+let memberships: MyPharmacyDto[];
 
 const problem = (status: number, code: string, detail: string) =>
   Response.json({ status, code, title: 'Refused', detail }, { status });
@@ -45,10 +58,11 @@ const problem = (status: number, code: string, detail: string) =>
 beforeEach(() => {
   listing = async (page) => Response.json({ items: [hygiene, privacy], totalCount: 2, page, pageSize: 20 });
   documentUrl = async () => Response.json({ url: signedUrl, expiresAt: '2026-11-24T12:05:00Z' });
+  memberships = [dom];
   host.mockImplementation(async (input) => {
     const url = new URL(String(input), 'http://localhost');
-    if (url.href === signedUrl) {
-      return new Response(pdfBytes, { status: 200, headers: { 'Content-Type': 'application/pdf' } });
+    if (url.pathname === '/api/organisation/pharmacies/mine') {
+      return Response.json({ items: memberships, totalCount: memberships.length, page: 1, pageSize: 100 });
     }
     if (url.pathname === '/api/certification/me/certificates') {
       return listing(Number(url.searchParams.get('page') ?? '1'));
@@ -78,31 +92,14 @@ async function renderAt(path = '/certification') {
   const router = createAppRouter(createMemoryHistory());
   await router.push(path);
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  render(CertificationPage, { global: { plugins: [router, [VueQueryPlugin, { queryClient }]] } });
+  render(CertificationPage, {
+    global: { plugins: [router, createPinia(), signedInAsDeveloper, [VueQueryPlugin, { queryClient }]] },
+  });
   return { router };
 }
 
 /** The row of the course in the table. */
 const rowOf = async (course: string) => (await screen.findByRole('cell', { name: course })).closest('tr');
-
-/**
- * Catches what the page saves: the browser saves a blob through a link with a download name, which jsdom cannot; the
- * link's name and the blob's bytes are kept instead.
- */
-function catchSaves() {
-  const saved: { name: string; href: string }[] = [];
-  const blobs = new Map<string, Blob>();
-  vi.spyOn(URL, 'createObjectURL').mockImplementation((blob) => {
-    const href = `blob:certificate-${blobs.size + 1}`;
-    blobs.set(href, blob as Blob);
-    return href;
-  });
-  vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
-  vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
-    saved.push({ name: this.download, href: this.getAttribute('href') ?? '' });
-  });
-  return { saved, blobs };
-}
 
 test('the page is headed Meine Teilnahmebestätigungen and shows no samples and no Manage section', async () => {
   await renderAt();
@@ -151,67 +148,34 @@ test('a certificate whose document is ready offers its PDF; one that is not says
   if (ready === null || pending === null) {
     throw new Error('Each certificate has a row.');
   }
-  expect(
-    within(ready).getByRole('button', { name: 'PDF herunterladen für Hygiene in der Apotheke' }),
-  ).toBeInTheDocument();
+  expect(within(ready).getByRole('button', { name: 'PDF öffnen für Hygiene in der Apotheke' })).toBeInTheDocument();
   expect(within(ready).queryByText('Wird erstellt')).not.toBeInTheDocument();
-  expect(within(pending).queryByRole('button', { name: /PDF herunterladen/ })).not.toBeInTheDocument();
+  expect(within(pending).queryByRole('button', { name: /PDF öffnen/ })).not.toBeInTheDocument();
   expect(within(pending).getByText('Wird erstellt')).toBeInTheDocument();
 });
 
-test('a certificate whose document is ready downloads its PDF, named after the course, from the URL the host signed', async () => {
-  const { saved, blobs } = catchSaves();
-  await renderAt();
-
-  await userEvent.click(await screen.findByRole('button', { name: 'PDF herunterladen für Hygiene in der Apotheke' }));
-
-  await waitFor(() => expect(saved).toHaveLength(1));
-  expect(saved[0]?.name).toBe('Hygiene in der Apotheke.pdf');
-  const blob = blobs.get(saved[0]?.href ?? '');
-  expect(await blob?.text()).toBe(pdfBytes);
-  // The URL is the host's to sign: asked with the user's token through the generated client, then read from storage.
-  const asked = host.mock.calls.map(([input]) => new URL(String(input), 'http://localhost').href);
-  expect(asked).toContain(`http://localhost/api/certification/certificates/${hygiene.certificateId}/pdf`);
-  expect(asked).toContain(signedUrl);
-  expect(notify.failure).not.toHaveBeenCalled();
-});
-
-test('a download the host refuses because the document is not ready yet says so, and saves nothing', async () => {
-  const { saved } = catchSaves();
-  documentUrl = async () => problem(409, 'certification.document-not-ready', 'The document is not stored yet.');
-  await renderAt();
-
-  await userEvent.click(await screen.findByRole('button', { name: 'PDF herunterladen für Hygiene in der Apotheke' }));
-
-  await waitFor(() =>
-    expect(notify.failure).toHaveBeenCalledWith(
-      'Die Teilnahmebestätigung für Hygiene in der Apotheke wird noch erstellt. Versuchen Sie es gleich noch einmal.',
-    ),
-  );
-  expect(saved).toEqual([]);
-});
-
-test('a download that fails otherwise says the PDF could not be downloaded', async () => {
-  const { saved } = catchSaves();
-  documentUrl = async () => new Response('', { status: 502 });
-  await renderAt();
-
-  await userEvent.click(await screen.findByRole('button', { name: 'PDF herunterladen für Hygiene in der Apotheke' }));
-
-  await waitFor(() =>
-    expect(notify.failure).toHaveBeenCalledWith(
-      'Das PDF für Hygiene in der Apotheke konnte nicht heruntergeladen werden.',
-    ),
-  );
-  expect(saved).toEqual([]);
-});
-
-test('without certificates the page says so and leads to the courses', async () => {
+test('without certificates the page says so and leads a member of a pharmacy to their courses', async () => {
   listing = async (page) => Response.json({ items: [], totalCount: 0, page, pageSize: 20 });
   await renderAt();
 
   expect(await screen.findByText('Sie haben noch keine Teilnahmebestätigung.')).toBeInTheDocument();
-  expect(screen.getByRole('link', { name: 'Zu meinen Schulungen' })).toHaveAttribute('href', '/learning');
+  expect(await screen.findByRole('link', { name: 'Zu meinen Schulungen' })).toHaveAttribute('href', '/learning');
+});
+
+// My courses is for a member of a pharmacy (the shell's audiences): someone of no pharmacy is not led to a page that is
+// not theirs, and reads the sentence alone.
+test('without certificates and without a pharmacy the page says so, without a link to the courses', async () => {
+  memberships = [];
+  listing = async (page) => Response.json({ items: [], totalCount: 0, page, pageSize: 20 });
+  await renderAt();
+
+  expect(await screen.findByText('Sie haben noch keine Teilnahmebestätigung.')).toBeInTheDocument();
+  await waitFor(() =>
+    expect(host.mock.calls.map(([input]) => String(input))).toContainEqual(
+      expect.stringContaining('/organisation/pharmacies/mine'),
+    ),
+  );
+  expect(screen.queryByRole('link', { name: 'Zu meinen Schulungen' })).not.toBeInTheDocument();
 });
 
 test('a token without a subject reads that the account is incomplete', async () => {
@@ -266,6 +230,6 @@ test('the page speaks English once switched', async () => {
     throw new Error('Each certificate has a row.');
   }
   expect(within(ready).getByText('15/01/2026')).toBeInTheDocument();
-  expect(within(ready).getByRole('button', { name: 'Download PDF for Hygiene in der Apotheke' })).toBeInTheDocument();
+  expect(within(ready).getByRole('button', { name: 'Open PDF for Hygiene in der Apotheke' })).toBeInTheDocument();
   expect(within(pending).getByText('Being prepared')).toBeInTheDocument();
 });
