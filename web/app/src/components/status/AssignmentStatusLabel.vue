@@ -2,12 +2,11 @@
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { cn } from '@/lib/utils';
-import type { CellStatus } from './cellStatus';
-import { statusLooks } from './matrixStatus';
+import { type AssignmentStatus, statusLooks } from './assignmentStatus';
 
-// A status of the team matrix as its icon and its word. The icon is decoration; the word says the status, so it is
+// An assignment's status as its icon and its word. The icon is decoration; the word says the status, so it is
 // never shown by colour alone.
-const props = defineProps<{ status: CellStatus }>();
+const props = defineProps<{ status: AssignmentStatus }>();
 
 const { t } = useI18n();
 const look = computed(() => statusLooks[props.status]);

@@ -8,7 +8,7 @@ import type {
   OrganisationJobFunction,
   OrganisationMembershipRole,
 } from '@/api/generated';
-import type { CellStatus } from '@/modules/compliance/cellStatus';
+import type { AssignmentStatus } from '@/components/status/assignmentStatus';
 
 // The German catalog, which defines the keys (MessageSchema). German follows docs/domain/README.md's glossary and
 // addresses the user as "Sie". vue-i18n reads @ { } | $ as syntax: write a literal one as {'@'}.
@@ -207,7 +207,7 @@ export const de = {
       Completed: 'Abgeschlossen',
       CompletedLate: 'Verspätet abgeschlossen',
       Expired: 'Abgelaufen',
-    } satisfies Record<CellStatus, string>,
+    } satisfies Record<AssignmentStatus, string>,
     assign: {
       notAllowed: 'Sie dürfen in dieser Apotheke keine Schulungen zuweisen.',
       steps: {
@@ -733,6 +733,23 @@ export const de = {
     },
   },
   learning: {
+    myCourses: {
+      intro: 'Ihre Schulungen in {pharmacy}: Überfällige zuerst, dann nach Fälligkeit.',
+      list: { title: 'Zugewiesene Schulungen' },
+      due: 'Fällig am {date}',
+      dueOverdue: 'War fällig am {date}',
+      start: 'Starten',
+      continue: 'Fortsetzen',
+      startCourse: 'Starten: {title}',
+      continueCourse: 'Fortsetzen: {title}',
+      locked: 'Der Test ist gesperrt. Arbeiten Sie die Inhalte erneut durch, um ihn wieder freizuschalten.',
+      notStartable: 'Diese Schulung kann derzeit nicht gestartet werden: ihre Version ist zurückgezogen.',
+      empty: 'Ihnen ist in {pharmacy} derzeit keine Schulung zugewiesen.',
+      pharmacyNotFound: 'Sie sind nicht mehr Mitglied dieser Apotheke.',
+      identityIncomplete: 'Ihr Konto nennt keinen Namen oder keine gültige E-Mail-Adresse. Ergänzen Sie Ihr Profil.',
+      loadFailed: 'Ihre Schulungen konnten nicht geladen werden.',
+      retry: 'Erneut versuchen',
+    },
     player: {
       loadFailed: 'Die Schulung konnte nicht geladen werden.',
       notFound: 'Diese Schulung gibt es nicht.',
