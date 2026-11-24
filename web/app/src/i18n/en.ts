@@ -207,6 +207,8 @@ export const en: MessageSchema = {
       submit: 'Assign',
       retry: 'Try again',
       changed: 'The assignments have changed in the meantime. Check the details and assign again.',
+      concurrentSave:
+        'Another change to the assignments was saved at the same moment; nothing was assigned. Please assign again.',
       failed: 'The course could not be assigned. Please try again.',
       course: {
         title: 'Choose a course',
@@ -427,6 +429,8 @@ export const en: MessageSchema = {
         capabilityMissing: 'Your role in this pharmacy does not allow this.',
         pharmacyNotFound: 'You are no longer a member of this pharmacy.',
         pharmacyChanged: 'The pharmacy was changed at the same time. Check the updated list and try again.',
+        concurrentSave:
+          'Another change to the pharmacy was saved at the same moment; nothing was saved. Please try again.',
         invalidEmail: 'The email address is missing, too long or not an email address.',
         invalidJobFunction: 'The job function is missing or unknown.',
         invalidMembershipRole: 'The role is missing or unknown.',
@@ -633,6 +637,8 @@ export const en: MessageSchema = {
           tooMuchContent:
             'The text chapters are too long for an AI draft. Shorten them or write the questions by hand.',
           changed: 'The version changed in the meantime; the draft was discarded. Try again.',
+          concurrentSave:
+            'Another change to the version was saved at the same moment; the draft was not applied. Try again.',
           notADraft: 'This version is no longer a draft; its test cannot be drafted again.',
           timedOut: 'The AI draft took too long. The questions are reloaded; check whether it was applied.',
           failed: 'The AI draft failed. Try again.',
@@ -731,6 +737,8 @@ export const en: MessageSchema = {
         publisherApprovedQuestions:
           'Four-eyes approval does not let whoever approved questions of this version publish it. Ask another editor.',
         changed: 'The version has changed in the meantime. You now see its current state; please try again.',
+        concurrentSave:
+          'Another change to the version was saved at the same moment; nothing was saved. Please try again.',
         notFound: 'This version no longer exists.',
         identityIncomplete: 'Your sign-in names no person. Please sign in again.',
         forbidden: 'You are not allowed to take this step.',

@@ -1,3 +1,4 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using System.Diagnostics;
 using System.Net;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.InvitationRecipients;
@@ -27,6 +28,23 @@ public static class PharmacyFailures
 
     /// <summary>An accept lost the race to another change of the invitation; it names no pharmacy, which the caller does not belong to.</summary>
     public static ApiError InvitationChanged() => new InvitationChanged();
+
+    /// <summary>Another save came at the same moment and PostgreSQL ended this one; try again.</summary>
+    public static ApiError ConcurrentSave() => new OrganisationConcurrentSave();
+
+    /// <summary>How a save of the pharmacy lost a race.</summary>
+    public static ApiError LostRace(LostRace race, Guid id) => race switch
+    {
+        VersionMovedOn => Changed(id),
+        SaveDeadlocked => ConcurrentSave(),
+    };
+
+    /// <summary>How the save of an acceptance lost a race.</summary>
+    public static ApiError InvitationLostRace(LostRace race) => race switch
+    {
+        VersionMovedOn => InvitationChanged(),
+        SaveDeadlocked => ConcurrentSave(),
+    };
 
     public static ApiError InvalidEmail() => new InvalidEmail();
 

@@ -33,8 +33,10 @@ public abstract partial class ModuleUnitOfWork<TContext>(IServiceProvider servic
     public Task CommitAsync(CancellationToken cancellationToken) => Outbox.SaveChangesAndFlushMessagesAsync(cancellationToken);
 
     /// <summary>
-    /// <see cref="CommitAsync"/> for a save that can lose a race: <see langword="false"/> when the row version of an
-    /// aggregate it changes (<c>RowVersion</c>) moved on since it was loaded. Nothing is saved or sent then: the save's
+    /// <see cref="CommitAsync"/> for a save that can lose a race, answering how it lost (<see cref="LostRace"/>):
+    /// <see cref="VersionMovedOn"/> when the row version of an aggregate it changes (<c>RowVersion</c>) moved on since it
+    /// was loaded, and <see cref="SaveDeadlocked"/> when PostgreSQL ended it as a deadlock or a serialization failure
+    /// (below), which a module answers apart: the first means load again, the second try again. Nothing is saved or sent then: the save's
     /// transaction, with the outbox's envelopes, rolls back, and the outbox flushes only after a save that succeeded.
     /// A module opts in by declaring this method on its own unit of work's interface; <see cref="CommitAsync"/> still
     /// lets a lost race through, as a 500.
@@ -52,14 +54,15 @@ public abstract partial class ModuleUnitOfWork<TContext>(IServiceProvider servic
     /// <see cref="AggregateException"/>'s inner exceptions, at any depth) is logged once as a warning of its own, with it
     /// attached, so it is not lost with the save answered as a 409; no wrapper or aggregate is logged by itself.
     /// Only a failure before the commit completed is classified: the save and the commit of any open transaction run first,
-    /// as Wolverine's <c>SaveChangesAndFlushMessagesAsync</c> runs them (Wolverine 6.64.0), and Wolverine's flush after
+    /// as Wolverine's <c>SaveChangesAndFlushMessagesAsync</c> runs them (Wolverine 6.64.0, which
+    /// <c>WolverineVersionTests</c> pins: recheck that method when it changes), and Wolverine's flush after
     /// the commit (<c>EfCoreOutboxFlushing</c>) runs outside the classification, so whatever it throws, a 40P01 or 40001 of
     /// <c>DurabilityMode.ServerlessWithOutbox</c>'s delete of the sent outbox rows included, comes through as it came and
     /// never answers 409 for a change that is committed. Where domain-event scrapers are registered (none are here), it
     /// calls Wolverine's own <c>SaveChangesAndFlushMessagesAsync</c>, which runs them, and classifies its failures as a
     /// whole. Every other failure is rethrown as it came.
     /// </summary>
-    public async Task<bool> TryCommitAsync(CancellationToken cancellationToken)
+    public async Task<Result<Unit, LostRace>> TryCommitAsync(CancellationToken cancellationToken)
     {
         var scraped = services.GetServices<IDomainEventScraper>().Any();
         try
@@ -74,20 +77,21 @@ public abstract partial class ModuleUnitOfWork<TContext>(IServiceProvider servic
                 LogOtherFailure(Logger, other, typeof(TContext).Name);
             }
 
-            return false;
+            return Failure<LostRace>(new SaveDeadlocked(ended.SqlState));
         }
         catch (DbUpdateConcurrencyException)
         {
-            return false;
+            return Failure<LostRace>(new VersionMovedOn());
         }
 
         if (!scraped)
         {
-            // After the commit: the change is saved, so nothing here is a lost race.
+            // After the commit: the change is saved, so nothing here is a lost race. Every outbox the host resolves is a
+            // MessageContext; only a test's substitute takes the interface's own flush.
             await (Outbox is MessageContext context ? EfCoreOutboxFlushing.FlushOutgoingMessagesAsync(context) : Outbox.FlushOutgoingMessagesAsync());
         }
 
-        return true;
+        return Success(Unit.Value);
     }
 
     /// <summary>The steps of Wolverine's <c>SaveChangesAndFlushMessagesAsync</c> up to the commit: the save, then the commit of any open transaction.</summary>

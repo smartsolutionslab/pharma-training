@@ -48,6 +48,8 @@ const refusalsByCode: Record<string, AcceptRefusal> = {
   'organisation.person-already-member': 'alreadyMember',
   // Lost a concurrent save (ADR 0002): worth trying again.
   'organisation.pharmacy-changed': 'failed',
+  // Lost to a save at the same moment (a deadlock): nothing was saved, worth trying again.
+  'organisation.concurrent-save': 'failed',
   // The invitation lost a concurrent save: worth trying again, with words of its own.
   'organisation.invitation-changed': 'invitationChanged',
 };

@@ -16,6 +16,7 @@ const byCode: Record<string, MessageKey> = {
   'organisation.capability-missing': 'organisation.team.errors.capabilityMissing',
   'organisation.pharmacy-not-found': 'organisation.team.errors.pharmacyNotFound',
   'organisation.pharmacy-changed': 'organisation.team.errors.pharmacyChanged',
+  'organisation.concurrent-save': 'organisation.team.errors.concurrentSave',
   'organisation.invalid-email': 'organisation.team.errors.invalidEmail',
   'organisation.invalid-job-function': 'organisation.team.errors.invalidJobFunction',
   'organisation.invalid-membership-role': 'organisation.team.errors.invalidMembershipRole',

@@ -70,9 +70,10 @@ public sealed class InviteMemberHandler(
             await unitOfWork.PublishAsync(requested.ToIntegrationEvent());
         }
 
-        if (!await unitOfWork.TryCommitAsync(cancellationToken))
+        var saved = await unitOfWork.TryCommitAsync(cancellationToken);
+        if (saved.IsFailure)
         {
-            return Failure(PharmacyFailures.Changed(command.Pharmacy.Value));
+            return Failure(PharmacyFailures.LostRace(saved.Error, command.Pharmacy.Value));
         }
 
         return Success(invited.Value.Value);

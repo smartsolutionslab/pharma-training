@@ -41,9 +41,10 @@ public sealed class AcceptInvitationHandler(IPharmacyStore pharmacies, IOrganisa
             await unitOfWork.PublishAsync(started.ToIntegrationEvent());
         }
 
-        if (!await unitOfWork.TryCommitAsync(cancellationToken))
+        var saved = await unitOfWork.TryCommitAsync(cancellationToken);
+        if (saved.IsFailure)
         {
-            return Failure(PharmacyFailures.InvitationChanged());
+            return Failure(PharmacyFailures.InvitationLostRace(saved.Error));
         }
 
         return Success(pharmacy.Id.Value);

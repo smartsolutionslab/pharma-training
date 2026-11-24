@@ -218,6 +218,8 @@ export const de = {
       submit: 'Zuweisen',
       retry: 'Erneut versuchen',
       changed: 'Die Zuweisungen wurden inzwischen geändert. Prüfen Sie die Angaben und weisen Sie erneut zu.',
+      concurrentSave:
+        'Gleichzeitig wurde eine andere Änderung an den Zuweisungen gespeichert; es wurde nichts zugewiesen. Weisen Sie erneut zu.',
       failed: 'Die Schulung konnte nicht zugewiesen werden. Versuchen Sie es erneut.',
       course: {
         title: 'Schulung wählen',
@@ -439,6 +441,8 @@ export const de = {
         pharmacyNotFound: 'Sie sind nicht mehr Mitglied dieser Apotheke.',
         pharmacyChanged:
           'Die Apotheke wurde gerade gleichzeitig geändert. Prüfen Sie die aktualisierte Liste und versuchen Sie es erneut.',
+        concurrentSave:
+          'Gleichzeitig wurde eine andere Änderung an der Apotheke gespeichert; es wurde nichts gespeichert. Versuchen Sie es erneut.',
         invalidEmail: 'Die E-Mail-Adresse fehlt, ist zu lang oder ist keine.',
         invalidJobFunction: 'Die Tätigkeit fehlt oder ist unbekannt.',
         invalidMembershipRole: 'Die Rolle fehlt oder ist unbekannt.',
@@ -650,6 +654,8 @@ export const de = {
           tooMuchContent:
             'Die Textkapitel sind zu lang für einen KI-Entwurf. Kürzen Sie sie oder schreiben Sie die Fragen von Hand.',
           changed: 'Die Version wurde inzwischen geändert; der Entwurf wurde verworfen. Versuchen Sie es erneut.',
+          concurrentSave:
+            'Gleichzeitig wurde eine andere Änderung an der Version gespeichert; der Entwurf wurde nicht übernommen. Versuchen Sie es erneut.',
           notADraft: 'Diese Version ist kein Entwurf mehr; ihr Test kann nicht neu entworfen werden.',
           timedOut:
             'Der KI-Entwurf hat zu lange gedauert. Die Fragen werden neu geladen; prüfen Sie, ob er übernommen wurde.',
@@ -751,6 +757,8 @@ export const de = {
         publisherApprovedQuestions:
           'Mit Vier-Augen-Freigabe darf nicht veröffentlichen, wer Fragen dieser Version freigegeben hat. Bitten Sie eine andere Person aus der Redaktion.',
         changed: 'Die Version wurde inzwischen geändert. Sie sehen jetzt den aktuellen Stand; versuchen Sie es erneut.',
+        concurrentSave:
+          'Gleichzeitig wurde eine andere Änderung an der Version gespeichert; es wurde nichts gespeichert. Versuchen Sie es erneut.',
         notFound: 'Diese Version gibt es nicht mehr.',
         identityIncomplete: 'Ihre Anmeldung nennt keine Person. Melden Sie sich erneut an.',
         forbidden: 'Sie dürfen diesen Schritt nicht ausführen.',

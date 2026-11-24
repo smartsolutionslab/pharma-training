@@ -9,6 +9,7 @@ const byCode: Record<string, MessageKey> = {
   'editorial.identity-incomplete': 'editorial.workflow.errors.identityIncomplete',
   'editorial.course-version-not-found': 'editorial.workflow.errors.notFound',
   'editorial.course-version-changed': 'editorial.workflow.errors.changed',
+  'editorial.concurrent-save': 'editorial.workflow.errors.concurrentSave',
   'editorial.not-a-draft': 'editorial.workflow.errors.notADraft',
   'editorial.no-chapters': 'editorial.workflow.errors.noChapters',
   'editorial.too-many-questions': 'editorial.workflow.errors.tooManyQuestions',

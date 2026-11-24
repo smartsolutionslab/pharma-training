@@ -45,9 +45,10 @@ public sealed class CancelAssignmentHandler(
             return Failure(AssignmentFailures.From(cancelled.Error));
         }
 
-        if (!await unitOfWork.TryCommitAsync(cancellationToken))
+        var saved = await unitOfWork.TryCommitAsync(cancellationToken);
+        if (saved.IsFailure)
         {
-            return Failure(AssignmentFailures.AssignmentsChanged());
+            return Failure(AssignmentFailures.LostRace(saved.Error));
         }
 
         return Success(Unit.Value);

@@ -7,6 +7,7 @@ const byCode: Record<string, MessageKey> = {
   'editorial.nothing-to-draft': 'editorial.test.draft.nothingToDraft',
   'editorial.too-much-content-to-draft': 'editorial.test.draft.errors.tooMuchContent',
   'editorial.course-version-changed': 'editorial.test.draft.errors.changed',
+  'editorial.concurrent-save': 'editorial.test.draft.errors.concurrentSave',
   'editorial.not-a-draft': 'editorial.test.draft.errors.notADraft',
 };
 

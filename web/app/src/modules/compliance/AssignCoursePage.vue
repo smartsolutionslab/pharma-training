@@ -231,6 +231,9 @@ async function send(checked: Pick<AssignValues, 'dueDate' | 'repeatYearly'>) {
       case 'changed':
         reviewError.value = 'compliance.assign.changed';
         break;
+      case 'concurrentSave':
+        reviewError.value = 'compliance.assign.concurrentSave';
+        break;
       case 'failed':
         reviewError.value = 'compliance.assign.failed';
         break;

@@ -140,6 +140,11 @@
     "message": "A certificate from before the assignment does not fulfil it."
   },
   {
+    "code": "compliance.concurrent-save",
+    "status": 409,
+    "message": "Another change to the assignments was saved at the same moment; try again."
+  },
+  {
     "code": "compliance.course-missing",
     "status": 400,
     "message": "The course is missing."
@@ -248,6 +253,11 @@
     "code": "editorial.chapter-not-found",
     "status": 404,
     "message": "The course version has no such chapter."
+  },
+  {
+    "code": "editorial.concurrent-save",
+    "status": 409,
+    "message": "Another change to the course version was saved at the same moment; try again."
   },
   {
     "code": "editorial.course-version-changed",
@@ -588,6 +598,11 @@
     "code": "organisation.capability-missing",
     "status": 403,
     "message": "Your role in this pharmacy does not allow this."
+  },
+  {
+    "code": "organisation.concurrent-save",
+    "status": 409,
+    "message": "Another change to the pharmacy was saved at the same moment; try again."
   },
   {
     "code": "organisation.email-not-verified",
