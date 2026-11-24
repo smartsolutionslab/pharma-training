@@ -18,6 +18,12 @@ public sealed partial class AspireFixture : IAsyncLifetime
     /// <summary>Every editorial model limit of this run, per minute and per day, for content review and test draft alike.</summary>
     public const int EditorialModelLimit = 50;
 
+    /// <summary>The per-address limit on public certificate verification of this run, per minute (docs/adr/0026).</summary>
+    public const int CertificationVerificationLimit = 20;
+
+    /// <summary>The per-address limit on public certificate verification of this run, per day.</summary>
+    public const int CertificationVerificationDailyLimit = 1000;
+
     // Twice the largest start-up of the green CI runs listed in #134 (204 s), rounded up to the minute. Before #126 the
     // edge and every service host were rebuilt at each start, which took 3.5 to over 5 minutes; now every project starts
     // from the AppHost's build. The fixture logs each run's start-up beside this limit.
@@ -60,6 +66,14 @@ public sealed partial class AspireFixture : IAsyncLifetime
         {
             editorial.WithEnvironment($"Editorial__ModelLimits__{setting}", EditorialModelLimit.ToString(CultureInfo.InvariantCulture));
         }
+
+        // The run sets the per-address verification limit (docs/adr/0026) to CertificationVerificationLimit a minute, so
+        // CertificationVerificationTests reaches it in a few dozen calls, and the day far above it, so the minute alone
+        // refuses. Every local caller reaches Certification from one address, the edge's, so every call of the run shares
+        // one count: only that collection calls /certification/verify, and it leaves the minute's window reset.
+        var certification = builder.CreateResourceBuilder(builder.Resources.OfType<ProjectResource>().Single(resource => resource.Name == "certification"));
+        certification.WithEnvironment("Certification__VerificationLimits__PerMinute", CertificationVerificationLimit.ToString(CultureInfo.InvariantCulture));
+        certification.WithEnvironment("Certification__VerificationLimits__PerDay", CertificationVerificationDailyLimit.ToString(CultureInfo.InvariantCulture));
 
         app = await builder.BuildAsync(timeout.Token);
         await app.StartAsync(timeout.Token);
