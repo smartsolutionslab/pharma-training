@@ -1,3 +1,4 @@
+import ts from 'typescript';
 import { describe, expect, test } from 'vitest';
 
 // ApiError.serverMessage is the host's English fallback for a code the catalog lacks (#147, ADR 0007): only the helper,
@@ -6,26 +7,81 @@ const sources = import.meta.glob<string>('../**/*.{ts,vue}', { query: '?raw', im
 
 const readers = new Set(['src/api/baseApi.ts', 'src/i18n/errorText.ts']);
 
-/** The file's code without its comments: a comment may name serverMessage. */
-function code(source: string): string {
-  return source
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/(^|[^:\\])\/\/.*$/gm, '$1');
+/** A .vue file: its script blocks are TypeScript, the rest is markup. */
+const scriptBlocks = /<script\b[^>]*>([\s\S]*?)<\/script>/g;
+const isComponent = (source: string) => /^\s*(<!--[\s\S]*?-->\s*)*<(script|template)\b/.test(source);
+
+/** Whether the object or array literal is a pattern being assigned to: ({ serverMessage: words } = error). */
+function isAssignedTo(literal: ts.Node): boolean {
+  let node = literal;
+  while (
+    ts.isPropertyAssignment(node.parent) ||
+    ts.isShorthandPropertyAssignment(node.parent) ||
+    ts.isSpreadAssignment(node.parent) ||
+    ts.isSpreadElement(node.parent) ||
+    ts.isObjectLiteralExpression(node.parent) ||
+    ts.isArrayLiteralExpression(node.parent) ||
+    ts.isParenthesizedExpression(node.parent)
+  ) {
+    node = node.parent;
+  }
+  const { parent } = node;
+  return (
+    (ts.isBinaryExpression(parent) &&
+      parent.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      parent.left === node) ||
+    ((ts.isForOfStatement(parent) || ts.isForInStatement(parent)) && parent.initializer === node)
+  );
+}
+
+/** Whether the name is a key written in an object literal the code builds: { serverMessage: refusal.message }. */
+function isWrittenKey(name: ts.Node): boolean {
+  const { parent } = name;
+  return (
+    ts.isPropertyAssignment(parent) &&
+    parent.name === name &&
+    ts.isObjectLiteralExpression(parent.parent) &&
+    !isAssignedTo(parent.parent)
+  );
 }
 
 /**
- * Whether the code reads serverMessage: as a property (error.serverMessage, state?.serverMessage, x['serverMessage']) or
- * by destructuring ({ serverMessage } = error). Naming it as a key of an object it builds, codeMessage's
- * { serverMessage: refusal.message }, is no read.
+ * Whether the node names serverMessage as a read: any identifier serverMessage but a key written in an object
+ * literal (destructuring, renamed or not, reads it), and the string 'serverMessage' as an element or a pattern's key.
+ */
+function isRead(node: ts.Node): boolean {
+  if (ts.isIdentifier(node)) {
+    return node.text === 'serverMessage' && !isWrittenKey(node);
+  }
+  if (ts.isStringLiteralLike(node) && node.text === 'serverMessage') {
+    const { parent } = node;
+    return (
+      (ts.isElementAccessExpression(parent) && parent.argumentExpression === node) ||
+      (ts.isBindingElement(parent) && parent.propertyName === node) ||
+      (ts.isPropertyAssignment(parent) && parent.name === node && !isWrittenKey(node))
+    );
+  }
+  return false;
+}
+
+/** Whether TypeScript reads serverMessage. Parsed, not matched: comments and strings are never code. */
+function scriptReads(script: string): boolean {
+  const file = ts.createSourceFile('script.ts', script, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const visit = (node: ts.Node): boolean => isRead(node) || (ts.forEachChild(node, visit) ?? false);
+  return visit(file);
+}
+
+/**
+ * Whether the code reads serverMessage. A component's scripts are parsed as TypeScript; its markup, without its
+ * comments, reads it wherever it names it, as a template only reads.
  */
 function readsServerMessage(source: string): boolean {
-  const text = code(source);
-  return (
-    /\??\.\s*serverMessage\b/.test(text) ||
-    /\[\s*['"`]serverMessage['"`]\s*\]/.test(text) ||
-    /\{[^{}]*\bserverMessage\b(?!\s*:)[^{}]*\}\s*=[^=>]/.test(text)
-  );
+  if (!isComponent(source)) {
+    return scriptReads(source);
+  }
+  const scripts = [...source.matchAll(scriptBlocks)].map(([, script]) => script ?? '');
+  const markup = source.replace(scriptBlocks, '').replace(/<!--[\s\S]*?-->/g, '');
+  return scripts.some(scriptReads) || /\bserverMessage\b/.test(markup);
 }
 
 /** src-relative paths of every file under src that is no test, with its source. */
