@@ -74,6 +74,7 @@ public class SecurityHeadersTests
     [Theory]
     [InlineData("/")]
     [InlineData("/catalog")]
+    [InlineData("/index.html")]
     public async Task The_app_carries_a_content_security_policy_that_runs_only_its_own_scripts(string path)
     {
         await using var edge = await EdgeHost.ServingTheAppAsync(Environments.Production);
@@ -91,6 +92,7 @@ public class SecurityHeadersTests
         Expect(directives, "object-src", ["'none'"], policy, problems);
         Expect(directives, "frame-ancestors", ["'none'"], policy, problems);
         Expect(directives, "base-uri", ["'self'"], policy, problems);
+        Expect(directives, "form-action", ["'self'"], policy, problems);
 
         var scripts = directives.GetValueOrDefault("script-src") ?? directives.GetValueOrDefault("default-src") ?? [];
         if (!scripts.Contains("'self'"))

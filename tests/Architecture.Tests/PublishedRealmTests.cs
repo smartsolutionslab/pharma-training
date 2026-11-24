@@ -68,7 +68,9 @@ public class PublishedRealmTests
         var client = Client(Published(), WebClient);
 
         client.ShouldNotBeNull($"The published realm has no client {WebClient}.");
-        Value(client, "redirectUris").ShouldBe("""["${WEB_ORIGIN}/*"]""", $"{WebClient} must redirect to ${{WEB_ORIGIN}}/* alone.");
+        Value(client, "redirectUris").ShouldBe(
+            """["${WEB_ORIGIN}","${WEB_ORIGIN}/"]""",
+            $"{WebClient} must redirect to the web app's origin exactly, ${{WEB_ORIGIN}} or ${{WEB_ORIGIN}}/, where oidc-client-ts returns (redirect_uri and post_logout_redirect_uri are window.location.origin); a path wildcard would let an open redirect on the edge's origin receive the code.");
         Value(client, "webOrigins").ShouldBe("""["${WEB_ORIGIN}"]""", $"{WebClient} must accept ${{WEB_ORIGIN}} alone as a web origin.");
         Value(client, "directAccessGrantsEnabled").ShouldBe("false", $"{WebClient} must not accept the password grant once published; it exists for local tests alone.");
     }
