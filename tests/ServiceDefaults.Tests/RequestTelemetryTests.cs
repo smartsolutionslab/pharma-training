@@ -30,9 +30,11 @@ public partial class RequestTelemetryTests
         var server = activities.Stopped.Where(activity => (activity.GetTagItem("url.path") as string)?.StartsWith("/certification/verify", StringComparison.Ordinal) == true).ToList();
         server.ShouldNotBeEmpty("No server span for the verification was recorded.");
         server.ShouldAllBe(activity => (string?)activity.GetTagItem("url.path") == Verify);
-        activities.Stopped.SelectMany(activity => activity.TagObjects).Where(tag => tag.Value != null && tag.Value.ToString()!.Contains(code, StringComparison.Ordinal))
-            .ShouldBeEmpty("A span carries the verification code.");
-        activities.Stopped.Where(activity => activity.DisplayName.Contains(code, StringComparison.Ordinal)).ShouldBeEmpty();
+        // The host's own spans; the test's HttpClient, the caller, records its own request in a client span.
+        var hosts = activities.Stopped.Where(activity => activity.Kind == System.Diagnostics.ActivityKind.Server).ToList();
+        hosts.SelectMany(activity => activity.TagObjects).Where(tag => tag.Value != null && tag.Value.ToString()!.Contains(code, StringComparison.Ordinal))
+            .ShouldBeEmpty("A span of the host carries the verification code.");
+        hosts.Where(activity => activity.DisplayName.Contains(code, StringComparison.Ordinal)).ShouldBeEmpty();
     }
 
     [Fact]
