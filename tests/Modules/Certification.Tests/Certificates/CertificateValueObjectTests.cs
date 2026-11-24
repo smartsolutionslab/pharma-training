@@ -130,6 +130,45 @@ public class CertificateValueObjectTests
     }
 
     [Theory]
+    [InlineData(24)]
+    [InlineData(64)]
+    public void Try_from_accepts_a_verification_code_of_24_to_64_characters(int length)
+    {
+        var value = new string('k', length);
+
+        VerificationCode.TryFrom(value, out var code).ShouldBeTrue();
+
+        code.ShouldBe(VerificationCode.From(value));
+    }
+
+    [Theory]
+    [InlineData(null, 1)]
+    [InlineData("", 1)]
+    [InlineData("   ", 1)]
+    [InlineData("                        ", 1)]
+    [InlineData("k", 23)]
+    [InlineData("k", 65)]
+    public void Try_from_refuses_a_missing_blank_short_or_long_verification_code_without_throwing(string? value, int repeat)
+    {
+        var refused = false;
+
+        Should.NotThrow(() => refused = !VerificationCode.TryFrom(Repeated(value, repeat), out _));
+
+        refused.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void A_verification_code_from_accepts_comes_back_through_try_from()
+    {
+        var issued = VerificationCode.From("k7Qp2xV9mL4rT8wZ1nB6cY3hAbCdEfGh");
+
+        VerificationCode.TryFrom(issued.Value, out var code).ShouldBeTrue();
+
+        code.ShouldBe(issued);
+        code.ShouldNotBeNull().Value.ShouldBe(issued.Value);
+    }
+
+    [Theory]
     [InlineData(null, 1)]
     [InlineData("", 1)]
     [InlineData("   ", 1)]
