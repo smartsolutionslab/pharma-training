@@ -1,14 +1,13 @@
 import { maximumLearners, maximumYearsAhead } from '@/modules/compliance/assignSchema';
-import { maxDurationSeconds, maxTextLength } from '@/modules/editorial/chapterSchema';
+import { chapterTitleMaxLength, maxDurationSeconds, maxTextLength } from '@/modules/editorial/chapterSchema';
+import { courseTitleMaxLength } from '@/modules/editorial/courseTitle';
 import { questionBounds } from '@/modules/editorial/questionSchema';
 import { blueprintBounds } from '@/modules/editorial/testBlueprintSchema';
 
-// The limits the host holds a value to that the frontend has no bound of its own for yet, each as the host has it.
+// The limits an error text names. Where a form holds a value to a bound of its own, the bound comes from that form's
+// module (src/i18n depends on src/modules here, for the values alone); below, the limits the host holds a value to that
+// the frontend has no bound of its own for yet, each as the host has it.
 
-/** The longest chapter title (ChapterTitle). */
-export const chapterTitleMaxLength = 150;
-/** The longest course title (CourseTitle). */
-export const courseTitleMaxLength = 150;
 /** The longest pharmacy name (PharmacyName). */
 export const pharmacyNameMaxLength = 120;
 /** The longest reason for a change of an assignment. */

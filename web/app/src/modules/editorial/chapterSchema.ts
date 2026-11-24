@@ -3,6 +3,9 @@ import type { EditorialChapterDto, EditorialChapterRequest } from '@/api/generat
 import type { MessageKey } from '@/i18n';
 import { type FileKind, fileLimits, fileProblem, fileProblemKey } from './chapterFile';
 
+/** The longest chapter title (ChapterTitle). */
+export const chapterTitleMaxLength = 150;
+
 /** The most a text chapter holds (MarkdownText). */
 export const maxTextLength = 200_000;
 
@@ -15,7 +18,7 @@ const chapterFields = z.object({
     .string()
     .trim()
     .min(1, { error: 'editorial.chapterForm.titleRequired' satisfies MessageKey })
-    .max(150, { error: 'editorial.chapterForm.titleTooLong' satisfies MessageKey })
+    .max(chapterTitleMaxLength, { error: 'editorial.chapterForm.titleTooLong' satisfies MessageKey })
     .refine(hasNoNul, { error: 'editorial.chapterForm.titleHasNul' satisfies MessageKey }),
   kind: z.enum(['Text', 'Pdf', 'Video']),
   text: z.string(),
