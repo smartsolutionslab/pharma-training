@@ -45,7 +45,7 @@ public static partial class InvitationMailClock
         }
     }
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Pharmacy {Pharmacy} stored the invitation mail day {StoredDay:yyyy-MM-dd}, beyond tomorrow of today {Today:yyyy-MM-dd}; it is discarded and today's tally starts afresh. The row was edited by hand.")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Pharmacy {Pharmacy} stored the invitation mail day {StoredDay:yyyy-MM-dd}, beyond tomorrow of today {Today:yyyy-MM-dd}; it is discarded and today's tally starts afresh. The row was edited by hand, or the database's clock moved back (a failover or a restore).")]
     private static partial void LogAhead(ILogger logger, Guid pharmacy, DateOnly storedDay, DateOnly today);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Invitation {Membership} of pharmacy {Pharmacy} stored the request time {RequestedAt:O}, a cooldown or more beyond now {Now:O}; it is not trusted and the invitation may be renewed. The row was edited by hand, or the database's clock moved back (a failover or a restore).")]

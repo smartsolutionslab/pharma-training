@@ -338,8 +338,8 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
 
     /// <summary>
     /// The stored day of the invitation mail tally when it lies beyond tomorrow; none otherwise. With every instance on
-    /// the database's clock only a hand-edited row stores one: it is discarded and today's tally starts afresh, and the
-    /// caller reports it.
+    /// the database's clock only a hand-edited row, or a database clock that moved back (a failover or a restore),
+    /// stores one: it is discarded and today's tally starts afresh, and the caller reports it.
     /// </summary>
     public Option<UtcDay> InvitationMailDayBeyondTomorrow(Timestamp now)
     {
