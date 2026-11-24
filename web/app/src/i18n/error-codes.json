@@ -75,6 +75,11 @@
     "message": "There is no such sample."
   },
   {
+    "code": "certification.certificate-not-verifiable",
+    "status": 404,
+    "message": "No certificate matches this code."
+  },
+  {
     "code": "certification.invalid-sample-name",
     "status": 400,
     "message": "A sample's name is 1 to 100 characters and not blank."
@@ -83,6 +88,11 @@
     "code": "certification.sample-not-found",
     "status": 404,
     "message": "There is no such sample."
+  },
+  {
+    "code": "certification.verification-limit-reached",
+    "status": 429,
+    "message": "Too many verifications from this address; try again later."
   },
   {
     "code": "compliance.assignment-already-active",
