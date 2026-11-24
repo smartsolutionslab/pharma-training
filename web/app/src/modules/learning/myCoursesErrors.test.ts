@@ -41,7 +41,7 @@ test.each([
 });
 
 test.each([
-  [400, 'compliance.pharmacy-missing', 'Es wurde keine Apotheke angegeben.'],
+  [400, 'compliance.not-in-the-catalogs', 'Es wurde keine Apotheke angegeben.'],
   [409, 'compliance.something-new', 'Etwas Neues.'],
 ])('a module code the catalog does not know, %i %s, shows the host’s words', (status, code, detail) => {
   expect(myCoursesFailure(new ApiError(status, problem(status, code, detail)))).toEqual({ serverMessage: detail });

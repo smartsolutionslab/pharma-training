@@ -217,7 +217,7 @@ test('a pharmacy the caller is no longer a member of reads the memberships again
 
 // A module code the catalogs do not know shows the host's own words (#147, ADR 0007); reading again may help.
 test.each([
-  ['Compliance', () => problem(400, 'compliance.pharmacy-missing', 'Es wurde keine Apotheke angegeben.')],
+  ['Compliance', () => problem(400, 'compliance.not-in-the-catalogs', 'Es wurde keine Apotheke angegeben.')],
   ['another module', () => problem(403, 'organisation.x', 'Es wurde keine Apotheke angegeben.')],
 ])('a refusal of %s the catalogs do not know shows the host’s own words, and Retry', async (_name, refusal) => {
   host.assignments = async () => refusal();
