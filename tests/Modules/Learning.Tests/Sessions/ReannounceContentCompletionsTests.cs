@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Testing;
@@ -180,6 +181,22 @@ public class ReannounceContentCompletionsTests
         passed.IsSuccess.ShouldBeTrue();
         unannounced.Asked.Count.ShouldBe(AnnouncementSweepSettings.MostPagesPerPass);
         unitOfWork.Published.ShouldBeEmpty();
+        unitOfWork.Commits.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task A_pass_at_the_largest_batch_reads_at_most_its_most_events_of_unreadable_completions()
+    {
+        // #351: ten pages of the largest batch would load and warn of ten thousand events a pass on every replica.
+        List<StoredContentCompletion> unreadable = [.. Enumerable.Range(1, AnnouncementSweepSettings.MostEventsPerPass + 1).Select(version => Stored(streamVersion: version, storedAt: Now.AddDays(-6)))];
+        unannounced.Stored.AddRange(unreadable);
+        unannounced.Unreadable.UnionWith(unreadable);
+
+        var passed = await PassAsync(Settings(batchSize: AnnouncementSweepSettings.MostBatchSize.ToString(CultureInfo.InvariantCulture)));
+
+        passed.IsSuccess.ShouldBeTrue();
+        unannounced.Asked.Sum(question => question.Limit).ShouldBe(AnnouncementSweepSettings.MostEventsPerPass);
+        logger.Collector.GetSnapshot().Count(record => record.Level == LogLevel.Warning).ShouldBe(AnnouncementSweepSettings.MostEventsPerPass);
         unitOfWork.Commits.ShouldBe(0);
     }
 
