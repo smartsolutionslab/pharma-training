@@ -263,7 +263,7 @@ public class TestDraftRequestTests
             version.AddChapter(TextChapter(ChapterId.New(), $"Kapitel {index + 1}")).IsSuccess.ShouldBeTrue();
         }
 
-        version.SetBlueprint(Blueprint(questions)).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(Blueprint(questions), Author).IsSuccess.ShouldBeTrue();
 
         var request = TestDraftRequest.For(version).Value;
 
@@ -275,7 +275,7 @@ public class TestDraftRequestTests
     public void Questions_the_draft_keeps_are_subtracted_and_unreviewed_ai_drafted_ones_are_not()
     {
         var version = DraftWithChapter(out var chapter);
-        version.SetBlueprint(Blueprint(6)).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(Blueprint(6), Author).IsSuccess.ShouldBeTrue();
         var approved = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
         version.ApproveQuestion(approved, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
         var approvedAi = version.ApplyAiTestDraft([SingleChoice(chapter)], QuestionId.New, AnswerOptionId.New).Value.ShouldHaveSingleItem();
@@ -293,11 +293,11 @@ public class TestDraftRequestTests
     public void Ai_drafted_questions_an_editor_edited_or_approved_once_are_subtracted_as_kept()
     {
         var version = DraftWithChapter(out var chapter);
-        version.SetBlueprint(Blueprint(5)).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(Blueprint(5), Author).IsSuccess.ShouldBeTrue();
         var drafted = version.ApplyAiTestDraft([SingleChoice(chapter), SingleChoice(chapter), SingleChoice(chapter)], QuestionId.New, AnswerOptionId.New).Value;
-        version.EditQuestion(drafted[0], SingleChoice(chapter), AnswerOptionId.New).IsSuccess.ShouldBeTrue();
+        version.EditQuestion(drafted[0], SingleChoice(chapter), Author, AnswerOptionId.New).IsSuccess.ShouldBeTrue();
         version.ApproveQuestion(drafted[1], Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
-        version.SetBlueprint(Blueprint(6)).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(Blueprint(6), Author).IsSuccess.ShouldBeTrue();
         version.Questions.ShouldAllBe(question => question.Review == ReviewState.Unreviewed);
 
         var request = TestDraftRequest.For(version).Value;
@@ -311,7 +311,7 @@ public class TestDraftRequestTests
         var next = Published().DraftNext(CourseVersionId.New(), Author, ChapterId.New, QuestionId.New, AnswerOptionId.New).Value;
         var chapter = next.Chapters.ShouldHaveSingleItem().Id;
         next.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).IsSuccess.ShouldBeTrue();
-        next.SetBlueprint(Blueprint(2)).IsSuccess.ShouldBeTrue();
+        next.SetBlueprint(Blueprint(2), Author).IsSuccess.ShouldBeTrue();
 
         var result = TestDraftRequest.For(next);
 
@@ -357,7 +357,7 @@ public class TestDraftRequestTests
     public void Approved_questions_that_fill_the_blueprint_leave_nothing_to_draft(int blueprint, int approved)
     {
         var version = DraftWithChapter(out var chapter);
-        version.SetBlueprint(Blueprint(blueprint)).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(Blueprint(blueprint), Author).IsSuccess.ShouldBeTrue();
         for (var index = 0; index < approved; index++)
         {
             var question = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;

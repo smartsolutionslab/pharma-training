@@ -35,18 +35,19 @@ public class EditorialPublishedEventsTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await aspire.CreateHostClientAsync("editor");
+        using var publisher = await aspire.CreateHostClientAsync(Publisher);
         await using var connection = await Broker.ConnectAsync(aspire, cancellationToken);
         await using var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
-        var listener = await ListenAsync(client, connection, channel, cancellationToken);
+        var listener = await ListenAsync(client, publisher, connection, channel, cancellationToken);
 
-        var published = await PublishedAsync(client, cancellationToken);
+        var published = await PublishedAsync(client, publisher, cancellationToken);
         using (var again = await StepAsync(client, published.Id, "publish", cancellationToken))
         {
             again.StatusCode.ShouldBe(HttpStatusCode.Conflict);
             (await CodeOfAsync(again, cancellationToken)).ShouldBe("editorial.not-in-review");
         }
 
-        var marker = await PublishedAsync(client, cancellationToken);
+        var marker = await PublishedAsync(client, publisher, cancellationToken);
         var courses = await Broker.ReceiveUntilAsync<JsonElement>(channel, listener.CourseQueue, received => VersionOf(received) == marker.Id, cancellationToken);
         var tests = await Broker.ReceiveUntilAsync<JsonElement>(channel, listener.TestQueue, received => VersionOf(received) == marker.Id, cancellationToken);
 
@@ -77,8 +78,9 @@ public class EditorialPublishedEventsTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await aspire.CreateHostClientAsync("editor");
+        using var publisher = await aspire.CreateHostClientAsync(Publisher);
 
-        var published = await PublishedAsync(client, cancellationToken);
+        var published = await PublishedAsync(client, publisher, cancellationToken);
 
         var version = await WaitUntilReadableAsync(client, published.Id, cancellationToken);
         version.CourseId.ShouldBe(published.CourseId);
@@ -99,14 +101,15 @@ public class EditorialPublishedEventsTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await aspire.CreateHostClientAsync("editor");
+        using var publisher = await aspire.CreateHostClientAsync(Publisher);
         await using var connection = await Broker.ConnectAsync(aspire, cancellationToken);
         await using var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
-        await PublishedWithPdfChapterAsync(client, SmallPdf, cancellationToken);
+        await PublishedWithPdfChapterAsync(client, publisher, SmallPdf, cancellationToken);
         await Broker.WaitForExchangeAsync(connection, ChapterFilesReleasedExchange, cancellationToken);
         var queue = await Broker.BindQueueAsync(channel, ChapterFilesReleasedExchange, cancellationToken);
 
         var signedAfter = TimeProvider.System.GetUtcNow();
-        var (versionId, chapterId) = await PublishedWithPdfChapterAsync(client, SmallPdf, cancellationToken);
+        var (versionId, chapterId) = await PublishedWithPdfChapterAsync(client, publisher, SmallPdf, cancellationToken);
 
         var released = await Broker.ReceiveAsync<JsonElement>(channel, queue, received => VersionOf(received) == versionId, cancellationToken);
         var file = released.GetProperty("files").EnumerateArray().ShouldHaveSingleItem();
@@ -128,9 +131,9 @@ public class EditorialPublishedEventsTests(AspireFixture aspire)
     /// Binds a queue to each of the two exchanges. A version of the listener's own is published first, so Editorial has
     /// sent a test definition and Wolverine has declared its exchange, which no consumer declares yet.
     /// </summary>
-    private static async Task<PublishedListener> ListenAsync(HttpClient client, IConnection connection, IChannel channel, CancellationToken cancellationToken)
+    private static async Task<PublishedListener> ListenAsync(HttpClient client, HttpClient publisher, IConnection connection, IChannel channel, CancellationToken cancellationToken)
     {
-        await PublishedAsync(client, cancellationToken);
+        await PublishedAsync(client, publisher, cancellationToken);
         await Broker.WaitForExchangeAsync(connection, CourseVersionPublishedExchange, cancellationToken);
         await Broker.WaitForExchangeAsync(connection, TestDefinitionPublishedExchange, cancellationToken);
         return new PublishedListener(

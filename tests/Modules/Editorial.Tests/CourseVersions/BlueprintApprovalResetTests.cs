@@ -1,4 +1,5 @@
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions.Events;
 using static SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersions.CourseVersionBuilder;
 using static SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersions.QuestionDrafts;
 
@@ -7,7 +8,8 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersion
 /// <summary>
 /// Changing a draft's test settings takes every question's approval away (the owner's decision of 2026-11-23, #199):
 /// whichever of the number of questions, the passing score or the validity changes, every question of the version,
-/// copied or not, needs a review again, so the changed test is signed off before it is published. No event is raised.
+/// copied or not, needs a review again, so the changed test is signed off before it is published. Since #246 the
+/// change raises one <see cref="QuestionApprovalsReset"/> naming the editor who made it; #199 raised none.
 /// </summary>
 public class BlueprintApprovalResetTests
 {
@@ -40,7 +42,7 @@ public class BlueprintApprovalResetTests
         version.Questions.Single(question => question.Id == drafted).Provenance.ShouldBe(Provenance.AiDrafted);
         version.Questions.Select(question => question.Review).ShouldBe([ReviewState.Approved, ReviewState.Approved, ReviewState.Unreviewed]);
 
-        var set = version.SetBlueprint(Blueprint(10, 81, 12));
+        var set = version.SetBlueprint(Blueprint(10, 81, 12), Author);
 
         set.IsSuccess.ShouldBeTrue();
         version.Questions.Select(question => question.Id).ShouldBe([human, drafted, unreviewed]);
@@ -48,21 +50,24 @@ public class BlueprintApprovalResetTests
         ShouldAllBeUnreviewed(version);
     }
 
+    /// <summary>Reverses #199's "no event" (#246): the change raises one reset by the editor, after the events raised before it.</summary>
     [Fact]
-    public void Changing_a_setting_raises_no_domain_event()
+    public void Changing_a_setting_raises_one_reset_by_the_editor_after_the_earlier_events()
     {
         var version = DraftWithTwoApprovedQuestions();
         IReadOnlyList<object> eventsBefore = [.. version.DomainEvents];
 
-        var set = version.SetBlueprint(Blueprint(10, 81, 12));
+        var set = version.SetBlueprint(Blueprint(10, 81, 12), Reviewer);
 
         set.IsSuccess.ShouldBeTrue();
         ShouldAllBeUnreviewed(version);
-        version.DomainEvents.Count.ShouldBe(eventsBefore.Count);
+        version.DomainEvents.Count.ShouldBe(eventsBefore.Count + 1);
         for (var index = 0; index < eventsBefore.Count; index++)
         {
             version.DomainEvents[index].ShouldBeSameAs(eventsBefore[index]);
         }
+
+        version.DomainEvents[^1].ShouldBe(new QuestionApprovalsReset(version.Id, Reviewer, ApprovalResetReason.TestSettingsChanged));
     }
 
     [Fact]
@@ -72,7 +77,7 @@ public class BlueprintApprovalResetTests
         next.Questions.ShouldNotBeEmpty();
         next.Questions.ShouldAllBe(question => question.Review == ReviewState.Approved);
 
-        var set = next.SetBlueprint(Blueprint(1, 81, 12));
+        var set = next.SetBlueprint(Blueprint(1, 81, 12), Author);
 
         set.IsSuccess.ShouldBeTrue();
         ShouldAllBeUnreviewed(next);
@@ -83,7 +88,7 @@ public class BlueprintApprovalResetTests
     {
         var version = ReadyToSubmit();
         var question = version.Questions.ShouldHaveSingleItem().Id;
-        version.SetBlueprint(Blueprint(1, 90, 12)).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(Blueprint(1, 90, 12), Author).IsSuccess.ShouldBeTrue();
         version.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
 
         var refused = version.Publish(Reviewer, ReviewPolicy.SingleEditor, Now);
@@ -106,7 +111,7 @@ public class BlueprintApprovalResetTests
         // A new instance with equal values, so value equality is what is tested, not reference equality.
         var same = Blueprint(10, 80, 12);
         same.ShouldNotBeSameAs(version.Blueprint);
-        var set = version.SetBlueprint(same);
+        var set = version.SetBlueprint(same, Author);
 
         set.IsSuccess.ShouldBeTrue();
         version.Blueprint.ShouldBe(TestBlueprint.Default);
@@ -130,7 +135,7 @@ public class BlueprintApprovalResetTests
             ScorePercent.From(version.Blueprint.PassingScore.Value),
             RecurrenceInterval.From(version.Blueprint.Validity.Value));
 
-        var set = version.SetBlueprint(same);
+        var set = version.SetBlueprint(same, Author);
 
         set.IsFailure.ShouldBeTrue();
         set.Error.ShouldBeOfType<NotADraft>().Code.ShouldBe("editorial.not-a-draft");
@@ -146,7 +151,7 @@ public class BlueprintApprovalResetTests
         var version = DraftWithTwoApprovedQuestions();
         version.Blueprint.ShouldBe(TestBlueprint.Default);
 
-        var set = version.SetBlueprint(changed);
+        var set = version.SetBlueprint(changed, Author);
 
         set.IsSuccess.ShouldBeTrue();
         version.Blueprint.ShouldBe(changed);

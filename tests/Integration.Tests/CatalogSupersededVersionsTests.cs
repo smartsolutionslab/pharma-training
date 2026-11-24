@@ -19,13 +19,14 @@ public class CatalogSupersededVersionsTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var editor = await aspire.CreateHostClientAsync("editor");
+        using var publisher = await aspire.CreateHostClientAsync(Publisher);
         using var reader = await aspire.CreateHostClientAsync("developer");
-        var v1 = await PublishedAsync(editor, cancellationToken);
+        var v1 = await PublishedAsync(editor, publisher, cancellationToken);
         (await WaitUntilReadableAsync(reader, v1.Id, cancellationToken)).Status.ShouldBe("Current");
 
         var v2 = await DraftNextAsync(editor, v1.Id, cancellationToken);
         await SubmitAsync(editor, v2, cancellationToken);
-        await PublishAsync(editor, v2, cancellationToken);
+        await PublishAsync(publisher, v2, cancellationToken);
         (await ReadAsync(editor, v1.Id, cancellationToken)).Status.ShouldBe("Superseded");
         var newer = await WaitUntilReadableAsync(reader, v2, cancellationToken);
 

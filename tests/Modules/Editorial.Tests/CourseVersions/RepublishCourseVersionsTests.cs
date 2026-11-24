@@ -367,7 +367,7 @@ public class RepublishCourseVersionsTests
         video = ChapterId.New();
         version.AddChapter(Chapter.OfPdf(pdf, ChapterTitle.From("Merkblatt"), BlobReference.From(PdfFile(version)), PdfTextExtraction.NoText, null)).IsSuccess.ShouldBeTrue();
         version.AddChapter(Chapter.OfVideo(video, ChapterTitle.From("Praxis"), BlobReference.From(VideoFile(version)), VideoDuration.From(754))).IsSuccess.ShouldBeTrue();
-        version.SetBlueprint(new TestBlueprint(QuestionCount.From(1), ScorePercent.From(80), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(new TestBlueprint(QuestionCount.From(1), ScorePercent.From(80), RecurrenceInterval.Yearly), Author).IsSuccess.ShouldBeTrue();
         var question = version.AddQuestion(QuestionId.New(), SingleChoice(text), AnswerOptionId.New).Value;
         version.ApproveQuestion(question, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
         version.SubmitForReview(Author).IsSuccess.ShouldBeTrue();

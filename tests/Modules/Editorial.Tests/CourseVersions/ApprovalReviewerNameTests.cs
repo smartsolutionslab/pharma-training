@@ -48,7 +48,7 @@ public class ApprovalReviewerNameTests
         var version = DraftWithApprovedQuestion(out var chapter, out var id);
         version.Questions.ShouldHaveSingleItem().ReviewedByName.ShouldBe(AuthorsName);
 
-        version.EditQuestion(id, MultipleChoice(chapter), AnswerOptionId.New).IsSuccess.ShouldBeTrue();
+        version.EditQuestion(id, MultipleChoice(chapter), Author, AnswerOptionId.New).IsSuccess.ShouldBeTrue();
 
         var question = version.Questions.ShouldHaveSingleItem();
         question.Review.ShouldBe(ReviewState.Unreviewed);
@@ -66,7 +66,7 @@ public class ApprovalReviewerNameTests
         var aboutKept = version.AddQuestion(QuestionId.New(), MultipleChoice(kept), AnswerOptionId.New).Value;
         version.ApproveQuestion(aboutKept, Reviewer, ReviewersName, Later).IsSuccess.ShouldBeTrue();
 
-        version.ReplaceChapter(TextChapter(changed, "Händehygiene, überarbeitet", "Neu.")).IsSuccess.ShouldBeTrue();
+        version.ReplaceChapter(TextChapter(changed, "Händehygiene, überarbeitet", "Neu."), Author).IsSuccess.ShouldBeTrue();
 
         var sentBack = version.Questions.Single(question => question.Id == aboutChanged);
         sentBack.Review.ShouldBe(ReviewState.Unreviewed);
@@ -95,7 +95,7 @@ public class ApprovalReviewerNameTests
     public void Applying_an_ai_test_draft_keeps_the_reviewers_name_of_an_approved_question()
     {
         var version = DraftWithQuestion(out var chapter, out var approved);
-        version.SetBlueprint(new TestBlueprint(QuestionCount.From(3), ScorePercent.From(80), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(new TestBlueprint(QuestionCount.From(3), ScorePercent.From(80), RecurrenceInterval.Yearly), Author).IsSuccess.ShouldBeTrue();
         version.ApproveQuestion(approved, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
 
         version.ApplyAiTestDraft([SingleChoice(chapter), SingleChoice(chapter)], QuestionId.New, AnswerOptionId.New).IsSuccess.ShouldBeTrue();
