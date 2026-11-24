@@ -6,7 +6,7 @@ import { isCalendarDate, today } from '@/lib/germanDay';
 export const maximumLearners = 100;
 
 /** How many years ahead a due date may lie, as the host takes it. */
-const maximumYearsAhead = 10;
+export const maximumYearsAhead = 10;
 
 function isLeapYear(year: number): boolean {
   return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;

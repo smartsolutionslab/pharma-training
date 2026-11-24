@@ -60,14 +60,14 @@ test('a created course answers its first version id and marks every inbox page s
   }
 });
 
-test("a course the host refuses with a module's code answers a failure carrying the host's words", async () => {
+test("a course the host refuses with a module's code answers a failure carrying the refusal with its code", async () => {
   host.mockImplementation(
     async () =>
       new Response(
         JSON.stringify({
           title: 'Bad Request',
           status: 400,
-          detail: 'Der Titel ist ungültig.',
+          detail: 'SERVER WORDS',
           code: 'editorial.invalid-course-title',
         }),
         { status: 400, headers: { 'Content-Type': 'application/problem+json' } },
@@ -75,15 +75,17 @@ test("a course the host refuses with a module's code answers a failure carrying 
   );
   const { creation } = renderCreation();
 
-  await expect(creation.create('Hygiene II')).resolves.toEqual({ ok: false, serverMessage: 'Der Titel ist ungültig.' });
+  await expect(creation.create('Hygiene II')).resolves.toEqual({
+    ok: false,
+    error: expect.objectContaining({ status: 400, failureCode: 'editorial.invalid-course-title' }),
+  });
 });
 
-test('a course the host cannot create answers a failure without words of the host', async () => {
+test('a course the host cannot create answers a failure carrying its error, without a code', async () => {
   host.mockImplementation(async () => new Response('', { status: 500 }));
   const { creation } = renderCreation();
 
   const result = await creation.create('Hygiene II');
 
-  expect(result.ok).toBe(false);
-  expect(result).not.toHaveProperty('serverMessage', expect.any(String));
+  expect(result).toEqual({ ok: false, error: expect.objectContaining({ status: 500, failureCode: undefined }) });
 });

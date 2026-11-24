@@ -179,10 +179,10 @@ test('members that cannot be loaded are reported in their section', async () => 
   expect(within(membersSection()).queryByRole('table')).not.toBeInTheDocument();
 });
 
-// A refusal the page has words for says what it is, not merely that the list failed: the host's English never shows.
+// A refusal the page has words for says what it is, not merely that the list failed: the host's words never show.
 test.each([
-  [403, 'organisation.capability-missing', 'organisation.team.errors.capabilityMissing'],
-  [404, 'organisation.pharmacy-not-found', 'organisation.team.errors.pharmacyNotFound'],
+  [403, 'organisation.capability-missing', 'errors.organisation.capability-missing'],
+  [404, 'organisation.pharmacy-not-found', 'errors.organisation.pharmacy-not-found'],
 ])('members the host refuses with %i %s say why', async (status, code, key) => {
   host.membersAnswer = async () => problem(status, code, 'Words of the host, not for the user.');
   await renderTeamPage();

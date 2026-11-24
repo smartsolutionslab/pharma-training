@@ -6,6 +6,7 @@ import type { CatalogCourseDto, ComplianceMemberDto, ComplianceRefusedLearnerDto
 import { Button } from '@/components/ui/button';
 import { toTypedSchema } from '@/forms/toTypedSchema';
 import { type MessageKey, t as translate } from '@/i18n';
+import { type ErrorMessage, messageText } from '@/i18n/errorText';
 import { calendarDate } from '@/i18n/formats';
 import { today } from '@/lib/germanDay';
 import { notify } from '@/lib/notify';
@@ -52,8 +53,8 @@ const selected = ref(new Map<string, string>());
 /** A refused Next on the course or learners step, or a course the host no longer assigns. */
 const stepError = ref<{ key: MessageKey; values?: Record<string, unknown> }>();
 const reviewError = ref<MessageKey>();
-/** The host's words when the user cannot assign here at all. */
-const unavailable = ref<string>();
+/** Why the user cannot assign here at all, by the refusal's code (src/i18n/errorText.ts). */
+const unavailable = ref<ErrorMessage>();
 const outcome = ref<{ assigned: number; refused: ComplianceRefusedLearnerDto[] }>();
 const sending = ref(false);
 /** Bumped by each fresh start: an answer sent before it belongs to a wizard no longer shown, and is dropped. */
@@ -266,7 +267,7 @@ function nameOf(personId: string) {
       tabindex="-1"
       class="text-body outline-none"
     >
-      {{ unavailable }}
+      {{ messageText(unavailable) }}
     </p>
     <template v-else-if="current !== undefined">
       <ol :aria-label="t('compliance.assign.steps.label')" class="flex flex-wrap gap-2 text-caption">

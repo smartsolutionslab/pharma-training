@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n';
 import { onBeforeRouteUpdate, RouterLink } from 'vue-router';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { messageText } from '@/i18n/errorText';
 import { captureFrom } from './invitationLink';
 import { useAcceptInvitation } from './useAcceptInvitation';
 
@@ -48,7 +49,9 @@ const text = computed(() => {
   if (state.value.refusal === 'invitationChanged') {
     return t('organisation.accept.invitationChanged');
   }
-  return state.value.serverMessage ?? t(`organisation.accept.${state.value.refusal}.text`);
+  return state.value.message === undefined
+    ? t(`organisation.accept.${state.value.refusal}.text`)
+    : messageText(state.value.message);
 });
 
 // A member already goes on to their courses, and so may someone whose Retry found the invitation used; everyone else
