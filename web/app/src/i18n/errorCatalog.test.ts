@@ -148,17 +148,13 @@ describe('staleValues', () => {
   });
 });
 
-// The codes as the host exports them (#145): an array of { code, status, message }, sorted by code. The message is the
-// host's own words, in whatever language the host wrote them, for a code the catalog lacks; the catalogs never copy it.
+// The codes as the host exports them (#145): an array of { code, status, message }, sorted by code, the host's own codes
+// (src/BuildingBlocks: already-exists, invalid-argument, model-not-configured) among the modules'. The message is the
+// host's English fallback for a code the catalog lacks; the catalogs never copy it.
 const exported = z
   .array(z.object({ code: z.string().min(1), status: z.number().int(), message: z.string() }))
   .parse(JSON.parse(readFileSync('src/i18n/error-codes.json', 'utf8')));
 const codes = exported.map(({ code }) => code);
-
-// The host's own codes (src/BuildingBlocks), which error-codes.json, a list of the modules' codes, does not hold: a
-// catalog has a text for each, so a page can translate them too, and that text is no stale key.
-const hostCodes = ['already-exists', 'invalid-argument', 'model-not-configured'];
-const known = [...codes, ...hostCodes];
 
 const catalogs = { de, en };
 
@@ -167,21 +163,25 @@ describe('the catalogs', () => {
     expect(missingTranslations(codes, catalogs)).toEqual([]);
   });
 
-  // Every page may meet them, so a text for each is required, not only allowed.
-  test("have a German and an English text for each of the host's own codes", () => {
-    expect(missingTranslations(hostCodes, catalogs)).toEqual([]);
+  // Every page may meet them, so the export must hold them: a code without a module is the host's own.
+  test("export the host's own codes beside the modules'", () => {
+    expect(codes.filter((code) => !code.includes('.'))).toEqual([
+      'already-exists',
+      'invalid-argument',
+      'model-not-configured',
+    ]);
   });
 
   test('have no text under errors for a code the host does not answer', () => {
-    expect(staleTranslations(known, catalogs)).toEqual([]);
+    expect(staleTranslations(codes, catalogs)).toEqual([]);
   });
 
   test('fill every placeholder of an error text from errorValues', () => {
-    expect(unfilledPlaceholders(known, catalogs, errorValues)).toEqual([]);
+    expect(unfilledPlaceholders(codes, catalogs, errorValues)).toEqual([]);
   });
 
   test('have values only for codes the host answers', () => {
-    expect(staleValues(known, errorValues)).toEqual([]);
+    expect(staleValues(codes, errorValues)).toEqual([]);
   });
 
   // vue-i18n's own lookup, not the walk above: a hyphen is part of a key, a dot separates the module from the name.
