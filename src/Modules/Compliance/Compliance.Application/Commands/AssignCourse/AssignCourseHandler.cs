@@ -43,7 +43,7 @@ public sealed class AssignCourseHandler(
 
         if (learners.Count > AssignCourse.MaximumLearners)
         {
-            return Failure(AssignmentFailures.TooManyLearners(AssignCourse.MaximumLearners));
+            return Failure(AssignmentFailures.TooManyLearners());
         }
 
         var access = await ComplianceAccess.RequireAsync(members, command.By, command.Pharmacy, Capability.AssignCourses, cancellationToken);
@@ -61,7 +61,7 @@ public sealed class AssignCourseHandler(
 
         if (command.DueDate.Value > today.Value.AddYears(AssignCourse.MaximumYearsAhead))
         {
-            return Failure(AssignmentFailures.DueDateTooFar(AssignCourse.MaximumYearsAhead));
+            return Failure(AssignmentFailures.DueDateTooFar());
         }
 
         var course = await courses.FindCourseAsync(command.Course, cancellationToken);
