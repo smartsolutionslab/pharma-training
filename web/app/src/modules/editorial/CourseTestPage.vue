@@ -313,7 +313,8 @@ async function confirmRemove(question: EditorialQuestionDto) {
           </p>
           <p :id="draftStatus" role="status" tabindex="-1" class="text-body">
             <template v-if="isDrafting">{{ t('editorial.test.draft.running') }}</template>
-            <template v-else>{{ draftSummary }}</template>
+            <!-- The note below shows the same to the eye; the summary is for those who hear the status. -->
+            <span v-else class="sr-only">{{ draftSummary }}</span>
           </p>
           <div
             v-if="leftOutTitles.length > 0 || truncatedTitles.length > 0"
