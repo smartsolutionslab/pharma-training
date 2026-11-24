@@ -179,15 +179,20 @@ public class RenewInvitationTests
     [Fact]
     public async Task A_stored_mail_day_beyond_tomorrow_is_logged_as_a_warning_even_when_the_renewal_is_refused()
     {
+        // The renewed invitation was requested a moment ago, so its own cooldown refuses the renewal; only the pharmacy's
+        // mail day lies ahead, stored by a second invitation three days on (#294: a request time ahead warns on its own).
         var store = new InMemoryPharmacyStore();
         var pharmacy = TestPharmacies.Register(Owner);
-        var invitation = pharmacy.Invite(MembershipId.New(), Invitee, JobFunction.Pta, MembershipRole.Employee, Timestamp.From(Start.AddDays(3)), InvitationMailLimits.Default).Value;
+        var invitation = pharmacy.Invite(MembershipId.New(), Invitee, JobFunction.Pta, MembershipRole.Employee, Timestamp.From(Start), InvitationMailLimits.Default).Value;
+        pharmacy.Invite(MembershipId.New(), EmailAddress.From("second@example.org"), JobFunction.Pta, MembershipRole.Employee, Timestamp.From(Start.AddDays(3)), InvitationMailLimits.Default).IsSuccess.ShouldBeTrue();
         pharmacy.Stored(store);
         var logger = new FakeLogger<RenewInvitationHandler>();
 
-        await new RenewInvitationHandler(store, store, store, store, new FakeDatabaseClock(new FakeTimeProvider(Start)), InvitationMailLimits.Default, RecipientAndSenderMailLimits.Default, logger)
+        var refused = await new RenewInvitationHandler(store, store, store, store, new FakeDatabaseClock(new FakeTimeProvider(Start)), InvitationMailLimits.Default, RecipientAndSenderMailLimits.Default, logger)
             .HandleAsync(new RenewInvitation(pharmacy.Id, invitation, Owner), TestContext.Current.CancellationToken);
 
+        refused.IsFailure.ShouldBeTrue();
+        refused.Error.Code.ShouldBe("organisation.invitation-renewed-too-soon");
         var warning = logger.Collector.GetSnapshot().Where(record => record.Level == LogLevel.Warning).ShouldHaveSingleItem();
         warning.Message.ShouldContain(pharmacy.Id.Value.ToString());
         warning.Message.ShouldContain("2027-04-04");
