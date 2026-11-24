@@ -6,8 +6,8 @@ import { matrixFailure, matrixRetryable } from './matrixErrors';
 
 // What the team matrix (#36) says when the host refuses it or fails, as an ErrorMessage of src/i18n/errorText.ts
 // (#147): the page's own words for capability-missing, else the catalog's errors.<code>; a module code the catalog does
-// not know shows the host's own words; anything else, a network failure included, says the matrix could not be loaded,
-// and the page offers to try again.
+// not know shows the host's own words; anything else, a network failure included, says the matrix could not be loaded.
+// The page offers to try again for every failure but capability-missing and pharmacy-not-found.
 
 /** Problem details as the host sends them, with a code where it has one. */
 const problem = (status: number, code?: string, detail = 'Words of the host, not for the user.') =>

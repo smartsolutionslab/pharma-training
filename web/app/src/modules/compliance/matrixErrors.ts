@@ -1,3 +1,4 @@
+import { ApiError } from '@/api/baseApi';
 import type { MessageKey } from '@/i18n';
 import { type ErrorMessage, errorMessage } from '@/i18n/errorText';
 
@@ -13,4 +14,15 @@ const overrides: Record<string, MessageKey> = {
  */
 export function matrixFailure(error: unknown): ErrorMessage {
   return errorMessage(error, 'compliance.matrix.loadFailed', { overrides });
+}
+
+/** The refusals a second read cannot turn round: the member may not see the matrix, or is no member any more. */
+const final = new Set(['compliance.capability-missing', 'compliance.pharmacy-not-found']);
+
+/**
+ * Whether reading the matrix again can help: for any failure but the two final refusals, a framework's
+ * invalid-argument, another module's code, a code the catalog does not know, the host's 5xx and the network included.
+ */
+export function matrixRetryable(error: unknown): boolean {
+  return !(error instanceof ApiError && error.code !== undefined && final.has(error.code));
 }

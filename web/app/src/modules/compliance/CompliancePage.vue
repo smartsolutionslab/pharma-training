@@ -15,7 +15,7 @@ import MatrixFilters from './MatrixFilters.vue';
 import MatrixLegend from './MatrixLegend.vue';
 import MatrixRate from './MatrixRate.vue';
 import MemberComplianceSheet from './MemberComplianceSheet.vue';
-import { matrixFailure } from './matrixErrors';
+import { matrixFailure, matrixRetryable } from './matrixErrors';
 import { type MatrixQuery, parseMatrixQuery, toLocationQuery } from './matrixQuery';
 import { titleKey } from './titleKey';
 import { useTeamMatrix } from './useTeamMatrix';
@@ -42,11 +42,8 @@ const { data, error, isPending, isFetching } = matrix;
 
 const failure = computed(() => (error.value === null ? undefined : matrixFailure(error.value)));
 const failureText = computed(() => (failure.value === undefined ? undefined : messageText(failure.value)));
-/** Only a failure, not a refusal, is worth reading again. */
-const canRetry = computed(() => {
-  const shown = failure.value;
-  return shown !== undefined && 'key' in shown && shown.key === 'compliance.matrix.loadFailed';
-});
+/** Any failure is worth reading again but a refusal a second read cannot turn round (matrixRetryable). */
+const canRetry = computed(() => error.value !== null && matrixRetryable(error.value));
 /** The matrix shows unless a refusal takes its place; a background refetch that failed keeps the data it had. */
 const showsMatrix = computed(() => failure.value === undefined || data.value !== undefined);
 
