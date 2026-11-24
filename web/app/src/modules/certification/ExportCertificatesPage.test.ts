@@ -7,6 +7,7 @@ import { createMemoryHistory } from 'vue-router';
 import type { MyPharmacyDto } from '@/api/generated';
 import { t } from '@/i18n';
 import { createAppRouter } from '@/router';
+import { useSelectedPharmacyStore } from '@/stores/selectedPharmacy';
 import ExportCertificatesPage from './ExportCertificatesPage.vue';
 
 // The managers' certificate export (#297, T3): a manager of the current pharmacy picks the issue days from and to,
@@ -244,5 +245,141 @@ describe('a range the host would refuse', () => {
     expect(toField()).toHaveAccessibleDescription('Ein Export umfasst höchstens fünf Jahre.');
     expect(exportsOf(host)).toEqual([]);
     expect(saved).toEqual([]);
+  });
+});
+
+// The host's refusals (#297, T4; ADR 0027): told apart by their code and worded by the catalog's errors.certification.*
+// texts, which #52 adds. A period the host refuses lands at to; any other refusal in the page's alert under the form,
+// which a 404 also follows by asking for the memberships again, so the switcher and the audience catch up. Anything
+// else reads as the export's own failure, and the form stays, so submitting again retries.
+
+/** A second pharmacy the same manager may export in. */
+const dom: MyPharmacyDto = {
+  ...markt,
+  id: '0198c1a0-0000-7000-8000-0000000000a2',
+  name: 'Apotheke am Dom',
+  membershipId: '0198c1a0-0000-7000-8000-0000000000b2',
+};
+
+/** Problem details as the host sends a module's refusal: its English message as the title, and its code. */
+function refusal(status: number, code: string, title: string): Response {
+  return new Response(JSON.stringify({ title, status, code }), {
+    status,
+    headers: { 'Content-Type': 'application/problem+json' },
+  });
+}
+
+/** The reads of the memberships the host received. */
+const membershipReads = () =>
+  host.mock.calls.filter(([input]) => String(input).startsWith('/api/organisation/pharmacies/mine')).length;
+
+const failed = 'Der Export konnte nicht erstellt werden. Versuchen Sie es erneut.';
+
+describe('a refusal', () => {
+  test("of the period shows #52's text at to, not in the page's alert", async () => {
+    const user = userEvent.setup();
+    state.export = async () =>
+      refusal(
+        400,
+        'certification.invalid-export-period',
+        'An export needs from and to, with to not before from and at most five years after it.',
+      );
+    const text =
+      'Wählen Sie Beginn und Ende; das Ende darf nicht vor dem Beginn und höchstens fünf Jahre danach liegen.';
+    await renderPage();
+
+    await user.click(submitButton());
+
+    await waitFor(() => expect(toField()).toHaveAccessibleDescription(text));
+    expect(toField()).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+    expect(saved).toEqual([]);
+  });
+
+  test.each([
+    [
+      'export-too-large',
+      400,
+      'An export holds at most 2000 certificates; choose a shorter period.',
+      'Ein Export enthält höchstens 2000 Teilnahmebestätigungen. Wählen Sie einen kürzeren Zeitraum.',
+    ],
+    [
+      'capability-missing',
+      403,
+      'Your role in this pharmacy does not allow this.',
+      'Ihre Rolle in dieser Apotheke erlaubt das nicht.',
+    ],
+    [
+      'identity-incomplete',
+      403,
+      'The access token names no person (its subject is missing or no Guid).',
+      'Ihre Anmeldung nennt keine Person. Melden Sie sich erneut an.',
+    ],
+  ])("%s shows its catalog text in the page's alert", async (code, status, hostWords, text) => {
+    const user = userEvent.setup();
+    state.export = async () => refusal(status, `certification.${code}`, hostWords);
+    await renderPage();
+
+    await user.click(submitButton());
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(text);
+    expect(toField()).not.toHaveAttribute('aria-invalid', 'true');
+    expect(fromField()).not.toHaveAttribute('aria-invalid', 'true');
+    expect(saved).toEqual([]);
+    expect(notify.success).not.toHaveBeenCalled();
+  });
+
+  test('pharmacy-not-found shows its text and asks for the memberships again', async () => {
+    const user = userEvent.setup();
+    state.export = async () =>
+      refusal(404, 'certification.pharmacy-not-found', 'You are not a member of this pharmacy, or it does not exist.');
+    await renderPage();
+    await waitFor(() => expect(fromField()).toHaveValue('2025-11-25'));
+    const readsBefore = membershipReads();
+
+    await user.click(submitButton());
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Sie sind nicht Mitglied dieser Apotheke, oder es gibt sie nicht.',
+    );
+    await waitFor(() => expect(membershipReads()).toBeGreaterThan(readsBefore));
+  });
+
+  test.each([
+    ['a 500', async () => new Response('', { status: 500 })],
+    ['a rejected fetch', () => Promise.reject(new TypeError('Failed to fetch'))],
+  ])('%s shows "Der Export konnte nicht erstellt werden." and submitting again sends again', async (_, answer) => {
+    const user = userEvent.setup();
+    state.export = answer;
+    await renderPage();
+
+    await user.click(submitButton());
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(failed);
+    expect(exportsOf(host)).toHaveLength(1);
+    state.export = async () => archive('teilnahmebestaetigungen_vom_host.zip');
+    await user.click(submitButton());
+    await waitFor(() => expect(exportsOf(host)).toHaveLength(2));
+    await waitFor(() => expect(notify.success).toHaveBeenCalledWith('Der Export wurde heruntergeladen.'));
+  });
+
+  test('is cleared when another pharmacy is chosen, and the range stays', async () => {
+    const user = userEvent.setup();
+    state.memberships = [markt, dom];
+    state.export = async () =>
+      refusal(403, 'certification.capability-missing', 'Your role in this pharmacy does not allow this.');
+    const pinia = createPinia();
+    useSelectedPharmacyStore(pinia).choose(markt.id);
+    await renderPage({ pinia });
+    await waitFor(() => expect(fromField()).toHaveValue('2025-11-25'));
+    await fireEvent.update(fromField(), '2026-01-01');
+
+    await user.click(submitButton());
+    expect(await screen.findByRole('alert')).toHaveTextContent('Ihre Rolle in dieser Apotheke erlaubt das nicht.');
+    useSelectedPharmacyStore(pinia).choose(dom.id);
+
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+    expect(fromField()).toHaveValue('2026-01-01');
+    expect(toField()).toHaveValue('2026-11-24');
   });
 });
