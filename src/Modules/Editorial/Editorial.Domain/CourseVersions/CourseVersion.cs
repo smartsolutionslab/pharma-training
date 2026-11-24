@@ -261,8 +261,10 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
     }
 
     /// <summary>
-    /// Takes the LLM's draft of the whole test. Approved questions stay; the unreviewed ones are replaced, so a new
-    /// draft never throws away work an editor has signed off. Answers the drafted questions' new ids, in the draft's order.
+    /// Takes the LLM's draft of the whole test. Only unreviewed AI-drafted questions are replaced (#245, the owner's
+    /// decision of 2026-11-23): approved questions stay, and so do copied and hand-written ones even while unreviewed, so
+    /// a new draft never throws away work an editor signed off or wrote, nor the test a settings change sent back to
+    /// review. Answers the drafted questions' new ids, in the draft's order, after the questions it keeps.
     /// </summary>
     public Result<IReadOnlyList<QuestionId>, DomainError> ApplyAiTestDraft(IReadOnlyList<DraftedQuestion> drafted, Func<QuestionId> newQuestionId, Func<AnswerOptionId> newOptionId)
     {
@@ -279,13 +281,13 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
             return Failure(CourseVersionErrors.ChapterNotFound(Id, stray.Chapter));
         }
 
-        if (questions.Count(question => question.Review != ReviewState.Unreviewed) + drafted.Count > QuestionCount.Maximum)
+        if (questions.Count(question => !question.IsReplacedByAiDraft()) + drafted.Count > QuestionCount.Maximum)
         {
             return Failure(CourseVersionErrors.TooManyQuestions(Id));
         }
 
-        List<Question> added = [.. drafted.Select(draft => Question.From(newQuestionId(), draft, Provenance.AiDrafted, newOptionId))];
-        questions.RemoveAll(question => question.Review == ReviewState.Unreviewed);
+        List<Question> added = [.. drafted.Select(draft => Question.DraftedByAi(newQuestionId(), draft, newOptionId))];
+        questions.RemoveAll(question => question.IsReplacedByAiDraft());
         questions.AddRange(added);
         Raise(new AiTestDraftApplied(Id, QuestionCount.From(drafted.Count)));
         IReadOnlyList<QuestionId> ids = [.. added.Select(question => question.Id)];
@@ -312,7 +314,7 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
             return Failure(CourseVersionErrors.TooManyQuestions(Id));
         }
 
-        questions.Add(Question.From(id, draft, Provenance.Human, newOptionId));
+        questions.Add(Question.WrittenByHand(id, draft, newOptionId));
         return Success(id);
     }
 

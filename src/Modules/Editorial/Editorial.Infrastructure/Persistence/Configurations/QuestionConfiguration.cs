@@ -31,6 +31,7 @@ public sealed class QuestionConfiguration : IEntityTypeConfiguration<Question>
         builder.Property(question => question.Text).HasColumnName("text").HasMaxLength(QuestionText.MaxLength).IsRequired();
         builder.Property(question => question.Type).HasColumnName("type").HasConversion<string>().HasMaxLength(EnumLength).IsRequired();
         builder.Property(question => question.Provenance).HasColumnName("provenance").HasConversion<string>().HasMaxLength(EnumLength).IsRequired();
+        builder.Property(question => question.Origin).HasColumnName("origin").HasConversion<string>().HasMaxLength(EnumLength).IsRequired();
         builder.Property(question => question.Review).HasColumnName("review").HasConversion<string>().HasMaxLength(EnumLength).IsRequired();
         builder.Property(question => question.ReviewedBy).HasColumnName("reviewed_by");
         builder.Property(question => question.ReviewedAt).HasColumnName("reviewed_at");

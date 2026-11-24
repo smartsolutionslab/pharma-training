@@ -4,9 +4,9 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.TestDra
 
 /// <summary>
 /// What the AI test draft asks the model for, worked out from the version before the model is called (ADR 0008): its
-/// text chapters, numbered from one in the version's order, and the blueprint's count less the approved questions,
-/// split evenly over them with the remainder on the first ones. The PDF and video chapters are left out, in the
-/// version's order, and named so the editor knows.
+/// text chapters, numbered from one in the version's order, and the blueprint's count less the questions the draft
+/// keeps (every one but the unreviewed AI-drafted ones, #245), split evenly over them with the remainder on the first
+/// ones. The PDF and video chapters are left out, in the version's order, and named so the editor knows.
 /// </summary>
 public sealed record TestDraftRequest(IReadOnlyList<TestDraftChapter> Chapters, QuestionCount Questions, IReadOnlyList<ChapterId> LeftOutChapters)
 {
@@ -41,8 +41,9 @@ public sealed record TestDraftRequest(IReadOnlyList<TestDraftChapter> Chapters, 
             return Failure(CourseVersionFailures.NoTextChapters());
         }
 
-        var approved = version.Questions.Count(question => question.Review == ReviewState.Approved);
-        var requested = version.Blueprint.Questions.Value - approved;
+        // Every question the draft keeps counts: approved ones, and copied or hand-written ones even while unreviewed (#245).
+        var kept = version.Questions.Count(question => !question.IsReplacedByAiDraft());
+        var requested = version.Blueprint.Questions.Value - kept;
         if (requested <= 0)
         {
             return Failure(CourseVersionFailures.NothingToDraft());

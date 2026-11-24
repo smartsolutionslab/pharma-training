@@ -259,11 +259,13 @@ Das Aggregat ist die **Version**, nicht die Schulung: Jede Änderung nach der Ve
 
 Status: `Draft` → `InReview` → `Published` → `Superseded` bzw. `Retired`.
 
+Jede Frage vermerkt ihren Ursprung in der Version (`QuestionOrigin`, #245): `AiDraft` (aus einem KI-Entwurf), `Copied` (beim Anlegen der nächsten Version aus der veröffentlichten kopiert) oder `HandWritten` (von Hand angelegt). Eine Änderung durch die Redaktion lässt den Ursprung unverändert, wie die Herkunft (`Provenance`), die eine Kopie behält.
+
 | Command | Invarianten |
 | --- | --- |
 | `AddChapter` / `ReorderChapters` / `EditChapter` | Nur im Entwurf; Kapitel ist Text (Markdown), PDF oder Video (Blob + Dauer) |
 | `SetTestBlueprint` | Anzahl Fragen (Standard 10), Bestehensgrenze (Standard 80 %), Gültigkeit in Monaten; nur im Entwurf; eine Änderung einer der drei Vorgaben setzt die Freigabe aller Fragen zurück, auch kopierter; dieselben Werte ändern nichts |
-| `ApplyAiTestDraft` | Ersetzt nur ungeprüfte Fragen; jede Frage trägt Herkunft `AiDrafted` |
+| `ApplyAiTestDraft` | Ersetzt nur ungeprüfte KI-entworfene Fragen (#245); freigegebene, kopierte und von Hand geschriebene Fragen bleiben, auch ungeprüft, und brauchen nur eine neue Freigabe; der Entwurf fragt nach der Vorgabe abzüglich der bleibenden Fragen; jede entworfene Frage trägt Herkunft `AiDrafted` und Ursprung `AiDraft` |
 | `EditQuestion` / `ApproveQuestion` | Freigabe vermerkt Redakteur und Zeitpunkt |
 | `SubmitForReview` | Mindestens ein Kapitel; Test vollständig laut Vorgaben |
 | `Publish` | Alle Fragen freigegeben; jede Frage einem Kapitel zugeordnet; Single Choice genau eine richtige Option, Multiple Choice mindestens eine; bei Vier-Augen-Einstellung freigebende ≠ einreichende Person |
