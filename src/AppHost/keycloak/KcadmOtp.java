@@ -31,7 +31,8 @@ import javax.crypto.spec.SecretKeySpec;
  * <ul>
  *   <li>{@code enroll <user>}: signed in to kcadm.sh as an administrator, gives a master realm user a time-based one-time
  *       code (HMAC-SHA1, 6 digits, 30 seconds, as every authenticator app computes it). The key is shown once, as text and
- *       as an otpauth:// link, and saved only after the app's code matches; a user who has a code already is refused.
+ *       as an otpauth:// link, and saved only after the app's code matches; a user who has a code already is refused. Saving ends the user's
+ *       sessions, which were signed in to without the code.
  *   <li>{@code login <user>}: asks for the password and a code, signs in to master's admin-cli with both, and writes
  *       kcadm.sh's session (~/.keycloak/kcadm.config, readable by its owner alone) as {@code kcadm.sh config credentials}
  *       would. A refused sign-in leaves the session as it was.
@@ -176,7 +177,10 @@ public final class KcadmOtp {
         return users.get(0).path("id").asText();
     }
 
-    /** Adds the code to the user's credentials, sending the user as it is so the update changes nothing else. */
+    /**
+     * Adds the code to the user's credentials, sending the user as it is so the update changes nothing else, and ends the
+     * user's sessions, which were signed in to without it.
+     */
     private static void save(String token, String id, String secret) throws Exception {
         var user = (ObjectNode) send(token, "GET", "/users/" + id, null);
         var data = JSON.createObjectNode().put("subType", "totp").put("digits", DIGITS).put("counter", 0).put("period", PERIOD).put("algorithm", "HmacSHA1");
@@ -197,6 +201,9 @@ public final class KcadmOtp {
         if (!saved) {
             throw new Refusal("Keycloak accepted the code but does not list it among the user's credentials; nothing was saved.");
         }
+
+        // A session someone signed in to with the password alone, before the code, would outlive it: end them all.
+        send(token, "POST", "/users/" + id + "/logout", null);
     }
 
     private static JsonNode send(String token, String method, String path, JsonNode body) throws Exception {
