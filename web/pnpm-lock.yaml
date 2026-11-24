@@ -131,6 +131,9 @@ importers:
       jsdom:
         specifier: 31.0.1
         version: 31.0.1
+      jsqr:
+        specifier: 1.4.0
+        version: 1.4.0
       orval:
         specifier: 8.48.0
         version: 8.48.0(@tanstack/vue-query@5.108.0(vue@3.5.45(typescript@6.0.3)))(prettier@3.10.1)(zod@4.6.7)
@@ -2048,6 +2051,9 @@ packages:
   jsonc-eslint-parser@3.3.0:
     resolution: {integrity: sha512-hYTGkHGNRZnXOFZ1urhINADoqDrGfpy53cjw+dxk84QE0pUDujQzeUeamNs6Mz44/TKD49z2x6/GVSu4ZrtA+Q==}
     engines: {node: ^20.19.0 || ^22.13.0 || >=24}
+
+  jsqr@1.4.0:
+    resolution: {integrity: sha512-dxLob7q65Xg2DvstYkRpkYtmKm2sPJ9oFhrhmudT1dZvNFFTlroai3AWSpLey/w5vMcLBXRgOJsbXpdN9HzU/A==}
 
   jwt-decode@4.0.0:
     resolution: {integrity: sha512-+KJGIyHgkGuIq3IEBNftfhW/LfWhXUIY6OmyVWjliu5KH1y0fw7VQ8YndE2O4qZdMSd9SqbnC8GOcZEy0Om7sA==}
@@ -4959,6 +4965,8 @@ snapshots:
       acorn: 8.19.0
       eslint-visitor-keys: 5.0.1
       verkit: 0.3.2
+
+  jsqr@1.4.0: {}
 
   jwt-decode@4.0.0: {}
 

@@ -95,7 +95,7 @@ export const de = {
       },
     },
     certification: {
-      title: 'Teilnahmebestätigungen',
+      title: 'Meine Teilnahmebestätigungen',
       entries: {
         verify: { title: 'Bestätigung prüfen' },
       },
@@ -144,6 +144,25 @@ export const de = {
       loadFailed: 'Die Bestätigung konnte nicht geprüft werden.',
     },
     retry: 'Erneut versuchen',
+    mine: {
+      columns: {
+        course: 'Schulung',
+        issuedOn: 'Ausgestellt am',
+        validUntil: 'Gültig bis',
+        validity: 'Status',
+        document: 'PDF',
+      },
+      documentReady: 'Bereit',
+      documentPending: 'Wird erstellt',
+      open: 'PDF öffnen',
+      openFor: 'PDF öffnen für {course}',
+      documentNotReady:
+        'Die Teilnahmebestätigung für {course} wird noch erstellt. Versuchen Sie es gleich noch einmal.',
+      documentFailed: 'Das PDF für {course} konnte nicht geöffnet werden.',
+      empty: 'Sie haben noch keine Teilnahmebestätigung.',
+      toCourses: 'Zu meinen Schulungen',
+      loadFailed: 'Ihre Teilnahmebestätigungen konnten nicht geladen werden.',
+    },
   },
   compliance: {
     matrix: {
