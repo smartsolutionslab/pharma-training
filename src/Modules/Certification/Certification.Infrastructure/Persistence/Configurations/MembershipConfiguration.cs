@@ -26,7 +26,7 @@ public sealed class MembershipConfiguration : IEntityTypeConfiguration<Membershi
 
         // Backs finding the name of a person's latest membership.
         builder.HasIndex(membership => membership.Person).HasDatabaseName("ix_memberships_person_id");
-        // Backs reading every membership of a pharmacy for an export.
+        // Backs choosing an export's certificates by their holders' memberships in the pharmacy.
         builder.HasIndex(membership => membership.Pharmacy).HasDatabaseName("ix_memberships_pharmacy_id");
     }
 }

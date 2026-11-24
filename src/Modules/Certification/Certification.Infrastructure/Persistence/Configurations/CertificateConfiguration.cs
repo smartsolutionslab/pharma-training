@@ -34,10 +34,11 @@ public sealed class CertificateConfiguration : IEntityTypeConfiguration<Certific
         // refuses a concurrent delivery's second certificate, whose retry then finds the first.
         builder.HasIndex(certificate => certificate.Attempt).IsUnique().HasDatabaseName("ix_certificates_attempt_id");
         // A verification code names one certificate; a collision is refused, and the retry draws another code.
-        // Backs an export reading the holders' certificates issued in a period.
-        builder.HasIndex(certificate => new { certificate.Holder, certificate.IssuedAt }).HasDatabaseName("ix_certificates_holder_id_issued_at");
         builder.HasIndex(certificate => certificate.VerificationCode).IsUnique().HasDatabaseName("ix_certificates_verification_code");
         // A person lists their own certificates (#295), filtered by holder.
         builder.HasIndex(certificate => certificate.Holder).HasDatabaseName("ix_certificates_holder_id");
+        // Backs the export's per-holder range read (#52). Its leading holder_id also serves every lookup by holder alone,
+        // so ix_certificates_holder_id is redundant; it is kept only to spare a migration.
+        builder.HasIndex(certificate => new { certificate.Holder, certificate.IssuedAt }).HasDatabaseName("ix_certificates_holder_id_issued_at");
     }
 }

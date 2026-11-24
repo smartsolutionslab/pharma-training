@@ -66,6 +66,20 @@ public class CertificateExportIndexTests
         text.ShouldBe(Header + $"{certificate.Id.Value:D};Anna Berger;Hygiene 2027;3;2027-03-02;2028-03-02;85;{certificate.VerificationCode.Value};noch nicht erstellt\r\n");
     }
 
+    /// <summary>
+    /// #367: a row marked stored without a location, which the domain never writes but a database can hold, has no PDF in
+    /// the archive, so the index says it is pending, as the single download does.
+    /// </summary>
+    [Fact]
+    public void A_certificate_marked_stored_without_a_location_is_a_row_saying_its_pdf_is_pending()
+    {
+        var certificate = ExportCertificates.StoredWithoutLocation(Holder, IssuedAt);
+
+        var text = TextOf(CertificateExportIndex.Write([certificate]));
+
+        text.ShouldBe(Header + $"{certificate.Id.Value:D};Anna Berger;Hygiene 2027;3;2027-03-02;2028-03-02;85;{certificate.VerificationCode.Value};noch nicht erstellt\r\n");
+    }
+
     [Fact]
     public void The_rows_keep_the_order_they_were_given()
     {
