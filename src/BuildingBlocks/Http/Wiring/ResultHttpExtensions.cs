@@ -16,6 +16,16 @@ public static class ResultHttpExtensions
             value => TypedResults.Ok(value),
             error => ProblemOf(error));
 
+    /// <summary>204 without a body, or problem details carrying the error's status and code: for a change that answers nothing.</summary>
+    public static Results<NoContent, ProblemHttpResult> ToNoContentHttpResult<TError>(this Result<Unit, TError> result)
+        where TError : ApiError =>
+        result.Match<Results<NoContent, ProblemHttpResult>>(
+            _ => TypedResults.NoContent(),
+            error => TypedResults.Problem(
+                title: error.Message,
+                statusCode: (int)error.Status,
+                extensions: new Dictionary<string, object?> { ["code"] = error.Code }));
+
     /// <summary>201 with the value and its location, or problem details carrying the error's status and code: for a create.</summary>
     public static Results<Created<TValue>, ProblemHttpResult> ToCreatedHttpResult<TValue, TError>(this Result<TValue, TError> result, Func<TValue, string> location)
         where TValue : notnull
