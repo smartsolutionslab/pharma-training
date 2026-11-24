@@ -248,19 +248,71 @@ public class CommitLostRaceTests
         _ => throw new InvalidOperationException($"No wrapping named '{wrapping}'."),
     };
 
+    [Theory]
+    [InlineData(PostgresErrorCodes.DeadlockDetected)]
+    [InlineData(PostgresErrorCodes.SerializationFailure)]
+    public async Task A_deadlock_the_flush_raises_after_the_commit_is_no_lost_race_and_still_throws(string sqlState)
+    {
+        var ended = Ended(sqlState);
+        await using var services = OutboxFailingWith(failure: null, flushFailure: ended);
+
+        var thrown = await Should.ThrowAsync<PostgresException>(() => new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken));
+
+        thrown.ShouldBeSameAs(ended);
+        services.GetFakeLogCollector().GetSnapshot().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task A_save_that_lost_a_race_is_never_flushed()
+    {
+        await using var services = OutboxFailingWith(Ended(PostgresErrorCodes.DeadlockDetected));
+
+        await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken);
+
+        await services.GetRequiredService<IDbContextOutbox<EditorialDbContext>>().DidNotReceive().FlushOutgoingMessagesAsync();
+    }
+
+    [Fact]
+    public async Task A_save_that_succeeds_is_flushed_once_after_it_and_answers_true()
+    {
+        await using var services = OutboxFailingWith(failure: null);
+
+        (await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken)).ShouldBeTrue();
+
+        var outbox = services.GetRequiredService<IDbContextOutbox<EditorialDbContext>>();
+        await outbox.Received(1).FlushOutgoingMessagesAsync();
+        await outbox.DidNotReceive().SaveChangesAndFlushMessagesAsync(Arg.Any<CancellationToken>());
+    }
+
     private static PostgresException Ended(string sqlState) =>
         new($"the transaction was ended ({sqlState})", "ERROR", "ERROR", sqlState);
 
-    private static ServiceProvider OutboxFailingWith(Exception failure, bool logging = true)
+    /// <summary>
+    /// Editorial's outbox over a real context whose save ends with <paramref name="failure"/> before anything reaches the
+    /// database (<see cref="FailingSave"/>); without one, the save succeeds and the flush after it answers <paramref name="flushFailure"/>.
+    /// </summary>
+    private static ServiceProvider OutboxFailingWith(Exception? failure, bool logging = true, Exception? flushFailure = null)
     {
+        var options = new DbContextOptionsBuilder<EditorialDbContext>()
+            .UseNpgsql("Host=unused.invalid")
+            .AddInterceptors(new FailingSave(failure))
+            .Options;
+        var services = new ServiceCollection();
         var outbox = Substitute.For<IDbContextOutbox<EditorialDbContext>>();
-        outbox.SaveChangesAndFlushMessagesAsync(Arg.Any<CancellationToken>()).Returns(Task.FromException(failure));
-        var services = new ServiceCollection().AddSingleton(outbox);
+        services.AddSingleton(outbox);
         if (logging)
         {
             services.AddFakeLogging();
         }
 
-        return services.BuildServiceProvider();
+        var provider = services.BuildServiceProvider();
+        outbox.DbContext.Returns(new EditorialDbContext(options, provider));
+        outbox.FlushOutgoingMessagesAsync().Returns(flushFailure is null ? Task.CompletedTask : Task.FromException(flushFailure));
+
+        // Wolverine's own save-and-flush, which TryCommitAsync falls back to where domain-event scrapers are registered,
+        // fails the same way the two steps do.
+        var combined = failure ?? flushFailure;
+        outbox.SaveChangesAndFlushMessagesAsync(Arg.Any<CancellationToken>()).Returns(combined is null ? Task.CompletedTask : Task.FromException(combined));
+        return provider;
     }
 }
