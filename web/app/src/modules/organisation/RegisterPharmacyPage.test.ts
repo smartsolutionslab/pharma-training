@@ -237,8 +237,8 @@ test('the page posts the trimmed name and the chosen job function', async () => 
   );
 });
 
-// A module's own words are shown as the host sent them (ApiError.serverMessage); the catalog speaks when it sent none,
-// and for a framework's problem: a 5xx's English title is not the user's to read.
+// A refusal is shown by its code in the catalog's words (#147, ADR 0007), never the host's; the host's words only for a
+// module code the catalog does not know; the action's own text for a 5xx: its English title is not the user's to read.
 test.each([
   [
     400,
@@ -247,21 +247,30 @@ test.each([
         JSON.stringify({
           title: 'Bad Request',
           status: 400,
-          detail: 'Der Name ist ungültig.',
+          detail: 'SERVER WORDS',
           code: 'organisation.invalid-pharmacy-name',
         }),
         { status: 400, headers: { 'Content-Type': 'application/problem+json' } },
       ),
-    () => 'Der Name ist ungültig.',
+    () => 'Der Name einer Apotheke hat 1 bis 120 Zeichen und enthält keine Steuer- oder Richtungszeichen.',
   ],
   [
     403,
     () =>
+      new Response(JSON.stringify({ title: 'SERVER WORDS', status: 403, code: 'organisation.identity-incomplete' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/problem+json' },
+      }),
+    () => 'Ihr Konto nennt keinen Namen oder keine gültige E-Mail-Adresse. Ergänzen Sie Ihr Profil.',
+  ],
+  [
+    409,
+    () =>
       new Response(
-        JSON.stringify({ title: 'Ihr Konto hat keinen Namen.', status: 403, code: 'organisation.identity-incomplete' }),
-        { status: 403, headers: { 'Content-Type': 'application/problem+json' } },
+        JSON.stringify({ title: 'Conflict', status: 409, detail: 'SERVER WORDS', code: 'organisation.zzz-unknown' }),
+        { status: 409, headers: { 'Content-Type': 'application/problem+json' } },
       ),
-    () => 'Ihr Konto hat keinen Namen.',
+    () => 'SERVER WORDS',
   ],
   [500, () => new Response('', { status: 500 }), () => t('organisation.register.failed')],
   [

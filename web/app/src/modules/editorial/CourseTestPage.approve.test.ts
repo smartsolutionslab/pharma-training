@@ -161,33 +161,69 @@ test.each<EditorialCourseVersionStatus>(['Published', 'Superseded', 'Retired'])(
   },
 );
 
+// A refusal is reported by its code, in the catalog's words (#147, ADR 0007), never in the host's.
 test.each([
+  [422, 'editorial.too-few-options', 'Eine Frage braucht mindestens 2 Antwortoptionen.'],
+  [422, 'editorial.single-choice-one-correct', 'Eine Single-Choice-Frage hat genau eine richtige Antwort.'],
   [
-    '422 too-few-options',
-    () => refusal(422, 'editorial.too-few-options', 'Eine Frage braucht mindestens zwei Antwortoptionen.'),
+    409,
+    'editorial.question-already-approved',
+    'Diese Frage ist bereits freigegeben. Ändern Sie sie, um sie erneut freizugeben.',
   ],
-  [
-    '422 single-choice-one-correct',
-    () =>
-      refusal(422, 'editorial.single-choice-one-correct', 'Bei Single Choice ist genau eine Antwortoption richtig.'),
-  ],
-  [
-    '409 question-already-approved',
-    () => refusal(409, 'editorial.question-already-approved', 'Die Frage ist bereits freigegeben.'),
-  ],
-])("a %s reports the host's message and reloads the version", async (_answer, answer) => {
+])('a %i %s reports the catalog text for its code and reloads the version', async (status, code, text) => {
   const user = userEvent.setup();
-  const refused = answer();
-  const detail = ((await refused.clone().json()) as { detail: string }).detail;
-  approving = async () => refused;
+  approving = async () => refusal(status, code, 'SERVER WORDS');
   await renderPage();
 
   await user.click(screen.getByRole('button', { name: t('editorial.test.questions.approve', { position: 2 }) }));
 
-  await waitFor(() => expect(notify.failure).toHaveBeenCalledWith(detail));
+  await waitFor(() => expect(notify.failure).toHaveBeenCalledWith(text));
   expect(notify.failure).toHaveBeenCalledOnce();
+  expect(String(notify.failure.mock.calls)).not.toContain('SERVER WORDS');
   expect(notify.success).not.toHaveBeenCalled();
   await waitFor(() => expect(reads().length).toBeGreaterThan(1));
+});
+
+test('a 409 question-already-approved is reported in English when the page speaks English', async () => {
+  const user = userEvent.setup();
+  approving = async () => refusal(409, 'editorial.question-already-approved', 'SERVER WORDS');
+  await renderPage();
+  setLanguage('en-GB', { remember: false });
+
+  await user.click(await screen.findByRole('button', { name: t('editorial.test.questions.approve', { position: 2 }) }));
+
+  await waitFor(() =>
+    expect(notify.failure).toHaveBeenCalledWith('This question is already approved. Edit it to approve it again.'),
+  );
+  expect(String(notify.failure.mock.calls)).not.toContain('SERVER WORDS');
+});
+
+test("a module code the catalog does not know is reported in the host's words", async () => {
+  const user = userEvent.setup();
+  approving = async () => refusal(409, 'editorial.zzz-unknown', 'SERVER WORDS');
+  await renderPage();
+
+  await user.click(screen.getByRole('button', { name: t('editorial.test.questions.approve', { position: 2 }) }));
+
+  await waitFor(() => expect(notify.failure).toHaveBeenCalledWith('SERVER WORDS'));
+});
+
+test.each<[string, () => Promise<Response>]>([
+  ['a 502 of the edge', async () => new Response('', { status: 502 })],
+  [
+    'a network error',
+    async () => {
+      throw new TypeError('Failed to fetch');
+    },
+  ],
+])('%s says which question could not be approved', async (_answer, answer) => {
+  const user = userEvent.setup();
+  approving = answer;
+  await renderPage();
+
+  await user.click(screen.getByRole('button', { name: t('editorial.test.questions.approve', { position: 2 }) }));
+
+  await waitFor(() => expect(notify.failure).toHaveBeenCalledWith('Frage 2 konnte nicht freigegeben werden.'));
 });
 
 test('an approval that failed without words of the host says which question, in German', async () => {

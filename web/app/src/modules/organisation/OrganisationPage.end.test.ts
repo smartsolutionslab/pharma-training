@@ -155,7 +155,7 @@ test('the last manager ended closes, says why in a toast and under the heading, 
 
   await user.click(confirm);
 
-  const message = t('organisation.team.errors.lastManager');
+  const message = t('errors.organisation.last-manager');
   await waitFor(() => expect(notify.failure).toHaveBeenCalledWith(message));
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   const alert = await within(membersSection()).findByRole('alert');
@@ -173,9 +173,7 @@ test('the refusal under the heading goes once the next action succeeds', async (
   host.end = async (membershipId) => (refuse ? problem(409, 'organisation.last-manager', 'x') : end(membershipId));
   const { user, confirm } = await openEnd(you);
   await user.click(confirm);
-  expect(await within(membersSection()).findByRole('alert')).toHaveTextContent(
-    t('organisation.team.errors.lastManager'),
-  );
+  expect(await within(membersSection()).findByRole('alert')).toHaveTextContent(t('errors.organisation.last-manager'));
 
   refuse = false;
   await user.click(await endButton(anna));
@@ -195,7 +193,7 @@ test('the refusal under the heading follows a switch of language', async () => {
   const { user, confirm } = await openEnd(you);
   await user.click(confirm);
   expect(await within(membersSection()).findByRole('alert')).toHaveTextContent(
-    'Die letzte Apothekenleitung kann nicht ausgetragen oder zum Mitarbeiter gemacht werden.',
+    'Der letzte Apothekenleiter kann nicht ausgetragen oder zum Mitarbeiter gemacht werden.',
   );
 
   setLanguage('en-GB', { remember: false });
@@ -217,7 +215,7 @@ test('a membership no longer active is reported and the members are read again',
 
   await user.click(confirm);
 
-  await waitFor(() => expect(notify.failure).toHaveBeenCalledWith(t('organisation.team.errors.noActiveMembership')));
+  await waitFor(() => expect(notify.failure).toHaveBeenCalledWith(t('errors.organisation.no-active-membership')));
   await waitFor(() => expect(memberReads()).toBeGreaterThan(before));
   await waitFor(() => expect(screen.queryByText(anna.name)).not.toBeInTheDocument());
 });
@@ -230,7 +228,7 @@ test('a pharmacy the caller is no longer a member of reads their memberships aga
 
   await user.click(confirm);
 
-  await waitFor(() => expect(notify.failure).toHaveBeenCalledWith(t('organisation.team.errors.pharmacyNotFound')));
+  await waitFor(() => expect(notify.failure).toHaveBeenCalledWith(t('errors.organisation.pharmacy-not-found')));
   await waitFor(() => expect(mineReads()).toBeGreaterThan(before));
 });
 

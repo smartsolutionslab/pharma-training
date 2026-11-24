@@ -7,15 +7,15 @@ import {
   type EditorialCourseVersionDto,
   getGetEditorialCourseVersionsIdQueryKey,
 } from '@/api/generated';
-import { t } from '@/i18n';
+import { type Language, setLanguage, t } from '@/i18n';
 import { useReorderChapters } from './useReorderChapters';
 
 const notify = vi.hoisted(() => ({ success: vi.fn(), failure: vi.fn() }));
 vi.mock('@/lib/notify', () => ({ notify }));
 
 // Reordering is optimistic (spec 2.3): the new order is in the version's cache before PUT .../chapters/order answers,
-// so the list moves at once. A refusal puts the previous order back, says so (the host's words where a module sent
-// some, else the catalog's) and reads the version again; success reads it again too.
+// so the list moves at once. A refusal puts the previous order back, says so (by its code in the catalog's words, #147;
+// the host's only for a code the catalog does not know) and reads the version again; success reads it again too.
 const host = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>();
 vi.stubGlobal('fetch', host);
 beforeEach(() => {
@@ -126,26 +126,52 @@ test('an order the host cannot save is undone in the cache, reported and read ag
   expect(queryClient.getQueryState(versionKey)?.isInvalidated).toBe(true);
 });
 
-test("an order a module refuses is undone and reported in the host's words", async () => {
-  host.mockImplementation(
-    async () =>
-      new Response(
-        JSON.stringify({
-          title: 'Conflict',
-          status: 409,
-          detail: 'Die Reihenfolge nennt nicht jedes Kapitel der Version genau einmal.',
-          code: 'editorial.order-does-not-match-chapters',
-        }),
-        { status: 409, headers: { 'Content-Type': 'application/problem+json' } },
-      ),
-  );
+/** A refusal of the order as the host sends it: a module's code and its words, which only an unknown code shows. */
+const refusedOrder = (code: string) =>
+  new Response(JSON.stringify({ title: 'Conflict', status: 409, detail: 'SERVER WORDS', code }), {
+    status: 409,
+    headers: { 'Content-Type': 'application/problem+json' },
+  });
+
+test.each<[Language, string]>([
+  ['de-DE', 'Die Reihenfolge muss jedes Kapitel genau einmal enthalten. Laden Sie die Version neu.'],
+  ['en-GB', 'The order must contain every chapter exactly once. Reload the version.'],
+])(
+  'an order a module refuses is undone and reported by its code in the catalog text, in %s',
+  async (language, text) => {
+    setLanguage(language, { remember: false });
+    host.mockImplementation(async () => refusedOrder('editorial.order-does-not-match'));
+    const { reordering, queryClient } = renderReordering();
+
+    await reordering.reorder([c.id, a.id, b.id]);
+
+    expect(cachedOrder(queryClient)).toEqual([a.id, b.id, c.id]);
+    expect(notify.failure).toHaveBeenCalledWith(text);
+    expect(String(notify.failure.mock.calls)).not.toContain('SERVER WORDS');
+    expect(queryClient.getQueryState(versionKey)?.isInvalidated).toBe(true);
+  },
+);
+
+test("an order refused with a module code the catalog does not know is reported in the host's words", async () => {
+  host.mockImplementation(async () => refusedOrder('editorial.order-does-not-match-chapters'));
   const { reordering, queryClient } = renderReordering();
 
   await reordering.reorder([c.id, a.id, b.id]);
 
   expect(cachedOrder(queryClient)).toEqual([a.id, b.id, c.id]);
-  expect(notify.failure).toHaveBeenCalledWith('Die Reihenfolge nennt nicht jedes Kapitel der Version genau einmal.');
-  expect(queryClient.getQueryState(versionKey)?.isInvalidated).toBe(true);
+  expect(notify.failure).toHaveBeenCalledWith('SERVER WORDS');
+});
+
+test('an order that never reached the host is undone and reported in the catalog text of the action', async () => {
+  host.mockImplementation(async () => {
+    throw new TypeError('Failed to fetch');
+  });
+  const { reordering, queryClient } = renderReordering();
+
+  await reordering.reorder([c.id, a.id, b.id]);
+
+  expect(cachedOrder(queryClient)).toEqual([a.id, b.id, c.id]);
+  expect(notify.failure).toHaveBeenCalledWith(t('editorial.chapters.reorderFailed'));
 });
 
 // Moves made while an order is on its way are serialised: at most one PUT .../chapters/order is in flight, and the

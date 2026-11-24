@@ -10,4 +10,5 @@ public sealed record ComplianceAssignmentChangeDto(
     DateTimeOffset ChangedAt,
     DateOnly? PreviousDueDate,
     DateOnly? NewDueDate,
-    string? Reason);
+    string? Reason,
+    bool BySelf);

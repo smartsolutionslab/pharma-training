@@ -3503,7 +3503,8 @@
           "changedAt",
           "previousDueDate",
           "newDueDate",
-          "reason"
+          "reason",
+          "bySelf"
         ],
         "type": "object",
         "properties": {
@@ -3537,6 +3538,9 @@
               "null",
               "string"
             ]
+          },
+          "bySelf": {
+            "type": "boolean"
           }
         }
       },
@@ -4541,6 +4545,7 @@
         "required": [
           "courseVersions",
           "testDefinitions",
+          "fileReleases",
           "retirements"
         ],
         "type": "object",
@@ -4554,6 +4559,14 @@
             "format": "int32"
           },
           "testDefinitions": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "fileReleases": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
               "integer",

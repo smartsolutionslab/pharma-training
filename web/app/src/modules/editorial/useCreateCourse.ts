@@ -1,8 +1,7 @@
 import { getGetEditorialCourseVersionsQueryKey, usePostEditorialCourses } from '@/api/generated';
-import { ApiError } from '@/api/baseApi';
 
-/** What starting a course came to: its first version's id, or a failure with the host's words where it sent some. */
-export type CreateCourseResult = { ok: true; id: string } | { ok: false; serverMessage?: string };
+/** What starting a course came to: its first version's id, or a failure carrying what the call rejected with. */
+export type CreateCourseResult = { ok: true; id: string } | { ok: false; error: unknown };
 
 /**
  * Starts a course (POST /editorial/courses); resolves to its first version's id. Every cached inbox page is then
@@ -19,9 +18,7 @@ export function useCreateCourse() {
     try {
       return { ok: true, id: await mutateAsync({ data: { title } }) };
     } catch (error) {
-      return error instanceof ApiError && error.serverMessage !== undefined
-        ? { ok: false, serverMessage: error.serverMessage }
-        : { ok: false };
+      return { ok: false, error };
     }
   };
   return { create, isSaving: isPending };
