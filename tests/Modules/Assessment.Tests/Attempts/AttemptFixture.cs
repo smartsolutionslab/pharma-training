@@ -40,6 +40,7 @@ internal sealed class AttemptFixture
     {
         Store = new InMemoryAssessmentAggregateStore(Steps);
         UnitOfWork = new RecordingAssessmentUnitOfWork(Steps);
+        Announced = new InMemoryAnnouncedEvents(Steps);
     }
 
     public List<string> Steps { get; } = [];
@@ -51,6 +52,9 @@ internal sealed class AttemptFixture
     public InMemoryTestDefinitionCopies Copies { get; } = new();
 
     public RecordingAssessmentUnitOfWork UnitOfWork { get; }
+
+    /// <summary>The markers of the passes the submits announced (#277), in the shared steps.</summary>
+    public InMemoryAnnouncedEvents Announced { get; }
 
     /// <summary>The saves since the examination was opened or last changed outside the use cases.</summary>
     public int Saves => Steps.Count(step => step == InMemoryAssessmentAggregateStore.Saved);
@@ -166,7 +170,7 @@ internal sealed class AttemptFixture
         new AnswerQuestionHandler(Store, Copies, Time).HandleAsync(new AnswerQuestion(Examination, by, question, chosen), Token);
 
     public Task<Result<AttemptId, ApiError>> SubmitAsync(PersonId? by = null) =>
-        new SubmitAttemptHandler(Store, Copies, UnitOfWork, Time).HandleAsync(new SubmitAttempt(Examination, by ?? Learner), Token);
+        new SubmitAttemptHandler(Store, Copies, UnitOfWork, Announced, Time).HandleAsync(new SubmitAttempt(Examination, by ?? Learner), Token);
 
     public Task<Result<AssessmentExaminationDto, ApiError>> BySessionAsync(Guid? session = null, Guid? by = null) =>
         new GetExaminationBySessionHandler(Store, Copies).HandleAsync(new GetExaminationBySession(session ?? Session.Value, by ?? Learner.Value), Token);

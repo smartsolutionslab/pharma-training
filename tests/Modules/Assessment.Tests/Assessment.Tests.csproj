@@ -9,4 +9,9 @@
     <Compile Include="../../Fakes/*.cs" Link="Fakes/%(Filename)%(Extension)" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- FakeLogger: the warning the announcement sweep logs per pass it announces again (#277). -->
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
+  </ItemGroup>
+
 </Project>

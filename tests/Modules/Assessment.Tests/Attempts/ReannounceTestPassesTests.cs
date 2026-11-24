@@ -1,0 +1,148 @@
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Testing;
+using Microsoft.Extensions.Time.Testing;
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
+using SmartSolutionsLab.PharmaTraining.Contracts.Assessment;
+using SmartSolutionsLab.PharmaTraining.Modules.Assessment.Application.Commands.ReannounceTestPasses;
+using SmartSolutionsLab.PharmaTraining.Modules.Assessment.Application.IntegrationEvents;
+using SmartSolutionsLab.PharmaTraining.Modules.Assessment.Application.ReadModels;
+using SmartSolutionsLab.PharmaTraining.Modules.Assessment.Domain.Examinations;
+using SmartSolutionsLab.PharmaTraining.Modules.Assessment.Domain.Examinations.Events;
+
+namespace SmartSolutionsLab.PharmaTraining.Modules.Assessment.Tests.Attempts;
+
+/// <summary>
+/// One pass of Assessment's announcement sweep (#277): every stored ExaminationPassed that has no marker, because the
+/// commit of its announcement never happened, is announced again as the submit would have announced it, oldest first,
+/// each with its marker in a commit of its own. The pass keeps the time the test was passed, never its own. A pass asks
+/// only for the events stored between the lookback and the grace period ago, at most a batch of them.
+/// </summary>
+public class ReannounceTestPassesTests
+{
+    private static readonly DateTimeOffset Now = new(2027, 3, 1, 9, 0, 0, TimeSpan.Zero);
+
+    private readonly List<string> steps = [];
+    private readonly FakeTimeProvider time = new(Now);
+    private readonly InMemoryUnannouncedTestPasses unannounced = new();
+    private readonly FakeLogger<ReannounceTestPassesHandler> logger = new();
+    private readonly RecordingAssessmentUnitOfWork unitOfWork;
+    private readonly InMemoryAnnouncedEvents announced;
+
+    public ReannounceTestPassesTests()
+    {
+        unitOfWork = new RecordingAssessmentUnitOfWork(steps);
+        announced = new InMemoryAnnouncedEvents(steps);
+    }
+
+    [Fact]
+    public async Task A_pass_announces_each_unannounced_test_pass_with_its_marker_one_commit_each()
+    {
+        var older = Stored(streamVersion: 6, storedAt: Now.AddHours(-5));
+        var newer = Stored(streamVersion: 11, storedAt: Now.AddMinutes(-10));
+        unannounced.Stored.AddRange([older, newer]);
+
+        var passed = await PassAsync(Settings());
+
+        passed.IsSuccess.ShouldBeTrue();
+
+        // The recording unit of work leaves the metadata to the real one, so the payloads compare as the mapping builds them.
+        unitOfWork.Published.ShouldBe([older.Passed.ToIntegrationEvent(), newer.Passed.ToIntegrationEvent()]);
+        announced.Added.Select(marker => (marker.StreamId, marker.StreamVersion, marker.AnnouncedAt))
+            .ShouldBe([(older.Passed.Examination.Value, 6L, Now), (newer.Passed.Examination.Value, 11L, Now)]);
+        unitOfWork.Commits.ShouldBe(2);
+        steps.ShouldBe(
+        [
+            RecordingAssessmentUnitOfWork.Queued, InMemoryAnnouncedEvents.Marked, RecordingAssessmentUnitOfWork.Committed,
+            RecordingAssessmentUnitOfWork.Queued, InMemoryAnnouncedEvents.Marked, RecordingAssessmentUnitOfWork.Committed,
+        ]);
+    }
+
+    [Fact]
+    public async Task A_test_pass_announced_again_keeps_the_time_it_was_passed()
+    {
+        var passedAt = Now.AddHours(-26);
+        unannounced.Stored.Add(Stored(streamVersion: 6, storedAt: passedAt));
+        time.Advance(TimeSpan.FromMinutes(3));
+
+        await PassAsync(Settings());
+
+        var announcedPass = unitOfWork.Published.ShouldHaveSingleItem().ShouldBeOfType<TestPassedV1>();
+        announcedPass.PassedAt.ShouldBe(passedAt);
+        announcedPass.PassedAt.ShouldNotBe(time.GetUtcNow());
+    }
+
+    [Fact]
+    public async Task A_pass_asks_for_the_window_between_lookback_and_grace_period_and_the_batch_size()
+    {
+        time.Advance(TimeSpan.FromMinutes(42));
+        var now = time.GetUtcNow();
+
+        await PassAsync(Settings(gracePeriod: "00:00:30", lookback: "2.00:00:00", batchSize: "7"));
+
+        var asked = unannounced.Asked.ShouldHaveSingleItem();
+        asked.StoredFrom.ShouldBe(now - TimeSpan.FromDays(2));
+        asked.StoredUntil.ShouldBe(now - TimeSpan.FromSeconds(30));
+        asked.Limit.ShouldBe(7);
+    }
+
+    [Fact]
+    public async Task A_pass_with_nothing_unannounced_commits_nothing()
+    {
+        var passed = await PassAsync(Settings());
+
+        passed.IsSuccess.ShouldBeTrue();
+        unannounced.Asked.ShouldHaveSingleItem();
+        unitOfWork.Published.ShouldBeEmpty();
+        announced.Added.ShouldBeEmpty();
+        unitOfWork.Commits.ShouldBe(0);
+        steps.ShouldBeEmpty();
+        logger.Collector.GetSnapshot().ShouldNotContain(record => record.Level >= LogLevel.Warning);
+    }
+
+    [Fact]
+    public async Task A_pass_logs_a_warning_per_test_pass_it_announces_again_naming_its_stream_and_version()
+    {
+        var lost = Stored(streamVersion: 12, storedAt: Now.AddMinutes(-3));
+        unannounced.Stored.Add(lost);
+
+        await PassAsync(Settings());
+
+        var warning = logger.Collector.GetSnapshot().Where(record => record.Level >= LogLevel.Warning).ShouldHaveSingleItem();
+        warning.Level.ShouldBe(LogLevel.Warning);
+        warning.Message.ShouldContain(lost.Passed.Examination.Value.ToString(), Case.Insensitive);
+        warning.Message.ShouldContain("12", Case.Sensitive);
+        warning.Message.ShouldNotContain(lost.Passed.Learner.Value.ToString(), Case.Insensitive);
+    }
+
+    private static StoredTestPass Stored(long streamVersion, DateTimeOffset storedAt)
+    {
+        var session = LearningSessionId.From(Guid.CreateVersion7());
+        var passed = new ExaminationPassed(
+            ExaminationId.For(session),
+            session,
+            PersonId.From(Guid.CreateVersion7()),
+            CourseId.From(Guid.CreateVersion7()),
+            CourseVersionId.From(Guid.CreateVersion7()),
+            AttemptId.New(),
+            ScorePercent.From(90),
+            Timestamp.From(storedAt));
+        return new StoredTestPass(passed, streamVersion, storedAt);
+    }
+
+    private static AnnouncementSweepSettings Settings(string? gracePeriod = null, string? lookback = null, string? batchSize = null) =>
+        AnnouncementSweepSettings.From(
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(
+                [
+                    new KeyValuePair<string, string?>("Assessment:AnnouncementSweep:GracePeriod", gracePeriod),
+                    new KeyValuePair<string, string?>("Assessment:AnnouncementSweep:Lookback", lookback),
+                    new KeyValuePair<string, string?>("Assessment:AnnouncementSweep:BatchSize", batchSize),
+                ])
+                .Build(),
+            "Assessment");
+
+    private Task<Result<Unit, ApiError>> PassAsync(AnnouncementSweepSettings settings) =>
+        new ReannounceTestPassesHandler(unannounced, announced, unitOfWork, settings, time, logger)
+            .HandleAsync(new ReannounceTestPasses(), TestContext.Current.CancellationToken);
+}

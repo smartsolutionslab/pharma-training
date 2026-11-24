@@ -33,7 +33,7 @@ public class SubmitAttemptTests
         fixture.UnitOfWork.Published.ShouldHaveSingleItem().ShouldBeOfType<TestPassedV1>();
         fixture.UnitOfWork.Commits.ShouldBe(1);
         fixture.Stream()[^1].ShouldBeOfType<ExaminationPassed>();
-        fixture.Steps.ShouldBe([InMemoryAssessmentAggregateStore.Saved, RecordingAssessmentUnitOfWork.Queued, RecordingAssessmentUnitOfWork.Committed]);
+        fixture.Steps.ShouldBe([InMemoryAssessmentAggregateStore.Saved, RecordingAssessmentUnitOfWork.Queued, InMemoryAnnouncedEvents.Marked, RecordingAssessmentUnitOfWork.Committed]);
 
         var result = (await fixture.ResultAsync(submitted.Value)).Value;
         (result.AttemptId, result.Number, result.ScorePercent, result.PassingScorePercent, result.Outcome, result.AttemptsLeft)
@@ -173,6 +173,64 @@ public class SubmitAttemptTests
         fixture.Stream().OfType<ExaminationPassed>().ShouldBeEmpty();
         fixture.UnitOfWork.Published.ShouldBeEmpty();
         fixture.UnitOfWork.Commits.ShouldBe(0);
+        fixture.Steps.ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// The marker of the announced pass (#277) is added before the one commit that also carries its TestPassedV1, so the
+    /// two are stored together or not at all. It names the examination's stream and the version Marten stores the
+    /// ExaminationPassed at: the examination's version before the save plus its place among the pending events.
+    /// </summary>
+    [Fact]
+    public async Task A_passing_submit_records_its_announcement_in_the_same_commit()
+    {
+        await fixture.OpenAsync();
+        (await fixture.StartAsync()).IsSuccess.ShouldBeTrue();
+        await fixture.AnswerAsync(Q1, A);
+        await fixture.AnswerAsync(Q2, B, C);
+        fixture.Steps.Clear();
+        fixture.Time.Advance(TimeSpan.FromMinutes(20));
+
+        var submitted = await fixture.SubmitAsync();
+
+        submitted.IsSuccess.ShouldBeTrue();
+        var marker = fixture.Announced.Added.ShouldHaveSingleItem();
+        marker.StreamId.ShouldBe(fixture.Examination.Value);
+        marker.StreamVersion.ShouldBe(fixture.Stream().ToList().FindIndex(stored => stored is ExaminationPassed) + 1L);
+        marker.AnnouncedAt.ShouldBe(fixture.Time.GetUtcNow());
+        fixture.UnitOfWork.Published.ShouldHaveSingleItem().ShouldBeOfType<TestPassedV1>();
+        fixture.Steps.IndexOf(InMemoryAnnouncedEvents.Marked).ShouldBeLessThan(fixture.Steps.IndexOf(RecordingAssessmentUnitOfWork.Committed));
+        fixture.Steps.Count(step => step == RecordingAssessmentUnitOfWork.Committed).ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task A_failing_submit_records_no_announcement()
+    {
+        await fixture.OpenAsync();
+
+        var submitted = await fixture.AttemptAsync([D], [B, C]);
+
+        submitted.IsSuccess.ShouldBeTrue();
+        fixture.Stream()[^1].ShouldBeOfType<AttemptSubmitted>().Outcome.ShouldBe(AttemptOutcome.Failed);
+        fixture.Announced.Added.ShouldBeEmpty();
+        fixture.Steps.ShouldNotContain(InMemoryAnnouncedEvents.Marked);
+    }
+
+    [Fact]
+    public async Task A_submit_that_lost_the_race_records_no_announcement()
+    {
+        await fixture.OpenAsync();
+        (await fixture.StartAsync()).IsSuccess.ShouldBeTrue();
+        await fixture.AnswerAsync(Q1, A);
+        await fixture.AnswerAsync(Q2, B, C);
+        fixture.Steps.Clear();
+        fixture.Store.LoseNextSave();
+
+        var submitted = await fixture.SubmitAsync();
+
+        submitted.IsFailure.ShouldBeTrue("the lost append was answered as a success");
+        submitted.Error.Code.ShouldBe("assessment.examination-changed");
+        fixture.Announced.Added.ShouldBeEmpty();
         fixture.Steps.ShouldBeEmpty();
     }
 
