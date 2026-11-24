@@ -25,6 +25,10 @@ public class OrganisationMailRecipientAndSenderLimitsTests(AspireFixture aspire)
 
     private static readonly Uri Pharmacies = new("/organisation/pharmacies", UriKind.Relative);
 
+    // How long a test lets a request wait for a row a gate holds: well past the store's lock timeout of a few seconds, so
+    // a request that would wait for the gate forever fails the test instead of hanging it.
+    private static readonly TimeSpan LockWaitBound = TimeSpan.FromSeconds(30);
+
     private readonly OrganisationDatabase database = new(aspire);
 
     private readonly Mailpit mailpit = new(aspire);
@@ -168,17 +172,23 @@ public class OrganisationMailRecipientAndSenderLimitsTests(AspireFixture aspire)
     }
 
     /// <summary>
-    /// The recipient cooldown needs no lock (docs/adr/0004): two pharmacies inviting one new address both find no row
-    /// for it, and the database's key on the derived id lets only the first insert it; the other answers 409.
+    /// Two pharmacies inviting one new address at once (#375): both find no recipient row, since the gate holds the
+    /// recipients' table until both wait on it, and both are let go together. The row is created once and held by the
+    /// first until it commits, so the second waits for it and then counts on the row as the first committed it: within
+    /// the address's cooldown, as it would be alone, it is told 429 organisation.recipient-mailed-recently, never 409
+    /// already-exists. Only the first is stored, counted and mailed.
     /// </summary>
     [Fact]
-    public async Task Of_two_pharmacies_inviting_one_new_address_at_once_one_is_stored_and_mailed_and_the_other_is_a_conflict()
+    public async Task Of_two_pharmacies_inviting_one_new_address_at_once_the_first_is_stored_and_mailed_and_the_second_waits_and_is_told_the_address_was_mailed_recently()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var owner = await aspire.CreateHostClientAsync("owner");
+        var person = await database.SubjectOfAsync("owner");
         var first = await RegisterAsync(owner, cancellationToken);
         var second = await RegisterAsync(owner, cancellationToken);
         var address = Invitee();
+        await InviteAsync(owner, first, Invitee(), cancellationToken);
+        var senderMails = await database.SenderMailsThatDayAsync(person, cancellationToken);
 
         HttpResponseMessage[] responses;
         await using (var gate = await database.LockInvitationRecipientsAsync(cancellationToken))
@@ -199,13 +209,15 @@ public class OrganisationMailRecipientAndSenderLimitsTests(AspireFixture aspire)
             }
 
             var described = string.Join(" | ", answers);
-            responses.Select(response => response.StatusCode).ShouldBe([HttpStatusCode.Created, HttpStatusCode.Conflict], ignoreOrder: true, described);
-            var lost = responses.Single(response => response.StatusCode == HttpStatusCode.Conflict);
-            using var problem = JsonDocument.Parse(await lost.Content.ReadAsStringAsync(cancellationToken));
-            problem.RootElement.GetProperty("code").GetString().ShouldBeOneOf(["already-exists", "organisation.pharmacy-changed"], described);
+            responses.Select(response => response.StatusCode).ShouldBe([HttpStatusCode.Created, HttpStatusCode.TooManyRequests], ignoreOrder: true, described);
+            // The second read the database's clock before it waited, a moment before the first counted its mail, so its
+            // wait is the cooldown plus that moment, rounded up to whole seconds.
+            await ShouldBeRefusedLaterAsync(responses.Single(response => response.StatusCode != HttpStatusCode.Created), RecipientMailedRecently, TimeSpan.FromMinutes(10).Add(TimeSpan.FromSeconds(5)), cancellationToken);
             var stored = (await database.StatusesOfAsync(first, address, cancellationToken)).Concat(await database.StatusesOfAsync(second, address, cancellationToken));
             stored.ShouldBe(["Invited"], described);
-            (await mailpit.MessagesToAsync(address, 1, cancellationToken)).ShouldHaveSingleItem("the invitation that lost must send no mail");
+            (await database.RecipientLastMailedAtAsync(address, cancellationToken)).ShouldNotBeNull(described);
+            (await database.SenderMailsThatDayAsync(person, cancellationToken)).ShouldBe(senderMails + 1, $"only the first invitation may count on its sender; {described}");
+            (await mailpit.MessagesToAsync(address, 1, cancellationToken)).ShouldHaveSingleItem("the refused invitation must send no mail");
         }
         finally
         {
@@ -214,6 +226,61 @@ public class OrganisationMailRecipientAndSenderLimitsTests(AspireFixture aspire)
                 response.Dispose();
             }
         }
+    }
+
+    /// <summary>
+    /// A request waits a few seconds at most for a recipient's row another transaction holds (#375): past the lock
+    /// timeout it is told to try again (409 organisation.concurrent-save), never a 500 and never left hanging, and it
+    /// leaves nothing behind. Once the row is free, the same invitation is stored.
+    /// </summary>
+    [Fact]
+    public async Task An_invitation_whose_recipient_row_is_held_past_the_lock_timeout_is_told_to_try_again_and_stores_nothing()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var owner = await aspire.CreateHostClientAsync("owner");
+        var person = await database.SubjectOfAsync("owner");
+        var pharmacy = await RegisterAsync(owner, cancellationToken);
+        await InviteAsync(owner, pharmacy, Invitee(), cancellationToken);
+        var senderMails = await database.SenderMailsThatDayAsync(person, cancellationToken);
+        var address = Invitee();
+
+        await using (await database.HoldNewInvitationRecipientAsync(address, cancellationToken))
+        {
+            using var refused = await owner.PostAsJsonAsync(InvitationsUri(pharmacy), Invitation(address), cancellationToken).WaitAsync(LockWaitBound, cancellationToken);
+            await ShouldBeToldToTryAgainAsync(refused, cancellationToken);
+        }
+
+        (await database.StatusesOfAsync(pharmacy, address, cancellationToken)).ShouldBeEmpty("the invitation that timed out was stored");
+        (await database.RecipientLastMailedAtAsync(address, cancellationToken)).ShouldBeNull("the invitation that timed out counted on its address");
+        (await database.SenderMailsThatDayAsync(person, cancellationToken)).ShouldBe(senderMails, "the invitation that timed out counted on its sender");
+        await InviteAsync(owner, pharmacy, address, cancellationToken);
+    }
+
+    /// <summary>
+    /// As above for the sender's row (#375, review of #381): a request waits a few seconds at most for it, is then told to
+    /// try again, and rolls back the recipient row it had created already.
+    /// </summary>
+    [Fact]
+    public async Task An_invitation_whose_sender_row_is_held_past_the_lock_timeout_is_told_to_try_again_and_stores_nothing()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var owner = await aspire.CreateHostClientAsync("owner");
+        var person = await database.SubjectOfAsync("owner");
+        var pharmacy = await RegisterAsync(owner, cancellationToken);
+        await InviteAsync(owner, pharmacy, Invitee(), cancellationToken);
+        var senderMails = await database.SenderMailsThatDayAsync(person, cancellationToken);
+        var address = Invitee();
+
+        await using (await database.HoldInvitationSenderAsync(person, cancellationToken))
+        {
+            using var refused = await owner.PostAsJsonAsync(InvitationsUri(pharmacy), Invitation(address), cancellationToken).WaitAsync(LockWaitBound, cancellationToken);
+            await ShouldBeToldToTryAgainAsync(refused, cancellationToken);
+        }
+
+        (await database.StatusesOfAsync(pharmacy, address, cancellationToken)).ShouldBeEmpty("the invitation that timed out was stored");
+        (await database.RecipientLastMailedAtAsync(address, cancellationToken)).ShouldBeNull("the invitation that timed out left its new recipient row behind");
+        (await database.SenderMailsThatDayAsync(person, cancellationToken)).ShouldBe(senderMails, "the invitation that timed out counted on its sender");
+        await InviteAsync(owner, pharmacy, address, cancellationToken);
     }
 
     /// <summary>
@@ -261,6 +328,14 @@ public class OrganisationMailRecipientAndSenderLimitsTests(AspireFixture aspire)
                 response.Dispose();
             }
         }
+    }
+
+    private static async Task ShouldBeToldToTryAgainAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict, body);
+        using var problem = JsonDocument.Parse(body);
+        problem.RootElement.GetProperty("code").GetString().ShouldBe("organisation.concurrent-save", body);
     }
 
     private static object Invitation(string address) => new { email = address, jobFunction = "Pta", role = "Employee" };
