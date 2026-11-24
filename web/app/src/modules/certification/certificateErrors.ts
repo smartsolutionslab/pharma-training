@@ -31,3 +31,8 @@ export function documentFailure(error: unknown, course: string): ErrorMessage {
     ? errorMessage(error, fallback, { values: { course }, overrides: documentOverrides })
     : { key: fallback, values: { course } };
 }
+
+/** Whether reading the certificates again can help: for any failure but a token that names no person. */
+export function certificatesRetryable(error: unknown): boolean {
+  return !(error instanceof ApiError && error.code === 'certification.identity-incomplete');
+}

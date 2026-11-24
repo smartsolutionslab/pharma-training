@@ -14,7 +14,7 @@ import { messageText } from '@/i18n/errorText';
 import { notify } from '@/lib/notify';
 import { route as learning } from '@/modules/learning/routes';
 import { useCanReach } from '@/shell/useCanReach';
-import { certificatesFailure, documentFailure } from './certificateErrors';
+import { certificatesFailure, certificatesRetryable, documentFailure } from './certificateErrors';
 import CertificateValidity from './CertificateValidity.vue';
 import { parseCertificatesPage } from './certificatesQuery';
 import { openCertificate } from './openCertificate';
@@ -53,7 +53,7 @@ const none: HeldCertificateDto[] = [];
 const route = useRoute();
 const router = useRouter();
 const shownPage = computed(() => parseCertificatesPage(route.query));
-const { certificates: rows, page, isPending, isFetching, error } = useMyCertificates(shownPage);
+const { certificates: rows, page, isPending, isFetching, error, refetch } = useMyCertificates(shownPage);
 
 // Once settled, a page past the last one is replaced by the last, or by the first with nothing to show. Replaced, not
 // pushed: Back leaves the page instead of returning to an address that shows nothing.
@@ -69,6 +69,10 @@ watch([page, isFetching], ([shown, fetching]) => {
 const { t } = useI18n();
 
 const failure = computed(() => (error.value ? certificatesFailure(error.value) : undefined));
+/** Any failure is worth reading again but a refusal a second read cannot turn round (certificatesRetryable). */
+const canRetry = computed(() => error.value !== null && certificatesRetryable(error.value));
+/** The list shows unless a refusal takes its place; a background read that failed keeps the certificates it had. */
+const showsList = computed(() => failure.value === undefined || page.value !== undefined);
 /** The certificate whose PDF is being asked for, if any: its button waits, the others stay. */
 const opening = ref<string>();
 /** My courses, for a user who may see it, by the shell's own rule and its own route's audience. */
@@ -98,8 +102,20 @@ async function open(certificate: HeldCertificateDto) {
 <template>
   <main class="flex flex-col gap-6">
     <h1 class="text-title">{{ t(titleKey) }}</h1>
-    <p v-if="failure" role="alert">{{ messageText(failure) }}</p>
-    <DataTable v-else :columns="columns" :data="rows ?? none" :loading="isPending" :paging="page" @update:page="turnTo">
+    <p v-if="failure" role="alert" class="text-body text-destructive">
+      {{ messageText(failure) }}
+      <Button v-if="canRetry" type="button" variant="outline" class="ml-2" @click="refetch()">
+        {{ t('certification.retry') }}
+      </Button>
+    </p>
+    <DataTable
+      v-if="showsList"
+      :columns="columns"
+      :data="rows ?? none"
+      :loading="isPending"
+      :paging="page"
+      @update:page="turnTo"
+    >
       <template #actions="{ row }">
         <Button
           v-if="row.documentReady"

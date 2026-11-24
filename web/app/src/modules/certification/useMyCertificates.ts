@@ -12,7 +12,7 @@ export const certificatesPageSize = 20;
  */
 export function useMyCertificates(page: MaybeRefOrGetter<number>) {
   const params = computed(() => ({ page: toValue(page), pageSize: certificatesPageSize }));
-  const { data, isPending, isPlaceholderData, isFetching, error } = useGetCertificationMeCertificates(params, {
+  const { data, isPending, isPlaceholderData, isFetching, error, refetch } = useGetCertificationMeCertificates(params, {
     query: { placeholderData: keepPreviousData },
   });
   return {
@@ -23,5 +23,7 @@ export function useMyCertificates(page: MaybeRefOrGetter<number>) {
     /** Whether the host is being asked, a page shown before included: until it answers, the page is not settled. */
     isFetching,
     error,
+    /** Reads the page shown again. */
+    refetch,
   };
 }
