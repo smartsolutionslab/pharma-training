@@ -6,10 +6,11 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Content
 /// What the AI content review sends, worked out from the version before the model is called (ADR 0009), whatever state
 /// the version is in: its chapters with text (a text chapter's Markdown, a PDF's extracted text), numbered together from
 /// one in the version's order. Video chapters and PDF chapters without text are left out, and the PDF chapters reviewed
-/// from text cut at a limit are named, each in the version's order, so the editor knows (#302). Titles and text chapters
-/// are sent whole; too many of them are refused. The PDFs share what they leave of <see cref="MaxCharacters"/>: a PDF
-/// shorter than its even share is sent whole, the longer ones are cut to an even share of the rest and named as cut, and
-/// a PDF nothing is left for is left out, so long PDFs never cost the version its review.
+/// from text cut at a limit are named, each in the version's order, so the editor knows (#302). Text chapters are sent
+/// whole, title and Markdown; too many of them are refused. The PDFs share what they leave of
+/// <see cref="MaxCharacters"/>, each its title and text: a PDF shorter than its even share is sent whole, the longer ones
+/// are cut to an even share of the rest and named as cut, and a PDF whose share does not hold its title and some text
+/// that is not blank is left out and named, so PDFs never cost the version its review.
 /// </summary>
 public sealed record ContentReviewRequest(
     IReadOnlyList<ContentReviewChapter> Chapters,
@@ -51,7 +52,7 @@ public sealed record ContentReviewRequest(
             return Failure(ContentReviewFailures.NoTextChapters());
         }
 
-        var fixedCharacters = texts.Sum(chapter => (long)chapter.Title.Value.Length + (chapter.Source == ContentReviewSource.Text ? chapter.Text.Length : 0));
+        var fixedCharacters = texts.Where(chapter => chapter.Source == ContentReviewSource.Text).Sum(chapter => (long)chapter.Title.Value.Length + chapter.Text.Length);
         if (fixedCharacters > MaxCharacters)
         {
             return Failure(ContentReviewFailures.TooMuchContent());
@@ -65,7 +66,7 @@ public sealed record ContentReviewRequest(
             if (source == ContentReviewSource.Pdf)
             {
                 sent = Cut(text, allowances[id]);
-                if (sent.Length == 0)
+                if (string.IsNullOrWhiteSpace(sent))
                 {
                     leftOut.Add(id);
                     truncated.Remove(id);
@@ -90,22 +91,33 @@ public sealed record ContentReviewRequest(
     }
 
     /// <summary>
-    /// How many characters of its text each PDF chapter may send out of <paramref name="budget"/>: shortest first, a PDF
-    /// within an even share of what is left keeps its whole text, and the rest split what remains evenly.
+    /// How many characters of its text each PDF chapter may send out of <paramref name="budget"/>, which pays for its title
+    /// too: shortest title and text first, a PDF within an even share of what is left keeps its whole text, and the rest
+    /// split what remains evenly. A PDF whose share does not hold its title gets nothing and costs nothing.
     /// </summary>
     private static Dictionary<ChapterId, int> PdfAllowances(
         IReadOnlyList<(ChapterId Id, ChapterTitle Title, ContentReviewSource Source, string Text)> texts,
         long budget)
     {
-        var pdfs = texts.Where(chapter => chapter.Source == ContentReviewSource.Pdf).OrderBy(chapter => chapter.Text.Length).ToList();
+        var pdfs = texts
+            .Where(chapter => chapter.Source == ContentReviewSource.Pdf)
+            .OrderBy(chapter => (long)chapter.Title.Value.Length + chapter.Text.Length)
+            .ToList();
         Dictionary<ChapterId, int> allowances = [];
         var left = budget;
         for (var index = 0; index < pdfs.Count; index++)
         {
             var share = left / (pdfs.Count - index);
-            var allowance = (int)Math.Min(pdfs[index].Text.Length, share);
+            var title = pdfs[index].Title.Value.Length;
+            if (share <= title)
+            {
+                allowances[pdfs[index].Id] = 0;
+                continue;
+            }
+
+            var allowance = (int)Math.Min(pdfs[index].Text.Length, share - title);
             allowances[pdfs[index].Id] = allowance;
-            left -= allowance;
+            left -= title + allowance;
         }
 
         return allowances;

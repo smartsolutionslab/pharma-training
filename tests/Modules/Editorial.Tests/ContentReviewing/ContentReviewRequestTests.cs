@@ -205,21 +205,48 @@ public class ContentReviewRequestTests
         request.TruncatedChapters.ShouldBe([pdf]);
     }
 
-    [Fact]
-    public void A_pdf_the_text_chapters_leave_no_room_for_is_left_out_and_named()
+    [Theory]
+    [InlineData("C")]
+    [InlineData("Merkblatt")]
+    public void A_pdf_the_text_chapters_leave_no_room_for_is_left_out_and_named(string pdfTitle)
     {
+        // The text chapters take the limit to its last character but one. A PDF's title is part of its own share, never
+        // of the text chapters' part, so a long PDF title cannot turn a version reviewable before #302 into a 422.
         var version = Draft();
         version.AddChapter(TextChapter(ChapterId.New(), "A", new string('a', MarkdownText.MaxLength))).IsSuccess.ShouldBeTrue();
         version.AddChapter(TextChapter(ChapterId.New(), "B", new string('b', ContentReviewRequest.MaxCharacters - MarkdownText.MaxLength - 3))).IsSuccess.ShouldBeTrue();
         var pdf = ChapterId.New();
-        version.AddChapter(TestDraftVersions.PdfWithText(pdf, "C", new string('c', 1_000))).IsSuccess.ShouldBeTrue();
+        version.AddChapter(TestDraftVersions.PdfWithText(pdf, pdfTitle, new string('c', 1_000))).IsSuccess.ShouldBeTrue();
 
-        var request = ContentReviewRequest.For(version).Value;
+        var result = ContentReviewRequest.For(version);
+
+        result.IsSuccess.ShouldBeTrue(result.IsFailure ? result.Error.Code : string.Empty);
+        var request = result.Value;
 
         request.Chapters.ShouldNotContain(chapter => chapter.Id == pdf);
         request.LeftOutChapters.ShouldBe([pdf]);
         request.TruncatedChapters.ShouldBeEmpty();
         Characters(request).ShouldBeLessThanOrEqualTo(ContentReviewRequest.MaxCharacters);
+    }
+
+    [Fact]
+    public void A_pdf_cut_to_whitespace_only_is_left_out_and_named()
+    {
+        // The text chapters leave three characters: one for the PDF's title "C", two for its text, which starts with
+        // two line breaks. A blank text is no content to review, so the PDF is left out like one without text.
+        var version = Draft();
+        version.AddChapter(TextChapter(ChapterId.New(), "A", new string('a', MarkdownText.MaxLength))).IsSuccess.ShouldBeTrue();
+        version.AddChapter(TextChapter(ChapterId.New(), "B", new string('b', ContentReviewRequest.MaxCharacters - MarkdownText.MaxLength - 5))).IsSuccess.ShouldBeTrue();
+        var pdf = ChapterId.New();
+        version.AddChapter(TestDraftVersions.PdfWithText(pdf, "C", "\n\nApotheke am Markt · Arbeitsanweisung")).IsSuccess.ShouldBeTrue();
+
+        var result = ContentReviewRequest.For(version);
+
+        result.IsSuccess.ShouldBeTrue(result.IsFailure ? result.Error.Code : string.Empty);
+        result.Value.Chapters.ShouldNotContain(chapter => chapter.Id == pdf);
+        result.Value.Chapters.ShouldAllBe(chapter => !string.IsNullOrWhiteSpace(chapter.Text));
+        result.Value.LeftOutChapters.ShouldBe([pdf]);
+        result.Value.TruncatedChapters.ShouldBeEmpty();
     }
 
     [Fact]

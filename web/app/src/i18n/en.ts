@@ -1024,7 +1024,7 @@ export const en: MessageSchema = {
         'A newer version of this course already exists. Continue that one instead of creating another.',
       'no-chapters': 'The version needs at least one chapter.',
       'no-text-chapters': 'The AI drafts only from text chapters. Add a text chapter first.',
-      'no-text-chapters-to-review': 'The version has no text chapter for the AI to review.',
+      'no-text-chapters-to-review': 'The version has no chapter with text for the AI to review.',
       'not-a-draft': 'Only a draft can be edited.',
       'not-in-review': 'The version is no longer in review.',
       'not-published': 'The version is not published.',
