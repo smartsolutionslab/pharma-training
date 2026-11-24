@@ -149,7 +149,9 @@ public partial class OrganisationAcceptInvitationTests(AspireFixture aspire)
         await ShouldBeRefusedAsync(unknown, HttpStatusCode.NotFound, "organisation.invitation-not-found", cancellationToken);
         var againBody = await again.Content.ReadAsStringAsync(cancellationToken);
         var unknownBody = await unknown.Content.ReadAsStringAsync(cancellationToken);
-        Detail(againBody).ShouldBe(Detail(unknownBody));
+        var expected = ErrorCodeCatalog.MessageOf("organisation.invitation-not-found");
+        Title(againBody).ShouldBe(expected);
+        Title(unknownBody).ShouldBe(expected);
         againBody.ShouldNotContain(pharmacy.ToString(), Case.Insensitive);
     }
 
@@ -447,10 +449,10 @@ public partial class OrganisationAcceptInvitationTests(AspireFixture aspire)
 
     private static Uri PharmacyUri(Guid pharmacy) => new($"/organisation/pharmacies/{pharmacy}", UriKind.Relative);
 
-    private static string? Detail(string body)
+    private static string? Title(string body)
     {
         using var problem = JsonDocument.Parse(body);
-        return problem.RootElement.TryGetProperty("detail", out var detail) ? detail.GetString() : null;
+        return problem.RootElement.TryGetProperty("title", out var title) ? title.GetString() : null;
     }
 
     private static async Task<string> DescribeAsync(HttpResponseMessage[] responses, CancellationToken cancellationToken)
