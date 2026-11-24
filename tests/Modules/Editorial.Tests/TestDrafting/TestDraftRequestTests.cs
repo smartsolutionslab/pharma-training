@@ -8,7 +8,8 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.TestDrafting;
 
 /// <summary>
 /// What the AI test draft asks for, worked out from the version before the model is called: the text chapters only,
-/// numbered in the version's order, and the blueprint's count less the approved questions, split evenly over them.
+/// numbered in the version's order, and the blueprint's count less the questions the draft keeps (approved ones, and copied or
+/// hand-written ones even while unreviewed, #245), split evenly over them.
 /// </summary>
 public class TestDraftRequestTests
 {
@@ -70,20 +71,35 @@ public class TestDraftRequestTests
     }
 
     [Fact]
-    public void Approved_questions_are_subtracted_and_unreviewed_ones_are_not()
+    public void Questions_the_draft_keeps_are_subtracted_and_unreviewed_ai_drafted_ones_are_not()
     {
         var version = DraftWithChapter(out var chapter);
-        version.SetBlueprint(Blueprint(5)).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(Blueprint(6)).IsSuccess.ShouldBeTrue();
         var approved = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
-        var otherApproved = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
-        version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).IsSuccess.ShouldBeTrue();
         version.ApproveQuestion(approved, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
-        version.ApproveQuestion(otherApproved, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
+        var approvedAi = version.ApplyAiTestDraft([SingleChoice(chapter)], QuestionId.New, AnswerOptionId.New).Value.ShouldHaveSingleItem();
+        version.ApproveQuestion(approvedAi, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
+        version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).IsSuccess.ShouldBeTrue();
+        version.ApplyAiTestDraft([SingleChoice(chapter)], QuestionId.New, AnswerOptionId.New).IsSuccess.ShouldBeTrue();
 
         var request = TestDraftRequest.For(version).Value;
 
-        request.Questions.ShouldBe(QuestionCount.From(3));
+        request.Questions.ShouldBe(QuestionCount.From(3), "two approved and one unreviewed hand-written question stay; the unreviewed AI-drafted one is replaced");
         request.Chapters.ShouldHaveSingleItem().Quota.ShouldBe(QuestionCount.From(3));
+    }
+
+    [Fact]
+    public void Copied_and_hand_written_questions_that_fill_the_blueprint_after_a_settings_change_leave_nothing_to_draft()
+    {
+        var next = Published().DraftNext(CourseVersionId.New(), Author, ChapterId.New, QuestionId.New, AnswerOptionId.New).Value;
+        var chapter = next.Chapters.ShouldHaveSingleItem().Id;
+        next.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).IsSuccess.ShouldBeTrue();
+        next.SetBlueprint(Blueprint(2)).IsSuccess.ShouldBeTrue();
+
+        var result = TestDraftRequest.For(next);
+
+        result.IsFailure.ShouldBeTrue("the copied and the hand-written question stay, unreviewed, and fill the blueprint");
+        result.Error.Code.ShouldBe("editorial.nothing-to-draft");
     }
 
     [Fact]
