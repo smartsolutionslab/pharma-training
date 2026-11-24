@@ -46,7 +46,7 @@ test('the draft marks stale the version it was asked for, though the version cha
   await vi.waitFor(() => expect(host).toHaveBeenCalledOnce());
   expect(String(host.mock.calls[0]?.[0])).toBe(`/api/editorial/course-versions/${versionId}/test-draft`);
   id.value = otherVersionId;
-  answer(Response.json({ draftedQuestionIds: [], leftOutChapterIds: [] }));
+  answer(Response.json({ draftedQuestionIds: [], leftOutChapterIds: [], truncatedChapterIds: [] }));
   await settled;
 
   await vi.waitFor(() => expect(queryClient.getQueryState(versionKey)?.isInvalidated).toBe(true));
@@ -84,6 +84,14 @@ test('the draft passes on the chapters it left out and the chapters it cut (#301
   const outcome = await drafter().draft();
 
   expect(outcome).toEqual({ status: 'drafted', drafted: 1, leftOutChapterIds: [leftOut], truncatedChapterIds: [cut] });
+});
+
+test('an answer without the chapters it cut is not the draft’s shape: the field is required', async () => {
+  host.mockResolvedValue(Response.json({ draftedQuestionIds: [], leftOutChapterIds: [] }));
+
+  const outcome = await drafter().draft();
+
+  expect(outcome).toEqual({ status: 'unreadable' });
 });
 
 test('an answer whose cut chapters are not ids is not the draft’s shape', async () => {

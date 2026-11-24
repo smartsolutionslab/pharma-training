@@ -11,6 +11,7 @@ const textChapter = {
   text: '# Willkommen\n\nHände werden **30 Sekunden** gewaschen.',
   file: null,
   durationSeconds: null,
+  pdfText: null,
 };
 const pdfChapter = {
   id: '0198c1a0-0000-7000-8000-0000000000e2',
@@ -20,6 +21,7 @@ const pdfChapter = {
   text: null,
   file: `course-versions/${versionId}/0198c1a0-0000-7000-8000-0000000000f2.pdf`,
   durationSeconds: null,
+  pdfText: 'NoText',
 };
 
 // A draft (GET /editorial/course-versions/{id}) with a text and a PDF chapter, the blueprint's defaults (10 questions,
