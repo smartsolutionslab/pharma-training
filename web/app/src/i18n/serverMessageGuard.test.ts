@@ -6,10 +6,6 @@ const sources = import.meta.glob<string>('../**/*.{ts,vue}', { query: '?raw', im
 
 const readers = new Set(['src/api/baseApi.ts', 'src/i18n/errorText.ts']);
 
-// The call sites that still read it, until #147's page tasks (T3 to T7) move each to the helper and take it off this
-// list. A file on it that no longer reads serverMessage fails below, so the list only shrinks; once it is empty it goes.
-const pending = new Set<string>([]);
-
 /** The file's code without its comments: a comment may name serverMessage. */
 function code(source: string): string {
   return source
@@ -38,9 +34,9 @@ const files = Object.entries(sources)
   .map(([path, source]) => [path.replace(/^\.\.\//, 'src/').replace(/^\.\//, 'src/i18n/'), source] as const)
   .filter(([path]) => !/\.test\.ts$/.test(path));
 
-test('only the helper and the files still to migrate read ApiError.serverMessage', () => {
+test('only the helper reads ApiError.serverMessage', () => {
   const reading = files
-    .filter(([path, source]) => readsServerMessage(source) && !readers.has(path) && !pending.has(path))
+    .filter(([path, source]) => readsServerMessage(source) && !readers.has(path))
     .map(([path]) => path);
 
   expect(reading, 'files reading serverMessage outside src/i18n/errorText.ts').toEqual([]);
@@ -51,13 +47,4 @@ test('the helper reads it', () => {
 
   expect(helper, 'src/i18n/errorText.ts').toBeDefined();
   expect(readsServerMessage(helper?.[1] ?? '')).toBe(true);
-});
-
-test('every file still to migrate reads it, so a migrated one leaves the list', () => {
-  const migrated = [...pending].filter((path) => {
-    const source = files.find(([file]) => file === path)?.[1];
-    return source === undefined || !readsServerMessage(source);
-  });
-
-  expect(migrated, 'files on the pending list that no longer read serverMessage').toEqual([]);
 });
