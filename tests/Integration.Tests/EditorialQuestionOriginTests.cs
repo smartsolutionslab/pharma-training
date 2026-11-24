@@ -34,7 +34,8 @@ public class EditorialQuestionOriginTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await aspire.CreateHostClientAsync("editor");
-        var first = await PublishedAsync(client, cancellationToken);
+        using var publisher = await aspire.CreateHostClientAsync(Publisher);
+        var first = await PublishedAsync(client, publisher, cancellationToken);
         var id = await DraftNextAsync(client, first.Id, cancellationToken);
         var copied = await ReadQuestionsAsync(client, id, cancellationToken);
         copied.Questions.ShouldNotBeEmpty();

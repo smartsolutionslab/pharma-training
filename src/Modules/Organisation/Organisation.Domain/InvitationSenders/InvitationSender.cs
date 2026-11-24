@@ -23,6 +23,18 @@ public sealed class InvitationSender : AggregateRoot<PersonId>
     /// <summary>How many invitation mails the sender requested on <see cref="MailDay"/>.</summary>
     public InvitationMailCount MailsThatDay { get; private set; }
 
+    /// <summary>
+    /// A sender with no mail counted yet: a tally of zero on the UTC day of <paramref name="now"/>. It is the row the store
+    /// creates when a sender has none, so a first mail is counted with <see cref="RequestMail"/> like every other (#369).
+    /// </summary>
+    public static InvitationSender NotYetMailed(PersonId person, Timestamp now)
+    {
+        Ensure.That(person).IsNotNull();
+        Ensure.That(now).IsNotNull();
+
+        return new InvitationSender(person, UtcDay.Of(now), InvitationMailCount.Zero);
+    }
+
     /// <summary>The sender's first invitation mail, counted one on the UTC day of <paramref name="now"/>.</summary>
     public static InvitationSender FirstMailed(PersonId person, Timestamp now)
     {
