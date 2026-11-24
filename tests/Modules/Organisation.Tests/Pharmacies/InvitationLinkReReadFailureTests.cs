@@ -76,5 +76,5 @@ public class InvitationLinkReReadFailureTests
     private Membership Stored(Pharmacy pharmacy, MembershipId membership) =>
         store.Stored.Single(stored => stored.Id == pharmacy.Id).Membership(membership);
 
-    private InvitationMailRequestedV1Consumer Consumer() => new(store, store, mails, Links(), time, logger);
+    private InvitationMailRequestedV1Consumer Consumer() => BothClocks.Consumer(store, mails, Links(), time, logger);
 }
