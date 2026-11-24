@@ -259,13 +259,13 @@ Das Aggregat ist die **Version**, nicht die Schulung: Jede Änderung nach der Ve
 
 Status: `Draft` → `InReview` → `Published` → `Superseded` bzw. `Retired`.
 
-Jede Frage vermerkt ihren Ursprung in der Version (`QuestionOrigin`, #245): `AiDraft` (aus einem KI-Entwurf), `Copied` (beim Anlegen der nächsten Version aus der veröffentlichten kopiert) oder `HandWritten` (von Hand angelegt). Eine Änderung durch die Redaktion lässt den Ursprung unverändert, wie die Herkunft (`Provenance`), die eine Kopie behält.
+Jede Frage vermerkt ihren Ursprung in der Version (`QuestionOrigin`, #245): `AiDraft` (aus einem KI-Entwurf), `Copied` (beim Anlegen der nächsten Version aus der veröffentlichten kopiert) oder `HandWritten` (von Hand angelegt). Eine Änderung durch die Redaktion lässt den Ursprung unverändert, wie die Herkunft (`Provenance`), die eine Kopie behält. Außerdem vermerkt jede Frage, ob die Redaktion sie geändert hat (`EditHistory`: `Untouched`, `Edited`) und ob sie je freigegeben wurde (`ApprovalHistory`: `NeverApproved`, `ApprovedOnce`; Entscheidung des Owners vom 2026-11-24). Anders als der Prüfstand (`ReviewState`) nimmt weder eine Änderung noch eine geänderte Testvorgabe (#199) die einmal erteilte Freigabe aus diesem Vermerk zurück. Eine Kopie behält beide Vermerke, wie Herkunft und Freigabe.
 
 | Command | Invarianten |
 | --- | --- |
 | `AddChapter` / `ReorderChapters` / `EditChapter` | Nur im Entwurf; Kapitel ist Text (Markdown), PDF oder Video (Blob + Dauer) |
 | `SetTestBlueprint` | Anzahl Fragen (Standard 10), Bestehensgrenze (Standard 80 %), Gültigkeit in Monaten; nur im Entwurf; eine Änderung einer der drei Vorgaben setzt die Freigabe aller Fragen zurück, auch kopierter; dieselben Werte ändern nichts |
-| `ApplyAiTestDraft` | Ersetzt nur ungeprüfte KI-entworfene Fragen (#245); freigegebene, kopierte und von Hand geschriebene Fragen bleiben, auch ungeprüft, und brauchen nur eine neue Freigabe; der Entwurf fragt nach der Vorgabe abzüglich der bleibenden Fragen; jede entworfene Frage trägt Herkunft `AiDrafted` und Ursprung `AiDraft` |
+| `ApplyAiTestDraft` | Ersetzt nur KI-entworfene Fragen, die ungeprüft, nie von der Redaktion geändert und nie freigegeben sind (#245, Entscheidungen des Owners vom 2026-11-23 und 2026-11-24); freigegebene, kopierte und von Hand geschriebene Fragen bleiben, auch ungeprüft, ebenso KI-entworfene, die die Redaktion geändert oder einmal freigegeben hat, auch nachdem eine geänderte Testvorgabe die Freigabe zurückgesetzt hat; sie brauchen nur eine neue Freigabe; der Entwurf fragt nach der Vorgabe abzüglich der bleibenden Fragen; jede entworfene Frage trägt Herkunft `AiDrafted` und Ursprung `AiDraft` |
 | `EditQuestion` / `ApproveQuestion` | Freigabe vermerkt Redakteur und Zeitpunkt |
 | `SubmitForReview` | Mindestens ein Kapitel; Test vollständig laut Vorgaben |
 | `Publish` | Alle Fragen freigegeben; jede Frage einem Kapitel zugeordnet; Single Choice genau eine richtige Option, Multiple Choice mindestens eine; bei Vier-Augen-Einstellung freigebende ≠ einreichende Person |
