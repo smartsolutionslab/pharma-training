@@ -1,6 +1,8 @@
 import { type APIRequestContext, type Browser, expect, type Page, test } from '@playwright/test';
+import { addMonths } from '@/lib/addMonths';
+import { pdfText, qrLinkIn } from './certificatePdf';
 import { issuedCertificate, type IssuedCertificate } from './certificationDatabase';
-import { accessToken, courseTitle, daysAhead, pharmacyName } from './compliance';
+import { accessToken, courseTitle, daysAhead, germanDate, pharmacyName } from './compliance';
 import { acceptOn, invitationLink, mailText, recordAcceptances, signInAs } from './invitations';
 
 // MVP 1 end to end (#55, X1), against the AppHost with no route mocked, in three browsers of their own: the realm's
@@ -8,35 +10,30 @@ import { acceptOn, invitationLink, mailText, recordAcceptances, signInAs } from 
 // page; she accepts from the mail in Mailpit. The realm's local user editor starts a course in the editorial inbox,
 // gives it a text chapter and a test of one question the editor wrote and approved (no AI draft) through the API, as
 // e2e/editorial-workflow.spec.ts does, then submits and publishes it on the version's page. The owner assigns it to her
-// in the wizard; she works through the chapter in the player, fails the test once and passes it. Her certificate's
-// QR link, read from the PDF Certification made, opens /verify/{code} signed out and says it is valid; the owner's team
-// matrix shows her course as completed.
+// in the wizard; she opens it from "Meine Schulungen", works through the chapter in the player, fails the test once and
+// passes it. The link her certificate's QR code encodes, decoded from the PDF Certification made, opens /verify/{code}
+// signed out and says it is valid; the owner's team matrix shows her course as completed.
 //
 // What no page offers yet, and how the test reaches it instead:
-// - "Meine Schulungen" (#38) does not list assigned courses: the learner opens the player at the version's address.
 // - "Meine Bestätigungen" (Z6, GET /certification/me/certificates) does not exist: nothing the learner reads names her
 //   certificate. Its id is read from Certification's database (e2e/certificationDatabase.ts, as
 //   e2e/certification-verify.spec.ts reads codes); the PDF is then fetched as she would (GET
-//   /certification/certificates/{id}/pdf) and its verification link read from the PDF's text, which prints the link
-//   the QR code encodes (CertificatePdfRenderer, "Echtheit prüfen: <link>").
+//   /certification/certificates/{id}/pdf), its page drawn in a browser and its QR code decoded there (qrLinkIn).
 // Every run registers a pharmacy and publishes a course of its own, so what earlier runs left changes nothing; owner
 // and employee-c may already belong to several pharmacies. Keycloak's login is English.
 
 const employee = 'Clara Employee';
 const employeeAddress = 'employee-c@example.com';
 
-/** The day, a number of months from today in Germany (where the app dates certificates), as dd.mm.yyyy. */
-function germanDayIn(months: number) {
-  const parts = new Intl.DateTimeFormat('en-CA', {
+/** Today in Germany, where the host dates certificates (DayInGermany()), as yyyy-mm-dd. */
+function todayInGermany() {
+  // en-CA writes a date as yyyy-mm-dd.
+  return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Europe/Berlin',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).formatToParts(new Date());
-  const part = (type: string) => Number(parts.find((each) => each.type === type)?.value ?? '0');
-  const day = new Date(Date.UTC(part('year'), part('month') - 1 + months, part('day')));
-  const pad = (value: number) => String(value).padStart(2, '0');
-  return `${pad(day.getUTCDate())}.${pad(day.getUTCMonth() + 1)}.${day.getUTCFullYear()}`;
+  }).format(new Date());
 }
 
 /** A browser of the user's own, in German like the default context. */
@@ -66,8 +63,13 @@ async function choose(page: Page, pharmacy: string) {
   const switcher = region.getByRole('button', { name: /^Apotheke( wählen$|: )/ });
   const name = region.getByText(pharmacy, { exact: true });
   const chosen = region.getByRole('button', { name: `Apotheke: ${pharmacy}` });
-  await expect(switcher.or(name).first()).toBeVisible();
-  if ((await switcher.isVisible()) && !(await chosen.isVisible())) {
+  const only = region.getByRole('paragraph').filter({ has: page.getByText(pharmacy, { exact: true }) });
+  const another = switcher.filter({ hasNotText: pharmacy });
+  // A settled state before deciding: the pharmacy is current (chosen on the switcher, or the only one), or the switcher
+  // shows another (or none). While the list loads, or a list read before the pharmacy was added names only another,
+  // neither shows, and the wait goes on; either one stays until the test chooses.
+  await expect(chosen.or(only).or(another)).toBeVisible();
+  if (await another.isVisible()) {
     await switcher.click();
     await page
       .getByRole('menu', { name: 'Apotheken' })
@@ -149,31 +151,6 @@ async function submit(page: Page) {
   await expect(page).toHaveURL(/\/assessment\/sessions\/[^/]+\/result$/);
 }
 
-/**
- * The text of a PDF, a line per line pdf.js reports. pdf.js (the app's own dependency, for PDF chapters) is loaded
- * only here: loading it in Node warns that it cannot draw, which reading text never needs.
- */
-async function pdfText(bytes: Buffer) {
-  const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
-  const loading = getDocument({ data: new Uint8Array(bytes) });
-  const document = await loading.promise;
-  try {
-    const lines: string[] = [];
-    for (let number = 1; number <= document.numPages; number++) {
-      const content = await (await document.getPage(number)).getTextContent();
-      for (const item of content.items) {
-        if ('str' in item) {
-          lines.push(item.str, item.hasEOL ? '\n' : '');
-        }
-      }
-      lines.push('\n');
-    }
-    return lines.join('');
-  } finally {
-    await loading.destroy();
-  }
-}
-
 test('MVP 1: an owner registers and invites, an editor publishes, the employee passes, the certificate verifies and the matrix shows it completed', async ({
   page,
   browser,
@@ -185,7 +162,8 @@ test('MVP 1: an owner registers and invites, an editor publishes, the employee p
   const editor = await browserOf(browser);
   const learner = await browserOf(browser);
   const visitor = await browserOf(browser);
-  let versionId = '';
+  // The day she passes, in Germany, worked out once: the certificate is dated then, and valid until 12 months on.
+  let passedOn = '';
 
   try {
     await test.step('the owner registers a pharmacy', async () => {
@@ -254,23 +232,6 @@ test('MVP 1: an owner registers and invites, an editor publishes, the employee p
       await publishing.getByRole('button', { name: 'Veröffentlichen' }).click();
       await expect(toast(editor.page, 'Version 1 ist veröffentlicht.')).toBeVisible();
       await expect(editor.page.getByText('Veröffentlicht', { exact: true })).toBeVisible();
-
-      // The catalog learns of the version from an event: wait until it lists it, and read the version's id.
-      const owner = await accessToken(page.request, 'owner');
-      await expect
-        .poll(
-          async () => {
-            const response = await page.request.get('/api/catalog/courses', {
-              headers: { Authorization: owner },
-              params: { page: 1, pageSize: 20 },
-            });
-            const listed = (await response.json()) as { items: { title: string; courseVersionId: string }[] };
-            versionId = listed.items.find((course) => course.title === title)?.courseVersionId ?? '';
-            return versionId;
-          },
-          { message: `the catalog lists ${title}`, timeout: 30_000 },
-        )
-        .not.toBe('');
     });
 
     await test.step('the owner assigns the course to the employee in the wizard', async () => {
@@ -293,12 +254,13 @@ test('MVP 1: an owner registers and invites, an editor publishes, the employee p
       await learnerBox.check();
       await next.click();
 
+      const dueDate = daysAhead(30);
       const due = page.getByRole('region', { name: 'Fälligkeit festlegen' });
-      await due.getByLabel('Fällig am').fill(daysAhead(30));
+      await due.getByLabel('Fällig am').fill(dueDate);
       await next.click();
 
       const review = page.getByRole('region', { name: 'Zuweisung prüfen' });
-      await expect(review.getByRole('definition')).toHaveText([title, employee, /\d{4}$/, 'Keine']);
+      await expect(review.getByRole('definition')).toHaveText([title, employee, germanDate(dueDate), 'Keine']);
       await review.getByRole('button', { name: 'Zuweisen', exact: true }).click();
       await expect(
         page
@@ -307,10 +269,17 @@ test('MVP 1: an owner registers and invites, an editor publishes, the employee p
       ).toBeVisible();
     });
 
-    await test.step('the employee works through the course in the player', async () => {
-      // #38: "Meine Schulungen" lists no assigned course yet, so the learner opens the player at the version's address;
-      // once it lands, she follows the course's entry there instead.
-      await learner.page.goto(`/learning/courses/${versionId}`);
+    await test.step('the employee opens the course from "Meine Schulungen" and works through it in the player', async () => {
+      await learner.page.goto('/learning');
+      await choose(learner.page, pharmacy);
+      await expect(learner.page.getByRole('heading', { name: 'Meine Schulungen', level: 1 })).toBeVisible();
+      const course = learner.page
+        .getByRole('region', { name: 'Zugewiesene Schulungen' })
+        .getByRole('listitem')
+        .filter({ has: learner.page.getByRole('heading', { name: title, level: 3 }) });
+      await expect(course.getByText('Offen', { exact: true })).toBeVisible();
+      await course.getByRole('link', { name: `Starten: ${title}` }).click();
+      await expect(learner.page).toHaveURL(/\/learning\/courses\/[0-9a-f-]{36}$/);
       await expect(learner.page.getByRole('heading', { level: 1, name: title })).toBeVisible();
       const toTest = learner.page.getByRole('link', { name: 'Zum Test' });
       await expect(toTest).toBeVisible({ timeout: 30_000 });
@@ -335,6 +304,7 @@ test('MVP 1: an owner registers and invites, an editor publishes, the employee p
       await submit(learner.page);
       await expect(learner.page.getByText('Versuch 2', { exact: true })).toBeVisible();
       await expect(learner.page.getByText('Bestanden', { exact: true })).toBeVisible();
+      passedOn = todayInGermany();
       await expect(learner.page.getByText('Ihre Teilnahmebestätigung wird ausgestellt.')).toBeVisible();
     });
 
@@ -373,11 +343,14 @@ test('MVP 1: an owner registers and invites, an editor publishes, the employee p
         .toBe('ready');
       const pdf = await page.request.get(documentUrl);
       expect(pdf.ok(), `the PDF at ${documentUrl} answered ${pdf.status()}`).toBe(true);
-      const text = await pdfText(await pdf.body());
-      const link = /Echtheit prüfen:\s*(\S+)/.exec(text)?.[1] ?? '';
-      expect(link, `no verification link in the PDF's text: ${text}`).not.toBe('');
+      const bytes = await pdf.body();
+      const link = await qrLinkIn(visitor.page, bytes);
+      expect(link, `no QR code found on the PDF's first page`).not.toBe('');
       expect(new URL(link).origin).toBe(new URL(baseURL ?? '').origin);
       expect(new URL(link).pathname).toBe(`/verify/${verificationCode}`);
+      // The link printed below the code is the one it encodes.
+      const text = await pdfText(bytes);
+      expect(/Echtheit prüfen:\s*(\S+)/.exec(text)?.[1], `the PDF's text: ${text}`).toBe(link);
 
       await visitor.page.goto(link);
       const main = visitor.page.getByRole('main');
@@ -385,8 +358,8 @@ test('MVP 1: an owner registers and invites, an editor publishes, the employee p
       await expect(main.getByRole('heading', { level: 2, name: 'Gültig' })).toBeVisible();
       await expect(main.getByText(employee, { exact: true })).toBeVisible();
       await expect(main.getByText(title, { exact: true })).toBeVisible();
-      await expect(main.getByText(germanDayIn(0), { exact: true })).toBeVisible();
-      await expect(main.getByText(germanDayIn(12), { exact: true })).toBeVisible();
+      await expect(main.getByText(germanDate(passedOn), { exact: true })).toBeVisible();
+      await expect(main.getByText(germanDate(addMonths(passedOn, 12)), { exact: true })).toBeVisible();
     });
 
     await test.step('the owner sees the course as completed in the team matrix', async () => {
@@ -405,7 +378,7 @@ test('MVP 1: an owner registers and invites, an editor publishes, the employee p
         await page.reload();
         await expect(cell).toContainText('Abgeschlossen', { timeout: 3_000 });
       }).toPass({ timeout: 30_000 });
-      await expect(cell).toContainText(`gültig bis ${germanDayIn(12)}`);
+      await expect(cell).toContainText(`gültig bis ${germanDate(addMonths(passedOn, 12))}`);
       const rate = page.getByRole('region', { name: 'Compliance-Quote' });
       await expect(rate.getByText(/^100\s%$/)).toBeVisible();
       await expect(rate.getByText('Fristgerecht: 1 von 1', { exact: true })).toBeVisible();
