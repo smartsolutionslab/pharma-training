@@ -1,3 +1,4 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.EventSourcing;
 using SmartSolutionsLab.PharmaTraining.Contracts;
 using SmartSolutionsLab.PharmaTraining.Modules.Learning.Application;
@@ -24,6 +25,8 @@ internal sealed class InMemoryLearningSessions : ILearningAggregateStore, ILearn
     private readonly Dictionary<Guid, List<IDomainEvent>> streams = [];
     private readonly List<IntegrationEvent> queued = [];
     private bool loseNextSave;
+
+    private LostRace how = LostRaces.VersionMovedOn();
     private CancellationTokenSource? cancelledAfterNextSave;
 
     public IReadOnlyDictionary<Guid, List<IDomainEvent>> Streams => streams;
@@ -66,20 +69,24 @@ internal sealed class InMemoryLearningSessions : ILearningAggregateStore, ILearn
     }
 
     /// <summary>What the module's store answers once it opts in to lost races: <see langword="false"/> with nothing stored and the aggregate left unmarked.</summary>
-    public Task<bool> TrySaveAsync(IEventSourced aggregate, CancellationToken cancellationToken)
+    public Task<Result<Unit, LostRace>> TrySaveAsync(IEventSourced aggregate, CancellationToken cancellationToken)
     {
         if (loseNextSave)
         {
             loseNextSave = false;
-            return Task.FromResult(false);
+            return Task.FromResult<Result<Unit, LostRace>>(Failure(how));
         }
 
         Append(aggregate);
-        return Task.FromResult(true);
+        return Task.FromResult<Result<Unit, LostRace>>(Success(Unit.Value));
     }
 
     /// <summary>The next save, whichever way it is made, loses the race on its stream and stores nothing.</summary>
-    public void LoseNextSave() => loseNextSave = true;
+    public void LoseNextSave(LostRace? how = null)
+    {
+        loseNextSave = true;
+        this.how = how ?? LostRaces.VersionMovedOn();
+    }
 
     /// <summary>The caller goes away (the request is aborted) just after the next save has stored its events.</summary>
     public void CancelAfterNextSave(CancellationTokenSource caller) => cancelledAfterNextSave = caller;

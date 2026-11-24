@@ -1017,6 +1017,8 @@ export const de = {
     assessment: {
       'examination-changed':
         'Ihr Test wurde inzwischen geändert; es wurde nichts gespeichert. Versuchen Sie es erneut.',
+      'concurrent-save':
+        'Gleichzeitig wurde eine andere Änderung an Ihrem Test gespeichert; es wurde nichts gespeichert. Versuchen Sie es erneut.',
       'examination-not-found': 'Diesen Test gibt es für Sie nicht.',
       'examination-not-unlocked':
         'Der Test ist gerade nicht freigeschaltet. Laden Sie die Seite neu, um Ihren aktuellen Stand zu sehen.',
@@ -1166,6 +1168,8 @@ export const de = {
       'progress-too-fast': 'Der Fortschritt wächst schneller, als das Video abgespielt werden kann.',
       'sample-not-found': 'Dieses Beispiel gibt es nicht.',
       'session-changed': 'Ihr Lerndurchlauf wurde inzwischen geändert. Versuchen Sie es erneut.',
+      'concurrent-save':
+        'Gleichzeitig wurde eine andere Änderung an Ihrem Lerndurchlauf gespeichert; es wurde nichts gespeichert. Versuchen Sie es erneut.',
       'session-finished': 'Diese Schulung ist bereits abgeschlossen.',
       'session-not-found': 'Diesen Lerndurchlauf gibt es nicht.',
     },

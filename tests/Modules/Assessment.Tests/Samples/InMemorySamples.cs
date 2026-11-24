@@ -1,3 +1,4 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.EventSourcing;
 using SmartSolutionsLab.PharmaTraining.Contracts;
 using SmartSolutionsLab.PharmaTraining.Modules.Assessment.Application;
@@ -46,10 +47,10 @@ internal sealed class InMemorySamples : IAssessmentAggregateStore, ISampleSummar
     }
 
     /// <summary>The samples never race, so a save here always lands.</summary>
-    public async Task<bool> TrySaveAsync(IEventSourced aggregate, CancellationToken cancellationToken)
+    public async Task<Result<Unit, LostRace>> TrySaveAsync(IEventSourced aggregate, CancellationToken cancellationToken)
     {
         await SaveAsync(aggregate, cancellationToken);
-        return true;
+        return Success(Unit.Value);
     }
 
     public Task RecordAsync(Sample sample, CancellationToken cancellationToken)
