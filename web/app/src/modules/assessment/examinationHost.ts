@@ -1,5 +1,6 @@
-import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query';
+import { notifyManager, QueryClient, VueQueryPlugin } from '@tanstack/vue-query';
 import { render } from '@testing-library/vue';
+import { onTestFinished } from 'vitest';
 import type { Component } from 'vue';
 import { createMemoryHistory } from 'vue-router';
 import type { AssessmentExaminationDto } from '@/api/generated';
@@ -100,4 +101,17 @@ export async function renderAt(component: Component, address: string) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   const rendered = render(component, { global: { plugins: [router, [VueQueryPlugin, { queryClient }]] } });
   return { router, queryClient, container: rendered.container };
+}
+
+/**
+ * Tells every query's observers of a change at once instead of on the next timer, for this test: a test that awaits a
+ * refetch then sees the page as it is after it, so it can assert what the page did not do.
+ */
+export function notifyAtOnce() {
+  notifyManager.setScheduler((callback) => callback());
+  onTestFinished(() =>
+    notifyManager.setScheduler((callback) => {
+      setTimeout(callback, 0);
+    }),
+  );
 }

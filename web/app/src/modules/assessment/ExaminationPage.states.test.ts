@@ -2,13 +2,24 @@ import { cleanup, screen, waitFor, within } from '@testing-library/vue';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { createMemoryHistory } from 'vue-router';
+import { getGetAssessmentExaminationsBySessionSessionIdQueryKey } from '@/api/generated';
 import { t } from '@/i18n';
 import { createAppRouter } from '@/router';
-import { courseTitle, examination, inAttempt, refusal, result, sessionId, unknownRefusal } from './examinationFixtures';
+import {
+  courseTitle,
+  deferred,
+  examination,
+  inAttempt,
+  refusal,
+  result,
+  sessionId,
+  unknownRefusal,
+} from './examinationFixtures';
 import {
   type ExaminationHost,
   type Fetch,
   hostAnswering,
+  notifyAtOnce,
   readPath,
   renderAt,
   requestsOf,
@@ -42,6 +53,7 @@ const requests = () => requestsOf(host.mock.calls);
 const reads = () => requests().filter(({ method, path }) => method === 'GET' && path === readPath);
 const starts = () => requests().filter(({ method, path }) => method === 'POST' && path === startPath);
 
+const examinationKey = getGetAssessmentExaminationsBySessionSessionIdQueryKey(sessionId);
 const renderPage = (address = testAddress) => renderAt(ExaminationPage, address);
 const startButton = () => screen.findByRole('button', { name: t('assessment.test.start') });
 
@@ -110,7 +122,54 @@ describe('not unlocked yet', () => {
   });
 });
 
+describe('not unlocked yet, asking again', () => {
+  test('a locked examination asks again every 3 s as well, and offers the start once it is unlocked', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    answers = hostAnswering(examination({ status: 'Locked' }));
+    await renderPage();
+
+    expect(await screen.findByText(t('assessment.test.notUnlocked'))).toBeInTheDocument();
+    expect(reads()).toHaveLength(1);
+
+    answers.reading = async () => Response.json(examination());
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    expect(await startButton()).toBeEnabled();
+    const once = reads().length;
+    expect(once).toBe(2);
+    await vi.advanceTimersByTimeAsync(9_000);
+    expect(reads()).toHaveLength(once);
+  });
+
+  test('leaving the page while the examination is not there yet stops asking', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    answers.reading = async () => refusal(404, 'assessment.examination-not-found');
+    await renderPage();
+    expect(await screen.findByText(t('assessment.test.notUnlocked'))).toBeInTheDocument();
+
+    cleanup();
+    const once = reads().length;
+    await vi.advanceTimersByTimeAsync(9_000);
+
+    expect(reads()).toHaveLength(once);
+  });
+});
+
 describe('errors', () => {
+  test('a read again that fails while the attempt is shown keeps its questions, without an alert', async () => {
+    notifyAtOnce();
+    answers = hostAnswering(inAttempt());
+    const { queryClient } = await renderPage();
+    expect(await screen.findAllByRole('group')).toHaveLength(2);
+    answers.reading = async () => new Response('', { status: 503 });
+
+    await queryClient.refetchQueries({ queryKey: examinationKey });
+
+    expect(queryClient.getQueryState(examinationKey)?.status).toBe('error');
+    expect(screen.getAllByRole('group')).toHaveLength(2);
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
   test.each([
     ['the read fails', 'assessment.test.loadFailed', async () => new Response('', { status: 503 })],
     ['the network fails', 'assessment.test.loadFailed', () => Promise.reject(new TypeError('Failed to fetch'))],
@@ -239,6 +298,44 @@ describe('unlocked, before the start', () => {
 
     await waitFor(() => expect(reads().length).toBeGreaterThan(before));
     expect(await screen.findAllByRole('group')).toHaveLength(2);
+  });
+});
+
+describe('starting twice', () => {
+  test('a second click on the start while the examination is read again posts nothing more', async () => {
+    const user = userEvent.setup();
+    await renderPage();
+    const button = await startButton();
+    const reread = deferred();
+    const asked = reads().length;
+    // Each read gets a copy: a page that reads twice must not find the answer's body used.
+    answers.reading = () => reread.answer.then((response) => response.clone());
+
+    await user.click(button);
+    await waitFor(() => expect(reads().length).toBeGreaterThan(asked));
+    await user.click(button);
+    reread.release(Response.json(inAttempt()));
+
+    await screen.findByRole('heading', { level: 2, name: t('assessment.test.questions') });
+    expect(starts()).toHaveLength(1);
+  });
+
+  test('a start refused as not unlocked does not move the focus to the questions when they show later', async () => {
+    notifyAtOnce();
+    const user = userEvent.setup();
+    answers.starting = async () => refusal(409, 'assessment.examination-not-unlocked');
+    const { queryClient } = await renderPage();
+    answers.reading = async () => Response.json(examination({ status: 'Locked' }));
+
+    await user.click(await startButton());
+    expect(await screen.findByText(t('assessment.test.notUnlocked'))).toBeInTheDocument();
+
+    answers.reading = async () => Response.json(inAttempt());
+    await queryClient.refetchQueries({ queryKey: examinationKey });
+    const questions = await screen.findByRole('heading', { level: 2, name: t('assessment.test.questions') });
+    await waitFor(() => expect(screen.getAllByRole('group')).toHaveLength(2));
+
+    expect(questions).not.toHaveFocus();
   });
 });
 

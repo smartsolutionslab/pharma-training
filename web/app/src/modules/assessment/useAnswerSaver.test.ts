@@ -299,3 +299,17 @@ test('settled() with nothing to save says every answer is saved', async () => {
 
   expect(await saver.settled()).toBe(true);
 });
+
+test('unchecking the last option of an answer that failed to save keeps the failure, and settled() says it is not saved', async () => {
+  answering = async () => new Response('', { status: 503 });
+  const { saver } = renderSaver();
+  saver.choose(protectionQuestion.id, [coat]);
+  await waitFor(() => expect(saver.stateOf(protectionQuestion.id).kind).toBe('failed'));
+
+  saver.choose(protectionQuestion.id, []);
+
+  expect(saver.stateOf(protectionQuestion.id).kind).toBe('failed');
+  expect(saver.draftOf(protectionQuestion.id)).toEqual([coat]);
+  expect(await saver.settled()).toBe(false);
+  expect(sent()).toHaveLength(1);
+});

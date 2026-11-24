@@ -1,7 +1,7 @@
 import { cleanup, screen, waitFor, within } from '@testing-library/vue';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import type { AssessmentExaminationDto } from '@/api/generated';
+import { type AssessmentExaminationDto, getGetAssessmentExaminationsBySessionSessionIdQueryKey } from '@/api/generated';
 import { i18n, setLanguage, t } from '@/i18n';
 import {
   courseTitle,
@@ -15,7 +15,15 @@ import {
   unknownChapterId,
   versionId,
 } from './examinationFixtures';
-import { type ExaminationHost, type Fetch, hostAnswering, renderAt, resultAddress, routed } from './examinationHost';
+import {
+  type ExaminationHost,
+  type Fetch,
+  hostAnswering,
+  notifyAtOnce,
+  renderAt,
+  resultAddress,
+  routed,
+} from './examinationHost';
 import ExaminationResultPage from './ExaminationResultPage.vue';
 
 // The result page (#48) at /assessment/sessions/:sessionId/result: it reads the examination by session and shows its
@@ -245,4 +253,20 @@ describe('in English', () => {
     expect(screen.getByText('2 attempts left')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Start the next attempt' })).toBeInTheDocument();
   });
+});
+
+test('a read again that fails while the result is shown keeps the result, without an alert', async () => {
+  notifyAtOnce();
+  const { queryClient } = await renderPage();
+  await heading();
+  expect(screen.getByText(t('assessment.result.outcome.Failed'))).toBeInTheDocument();
+  answers.reading = async () => new Response('', { status: 503 });
+  const examinationKey = getGetAssessmentExaminationsBySessionSessionIdQueryKey(sessionId);
+
+  await queryClient.refetchQueries({ queryKey: examinationKey });
+
+  expect(queryClient.getQueryState(examinationKey)?.status).toBe('error');
+  expect(screen.getByText(t('assessment.result.outcome.Failed'))).toBeInTheDocument();
+  expect(screen.queryByText(t('assessment.result.loadFailed'))).toBeNull();
+  expect(screen.queryByRole('button', { name: t('shell.retry') })).toBeNull();
 });

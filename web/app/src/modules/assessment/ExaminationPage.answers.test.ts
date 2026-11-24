@@ -1,6 +1,7 @@
 import { cleanup, screen, waitFor, within } from '@testing-library/vue';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, onTestFinished, test, vi } from 'vitest';
+import { getGetAssessmentExaminationsBySessionSessionIdQueryKey } from '@/api/generated';
 import type { AssessmentAttemptQuestionDto, AssessmentExaminationDto } from '@/api/generated';
 import { t } from '@/i18n';
 import {
@@ -24,6 +25,8 @@ import {
   type ExaminationHost,
   type Fetch,
   hostAnswering,
+  notifyAtOnce,
+  readPath,
   renderAt,
   requestsOf,
   routed,
@@ -317,4 +320,39 @@ test('nothing about the answers is kept in the browser: the server is the only r
 
   expect(setItem).not.toHaveBeenCalled();
   expect(open).not.toHaveBeenCalled();
+});
+
+test('a read on its way when an answer is saved does not take the answer back', async () => {
+  notifyAtOnce();
+  const user = userEvent.setup();
+  const { queryClient } = await renderPage();
+  const duration = await questionGroup(1);
+  const examinationKey = getGetAssessmentExaminationsBySessionSessionIdQueryKey(sessionId);
+  const reads = () => requestsOf(host.mock.calls).filter(({ method, path }) => method === 'GET' && path === readPath);
+  const older = deferred();
+  const asked = reads().length;
+  answers.reading = () => older.answer;
+  const readAgain = queryClient.invalidateQueries({ queryKey: examinationKey });
+  await waitFor(() => expect(reads().length).toBeGreaterThan(asked));
+
+  await user.click(within(duration).getByRole('radio', { name: '30 Sekunden' }));
+  expect(await within(duration).findByText(t('assessment.test.save.saved'))).toBeInTheDocument();
+  older.release(Response.json(inAttempt()));
+  await readAgain;
+
+  expect(within(duration).getByRole('radio', { name: '30 Sekunden' })).toBeChecked();
+  expect(screen.getByText(t('assessment.test.answered', { answered: 1, total: 2 }))).toBeInTheDocument();
+});
+
+test("each question's fieldset is described by its type's hint and its save status", async () => {
+  const user = userEvent.setup();
+  await renderPage();
+  const duration = await questionGroup(1);
+  expect(duration).toHaveAccessibleDescription(t('assessment.test.singleHint'));
+  expect(await questionGroup(2)).toHaveAccessibleDescription(t('assessment.test.multipleHint'));
+
+  await user.click(within(duration).getByRole('radio', { name: '30 Sekunden' }));
+  await within(duration).findByText(t('assessment.test.save.saved'));
+
+  expect(duration).toHaveAccessibleDescription(`${t('assessment.test.singleHint')} ${t('assessment.test.save.saved')}`);
 });

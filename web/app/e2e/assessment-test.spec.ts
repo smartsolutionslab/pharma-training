@@ -104,6 +104,7 @@ test('a learner fails the test, keeps an answer over a reload, and passes on the
 
   await submit(page);
   await expect(page.getByRole('heading', { level: 1, name: `Ergebnis: ${course.title}` })).toBeVisible();
+  await expect(page.getByText('Versuch 1', { exact: true })).toBeVisible();
   await expect(page.getByText('Nicht bestanden', { exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Einleitung' })).toHaveAttribute(
     'href',
@@ -114,6 +115,7 @@ test('a learner fails the test, keeps an answer over a reload, and passes on the
   await page.getByRole('link', { name: 'Nächsten Versuch beginnen' }).click();
   await startAndChoose(page, 2, '30 Sekunden');
   await submit(page);
+  await expect(page.getByText('Versuch 2', { exact: true })).toBeVisible();
   await expect(page.getByText('Bestanden', { exact: true })).toBeVisible();
   await expect(page.getByText('Ihre Teilnahmebestätigung wird ausgestellt.')).toBeVisible();
 });
@@ -133,6 +135,8 @@ test('after three failed attempts the test is locked and the result links to the
   for (const attempt of [1, 2, 3]) {
     await startAndChoose(page, attempt, '5 Sekunden');
     await submit(page);
+    // The result of this attempt, not the one before it: a stale result would let the loop pass.
+    await expect(page.getByText(`Versuch ${attempt}`, { exact: true })).toBeVisible();
     await expect(page.getByText('Nicht bestanden', { exact: true })).toBeVisible();
     if (attempt < 3) {
       await page.getByRole('link', { name: 'Nächsten Versuch beginnen' }).click();

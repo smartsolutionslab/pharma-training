@@ -1,6 +1,8 @@
 import { cleanup, screen, waitFor, within } from '@testing-library/vue';
 import userEvent from '@testing-library/user-event';
-import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { defineComponent, h } from 'vue';
+import { RouterView } from 'vue-router';
 import {
   getGetAssessmentExaminationsBySessionSessionIdQueryKey,
   getGetLearningSessionsIdQueryKey,
@@ -25,6 +27,7 @@ import {
   type ExaminationHost,
   type Fetch,
   hostAnswering,
+  readPath,
   renderAt,
   requestsOf,
   resultAddress,
@@ -56,6 +59,7 @@ afterEach(cleanup);
 
 const submits = () =>
   requestsOf(host.mock.calls).filter(({ method, path }) => method === 'POST' && path === submitPath);
+const reads = () => requestsOf(host.mock.calls).filter(({ method, path }) => method === 'GET' && path === readPath);
 const renderPage = () => renderAt(ExaminationPage, testAddress);
 
 const submitButton = () => screen.findByRole('button', { name: t('assessment.test.submit') });
@@ -269,4 +273,100 @@ test('a submit refused with a module code the page does not know says what the h
   await user.click(await confirmButton());
 
   expect(await screen.findByRole('alert')).toHaveTextContent('Der Test ist gerade gesperrt.');
+});
+
+test('an answer that failed to save stays failed after its last option is unchecked, and the submit is not sent', async () => {
+  const user = userEvent.setup();
+  answers.answering = async () => new Response('', { status: 503 });
+  const { router } = await renderPage();
+  const protection = await questionGroup(2);
+  await user.click(within(protection).getByRole('checkbox', { name: 'Kittel' }));
+  await within(protection).findByRole('alert');
+  await user.click(within(protection).getByRole('checkbox', { name: 'Kittel' }));
+
+  await user.click(await submitButton());
+  await user.click(await confirmButton());
+
+  expect(await screen.findByText(t('assessment.test.unsaved'))).toBeInTheDocument();
+  const failure = within(await questionGroup(2)).getByRole('alert');
+  expect(within(failure).getByRole('button', { name: t('assessment.test.save.retry') })).toBeInTheDocument();
+  expect(submits()).toEqual([]);
+  expect(router.currentRoute.value.fullPath).toBe(testAddress);
+});
+
+test('an answer refused as no-open-attempt while the submit waits for it goes to the result, without a submit', async () => {
+  const user = userEvent.setup();
+  const answer = deferred();
+  answers.answering = () => answer.answer;
+  const { router, queryClient } = await renderPage();
+  const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+  await user.click(within(await questionGroup(2)).getByRole('checkbox', { name: 'Kittel' }));
+  await user.click(await submitButton());
+  await user.click(await confirmButton());
+  answers.reading = async () => Response.json(examination({ attemptsUsed: 1, lastResult: result() }));
+
+  answer.release(refusal(409, 'assessment.no-open-attempt'));
+
+  await waitFor(() => expect(router.currentRoute.value.fullPath).toBe(resultAddress));
+  expect(submits()).toEqual([]);
+  expect(screen.queryByText(t('assessment.test.unsaved'))).toBeNull();
+  expect(invalidate).toHaveBeenCalledWith(
+    expect.objectContaining({ queryKey: getGetLearningSessionsIdQueryKey(sessionId) }),
+  );
+});
+
+describe('the result after the submit', () => {
+  /** The app as the router shows it: whichever page the address names, the test page or the result page. */
+  const Shell = defineComponent({ name: 'ExaminationShell', render: () => h(RouterView) });
+
+  /** Every text the container showed, as it changed. */
+  function textsShown(container: Element) {
+    const texts = [container.textContent ?? ''];
+    const observer = new MutationObserver(() => texts.push(container.textContent ?? ''));
+    observer.observe(container, { subtree: true, childList: true, characterData: true });
+    return { texts, stop: () => observer.disconnect() };
+  }
+
+  test.each([
+    ['the first attempt, with no result before it', null, 1],
+    ['the second attempt, after a failed first', result({ number: 1 }), 2],
+  ] as const)(
+    'after %s the result page never shows what was there before the submit',
+    async (_case, before, number) => {
+      const user = userEvent.setup();
+      answers = hostAnswering(
+        inAttempt([chosen(durationQuestion, [thirtySeconds]), chosen(protectionQuestion, [coat])], {
+          attemptsUsed: number - 1,
+          lastResult: before,
+        }),
+      );
+      const passed = result({ number, outcome: 'Passed', scorePercent: 100, chaptersToRepeat: [], attemptsLeft: 0 });
+      answers.submitting = async () => Response.json(passed);
+      const { router, container } = await renderAt(Shell, testAddress);
+      await user.click(await submitButton());
+      const reread = deferred();
+      const asked = reads().length;
+      // Each read gets a copy: a page that reads twice must not find the answer's body used.
+      answers.reading = () => reread.answer.then((response) => response.clone());
+      const shown = textsShown(container);
+
+      await user.click(await confirmButton());
+      await waitFor(() => expect(reads().length).toBeGreaterThan(asked));
+      reread.release(
+        Response.json(
+          examination({ status: 'Passed', attemptsUsed: number, currentAttempt: null, lastResult: passed }),
+        ),
+      );
+
+      expect(await screen.findByText(t('assessment.result.attempt', { number }))).toBeInTheDocument();
+      expect(screen.getByText(t('assessment.result.outcome.Passed'))).toBeInTheDocument();
+      expect(router.currentRoute.value.fullPath).toBe(resultAddress);
+      shown.stop();
+      for (const text of shown.texts) {
+        expect(text).not.toContain(t('assessment.result.none'));
+        expect(text).not.toContain(t('assessment.result.outcome.Failed'));
+        expect(text).not.toContain(t('assessment.result.attempt', { number: number - 1 }));
+      }
+    },
+  );
 });
