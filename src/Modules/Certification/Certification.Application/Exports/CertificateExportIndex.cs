@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Storage;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Certificates;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Exports;
@@ -43,6 +44,22 @@ public static class CertificateExportIndex
         return $"pdf/{id.Value:D}.pdf";
     }
 
+    /// <summary>
+    /// Where the certificate's PDF lies in blob storage: none while it is pending, and none for a row marked stored without a
+    /// location, which the domain never writes; the index lists such a certificate as pending and the archive leaves it out alike.
+    /// </summary>
+    public static Option<BlobName> StoredPdfOf(Certificate certificate)
+    {
+        Ensure.That(certificate).IsNotNull();
+
+        if (certificate.Document == DocumentState.Stored && certificate.DocumentLocation is not null)
+        {
+            return Option<BlobName>.Some(BlobName.From(certificate.DocumentLocation.Value));
+        }
+
+        return Option<BlobName>.None;
+    }
+
     public static byte[] Write(IReadOnlyList<Certificate> certificates)
     {
         Ensure.That(certificates).IsNotNull();
@@ -67,7 +84,7 @@ public static class CertificateExportIndex
         certificate.ValidUntil.ToString(),
         certificate.Score.Value.ToString(CultureInfo.InvariantCulture),
         certificate.VerificationCode.Value,
-        certificate.Document == DocumentState.Stored ? EntryNameFor(certificate.Id) : PendingMarker,
+        StoredPdfOf(certificate).HasValue ? EntryNameFor(certificate.Id) : PendingMarker,
     ];
 
     private static void AppendRow(StringBuilder text, string[] fields)
