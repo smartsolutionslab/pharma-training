@@ -23,20 +23,24 @@ public class AppHostBrokerUsersTests(AspireFixture aspire)
 
     private const string TestDefinitionPublished = Contracts + "Editorial.TestDefinitionPublishedV1";
 
+    private const string AttemptsExhausted = Contracts + "Assessment.AttemptsExhaustedV1";
+
+    private const string TestPassed = Contracts + "Assessment.TestPassedV1";
+
+    private const string ContentCompleted = Contracts + "Learning.ContentCompletedV1";
+
+    private const string LearningSessionStarted = Contracts + "Learning.LearningSessionStartedV1";
+
     private const string MembershipChanged = Contracts + "Organisation.MembershipChangedV1";
 
     private const string MembershipEnded = Contracts + "Organisation.MembershipEndedV1";
 
     private const string MembershipStarted = Contracts + "Organisation.MembershipStartedV1";
 
-    private const string ContentCompleted = Contracts + "Learning.ContentCompletedV1";
-
-    private const string LearningSessionStarted = Contracts + "Learning.LearningSessionStartedV1";
-
     /// <summary>The default exchange's name in RabbitMQ's permissions.</summary>
     private const string DefaultExchange = "amq.default";
 
-    /// <summary>The grants D1 of #183 works out for five modules on main: configure, write and read.</summary>
+    /// <summary>The grants D1 of #183 works out for five modules: configure, write and read.</summary>
     public static TheoryData<string, string[], string[], string[]> Grants { get; } = new()
     {
         {
@@ -59,9 +63,9 @@ public class AppHostBrokerUsersTests(AspireFixture aspire)
         },
         {
             "learning",
-            ["learning", ContentCompleted, LearningSessionStarted, ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired, MembershipChanged, MembershipEnded, MembershipStarted],
+            ["learning", ContentCompleted, LearningSessionStarted, AttemptsExhausted, TestPassed, ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired, MembershipChanged, MembershipEnded, MembershipStarted],
             ["learning", ContentCompleted, LearningSessionStarted],
-            ["learning", ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired, MembershipChanged, MembershipEnded, MembershipStarted]
+            ["learning", AttemptsExhausted, TestPassed, ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired, MembershipChanged, MembershipEnded, MembershipStarted]
         },
         {
             "organisation",

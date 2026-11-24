@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.IntegrationEvents;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
@@ -7,9 +8,10 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Comm
 
 /// <summary>
 /// Invites the address and, in the same commit, requests its mail (InvitationMailRequestedV1) on the host's durable
-/// local queue; the consumer issues the link and mails it, so nothing after the commit depends on the request.
+/// local queue; the consumer issues the link and mails it, so nothing after the commit depends on the request. Beyond
+/// the pharmacy's daily cap of invitation mails it answers 429 with the instant it may invite again.
 /// </summary>
-public sealed class InviteMemberHandler(IPharmacyStore pharmacies, IOrganisationUnitOfWork unitOfWork, TimeProvider time)
+public sealed class InviteMemberHandler(IPharmacyStore pharmacies, IOrganisationUnitOfWork unitOfWork, IDatabaseClock clock, InvitationMailLimits limits, ILogger<InviteMemberHandler> logger)
     : ICommandHandler<InviteMember, Result<Guid, ApiError>>
 {
     public async Task<Result<Guid, ApiError>> HandleAsync(InviteMember command, CancellationToken cancellationToken)
@@ -29,12 +31,17 @@ public sealed class InviteMemberHandler(IPharmacyStore pharmacies, IOrganisation
             return Failure(access.Error);
         }
 
+        // The whole operation (its mail limits, its request time and expiry) runs on the database's clock, which every
+        // instance shares, so a clock days apart cannot lift or lock the limits (docs/adr/0004).
+        var now = await clock.NowAsync(cancellationToken);
+        InvitationMailClock.WarnWhenAhead(logger, pharmacy, now);
         var invited = pharmacy.Invite(
             MembershipId.New(),
             command.Email,
             command.JobFunction,
             command.Role,
-            Timestamp.From(time.GetUtcNow()));
+            now,
+            limits);
         if (invited.IsFailure)
         {
             return Failure(PharmacyFailures.From(invited.Error));

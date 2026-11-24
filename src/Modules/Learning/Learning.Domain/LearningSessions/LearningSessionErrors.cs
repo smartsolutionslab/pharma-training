@@ -7,5 +7,8 @@ public static class LearningSessionErrors
 
     public static RecordProgressError ChapterNotInCourse(LearningSessionId session, ChapterId chapter) => new ChapterNotInCourse(session, chapter);
 
+    /// <summary>An AttemptsExhausted named a chapter the session does not have: a fault, never skipped.</summary>
+    public static DomainError FailedChapterNotInCourse(LearningSessionId session, ChapterId chapter) => new ChapterNotInCourse(session, chapter);
+
     public static RecordProgressError ProgressTooFast(LearningSessionId session, ChapterId chapter) => new ProgressTooFast(session, chapter);
 }

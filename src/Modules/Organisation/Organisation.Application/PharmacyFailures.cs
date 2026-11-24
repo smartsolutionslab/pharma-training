@@ -37,6 +37,9 @@ public static class PharmacyFailures
 
     public static ApiError InvalidInvitationToken() => new InvalidInvitationToken();
 
+    /// <summary>The per-user limit on accepting invitations refused the request (docs/adr/0004).</summary>
+    public static ApiError AcceptLimitReached() => new AcceptLimitReached();
+
     /// <summary>
     /// The domain's refusals with the status each use case answers them with. An error no use case returns yet has no
     /// status here: it is mapped where it is first returned, never given a guessed one.
@@ -52,6 +55,8 @@ public static class PharmacyFailures
             AlreadyMemberOrInvited => ApiError.From(error, HttpStatusCode.Conflict),
             NoOpenInvitation => ApiError.From(error, HttpStatusCode.NotFound),
             InvitationExpired => ApiError.From(error, HttpStatusCode.Gone),
+            InvitationRenewedTooSoon tooSoon => ApiError.RetryLater(tooSoon, tooSoon.RetryAt.Value),
+            TooManyInvitationsToday tooMany => ApiError.RetryLater(tooMany, tooMany.RetryAt.Value),
             _ => throw new UnreachableException(
                 $"{error.Code} is not returned by an Organisation use case yet; map it where it is first returned."),
         };

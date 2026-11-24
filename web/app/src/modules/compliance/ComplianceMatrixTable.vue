@@ -15,6 +15,7 @@ import { cellStatus } from './cellStatus';
 import MatrixStatus from './MatrixStatus.vue';
 import { statusLooks } from './matrixStatus';
 import { rateOf } from './useTeamMatrix';
+import { rateFigure } from './matrixRate';
 
 // The team matrix: a table of its own, not DataTable, since its columns are the courses only the answer knows. A
 // column header per course and a row header per member name each cell for a screen reader. It scrolls inside a
@@ -82,7 +83,7 @@ const lines = computed(() =>
 function courseRate(course: ComplianceMatrixCourseDto): string {
   const rate = rateOf(course.complianceRate);
   return t('compliance.matrix.table.courseRate', {
-    rate: rate === null ? t('compliance.matrix.rate.noValue') : n(rate, 'percent'),
+    rate: rate === null ? t('compliance.matrix.rate.noValue') : n(rateFigure(rate).value, rateFigure(rate).format),
   });
 }
 

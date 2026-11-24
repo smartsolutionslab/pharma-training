@@ -106,7 +106,7 @@ public class ListMyPharmaciesTests
     {
         var token = InvitationToken.From(RandomNumberGenerator.GetHexString(64));
         var membership = MembershipId.New();
-        pharmacy.Invite(membership, AnnaMail, JobFunction.Pta, MembershipRole.Employee, Now).IsSuccess.ShouldBeTrue();
+        pharmacy.Invite(membership, AnnaMail, JobFunction.Pta, MembershipRole.Employee, Now, InvitationMailLimits.Default).IsSuccess.ShouldBeTrue();
         pharmacy.IssueInvitationLink(membership, token, Now).IsSuccess.ShouldBeTrue();
         return token;
     }

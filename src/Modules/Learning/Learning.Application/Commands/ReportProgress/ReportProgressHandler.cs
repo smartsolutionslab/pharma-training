@@ -7,19 +7,38 @@ using SmartSolutionsLab.PharmaTraining.Modules.Learning.Domain.LearningSessions.
 namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.Commands.ReportProgress;
 
 /// <summary>
-/// Records the reported progress on the learner's own session; another person's session is not found, like an unknown
-/// one. A report that adds nothing stores nothing. The session is stored before its ContentCompleted, raised once per
-/// cycle, is published as ContentCompletedV1 and committed. A report that lost the append race to another one answers
+/// Records the reported progress on the learner's own session. Only an active member of any pharmacy may report it
+/// (docs/adr/0017, #242): anyone else, a former member on their own session included, is refused with
+/// learning.membership-missing before the session is loaded, and nothing is stored, so a non-member is refused alike
+/// for any well-formed session id. The endpoint answers before the handler runs: an empty session id with 404, a bad
+/// percent or chapter with 400. The check reads Learning's eventually consistent copy of the memberships, so a report
+/// processed while an ending is still on its way may land, the window ADR 0017 accepts, as for starting a session.
+/// For an active member another person's session is not found, like an unknown one. A report that adds nothing stores
+/// nothing. The session is stored before its ContentCompleted, raised once per cycle, is published as
+/// ContentCompletedV1 and committed. A report that lost the append race to another one answers
 /// learning.session-changed and publishes nothing; the server does not retry it. A video report faster than playback,
 /// judged against the duration in Learning's copy of the session's version, answers learning.progress-too-fast and
 /// stores nothing (ADR 0024).
 /// </summary>
-public sealed class ReportProgressHandler(ILearningAggregateStore store, ILearningUnitOfWork unitOfWork, ICourseVersionCopies versions, TimeProvider time)
+public sealed class ReportProgressHandler(
+    IMembershipCopies memberships,
+    ILearningAggregateStore store,
+    ILearningUnitOfWork unitOfWork,
+    ICourseVersionCopies versions,
+    TimeProvider time)
     : ICommandHandler<ReportProgress, Result<Unit, ApiError>>
 {
     public async Task<Result<Unit, ApiError>> HandleAsync(ReportProgress command, CancellationToken cancellationToken)
     {
         Ensure.That(command).IsNotNull();
+
+        // Only an active member reports progress (docs/adr/0017); it is checked before the session is loaded, so a
+        // non-member is refused alike for any well-formed id and learns nothing of the sessions Learning holds.
+        var access = await LearnerAccess.RequireActiveMemberAsync(memberships, command.Learner, cancellationToken);
+        if (access.IsFailure)
+        {
+            return Failure(access.Error);
+        }
 
         var loaded = await store.LoadAsync<LearningSession>(command.Session, cancellationToken);
         if (!loaded.HasValue || loaded.Value.Learner != command.Learner)
@@ -43,7 +62,8 @@ public sealed class ReportProgressHandler(ILearningAggregateStore store, ILearni
         }
 
         var completed = pending.OfType<ContentCompleted>().ToList();
-        // Of two reports that loaded the same version of the stream, only one append lands; the other one stores and announces nothing.
+        // Of two reports that loaded the same version of the stream, only one append lands; the other one stores and
+        // announces nothing.
         if (!await store.TrySaveAsync(session, cancellationToken))
         {
             return Failure(LearningSessionFailures.Changed(command.Session.Value));

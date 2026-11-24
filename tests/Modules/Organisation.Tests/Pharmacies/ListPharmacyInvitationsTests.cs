@@ -47,9 +47,9 @@ public class ListPharmacyInvitationsTests
         var pharmacy = TestPharmacies.Register(Owner);
         var at = TestPharmacies.RegisteredAt.PlusDays(-3);
         var open = TestPharmacies.Invite(pharmacy, "open@example.org", at);
-        var renewed = pharmacy.Invite(MembershipId.New(), EmailAddress.From("renewed@example.org"), JobFunction.Pka, MembershipRole.Manager, at.PlusDays(-30)).Value;
+        var renewed = pharmacy.Invite(MembershipId.New(), EmailAddress.From("renewed@example.org"), JobFunction.Pka, MembershipRole.Manager, at.PlusDays(-30), InvitationMailLimits.Default).Value;
         var renewedAt = TestPharmacies.RegisteredAt.PlusDays(1);
-        pharmacy.RenewInvitation(renewed, renewedAt).IsSuccess.ShouldBeTrue();
+        pharmacy.RenewInvitation(renewed, renewedAt, InvitationMailLimits.Default).IsSuccess.ShouldBeTrue();
         pharmacy.Stored(store);
 
         var listed = await Handler(store).HandleAsync(
