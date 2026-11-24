@@ -89,6 +89,22 @@ public class TestDraftRequestTests
     }
 
     [Fact]
+    public void Ai_drafted_questions_an_editor_edited_or_approved_once_are_subtracted_as_kept()
+    {
+        var version = DraftWithChapter(out var chapter);
+        version.SetBlueprint(Blueprint(5)).IsSuccess.ShouldBeTrue();
+        var drafted = version.ApplyAiTestDraft([SingleChoice(chapter), SingleChoice(chapter), SingleChoice(chapter)], QuestionId.New, AnswerOptionId.New).Value;
+        version.EditQuestion(drafted[0], SingleChoice(chapter), AnswerOptionId.New).IsSuccess.ShouldBeTrue();
+        version.ApproveQuestion(drafted[1], Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(Blueprint(6)).IsSuccess.ShouldBeTrue();
+        version.Questions.ShouldAllBe(question => question.Review == ReviewState.Unreviewed);
+
+        var request = TestDraftRequest.For(version).Value;
+
+        request.Questions.ShouldBe(QuestionCount.From(4), "the edited and the once-approved AI-drafted questions stay; only the untouched one is replaced");
+    }
+
+    [Fact]
     public void Copied_and_hand_written_questions_that_fill_the_blueprint_after_a_settings_change_leave_nothing_to_draft()
     {
         var next = Published().DraftNext(CourseVersionId.New(), Author, ChapterId.New, QuestionId.New, AnswerOptionId.New).Value;

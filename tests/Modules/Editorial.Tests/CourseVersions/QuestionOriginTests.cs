@@ -6,8 +6,9 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersion
 
 /// <summary>
 /// Every question records how it came into its version (#245): drafted by the AI, copied from the published version,
-/// or written by hand. Applying an AI draft replaces only the unreviewed AI-drafted ones (the owner's decision of
-/// 2026-11-23); copied and hand-written questions stay, reviewed or not, and only need approving again.
+/// or written by hand. Applying an AI draft replaces only the AI-drafted ones that are unreviewed (the owner's decision of
+/// 2026-11-23), untouched by an editor and never approved (the owner's decision of 2026-11-24); copied and hand-written
+/// questions stay, reviewed or not, and only need approving again.
 /// </summary>
 public class QuestionOriginTests
 {
@@ -96,16 +97,119 @@ public class QuestionOriginTests
         version.Questions.Select(question => question.Id).ShouldBe([drafted[0], .. applied.Value]);
     }
 
-    /// <summary>An editor's change does not make a question hand-written: it came from the AI draft, and its provenance says so too.</summary>
+    /// <summary>
+    /// An editor's change is human work (the owner's decision of 2026-11-24): the question stays AI-drafted in origin and
+    /// provenance, records the edit, and the next draft keeps it although it is unreviewed again.
+    /// </summary>
     [Fact]
-    public void An_ai_drafted_question_an_editor_changed_stays_ai_drafted()
+    public void An_ai_drafted_question_an_editor_edited_survives_the_next_draft()
     {
         var version = DraftWithChapter(out var chapter);
         var drafted = version.ApplyAiTestDraft([SingleChoice(chapter)], QuestionId.New, AnswerOptionId.New).Value.ShouldHaveSingleItem();
+        version.EditQuestion(drafted, MultipleChoice(chapter), AnswerOptionId.New).IsSuccess.ShouldBeTrue();
+        var edited = version.Questions.ShouldHaveSingleItem();
+        edited.Origin.ShouldBe(QuestionOrigin.AiDraft);
+        edited.EditHistory.ShouldBe(EditHistory.Edited);
+        edited.Review.ShouldBe(ReviewState.Unreviewed);
+
+        var applied = version.ApplyAiTestDraft([SingleChoice(chapter)], QuestionId.New, AnswerOptionId.New);
+
+        applied.IsSuccess.ShouldBeTrue();
+        version.Questions.Select(question => question.Id).ShouldBe([drafted, .. applied.Value]);
+    }
+
+    /// <summary>
+    /// An approval is human work for good (the owner's decision of 2026-11-24): a settings change sends the question back
+    /// to review (#199), but it stays approved once, and the next draft keeps it.
+    /// </summary>
+    [Fact]
+    public void An_ai_drafted_question_approved_once_survives_the_next_draft_after_a_settings_change_reset_it()
+    {
+        var version = DraftWithChapter(out var chapter);
+        var drafted = version.ApplyAiTestDraft([SingleChoice(chapter)], QuestionId.New, AnswerOptionId.New).Value.ShouldHaveSingleItem();
+        version.ApproveQuestion(drafted, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(new TestBlueprint(QuestionCount.From(3), ScorePercent.From(90), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
+        var reset = version.Questions.ShouldHaveSingleItem();
+        reset.Review.ShouldBe(ReviewState.Unreviewed);
+        reset.ApprovalHistory.ShouldBe(ApprovalHistory.ApprovedOnce);
+
+        var applied = version.ApplyAiTestDraft([SingleChoice(chapter), MultipleChoice(chapter)], QuestionId.New, AnswerOptionId.New);
+
+        applied.IsSuccess.ShouldBeTrue();
+        version.Questions.Select(question => question.Id).ShouldBe([drafted, .. applied.Value]);
+    }
+
+    [Fact]
+    public void An_ai_drafted_question_approved_once_survives_the_next_draft_after_a_chapter_change_reset_it()
+    {
+        var version = DraftWithChapter(out var chapter);
+        var drafted = version.ApplyAiTestDraft([SingleChoice(chapter)], QuestionId.New, AnswerOptionId.New).Value.ShouldHaveSingleItem();
+        version.ApproveQuestion(drafted, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
+        version.ReplaceChapter(TextChapter(chapter, "Geändert")).IsSuccess.ShouldBeTrue();
+        version.Questions.ShouldHaveSingleItem().Review.ShouldBe(ReviewState.Unreviewed);
+
+        var applied = version.ApplyAiTestDraft([MultipleChoice(chapter)], QuestionId.New, AnswerOptionId.New);
+
+        applied.IsSuccess.ShouldBeTrue();
+        version.Questions.Select(question => question.Id).ShouldBe([drafted, .. applied.Value]);
+    }
+
+    [Fact]
+    public void An_untouched_ai_drafted_question_never_approved_is_replaced_by_the_next_draft()
+    {
+        var version = DraftWithChapter(out var chapter);
+        var drafted = version.ApplyAiTestDraft([SingleChoice(chapter)], QuestionId.New, AnswerOptionId.New).Value.ShouldHaveSingleItem();
+        var untouched = version.Questions.ShouldHaveSingleItem();
+        untouched.EditHistory.ShouldBe(EditHistory.Untouched);
+        untouched.ApprovalHistory.ShouldBe(ApprovalHistory.NeverApproved);
+
+        var applied = version.ApplyAiTestDraft([MultipleChoice(chapter)], QuestionId.New, AnswerOptionId.New);
+
+        applied.IsSuccess.ShouldBeTrue();
+        version.Questions.Select(question => question.Id).ShouldBe(applied.Value);
+        version.Questions.ShouldNotContain(question => question.Id == drafted);
+    }
+
+    [Fact]
+    public void A_new_question_is_untouched_and_never_approved()
+    {
+        var question = DraftWithQuestion(out _, out _).Questions.ShouldHaveSingleItem();
+
+        question.EditHistory.ShouldBe(EditHistory.Untouched);
+        question.ApprovalHistory.ShouldBe(ApprovalHistory.NeverApproved);
+    }
+
+    [Fact]
+    public void An_edit_after_an_approval_keeps_the_question_approved_once()
+    {
+        var version = DraftWithChapter(out var chapter);
+        var drafted = version.ApplyAiTestDraft([SingleChoice(chapter)], QuestionId.New, AnswerOptionId.New).Value.ShouldHaveSingleItem();
+        version.ApproveQuestion(drafted, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
 
         version.EditQuestion(drafted, MultipleChoice(chapter), AnswerOptionId.New).IsSuccess.ShouldBeTrue();
 
-        version.Questions.ShouldHaveSingleItem().Origin.ShouldBe(QuestionOrigin.AiDraft);
+        var question = version.Questions.ShouldHaveSingleItem();
+        question.Review.ShouldBe(ReviewState.Unreviewed);
+        question.EditHistory.ShouldBe(EditHistory.Edited);
+        question.ApprovalHistory.ShouldBe(ApprovalHistory.ApprovedOnce);
+    }
+
+    /// <summary>A copy keeps the question's history, as it keeps its provenance and its approval.</summary>
+    [Fact]
+    public void Drafting_the_next_version_keeps_each_question_s_edit_and_approval_history()
+    {
+        var version = DraftWithChapter(out var chapter);
+        version.SetBlueprint(new TestBlueprint(QuestionCount.From(2), ScorePercent.From(80), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
+        List<QuestionId> drafted = [.. version.ApplyAiTestDraft([SingleChoice(chapter), SingleChoice(chapter)], QuestionId.New, AnswerOptionId.New).Value];
+        version.EditQuestion(drafted[0], SingleChoice(chapter), AnswerOptionId.New).IsSuccess.ShouldBeTrue();
+        drafted.ForEach(id => version.ApproveQuestion(id, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue());
+        version.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
+        version.Publish(Reviewer, ReviewPolicy.FourEyes, Now).IsSuccess.ShouldBeTrue();
+
+        var next = version.DraftNext(CourseVersionId.New(), Author, ChapterId.New, QuestionId.New, AnswerOptionId.New).Value;
+
+        next.Questions.Select(question => question.EditHistory).ShouldBe([EditHistory.Edited, EditHistory.Untouched]);
+        next.Questions.Select(question => question.ApprovalHistory).ShouldBe([ApprovalHistory.ApprovedOnce, ApprovalHistory.ApprovedOnce]);
     }
 
     [Fact]
