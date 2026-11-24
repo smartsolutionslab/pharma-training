@@ -11,6 +11,8 @@ public static class AssignmentFailures
 
     public static ApiError PharmacyNotFound(Guid id) => new PharmacyNotFound(id);
 
+    public static ApiError PharmacyMissing() => new PharmacyMissing();
+
     public static ApiError CapabilityMissing() => new CapabilityMissing();
 
     public static ApiError CourseMissing() => new CourseMissing();

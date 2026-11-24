@@ -29,6 +29,7 @@ public partial class RealmUsersTests(AspireFixture aspire)
     [InlineData("owner", "owner@example.com", "Olaf Owner")]
     [InlineData("employee-a", "employee-a@example.com", "Anna Employee")]
     [InlineData("employee-b", "employee-b@example.com", "Ben Employee")]
+    [InlineData("employee-c", "employee-c@example.com", "Clara Employee")]
     [InlineData("former-employee", "former-employee@example.com", "Frieda Former")]
     public async Task A_local_user_signs_in_with_a_verified_email_and_a_name(string user, string email, string name)
     {

@@ -137,3 +137,31 @@ export function setValidUntil(certificateId: string, validUntil: string) {
     throw new Error(`The certification database has no certificate ${certificateId}; psql answered: ${updated}`);
   }
 }
+
+/** A certificate Certification issued, by its id and its verification code. */
+export type IssuedCertificate = { id: string; verificationCode: string };
+
+/**
+ * The one certificate Certification issued to the holder (by the name it stores) for the course (by its title), from
+ * certification.certificates; none while it has not been issued. No API the holder reads lists their certificates yet
+ * (GET /certification/me/certificates, Z6), so the end-to-end flow (#55) finds the one it earned here.
+ */
+export function issuedCertificate(holderName: string, courseTitle: string): IssuedCertificate | undefined {
+  const rows = certificationSql(
+    `SELECT id || '|' || verification_code FROM certification.certificates WHERE holder_name = ${literal(holderName, 100)} ` +
+      `AND course_title = ${literal(courseTitle, 150)};\n`,
+  )
+    .split('\n')
+    .filter((row) => row !== '');
+  if (rows.length > 1) {
+    throw new Error(`Certification issued ${rows.length} certificates to ${holderName} for ${courseTitle}, not one.`);
+  }
+  const [id = '', verificationCode = ''] = (rows[0] ?? '').split('|');
+  if (rows.length === 0) {
+    return undefined;
+  }
+  if (!uuid.test(id) || !base64Url.test(verificationCode)) {
+    throw new Error(`The certification database answered an unexpected row: ${rows[0] ?? ''}`);
+  }
+  return { id, verificationCode };
+}

@@ -187,6 +187,118 @@ public class DeployEnvironmentsCheckTests
         run.ExitCode.ShouldBe(0, run.ToString());
     }
 
+    [Theory]
+    [InlineData(2)]
+    [InlineData(4)]
+    public async Task A_tag_ruleset_a_role_below_admin_may_bypass_fails(int role)
+    {
+        var ruleset = DeployTagRuleset();
+        ruleset["bypass_actors"]!.AsArray().Add(new JsonObject { ["actor_id"] = role, ["actor_type"] = "RepositoryRole", ["bypass_mode"] = "always" });
+
+        var run = await CheckWithRulesetAsync(ruleset, Restricted("staging", reviewers: false), Restricted("production", reviewers: true));
+
+        run.ExitCode.ShouldNotBe(0, run.ToString());
+        run.Output.ShouldContain("deploy/*");
+        run.Output.ShouldContain("bypass");
+    }
+
+    [Fact]
+    public async Task The_check_prints_who_may_bypass_the_deploy_tags_for_a_person_to_confirm()
+    {
+        var ruleset = DeployTagRuleset();
+        ruleset["bypass_actors"]!.AsArray().Add(new JsonObject { ["actor_id"] = 1234, ["actor_type"] = "Team", ["bypass_mode"] = "always" });
+
+        var run = await CheckWithRulesetAsync(ruleset, Restricted("staging", reviewers: false), Restricted("production", reviewers: true));
+
+        run.ExitCode.ShouldBe(0, run.ToString());
+        run.Output.ShouldContain("Team 1234");
+        run.Output.ShouldContain("RepositoryRole 5");
+    }
+
+    [Fact]
+    public async Task Main_without_a_pull_request_rule_or_without_refusing_force_pushes_fails()
+    {
+        var staging = Restricted("staging", reviewers: false);
+        var production = Restricted("production", reviewers: true);
+
+        var withoutPullRequests = await CheckRepositoryAsync(DeployTagRuleset(), MainRules("non_fast_forward"), null, staging, production);
+        var withForcePushes = await CheckRepositoryAsync(DeployTagRuleset(), MainRules("pull_request"), null, staging, production);
+        var unprotected = await CheckRepositoryAsync(DeployTagRuleset(), MainRules(), null, staging, production);
+
+        foreach (var run in new[] { withoutPullRequests, withForcePushes, unprotected })
+        {
+            run.ExitCode.ShouldNotBe(0, run.ToString());
+            run.Output.ShouldContain("main:");
+        }
+    }
+
+    /// <summary>
+    /// The review of #335: GitHub shows a ruleset's bypass list only to whoever may administer it. A ruleset read without
+    /// one is not a ruleset nobody may bypass: the check says it cannot tell, and fails.
+    /// </summary>
+    [Fact]
+    public async Task A_tag_ruleset_read_without_its_bypass_list_fails_as_unreadable()
+    {
+        var ruleset = DeployTagRuleset();
+        ruleset.Remove("bypass_actors");
+
+        var run = await CheckWithRulesetAsync(ruleset, Restricted("staging", reviewers: false), Restricted("production", reviewers: true));
+
+        run.ExitCode.ShouldNotBe(0, run.ToString());
+        run.Output.ShouldContain("cannot read who may bypass");
+        run.Output.ShouldNotContain("nobody");
+    }
+
+    [Fact]
+    public async Task Main_whose_classic_protection_cannot_be_read_is_reported_as_unreadable_not_as_unprotected()
+    {
+        var run = await CheckRepositoryAsync(DeployTagRuleset(), MainRules(), new JsonObject { ["forbidden"] = true }, Restricted("staging", reviewers: false), Restricted("production", reviewers: true));
+
+        run.ExitCode.ShouldNotBe(0, run.ToString());
+        run.Output.ShouldContain("main:");
+        run.Output.ShouldContain("HTTP 403");
+    }
+
+    [Fact]
+    public async Task Main_whose_classic_protection_does_not_say_whether_it_allows_force_pushes_fails()
+    {
+        var protection = new JsonObject { ["required_pull_request_reviews"] = new JsonObject { ["required_approving_review_count"] = 1 } };
+
+        var run = await CheckRepositoryAsync(DeployTagRuleset(), MainRules(), protection, Restricted("staging", reviewers: false), Restricted("production", reviewers: true));
+
+        run.ExitCode.ShouldNotBe(0, run.ToString());
+        run.Output.ShouldContain("force pushes");
+    }
+
+    [Fact]
+    public async Task Main_protected_by_classic_branch_protection_passes()
+    {
+        var protection = new JsonObject
+        {
+            ["required_pull_request_reviews"] = new JsonObject { ["required_approving_review_count"] = 1 },
+            ["allow_force_pushes"] = new JsonObject { ["enabled"] = false },
+        };
+
+        var run = await CheckRepositoryAsync(DeployTagRuleset(), MainRules(), protection, Restricted("staging", reviewers: false), Restricted("production", reviewers: true));
+
+        run.ExitCode.ShouldBe(0, run.ToString());
+    }
+
+    [Fact]
+    public async Task Main_whose_classic_protection_allows_force_pushes_fails()
+    {
+        var protection = new JsonObject
+        {
+            ["required_pull_request_reviews"] = new JsonObject { ["required_approving_review_count"] = 1 },
+            ["allow_force_pushes"] = new JsonObject { ["enabled"] = true },
+        };
+
+        var run = await CheckRepositoryAsync(DeployTagRuleset(), MainRules(), protection, Restricted("staging", reviewers: false), Restricted("production", reviewers: true));
+
+        run.ExitCode.ShouldNotBe(0, run.ToString());
+        run.Output.ShouldContain("main:");
+    }
+
     /// <summary>The tag ruleset the README asks for: active on <c>refs/tags/deploy/*</c>, restricting creation, update and deletion.</summary>
     private static JsonObject DeployTagRuleset() => new()
     {
@@ -256,11 +368,27 @@ public class DeployEnvironmentsCheckTests
 
     private static Task<CommandRun> CheckAsync(params DeployEnvironment[] environments) => CheckWithRulesetAsync(DeployTagRuleset(), environments);
 
+    private static Task<CommandRun> CheckWithRulesetAsync(JsonObject? tagRuleset, params DeployEnvironment[] environments) =>
+        CheckRepositoryAsync(tagRuleset, MainRules("pull_request", "non_fast_forward"), null, environments);
+
+    /// <summary>What GitHub answers for the rules that apply to <c>main</c> (<c>GET /repos/{repo}/rules/branches/main</c>): these rule types.</summary>
+    private static JsonArray MainRules(params string[] types)
+    {
+        JsonArray rules = [];
+        foreach (var type in types)
+        {
+            rules.Add(new JsonObject { ["type"] = type, ["ruleset_source_type"] = "Repository", ["ruleset_id"] = 9 });
+        }
+
+        return rules;
+    }
+
     /// <summary>
     /// Runs the script against a stub <c>gh</c> that answers <c>gh api &lt;path&gt;</c> from the environments and the tag
     /// ruleset given (none without one), and 404 otherwise.
     /// </summary>
-    private static async Task<CommandRun> CheckWithRulesetAsync(JsonObject? tagRuleset, params DeployEnvironment[] environments)
+    /// <param name="mainProtection">The classic branch protection of <c>main</c>, or null where it has none (404).</param>
+    private static async Task<CommandRun> CheckRepositoryAsync(JsonObject? tagRuleset, JsonArray mainRules, JsonObject? mainProtection, params DeployEnvironment[] environments)
     {
         var directory = Directory.CreateTempSubdirectory("deploy-environments-");
         try
@@ -284,12 +412,22 @@ public class DeployEnvironmentsCheckTests
 
             await File.WriteAllTextAsync(rulesets.FullName + ".json", listed.ToJsonString());
 
+            var mainRulesPath = Directory.CreateDirectory(Path.Combine(answers.FullName, "repos", Repository, "rules", "branches"));
+            await File.WriteAllTextAsync(Path.Combine(mainRulesPath.FullName, "main.json"), mainRules.ToJsonString());
+            if (mainProtection is not null)
+            {
+                var protection = Directory.CreateDirectory(Path.Combine(answers.FullName, "repos", Repository, "branches", "main"));
+                await File.WriteAllTextAsync(Path.Combine(protection.FullName, "protection.json"), mainProtection.ContainsKey("forbidden") ? "forbidden" : mainProtection.ToJsonString());
+            }
+
             var bin = Directory.CreateDirectory(Path.Combine(directory.FullName, "bin"));
             var gh = Path.Combine(bin.FullName, "gh");
             await File.WriteAllTextAsync(gh, """
                 #!/usr/bin/env bash
-                [ "$1" = api ] || { echo "stub gh: only 'gh api <path>' is answered, not: $*" >&2; exit 2; }
-                file="$GH_STUB_ANSWERS/${2#/}.json"
+                [ "$1" = api ] || { echo "stub gh: only 'gh api [--paginate] <path>' is answered, not: $*" >&2; exit 2; }
+                shift
+                [ "$1" != --paginate ] || shift
+                file="$GH_STUB_ANSWERS/${1#/}.json"
                 [ -f "$file" ] || { echo 'gh: Not Found (HTTP 404)' >&2; exit 1; }
                 [ "$(cat "$file")" != forbidden ] || { echo 'gh: Resource not accessible by personal access token (HTTP 403)' >&2; exit 1; }
                 cat "$file"

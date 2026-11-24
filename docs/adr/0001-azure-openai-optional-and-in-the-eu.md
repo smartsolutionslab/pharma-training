@@ -18,6 +18,7 @@
 
 ## Consequences
 
+- **Amended for #157:** the page text extracted from PDF chapters is now sent to the model for an AI test draft, under the same constraint as a chapter's Markdown: the EU resource above for run mode and the evals (ADR 0008 D5, D11; a PDF's metadata is never read).
 - Nothing in the code checks the region or the deployment type: the endpoint names a resource, not where it runs. Keeping it in the EU is the job of whoever creates the resource and sets the parameters; a review of a deployment's secret store is where it is seen.
 - Only a missing setting answers `503`. A wrong key, an endpoint that does not exist or a deployment the resource does not have fails when the model is called and stays a `500`, as any other broken infrastructure does.
 - The fabric ADR's statements that the host starts without the parameters and that the integration tests give the endpoint a resource that does not exist are superseded here: the host now does start without them, and the tests give none.

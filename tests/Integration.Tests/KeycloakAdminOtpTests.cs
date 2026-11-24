@@ -110,6 +110,67 @@ public partial class KeycloakAdminOtpTests(KeycloakAdminContainer keycloak) : IC
         }
     }
 
+    /// <summary>
+    /// #331: enrolment refreshes kcadm.sh's session for its own calls and writes the new tokens back, so a realm that
+    /// revokes a refresh token once it is used ("Revoke Refresh Token") does not end kcadm.sh's own session.
+    /// </summary>
+    [Fact]
+    public async Task Enrolment_leaves_kcadms_session_working_where_refresh_tokens_are_revoked()
+    {
+        var (user, _) = await AdministratorAsync();
+        (await keycloak.ExecAsync("./kcadm.sh update realms/master -s revokeRefreshToken=true -s accessTokenLifespan=5")).ExitCode.ShouldBe(0);
+        try
+        {
+            (await keycloak.SignInAsAdministratorAsync()).ExitCode.ShouldBe(0);
+
+            var enroll = await keycloak.ConverseAsync($"./kcadm-otp.sh enroll {user}", line => KeyIn(line) is { } key ? Totp.Code(key) + "\n" : null);
+            enroll.ExitCode.ShouldBe(0, enroll.ToString());
+            await Task.Delay(TimeSpan.FromSeconds(7), TestContext.Current.CancellationToken);
+
+            var afterwards = await keycloak.ExecAsync("./kcadm.sh get realms/master --fields realm");
+            afterwards.ExitCode.ShouldBe(0, $"kcadm.sh's session ended with the refresh token enrolment used up:\n{afterwards}");
+        }
+        finally
+        {
+            (await keycloak.SignInAsAdministratorAsync()).ExitCode.ShouldBe(0);
+            (await keycloak.ExecAsync("./kcadm.sh update realms/master -s revokeRefreshToken=false -s accessTokenLifespan=60")).ExitCode.ShouldBe(0);
+        }
+    }
+
+    [Fact]
+    public async Task Login_keeps_kcadms_sessions_with_other_servers()
+    {
+        var (user, password) = await AdministratorAsync();
+        var key = await EnrollAsync(user);
+        var other = await keycloak.ExecAsync(
+            "sed -i 's|\"endpoints\" : {|\"endpoints\" : { \"http://other.example:8080\" : { \"master\" : { \"clientId\" : \"admin-cli\", \"token\" : \"other-token\" } },|' ~/.keycloak/kcadm.config && grep -c other.example ~/.keycloak/kcadm.config");
+        other.Output.Trim().ShouldBe("1", $"The test could not add another server's session:\n{other}");
+
+        var login = await LoginAsync(user, password, Totp.Code(key));
+
+        login.ExitCode.ShouldBe(0, login.ToString());
+        var config = await keycloak.ExecAsync("cat ~/.keycloak/kcadm.config");
+        config.Output.ShouldContain("http://other.example:8080", Case.Sensitive, "kcadm-otp.sh login dropped kcadm.sh's session with another server.");
+        config.Output.ShouldContain("other-token");
+        (await keycloak.ExecAsync($"./kcadm.sh get users -r master -q username={user} -q exact=true --fields username --format csv --noquotes")).Output.Trim().ShouldBe(user);
+    }
+
+    /// <summary>
+    /// #331: with its output redirected there is no console, and the password would be read from the terminal with echo,
+    /// left on the screen; kcadm-otp.sh refuses instead of asking.
+    /// </summary>
+    [Fact]
+    public async Task Login_refuses_to_ask_for_a_password_the_terminal_would_echo()
+    {
+        var (user, _) = await AdministratorAsync();
+
+        var run = await keycloak.ExecInTerminalAsync($"timeout --foreground -k 5 30 ./kcadm-otp.sh login {user} > /tmp/{user}.out; echo \"exit $?\"");
+
+        run.Output.ShouldNotContain("exit 0");
+        run.Output.ShouldNotContain("exit 124", Case.Sensitive, "kcadm-otp.sh waited for a password the terminal would have echoed.");
+        run.Output.ShouldContain("echo");
+    }
+
     [Fact]
     public async Task A_wrong_code_at_enrolment_saves_nothing()
     {

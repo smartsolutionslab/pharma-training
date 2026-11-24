@@ -8,7 +8,7 @@ import type {
   OrganisationJobFunction,
   OrganisationMembershipRole,
 } from '@/api/generated';
-import type { CellStatus } from '@/modules/compliance/cellStatus';
+import type { AssignmentStatus } from '@/components/status/assignmentStatus';
 
 // The German catalog, which defines the keys (MessageSchema). German follows docs/domain/README.md's glossary and
 // addresses the user as "Sie". vue-i18n reads @ { } | $ as syntax: write a literal one as {'@'}.
@@ -87,7 +87,13 @@ export const de = {
         player: { title: 'Schulung' },
       },
     },
-    assessment: { title: 'Tests' },
+    assessment: {
+      title: 'Tests',
+      details: {
+        test: { title: 'Test' },
+        result: { title: 'Ergebnis' },
+      },
+    },
     certification: {
       title: 'Teilnahmebestätigungen',
       entries: {
@@ -201,7 +207,7 @@ export const de = {
       Completed: 'Abgeschlossen',
       CompletedLate: 'Verspätet abgeschlossen',
       Expired: 'Abgelaufen',
-    } satisfies Record<CellStatus, string>,
+    } satisfies Record<AssignmentStatus, string>,
     assign: {
       notAllowed: 'Sie dürfen in dieser Apotheke keine Schulungen zuweisen.',
       steps: {
@@ -729,6 +735,23 @@ export const de = {
     },
   },
   learning: {
+    myCourses: {
+      intro: 'Ihre Schulungen in {pharmacy}: Überfällige zuerst, dann nach Fälligkeit.',
+      list: { title: 'Zugewiesene Schulungen' },
+      due: 'Fällig am {date}',
+      dueOverdue: 'War fällig am {date}',
+      start: 'Starten',
+      continue: 'Fortsetzen',
+      startCourse: 'Starten: {title}',
+      continueCourse: 'Fortsetzen: {title}',
+      locked: 'Der Test ist gesperrt. Arbeiten Sie die Inhalte erneut durch, um ihn wieder freizuschalten.',
+      notStartable: 'Diese Schulung kann derzeit nicht gestartet werden: ihre Version ist zurückgezogen.',
+      empty: 'Ihnen ist in {pharmacy} derzeit keine Schulung zugewiesen.',
+      pharmacyNotFound: 'Sie sind nicht mehr Mitglied dieser Apotheke.',
+      identityIncomplete: 'Ihr Konto nennt keinen Namen oder keine gültige E-Mail-Adresse. Ergänzen Sie Ihr Profil.',
+      loadFailed: 'Ihre Schulungen konnten nicht geladen werden.',
+      retry: 'Erneut versuchen',
+    },
     player: {
       loadFailed: 'Die Schulung konnte nicht geladen werden.',
       notFound: 'Diese Schulung gibt es nicht.',
@@ -745,6 +768,7 @@ export const de = {
       previous: 'Vorheriges Kapitel',
       chapterDone: 'Kapitel „{title}“ erledigt.',
       contentCompleted: 'Sie haben alle Kapitel bearbeitet. Der Test ist jetzt freigeschaltet.',
+      toTest: 'Zum Test',
       text: {
         hint: 'Scrollen Sie bis zum Ende, um das Kapitel abzuschließen.',
       },
@@ -771,6 +795,72 @@ export const de = {
         saveNow: 'Jetzt speichern',
         finished: 'Dieser Lerndurchlauf ist bereits abgeschlossen. Weiterer Fortschritt wird nicht gespeichert.',
       },
+    },
+  },
+  assessment: {
+    test: {
+      heading: 'Test: {title}',
+      headingFallback: 'Test',
+      loadFailed: 'Der Test konnte nicht geladen werden.',
+      notFound: 'Diesen Test gibt es nicht.',
+      noIdentity: 'Ihr Konto ist unvollständig. Bitte melden Sie sich erneut an.',
+      notUnlocked:
+        'Der Test ist noch nicht freigeschaltet. Bearbeiten Sie zuerst alle Kapitel der Schulung; danach erscheint er hier nach wenigen Sekunden.',
+      toCourses: 'Zu meinen Schulungen',
+      notReady: 'Der Test wird gerade bereitgestellt. Versuchen Sie es in einem Moment erneut.',
+      intro: 'Versuch {number} von {max}. Es gibt kein Zeitlimit; jede Antwort wird sofort gespeichert.',
+      start: 'Test beginnen',
+      startFailed: 'Der Test konnte nicht begonnen werden.',
+      questions: 'Fragen',
+      question: 'Frage {number} von {total}',
+      singleHint: 'Wählen Sie eine Antwort.',
+      multipleHint: 'Wählen Sie alle zutreffenden Antworten.',
+      answered: '{answered} von {total} Fragen beantwortet',
+      save: {
+        saving: 'Wird gespeichert …',
+        saved: 'Gespeichert',
+        announced: 'Antwort auf Frage {number} gespeichert.',
+        failed: 'Ihre Antwort auf Frage {number} konnte nicht gespeichert werden.',
+        retry: 'Erneut speichern',
+        keepOne: 'Wählen Sie mindestens eine Antwort. Gespeichert bleibt Ihre vorige Auswahl.',
+        reload: 'Diese Antwort passt nicht zu Ihrem Testversuch. Laden Sie die Seite neu.',
+        singleChoice: 'Wählen Sie bei dieser Frage genau eine Antwort.',
+      },
+      submit: 'Test abgeben',
+      confirm: {
+        title: 'Test abgeben?',
+        text: 'Sie haben {answered} von {total} Fragen beantwortet. Nach der Abgabe können Sie Ihre Antworten nicht mehr ändern.',
+        unanswered: 'Unbeantwortete Fragen werden als falsch gewertet.',
+        confirm: 'Abgeben',
+        cancel: 'Weiter bearbeiten',
+      },
+      submitFailed: 'Der Test konnte nicht abgegeben werden.',
+      changed: 'Der Test wurde gerade an anderer Stelle geändert. Versuchen Sie es erneut.',
+      unsaved: 'Nicht alle Antworten sind gespeichert. Speichern Sie sie erneut, bevor Sie abgeben.',
+      alreadySubmitted: 'Dieser Testversuch ist bereits abgegeben.',
+      passed: 'Sie haben diesen Test bestanden.',
+      exhausted: 'Der Test ist gesperrt, bis Sie die genannten Kapitel erneut bearbeitet haben.',
+      toResult: 'Zum Ergebnis',
+    },
+    result: {
+      heading: 'Ergebnis: {title}',
+      loadFailed: 'Das Ergebnis konnte nicht geladen werden.',
+      none: 'Sie haben noch keinen Testversuch abgegeben.',
+      toTest: 'Zum Test',
+      outcome: {
+        Passed: 'Bestanden',
+        Failed: 'Nicht bestanden',
+      },
+      score: 'Ihr Ergebnis: {score}; zum Bestehen nötig: {passing}',
+      attempt: 'Versuch {number}',
+      attemptsLeft: 'Noch ein Versuch | Noch {count} Versuche',
+      retry: 'Nächsten Versuch beginnen',
+      repeatRecommended: 'Wiederholen Sie vor dem nächsten Versuch diese Kapitel:',
+      locked:
+        'Sie haben alle Versuche aufgebraucht; der Test ist gesperrt. Bearbeiten Sie diese Kapitel erneut, dann wird er wieder freigeschaltet:',
+      chaptersFailed: 'Die Kapitel konnten nicht geladen werden.',
+      unknownChapter: 'Ein Kapitel dieser Schulung',
+      passedNext: 'Ihre Teilnahmebestätigung wird ausgestellt.',
     },
   },
   samples: {
@@ -887,8 +977,12 @@ export const de = {
       'sample-not-found': 'Dieses Beispiel gibt es nicht.',
     },
     certification: {
+      'certificate-not-found': 'Diese Teilnahmebestätigung gibt es nicht, oder sie gehört nicht Ihnen.',
       'certificate-not-verifiable':
         'Zu diesem Code gibt es keine Teilnahmebestätigung. Prüfen Sie, ob Sie den vollständigen Link aus dem QR-Code geöffnet haben.',
+      'document-not-ready':
+        'Das PDF der Teilnahmebestätigung wird gerade erstellt. Versuchen Sie es gleich noch einmal.',
+      'identity-incomplete': 'Ihre Anmeldung nennt keine Person. Melden Sie sich erneut an.',
       'invalid-sample-name': 'Der Name eines Beispiels hat 1 bis {max} Zeichen und darf nicht leer sein.',
       'sample-not-found': 'Dieses Beispiel gibt es nicht.',
       'verification-limit-reached':
@@ -919,6 +1013,7 @@ export const de = {
       'learner-not-a-member': 'Eine gewählte Person ist kein Mitglied dieser Apotheke mehr.',
       'no-learners': 'Wählen Sie mindestens eine Person.',
       'own-assignment': 'Ihre eigene Zuweisung kann nur ein anderer Apothekenleiter ändern oder zurückziehen.',
+      'pharmacy-missing': 'Wählen Sie eine Apotheke.',
       'pharmacy-not-found': 'Sie sind nicht mehr Mitglied dieser Apotheke.',
       'sample-not-found': 'Dieses Beispiel gibt es nicht.',
       'too-many-learners': 'Weisen Sie höchstens {max} Personen auf einmal zu.',

@@ -37,6 +37,7 @@ const chapter = (id: string, position: number, title: string): EditorialChapterD
   text: `# ${title}`,
   file: null,
   durationSeconds: null,
+  pdfText: null,
 });
 const a = chapter('0198c1a0-0000-7000-8000-0000000000e1', 1, 'A');
 const b = chapter('0198c1a0-0000-7000-8000-0000000000e2', 2, 'B');

@@ -4,6 +4,7 @@ using SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.Consumers;
 using SmartSolutionsLab.PharmaTraining.Modules.Learning.Domain.LearningSessions;
 using SmartSolutionsLab.PharmaTraining.Modules.Learning.Domain.LearningSessions.Events;
 using SmartSolutionsLab.PharmaTraining.Modules.Learning.Tests.Memberships;
+using SmartSolutionsLab.PharmaTraining.Modules.Learning.Tests.Sessions;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Tests.Consumers;
 
@@ -57,7 +58,7 @@ public class TestOutcomeOrderTests
         // The learner is still an active member, so the refusal comes from the finished session, not the membership check.
         var memberships = new InMemoryMembershipCopies();
         memberships.Hold(MembershipCopyRows.Started(sessions.Learner));
-        var reported = await new ReportProgressHandler(memberships, sessions.Store, sessions.Store, new InMemoryCourseVersionCopies(), sessions.Time).HandleAsync(
+        var reported = await new ReportProgressHandler(memberships, sessions.Store, sessions.Store, new InMemoryAnnouncedEvents(sessions.Store.Steps), new InMemoryCourseVersionCopies(), sessions.Time).HandleAsync(
             new ReportProgress(session, sessions.Learner, sessions.Film, ProgressPercent.Complete),
             TestContext.Current.CancellationToken);
 

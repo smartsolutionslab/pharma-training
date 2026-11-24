@@ -43,6 +43,6 @@ public sealed class ApplyAiTestDraftHandler(ICourseVersionStore versions, IEdito
             return Failure(CourseVersionFailures.LostRace(saved.Error, command.Version.Value));
         }
 
-        return Success(new AppliedTestDraft(applied.Value, draft.Value.LeftOutChapters).ToDto());
+        return Success(new AppliedTestDraft(applied.Value, draft.Value.LeftOutChapters, draft.Value.TruncatedChapters).ToDto());
     }
 }
