@@ -16,9 +16,10 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Infrastructure.PdfT
 /// are removed and the text is trimmed. At most <see cref="MaxPages"/> pages and <see cref="ExtractedText.MaxLength"/>
 /// characters are kept, and either cut makes it <see cref="PdfTextExtraction.Truncated"/>; fewer than
 /// <see cref="MinimumLetters"/> letters are no text. A file PdfPig cannot read, encrypted or malformed, is no text, not
-/// an error.
+/// an error; running out of memory is not swallowed but propagates. It runs on <see cref="BoundedPdfTextExtractor"/>'s
+/// dedicated thread, within its slots and deadline (#316).
 /// </summary>
-public sealed partial class PdfPigTextExtractor(ILogger<PdfPigTextExtractor> logger) : IPdfTextExtractor
+public sealed partial class PdfPigTextExtractor(ILogger<PdfPigTextExtractor> logger) : IPdfTextParser
 {
     /// <summary>The pages read; the ones after it are not.</summary>
     public const int MaxPages = 500;
@@ -38,7 +39,7 @@ public sealed partial class PdfPigTextExtractor(ILogger<PdfPigTextExtractor> log
         {
             return Read(pdf, cancellationToken);
         }
-        catch (Exception exception) when (exception is not OperationCanceledException)
+        catch (Exception exception) when (exception is not (OperationCanceledException or OutOfMemoryException))
         {
             // The exception's message may quote the file: only its type is logged.
             Unreadable(logger, exception.GetType().Name);

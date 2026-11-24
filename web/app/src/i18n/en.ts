@@ -1030,6 +1030,7 @@ export const en: MessageSchema = {
       'not-published': 'The version is not published.',
       'nothing-to-draft': 'The approved questions already meet the blueprint; there is nothing to draft.',
       'order-does-not-match': 'The order must contain every chapter exactly once. Reload the version.',
+      'pdf-readers-busy': 'Too many PDFs are being read right now. Try again in a few seconds.',
       'publisher-approved-questions':
         'Four-eyes approval does not let whoever approved questions of this version publish it. Ask another editor.',
       'question-already-approved': 'This question is already approved. Edit it to approve it again.',

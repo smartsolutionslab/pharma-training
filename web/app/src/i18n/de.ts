@@ -1058,6 +1058,7 @@ export const de = {
       'not-published': 'Die Version ist nicht veröffentlicht.',
       'nothing-to-draft': 'Die geprüften Fragen erfüllen die Vorgaben bereits; es gibt nichts zu entwerfen.',
       'order-does-not-match': 'Die Reihenfolge muss jedes Kapitel genau einmal enthalten. Laden Sie die Version neu.',
+      'pdf-readers-busy': 'Gerade werden zu viele PDFs gelesen. Versuchen Sie es in ein paar Sekunden erneut.',
       'publisher-approved-questions':
         'Mit Vier-Augen-Freigabe darf nicht veröffentlichen, wer Fragen dieser Version freigegeben hat. Bitten Sie eine andere Person aus der Redaktion.',
       'question-already-approved': 'Diese Frage ist bereits freigegeben. Ändern Sie sie, um sie erneut freizugeben.',
