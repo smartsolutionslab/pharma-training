@@ -233,3 +233,88 @@ test('the page speaks English once switched', async () => {
   expect(within(ready).getByRole('button', { name: 'Open PDF for Hygiene in der Apotheke' })).toBeInTheDocument();
   expect(within(pending).getByText('Being prepared')).toBeInTheDocument();
 });
+
+// 45 certificates, three pages of 20: the host answers the page asked for as it would, an empty page past the last one.
+const many: HeldCertificateDto[] = Array.from({ length: 45 }, (_, index) => ({
+  ...privacy,
+  certificateId: `0198c1a0-0000-7000-8001-${String(index + 1).padStart(12, '0')}`,
+  courseTitle: `Schulung ${String(index + 1).padStart(2, '0')}`,
+}));
+const pagesOf =
+  (all: HeldCertificateDto[]) =>
+  async (page: number): Promise<Response> =>
+    Response.json({ items: all.slice((page - 1) * 20, page * 20), totalCount: all.length, page, pageSize: 20 });
+
+/** The page at its address, reached from the start page, so Back shows whether the address was replaced or pushed. */
+async function renderFromStart(path: string) {
+  const router = createAppRouter(createMemoryHistory());
+  await router.push('/');
+  await router.push(path);
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(CertificationPage, {
+    global: { plugins: [router, createPinia(), signedInAsDeveloper, [VueQueryPlugin, { queryClient }]] },
+  });
+  return { router };
+}
+
+test('a page past the last one shows the last page and replaces it in the address', async () => {
+  listing = pagesOf(many);
+  const { router } = await renderFromStart('/certification?page=9');
+
+  expect(await rowOf('Schulung 41')).not.toBeNull();
+  expect(screen.getByRole('cell', { name: 'Schulung 45' })).toBeInTheDocument();
+  expect(router.currentRoute.value.query).toEqual({ page: '3' });
+  expect(screen.queryByText('Sie haben noch keine Teilnahmebestätigung.')).not.toBeInTheDocument();
+  expect(screen.getByRole('navigation', { name: t('dataTable.pagination') })).toBeInTheDocument();
+  expect(listsAsked()).toContainEqual({ page: '3', pageSize: '20' });
+  // Replaced, not pushed: Back leaves the page instead of returning to the page that does not exist.
+  router.back();
+  await waitFor(() => expect(router.currentRoute.value.path).toBe('/'));
+});
+
+test('a later page without any certificates replaces the address with the first page, which says so', async () => {
+  listing = pagesOf([]);
+  const { router } = await renderFromStart('/certification?page=2');
+
+  await waitFor(() => expect(router.currentRoute.value.query).toEqual({ page: '1' }));
+  expect(await screen.findByText('Sie haben noch keine Teilnahmebestätigung.')).toBeInTheDocument();
+  router.back();
+  await waitFor(() => expect(router.currentRoute.value.path).toBe('/'));
+});
+
+test('without any certificates the first page stays as it is and says so', async () => {
+  listing = pagesOf([]);
+  const { router } = await renderFromStart('/certification');
+  const replace = vi.spyOn(router, 'replace');
+
+  expect(await screen.findByText('Sie haben noch keine Teilnahmebestätigung.')).toBeInTheDocument();
+  expect(router.currentRoute.value.fullPath).toBe('/certification');
+  expect(replace).not.toHaveBeenCalled();
+  expect(listsAsked()).toEqual([{ page: '1', pageSize: '20' }]);
+});
+
+test('while another page is being read, the page shown before never moves the address', async () => {
+  listing = pagesOf([]);
+  const { router } = await renderFromStart('/certification');
+  await screen.findByText('Sie haben noch keine Teilnahmebestätigung.');
+  const replace = vi.spyOn(router, 'replace');
+  // Meanwhile 45 were issued: page 3 exists by the time the host answers, but until then the empty first page shows.
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  listing = async (page) => {
+    await held;
+    return pagesOf(many)(page);
+  };
+
+  await router.push('/certification?page=3');
+
+  await waitFor(() => expect(listsAsked()).toContainEqual({ page: '3', pageSize: '20' }));
+  expect(router.currentRoute.value.query).toEqual({ page: '3' });
+  expect(replace).not.toHaveBeenCalled();
+  release();
+  expect(await rowOf('Schulung 41')).not.toBeNull();
+  expect(router.currentRoute.value.query).toEqual({ page: '3' });
+  expect(replace).not.toHaveBeenCalled();
+});
