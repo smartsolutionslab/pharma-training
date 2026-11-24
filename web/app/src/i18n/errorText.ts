@@ -3,8 +3,9 @@ import { errorValues } from './errorValues';
 import { i18n, type MessageKey, t } from './index';
 
 // A refusal is shown by its code (#147, ADR 0007), in this order: the page's own text for the code (an override), the
-// catalog's errors.<code>, the host's English words only for a module's code the catalog does not know (a newer host
-// than this SPA; warned once per code in development), and else the action's own failed text.
+// catalog's errors.<code>, the host's own words, in whatever language the host wrote them, only for a module's code the
+// catalog does not know (a newer host than this SPA; warned once per code in development), and else the action's own
+// failed text.
 
 /** What to show for a refusal: a catalog text with its values, or, for an unknown module code, the host's words. */
 export type ErrorMessage = { key: MessageKey; values: Record<string, unknown> } | { serverMessage: string };

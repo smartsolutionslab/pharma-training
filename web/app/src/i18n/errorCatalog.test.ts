@@ -149,7 +149,7 @@ describe('staleValues', () => {
 });
 
 // The codes as the host exports them (#145): an array of { code, status, message }, sorted by code. The message is the
-// host's English fallback for a code the catalog lacks; the catalogs never copy it.
+// host's own words, in whatever language the host wrote them, for a code the catalog lacks; the catalogs never copy it.
 const exported = z
   .array(z.object({ code: z.string().min(1), status: z.number().int(), message: z.string() }))
   .parse(JSON.parse(readFileSync('src/i18n/error-codes.json', 'utf8')));

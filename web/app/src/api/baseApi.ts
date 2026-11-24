@@ -4,10 +4,10 @@ import { accessToken } from '@/auth/accessToken';
 export class ApiError extends Error {
   readonly status: number;
   /**
-   * The host's English fallback for a code the catalog lacks (#147, ADR 0007); only src/i18n/errorText.ts reads it. It
-   * is the problem details' detail, else its title, below 500 and with a module's code (`<module>.<code>`, not
-   * invalid-argument). Absent otherwise: the framework's titles (Bad Request, Forbidden, already-exists' Conflict) and
-   * a failed guard's detail are no words for the user.
+   * The host's own words, in whatever language the host wrote them, shown only for a module code the catalog lacks
+   * (#147, ADR 0007); only src/i18n/errorText.ts reads it. It is the problem details' detail, else its title, below 500
+   * and with a module's code (`<module>.<code>`, not invalid-argument). Absent otherwise: the framework's titles (Bad
+   * Request, Forbidden, already-exists' Conflict) and a failed guard's detail are no words for the user.
    */
   readonly serverMessage?: string;
   /**

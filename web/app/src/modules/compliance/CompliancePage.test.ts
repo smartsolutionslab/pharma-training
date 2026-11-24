@@ -126,7 +126,7 @@ test('while the matrix loads the region is busy and shows skeletons', async () =
 });
 
 // What the page says for each refusal of the spec's "Refusal → UI": a code it has words for says what it is, never the
-// host's English; the alert takes the place of the rate, the filters and the table, and the heading and the intro stay.
+// host's words; the alert takes the place of the rate, the filters and the table, and the heading and the intro stay.
 test.each([
   [403, 'compliance.capability-missing', 'compliance.matrix.notAllowed'],
   [404, 'compliance.pharmacy-not-found', 'errors.compliance.pharmacy-not-found'],

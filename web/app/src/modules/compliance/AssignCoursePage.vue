@@ -52,7 +52,7 @@ const selected = ref(new Map<string, string>());
 /** A refused Next on the course or learners step, or a course the host no longer assigns. */
 const stepError = ref<{ key: MessageKey; values?: Record<string, unknown> }>();
 const reviewError = ref<MessageKey>();
-/** The host's words when the user cannot assign here at all. */
+/** Why the user cannot assign here at all, by the refusal's code (src/i18n/errorText.ts). */
 const unavailable = ref<ErrorMessage>();
 const outcome = ref<{ assigned: number; refused: ComplianceRefusedLearnerDto[] }>();
 const sending = ref(false);
