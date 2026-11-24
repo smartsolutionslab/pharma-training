@@ -19,6 +19,7 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// checked for either: the renewal's version's links alone, or the first version's links with the renewal refused as a
 /// lost race.
 /// </summary>
+[Collection(InvitationSenders.Name)]
 public partial class OrganisationInvitationMailRaceTests(AspireFixture aspire)
 {
     private const string OrganisationService = "organisation";

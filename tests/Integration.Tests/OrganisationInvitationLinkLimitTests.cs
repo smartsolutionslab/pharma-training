@@ -11,6 +11,7 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// <c>wolverine.wolverine_dead_letters</c>, where it stays replayable (docs/adr/0004). The test fills the version up to
 /// the cap by hand, clears its mailed mark and hands the handled request back to the inbox, so it is delivered again.
 /// </summary>
+[Collection(InvitationSenders.Name)]
 public class OrganisationInvitationLinkLimitTests(AspireFixture aspire)
 {
     private const int MaxLinksPerVersion = 5;
