@@ -59,7 +59,8 @@ public static partial class ErrorResponses
                 {
                     Status = (int)Refusal.Status,
                     Title = Refusal.Message,
-                    Detail = guard.Message,
+                    // The guard's own message may be German or name the rejected value; it is logged above, never sent (ADR 0027).
+                    Detail = Refusal.Message,
                     Extensions = { ["code"] = Refusal.Code },
                 },
             });
