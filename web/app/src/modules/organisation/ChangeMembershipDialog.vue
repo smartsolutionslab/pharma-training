@@ -21,9 +21,10 @@ import {
 } from '@/components/ui/dialog';
 import { toTypedSchema } from '@/forms/toTypedSchema';
 import type { MessageKey } from '@/i18n';
+import type { ErrorMessage } from '@/i18n/errorText';
 import { jobFunctions, membershipRoles } from './inviteSchema';
 import MembershipSelect from './MembershipSelect.vue';
-import { type TeamFailure, teamFailureText } from './teamErrors';
+import { teamFailureText } from './teamErrors';
 
 interface ChangeMembershipDialogProps {
   open: boolean;
@@ -32,7 +33,7 @@ interface ChangeMembershipDialogProps {
   /** The current pharmacy's name, which the description names. */
   pharmacy: string;
   /** Sends the change; resolves with the failure the dialog shows, or nothing once it was made. */
-  change: (request: ChangeOrganisationMembershipRequest) => Promise<TeamFailure | undefined>;
+  change: (request: ChangeOrganisationMembershipRequest) => Promise<ErrorMessage | undefined>;
 }
 
 // Changes a membership's job function and role, preset from its row; both are sent as they stand. A refusal (the last
@@ -68,7 +69,7 @@ const sendingIn = ref<number>();
 const sending = computed(() => sendingIn.value === opening.value);
 
 /** Why the last change was refused, until the form is sent again or opened anew. */
-const failure = ref<TeamFailure>();
+const failure = ref<ErrorMessage>();
 
 watch(
   () => open,

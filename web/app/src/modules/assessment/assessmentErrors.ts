@@ -1,5 +1,6 @@
 import { ApiError } from '@/api/baseApi';
-import { type MessageKey, t } from '@/i18n';
+import type { MessageKey } from '@/i18n';
+import { type ErrorMessage, errorMessage, messageText } from '@/i18n/errorText';
 
 /** What the learner's test and result pages (#48) ask of the host. */
 export type AssessmentAction = 'read' | 'result' | 'start' | 'answer' | 'submit';
@@ -26,29 +27,23 @@ const failed: Record<AssessmentAction, MessageKey> = {
   submit: 'assessment.test.submitFailed',
 };
 
-/** What a page says about a refused or failed request: a catalog key, or a module's own words (ADR 0007). */
-export type AssessmentFailure = { key: MessageKey } | { serverMessage: string };
+/** What a page says about a refused or failed request: a catalog text, or a module's own words (#147, ADR 0007). */
+export type AssessmentFailure = ErrorMessage;
 
 /**
- * What the test and result pages say when a request is refused or fails. A module's code the page knows says the
- * catalog's text; a module's refusal with a code it does not know says the host's words (ApiError.serverMessage);
- * anything else, a network failure included, that the action failed.
+ * What the test and result pages say when a request is refused or fails, by the refusal's code
+ * (src/i18n/errorText.ts): the page's own text for a code it knows, else the catalog's errors.<code>, the host's words
+ * only for a module code the catalog does not know; anything else, a network failure included, that the action failed.
  */
 export function assessmentFailure(action: AssessmentAction, error: unknown): AssessmentFailure {
-  if (!(error instanceof ApiError)) {
-    return { key: failed[action] };
-  }
-  const known = error.code === undefined ? undefined : byCode[error.code];
-  if (known !== undefined) {
-    return { key: known };
-  }
-  if (error.serverMessage !== undefined) {
-    return { serverMessage: error.serverMessage };
-  }
-  return { key: failed[action] };
+  // A server error, whatever code it carries, and the guard's or the unique index's refusal say the action failed.
+  const serverError = error instanceof ApiError && error.status >= 500;
+  return errorMessage(serverError ? undefined : error, failed[action], {
+    overrides: { ...byCode, 'invalid-argument': failed[action], 'already-exists': failed[action] },
+  });
 }
 
 /** The failure's text in the language of the moment; an answer's failure names its question ({ number }). */
 export function assessmentFailureText(failure: AssessmentFailure, values: Record<string, unknown> = {}): string {
-  return 'key' in failure ? t(failure.key, values) : failure.serverMessage;
+  return messageText('key' in failure ? { key: failure.key, values: { ...failure.values, ...values } } : failure);
 }

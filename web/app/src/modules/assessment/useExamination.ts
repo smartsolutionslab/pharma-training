@@ -71,7 +71,7 @@ export function useExamination(session: MaybeRefOrGetter<string>) {
   const failureOf = (action: Extract<AssessmentAction, 'read' | 'result'>) =>
     computed((): AssessmentFailure | undefined => {
       if (!validSession.value) {
-        return { key: 'assessment.test.notFound' };
+        return { key: 'assessment.test.notFound', values: {} };
       }
       const error = query.error.value;
       if (error === null || examination.value !== undefined || isNotFound(error)) {

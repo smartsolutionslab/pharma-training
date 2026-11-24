@@ -196,7 +196,7 @@ test('examination-changed is sent again up to 3 times, then the save has failed 
   await waitFor(() =>
     expect(saver.stateOf(durationQuestion.id)).toEqual({
       kind: 'failed',
-      failure: { key: 'assessment.test.changed' },
+      failure: { key: 'assessment.test.changed', values: {} },
     }),
   );
   // The first request and three more.
@@ -212,7 +212,7 @@ test('a failed save keeps the draft, and retry saves it again', async () => {
   await waitFor(() =>
     expect(saver.stateOf(durationQuestion.id)).toEqual({
       kind: 'failed',
-      failure: { key: 'assessment.test.save.failed' },
+      failure: { key: 'assessment.test.save.failed', values: {} },
     }),
   );
   expect(sent()).toHaveLength(1);
@@ -236,7 +236,9 @@ test.each([
 
   saver.choose(durationQuestion.id, [thirtySeconds]);
 
-  await waitFor(() => expect(saver.stateOf(durationQuestion.id)).toEqual({ kind: 'failed', failure: { key } }));
+  await waitFor(() =>
+    expect(saver.stateOf(durationQuestion.id)).toEqual({ kind: 'failed', failure: { key, values: {} } }),
+  );
   expect(sent()).toHaveLength(1);
 });
 

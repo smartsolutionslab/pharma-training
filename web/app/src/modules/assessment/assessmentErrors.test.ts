@@ -8,7 +8,7 @@ import { type AssessmentAction, assessmentFailure, assessmentFailureText } from 
 // module's refusal with a code the page does not know says the host's words (ApiError.serverMessage); anything else, a
 // network failure included, says the action failed. An answer's own failure names its question: { number }.
 //
-// assessmentFailure(action, error) answers { key } or { serverMessage }; assessmentFailureText(failure, values?) says
+// assessmentFailure(action, error) answers { key, values } or { serverMessage } (errorText.ts, #147); assessmentFailureText(failure, values?) says
 // it in the language of the moment.
 
 /** Problem details as the host sends them, with a code where it has one. */
@@ -163,12 +163,12 @@ const values = { number: 3 };
 
 describe('in German', () => {
   test.each(knownCases)('%s on %s says its own text', (_answer, action, error, key, german) => {
-    expect(assessmentFailure(action, error())).toEqual({ key });
+    expect(assessmentFailure(action, error())).toMatchObject({ key });
     expect(assessmentFailureText(assessmentFailure(action, error()), values)).toBe(german);
   });
 
   test.each(fallbackCases)('%s on %s says the action failed', (_answer, action, error, key, german) => {
-    expect(assessmentFailure(action, error())).toEqual({ key });
+    expect(assessmentFailure(action, error())).toMatchObject({ key });
     expect(assessmentFailureText(assessmentFailure(action, error()), values)).toBe(german);
   });
 });
@@ -177,14 +177,14 @@ describe('in English', () => {
   test.each(knownCases)('%s on %s says its own text', (_answer, action, error, key, _german, english) => {
     setLanguage('en-GB', { remember: false });
 
-    expect(assessmentFailure(action, error())).toEqual({ key });
+    expect(assessmentFailure(action, error())).toMatchObject({ key });
     expect(assessmentFailureText(assessmentFailure(action, error()), values)).toBe(english);
   });
 
   test.each(fallbackCases)('%s on %s says the action failed', (_answer, action, error, key, _german, english) => {
     setLanguage('en-GB', { remember: false });
 
-    expect(assessmentFailure(action, error())).toEqual({ key });
+    expect(assessmentFailure(action, error())).toMatchObject({ key });
     expect(assessmentFailureText(assessmentFailure(action, error()), values)).toBe(english);
   });
 });

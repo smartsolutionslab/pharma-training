@@ -7,8 +7,8 @@ import {
   type RegisterPharmacyRequest,
   usePostOrganisationPharmacies,
 } from '@/api/generated';
-import { ApiError } from '@/api/baseApi';
 import { t, type MessageKey } from '@/i18n';
+import { errorText } from '@/i18n/errorText';
 import { notify } from '@/lib/notify';
 import { useOpenPharmacy } from './useOpenPharmacy';
 
@@ -21,27 +21,18 @@ const teamPage = '/organisation';
 /** Where the user goes when the new pharmacy cannot be opened: the start page, whose switcher lists it. */
 const startPage = '/';
 
-/** The refusals the page tells in its own words, by the host's code; every other code is #147's to translate. */
-const refusalsByCode: Record<string, MessageKey> = {
+/** The refusals the page tells in its own words, by the host's code; every other code reads the catalog's (#147). */
+const overrides: Record<string, MessageKey> = {
   'organisation.email-not-verified': 'organisation.register.emailNotVerified',
 };
 
 /**
- * What the user reads when a registration is refused: the catalog's text for a code the page has words of its own for,
- * else the host's own words as it sent them (until #147 translates its codes), or the catalog's general text when it
- * sent none (a network failure, a 5xx without a body).
+ * What the user reads when a registration is refused, by its code (src/i18n/errorText.ts): the page's own words where
+ * it has some, else the catalog's errors.<code>, the host's words only for a module code the catalog does not know,
+ * and the page's general text for anything else (a network failure, a 5xx).
  */
 function refusal(error: unknown): string {
-  if (error instanceof ApiError) {
-    const key = error.code === undefined ? undefined : refusalsByCode[error.code];
-    if (key !== undefined) {
-      return t(key);
-    }
-  }
-  if (error instanceof ApiError && error.serverMessage !== undefined) {
-    return error.serverMessage;
-  }
-  return t('organisation.register.failed');
+  return errorText(error, 'organisation.register.failed', { overrides });
 }
 
 /**

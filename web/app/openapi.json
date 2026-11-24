@@ -3503,7 +3503,8 @@
           "changedAt",
           "previousDueDate",
           "newDueDate",
-          "reason"
+          "reason",
+          "bySelf"
         ],
         "type": "object",
         "properties": {
@@ -3537,6 +3538,9 @@
               "null",
               "string"
             ]
+          },
+          "bySelf": {
+            "type": "boolean"
           }
         }
       },

@@ -225,11 +225,30 @@ describe('resending an invitation', () => {
 
     await user.click(await renewButton(ben));
 
-    await waitFor(() => expect(notify.failure).toHaveBeenCalledWith(t('organisation.team.errors.noOpenInvitation')));
+    await waitFor(() => expect(notify.failure).toHaveBeenCalledWith(t('errors.organisation.no-open-invitation')));
     expect(notify.success).not.toHaveBeenCalled();
     await waitFor(() => expect(invitationReads()).toBeGreaterThan(before));
     await waitFor(() => expect(screen.queryByText(ben.email)).not.toBeInTheDocument());
   });
+
+  // A code the page had no words of its own for (#147): the catalog's text for it, in de and en, never the host's.
+  test.each([
+    ['de-DE', 'Die Einladung wurde gerade gleichzeitig geändert. Versuchen Sie es erneut.'],
+    ['en-GB', 'The invitation was changed at the same time. Try again.'],
+  ] as const)(
+    'refused because the invitation changed meanwhile says the catalog text, in %s',
+    async (language, text) => {
+      setLanguage(language, { remember: false });
+      const user = userEvent.setup();
+      host.renew = async () => problem(409, 'organisation.invitation-changed', 'SERVER WORDS');
+      await renderTeamPage();
+
+      await user.click(await renewButton(ben));
+
+      await waitFor(() => expect(notify.failure).toHaveBeenCalledWith(text));
+      expect(String(notify.failure.mock.calls)).not.toContain('SERVER WORDS');
+    },
+  );
 
   test('failing for another reason says the invitation could not be resent, and the row stays', async () => {
     const user = userEvent.setup();
@@ -314,10 +333,10 @@ describe('revoking an invitation', () => {
 
     await user.click(confirm(dialog));
 
-    await waitFor(() => expect(notify.failure).toHaveBeenCalledWith(t('organisation.team.errors.noOpenInvitation')));
+    await waitFor(() => expect(notify.failure).toHaveBeenCalledWith(t('errors.organisation.no-open-invitation')));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(await within(invitationsSection()).findByRole('alert')).toHaveTextContent(
-      t('organisation.team.errors.noOpenInvitation'),
+      t('errors.organisation.no-open-invitation'),
     );
     await waitFor(() => expect(invitationReads()).toBeGreaterThan(before));
     expect(notify.success).not.toHaveBeenCalled();

@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n';
 import type { EditorialTestBlueprintDto } from '@/api/generated';
 import { Button } from '@/components/ui/button';
 import { t as translate } from '@/i18n';
+import { errorText } from '@/i18n/errorText';
 import { notify } from '@/lib/notify';
 import TestBlueprintForm from './TestBlueprintForm.vue';
 import type { TestBlueprint } from './testBlueprintSchema';
@@ -36,7 +37,7 @@ const editing = ref(false);
 async function saveBlueprint(values: TestBlueprint) {
   const result = await save(values);
   if (!result.ok) {
-    notify.failure(result.serverMessage ?? translate('editorial.test.blueprint.saveFailed'));
+    notify.failure(errorText(result.error, 'editorial.test.blueprint.saveFailed'));
     return false;
   }
   notify.success(translate('editorial.test.blueprint.saved'));
