@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Tests of the code every service host compiles (src/Host). It has no project of its own, so this one compiles its
+       messaging the way each service host does, without referencing any one module's host. -->
+  <PropertyGroup>
+    <RootNamespace>SmartSolutionsLab.PharmaTraining.Host.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/BuildingBlocks/BuildingBlocks.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="../../src/Host/Messaging/**/*.cs" Link="Host/Messaging/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WolverineFx" />
+    <PackageReference Include="WolverineFx.RabbitMQ" />
+  </ItemGroup>
+
+</Project>
