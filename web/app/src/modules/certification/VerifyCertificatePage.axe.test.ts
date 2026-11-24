@@ -95,9 +95,9 @@ afterEach(() => {
 // the developer does.
 // The page is public (#54): it renders the same for anyone, so the developer stands for every visitor. It is at a
 // verification link with a well-formed code.
-async function renderPage() {
+async function renderPage(address = '/verify/AbCdEfGhIjKlMnOpQrStUvWxYz012-_9') {
   const router = createAppRouter(createMemoryHistory());
-  await router.push('/verify/AbCdEfGhIjKlMnOpQrStUvWxYz012-_9');
+  await router.push(address);
 
   const { container } = render(VerifyCertificatePage, {
     global: { plugins: [router, signedInAsDeveloper] },
@@ -126,6 +126,26 @@ describe.each(languages)('in %s', (language) => {
     async ({ switchOn }) => {
       switchOn();
       const container = await renderPage();
+
+      expect(await axe(container)).toHaveNoViolations();
+    },
+  );
+
+  // A malformed code is never sent: the page says it cannot be verified, whatever the client would answer.
+  test('the Verify a certificate page passes axe at a link it cannot verify', async () => {
+    const container = await renderPage('/verify/abc');
+    expect(
+      screen.getByRole('heading', { level: 2, name: t('certification.verify.notVerifiable.title') }),
+    ).toBeInTheDocument();
+
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  test.each(themes)(
+    'the Verify a certificate page passes axe at a link it cannot verify in the $name theme',
+    async ({ switchOn }) => {
+      switchOn();
+      const container = await renderPage('/verify/abc');
 
       expect(await axe(container)).toHaveNoViolations();
     },

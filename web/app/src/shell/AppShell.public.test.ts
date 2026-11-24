@@ -1,13 +1,15 @@
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query';
 import { cleanup, render, screen, within } from '@testing-library/vue';
 import userEvent from '@testing-library/user-event';
+import { User } from 'oidc-client-ts';
 import { createPinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { computed, type Plugin } from 'vue';
+import { computed, defineComponent, h, type Plugin } from 'vue';
 import { createMemoryHistory } from 'vue-router';
 import App from '@/App.vue';
 import { signedInAsDeveloper } from '@/auth/signedInAsDeveloper';
-import { type Auth, authKey } from '@/auth/useAuth';
+import SignedIn from '@/auth/SignedIn.vue';
+import { type Auth, type AuthClient, authKey, createAuth } from '@/auth/useAuth';
 import { t } from '@/i18n';
 import { createAppRouter } from '@/router';
 
@@ -123,4 +125,58 @@ test('a signed-in user who leaves the verification page for a page of the app se
   await router.push('/');
 
   expect(await screen.findByRole('navigation', { name: t('shell.navigation.label') })).toBeInTheDocument();
+});
+
+// Review of #54. As main.ts mounts it: SignedIn around App, both waiting for the router's first navigation. When that
+// navigation fails (a guard throws), SignedIn goes ahead once the user is loaded, and App, which mounts only then, asks
+// the router whether it is ready: a router whose first navigation failed is never ready, and App would stay blank.
+test('a signed-in user whose first navigation fails sees the shell', async () => {
+  const developer = new User({
+    access_token: 'access-token',
+    token_type: 'Bearer',
+    profile: {
+      sub: 'developer-id',
+      iss: 'http://localhost:8080/realms/pharma-training',
+      aud: 'pharma-training-web',
+      exp: 0,
+      iat: 0,
+      preferred_username: 'developer',
+      realm_access: { roles: ['manager'] },
+    },
+    expires_at: Math.floor(Date.now() / 1000) + 300,
+  });
+  const fake: AuthClient = {
+    getUser: vi.fn<AuthClient['getUser']>(() => Promise.resolve(developer)),
+    signinCallback: vi.fn<AuthClient['signinCallback']>(() => Promise.resolve(developer)),
+    signinRedirect: vi.fn<AuthClient['signinRedirect']>(() => Promise.resolve()),
+    signoutRedirect: vi.fn<AuthClient['signoutRedirect']>(() => Promise.resolve()),
+    events: {
+      addUserLoaded: vi.fn(),
+      addUserUnloaded: vi.fn(),
+      addAccessTokenExpired: vi.fn(),
+      addSilentRenewError: vi.fn(),
+    },
+  };
+  // The history starts at the address: installing the router starts its first navigation from there.
+  const history = createMemoryHistory();
+  history.replace('/certification');
+  const router = createAppRouter(history);
+  const guard = vi.fn();
+  guard.mockImplementationOnce(() => {
+    throw new Error('A guard failed.');
+  });
+  router.beforeEach(guard);
+  router.onError(() => undefined);
+  const root = defineComponent({ render: () => h(SignedIn, null, { default: () => h(App) }) });
+
+  render(root, {
+    global: {
+      plugins: [router, createPinia(), [VueQueryPlugin, { queryClient: new QueryClient() }]],
+      provide: { [authKey]: createAuth(fake) },
+    },
+  });
+  await vi.waitFor(() => expect(guard).toHaveBeenCalledOnce());
+
+  expect(await screen.findByRole('navigation', { name: t('shell.navigation.label') })).toBeInTheDocument();
+  expect(fake.signinRedirect).not.toHaveBeenCalled();
 });

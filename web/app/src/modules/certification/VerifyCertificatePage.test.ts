@@ -1,10 +1,11 @@
-import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query';
+import { onlineManager, QueryClient, VueQueryPlugin } from '@tanstack/vue-query';
 import { render, screen, waitFor, within } from '@testing-library/vue';
 import userEvent from '@testing-library/user-event';
-import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { axe } from 'vitest-axe';
 import { createMemoryHistory } from 'vue-router';
 import type { CertificateVerificationDto } from '@/api/generated';
-import { setLanguage } from '@/i18n';
+import { languages, setLanguage } from '@/i18n';
 import { createAppRouter } from '@/router';
 import VerifyCertificatePage from './VerifyCertificatePage.vue';
 
@@ -56,7 +57,7 @@ const tooMany = () => problem(429, 'certification.verification-limit-reached', '
 // The host: the verification answers with whatever the test sets; anything else waits for an answer that never comes.
 const fetch = vi.fn<Fetch>();
 vi.stubGlobal('fetch', fetch);
-let answer: () => Response;
+let answer: () => Response | Promise<Response>;
 
 beforeEach(() => {
   answer = () => Response.json(valid);
@@ -70,7 +71,17 @@ beforeEach(() => {
 });
 afterEach(() => {
   fetch.mockReset();
+  onlineManager.setOnline(true);
 });
+
+/** An answer the host holds until the test releases it, as a request still on its way. */
+function held(response: () => Response) {
+  let release = () => {};
+  const answered = new Promise<Response>((resolve) => {
+    release = () => resolve(response());
+  });
+  return { answered, release: () => release() };
+}
 
 /** The paths of the verifications the host received, in order. */
 const verifications = () =>
@@ -86,8 +97,10 @@ async function renderPage(address = `/verify/${code}`) {
   const router = createAppRouter(createMemoryHistory());
   await router.push(address);
   const queryClient = new QueryClient();
-  render(VerifyCertificatePage, { global: { plugins: [router, [VueQueryPlugin, { queryClient }]] } });
-  return { router, queryClient };
+  const { container } = render(VerifyCertificatePage, {
+    global: { plugins: [router, [VueQueryPlugin, { queryClient }]] },
+  });
+  return { router, queryClient, container };
 }
 
 const title = () => screen.getByRole('heading', { level: 1, name: 'Bestätigung prüfen' });
@@ -273,4 +286,138 @@ test('in English the page reads Verify a certificate, Valid, and British dates',
     ['Issued on', '24/11/2026'],
     ['Valid until', '24/11/2027'],
   ]);
+});
+
+// Review of #54. A refusal leaves the query without data, and TanStack counts a query without data as stale whatever
+// its staleTime: when the network comes back it would ask again by itself, spending the limit every verifier shares.
+describe.each([
+  { refusal: 'the limit', refused: tooMany },
+  { refusal: 'a failure of the host', refused: () => new Response('', { status: 500 }) },
+])('after $refusal', ({ refused }) => {
+  test('the page does not ask again when the network comes back', async () => {
+    answer = refused;
+    const { queryClient } = await renderPage();
+    await screen.findByRole('alert');
+
+    onlineManager.setOnline(false);
+    onlineManager.setOnline(true);
+
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+    expect(verifications()).toEqual([verifyPath()]);
+  });
+});
+
+// The alert and its Retry go whatever the answer: the focus goes to the h1, not lost on the body.
+test('Retry over the limit answered by a code the host does not know moves the focus to the h1', async () => {
+  const user = userEvent.setup();
+  answer = tooMany;
+  await renderPage();
+  await screen.findByRole('alert');
+
+  answer = () => problem(404, 'certification.certificate-not-verifiable', 'Not verifiable.');
+  await user.click(screen.getByRole('button', { name: 'Erneut versuchen' }));
+
+  expect(await screen.findByRole('heading', { level: 2, name: 'Nicht prüfbar' })).toBeInTheDocument();
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  await waitFor(() => expect(title()).toHaveFocus());
+  expect(document.body).not.toHaveFocus();
+});
+
+// One request per press, and none while one is on its way: a second press during the first sends nothing.
+test('while a Retry is on its way, Retry is busy and a second press sends nothing', async () => {
+  const user = userEvent.setup();
+  answer = tooMany;
+  await renderPage();
+  await screen.findByRole('alert');
+
+  const second = held(() => Response.json(valid));
+  answer = () => second.answered;
+  await user.click(screen.getByRole('button', { name: 'Erneut versuchen' }));
+  await waitFor(() => expect(verifications()).toHaveLength(2));
+
+  const retry = screen.getByRole('button', { name: 'Erneut versuchen' });
+  expect(retry.hasAttribute('disabled') || retry.getAttribute('aria-busy') === 'true').toBe(true);
+  await user.click(retry);
+  second.release();
+
+  expect(await screen.findByRole('heading', { level: 2, name: 'Gültig' })).toBeInTheDocument();
+  expect(verifications()).toEqual([verifyPath(), verifyPath()]);
+});
+
+// A screen reader announces an alert as it is inserted: the same limit again is a new alert, not the old one kept.
+test('Retry over the limit answered by the limit again announces a new alert', async () => {
+  const user = userEvent.setup();
+  answer = tooMany;
+  await renderPage();
+  const first = await screen.findByRole('alert');
+
+  await user.click(screen.getByRole('button', { name: 'Erneut versuchen' }));
+  await waitFor(() => expect(verifications()).toHaveLength(2));
+
+  await waitFor(() => expect(screen.getByRole('alert')).not.toBe(first));
+  expect(screen.getByRole('alert')).toHaveTextContent(limitText);
+  expect(first.isConnected).toBe(false);
+});
+
+// The answer is untrusted input (#51's contract can grow, a proxy can mangle it): an answer the page cannot read is
+// shown as a failure, with Retry, never as a raw message key or a blank page.
+test('an answer with a validity the page does not know reads as a failure, with Retry', async () => {
+  answer = () => Response.json({ ...valid, validity: 'Revoked' });
+  await renderPage();
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(loadFailedText);
+  expect(screen.getByRole('button', { name: 'Erneut versuchen' })).toBeInTheDocument();
+  expect(document.body.textContent).not.toContain('certification.validity');
+  expect(screen.queryByRole('heading', { level: 2, name: 'Gültig' })).not.toBeInTheDocument();
+});
+
+test('an answer with a malformed day reads as a failure, with Retry, and the page stays', async () => {
+  answer = () => Response.json({ ...valid, issuedOn: '24.11.2026' });
+  await renderPage();
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(loadFailedText);
+  expect(screen.getByRole('button', { name: 'Erneut versuchen' })).toBeInTheDocument();
+  expect(title()).toBeInTheDocument();
+});
+
+// A live region announces a change of its text, not its own insertion: the status is there from the first render and
+// stays, and only its text changes.
+test('the status region is there from the first render and says it is loading while the answer is on its way', async () => {
+  const answered = held(() => Response.json(valid));
+  answer = () => answered.answered;
+  await renderPage();
+
+  const status = screen.getByRole('status');
+  await waitFor(() => expect(status).toHaveTextContent('Wird geladen…'));
+  answered.release();
+
+  expect(await screen.findByRole('heading', { level: 2, name: 'Gültig' })).toBeInTheDocument();
+  expect(status).toBeInTheDocument();
+  expect(screen.getByRole('status')).toBe(status);
+  expect(status).not.toHaveTextContent('Wird geladen…');
+});
+
+// The axe check beside the page (VerifyCertificatePage.axe.test.ts) stands in for the client and cannot answer with a
+// refusal; here the host refuses, as it does.
+describe.each(languages)('in %s', (language) => {
+  beforeEach(() => {
+    setLanguage(language, { remember: false });
+  });
+
+  test.each([
+    { shown: 'a code the host does not know', refused: () => problem(404, 'certification.certificate-not-verifiable') },
+    { shown: 'the limit', refused: tooMany },
+    { shown: 'a failure of the host', refused: () => new Response('', { status: 500 }) },
+  ])('the page passes axe showing $shown', async ({ refused }) => {
+    answer = refused;
+    const { container } = await renderPage();
+    await screen.findByRole('heading', { level: 1 });
+    await waitFor(() => expect(verifications()).toHaveLength(1));
+    await waitFor(() =>
+      expect(screen.queryByRole('alert') ?? screen.queryByRole('heading', { level: 2 })).toBeInTheDocument(),
+    );
+
+    expect(await axe(container)).toHaveNoViolations();
+  });
 });
