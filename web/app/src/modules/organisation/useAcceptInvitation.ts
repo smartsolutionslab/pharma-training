@@ -56,7 +56,8 @@ const refusalsByCode: Record<string, AcceptRefusal> = {
 /**
  * The state a failed acceptance leaves the page in: a known refusal by its code, too many attempts by its status
  * whatever its code, and anything else failed, with the message for its code (errorMessage, #147). Only
- * too many attempts, a lost concurrent save, the host unavailable (5xx) and the network can succeed when tried again;
+ * too many attempts, a lost concurrent save (already-exists included), the host unavailable (5xx) and the network can
+ * succeed when tried again;
  * any other refusal of the request (a framework's invalid-argument, a module's code the page does not know) is final.
  * A Retry answered not found may follow a first attempt that was accepted although its answer never arrived.
  */
@@ -66,6 +67,11 @@ function refusedBy(error: unknown, afterRetry: boolean): AcceptState {
   }
   if (error.status === 429) {
     return { kind: 'refused', refusal: 'tooMany', retryable: true };
+  }
+  // Accepting creates nothing the user could reload to find: the unique index refused a membership saved at the same
+  // moment, a lost race like pharmacy-changed, with the failed state's own text.
+  if (error.failureCode === 'already-exists') {
+    return { kind: 'refused', refusal: 'failed', retryable: true };
   }
   const known = error.code === undefined ? undefined : refusalsByCode[error.code];
   if (known === 'notFound' && afterRetry) {
