@@ -85,7 +85,7 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
 
         if (DailyCapReached(now, limits.DailyMailCap) is Some<Timestamp> tomorrow)
         {
-            return Failure(PharmacyErrors.TooManyInvitationsToday(Id, tomorrow.Value));
+            return Failure(PharmacyErrors.TooManyInvitationsToday(Id, tomorrow.Value, now));
         }
 
         var expiresAt = now.PlusDays(InvitationValidityDays);
@@ -113,12 +113,12 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
 
         if (invited.RenewableFrom(limits.RenewCooldown) is Some<Timestamp> renewableFrom && now < renewableFrom.Value)
         {
-            return Failure(PharmacyErrors.InvitationRenewedTooSoon(Id, membership, renewableFrom.Value));
+            return Failure(PharmacyErrors.InvitationRenewedTooSoon(Id, membership, renewableFrom.Value, now));
         }
 
         if (DailyCapReached(now, limits.DailyMailCap) is Some<Timestamp> tomorrow)
         {
-            return Failure(PharmacyErrors.TooManyInvitationsToday(Id, tomorrow.Value));
+            return Failure(PharmacyErrors.TooManyInvitationsToday(Id, tomorrow.Value, now));
         }
 
         var expiresAt = now.PlusDays(InvitationValidityDays);

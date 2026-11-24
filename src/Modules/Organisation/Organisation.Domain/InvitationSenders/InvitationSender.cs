@@ -52,7 +52,7 @@ public sealed class InvitationSender : AggregateRoot<PersonId>
 
         if (MailsThatDay.Value >= cap.Value)
         {
-            return Failure(InvitationSenderErrors.TooManyToday(Id, counted.Value.Next().Start));
+            return Failure(InvitationSenderErrors.TooManyToday(Id, counted.Value.Next().Start, now));
         }
 
         MailsThatDay = MailsThatDay.Next();
