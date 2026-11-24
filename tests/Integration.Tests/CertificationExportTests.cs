@@ -216,10 +216,14 @@ public class CertificationExportTests(AspireFixture aspire)
     }
 
     /// <summary>A pharmacy of its own with the developer as its manager since long ago; answers its id.</summary>
+    /// <summary>
+    /// A fresh pharmacy <c>developer</c> manages from now on: other tests issue <c>developer</c> certificates of their own,
+    /// back-dated as far as last year, which an export of a membership started long ago would rightly hold.
+    /// </summary>
     private async Task<Guid> ManagedPharmacyAsync(HttpClient developer, CancellationToken cancellationToken)
     {
         var pharmacy = Guid.CreateVersion7();
-        await CertificationDatabase.DeliverAsync(aspire, StartedType, StartedIn(SubjectOf(developer), pharmacy, "Manager", LongAgo), cancellationToken);
+        await CertificationDatabase.DeliverAsync(aspire, StartedType, StartedIn(SubjectOf(developer), pharmacy, "Manager", TimeProvider.System.GetUtcNow()), cancellationToken);
         return pharmacy;
     }
 
