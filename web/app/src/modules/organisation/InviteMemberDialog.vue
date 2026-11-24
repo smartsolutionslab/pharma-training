@@ -15,10 +15,10 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { toTypedSchema } from '@/forms/toTypedSchema';
+import type { ErrorMessage } from '@/i18n/errorText';
 import { inviteInitialValues, inviteSchema, jobFunctions, membershipRoles } from './inviteSchema';
 import MembershipSelect from './MembershipSelect.vue';
 import { teamFailureText } from './teamErrors';
-import type { ErrorMessage } from '@/i18n/errorText';
 
 interface InviteMemberDialogProps {
   open: boolean;

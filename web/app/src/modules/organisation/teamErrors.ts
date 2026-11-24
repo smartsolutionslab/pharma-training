@@ -28,7 +28,11 @@ const failed: Record<TeamAction, MessageKey> = {
  * catalog does not know; anything else, a network failure included, that the action failed, with the values its text
  * names.
  */
-export function teamFailureKey(action: TeamAction, error: unknown, values: Record<string, unknown> = {}): ErrorMessage {
+export function teamFailureMessage(
+  action: TeamAction,
+  error: unknown,
+  values: Record<string, unknown> = {},
+): ErrorMessage {
   return errorMessage(error, failed[action], { values, overrides });
 }
 
@@ -46,6 +50,6 @@ export function refusesMembership(error: unknown): error is ApiError & { code: s
 }
 
 /** Why a list could not be read: a refusal by its code, anything else that it failed. */
-export function teamLoadFailureKey(error: unknown, fallback: MessageKey): ErrorMessage {
+export function teamLoadFailureMessage(error: unknown, fallback: MessageKey): ErrorMessage {
   return errorMessage(error, fallback);
 }

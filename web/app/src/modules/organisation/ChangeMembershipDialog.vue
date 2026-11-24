@@ -21,10 +21,10 @@ import {
 } from '@/components/ui/dialog';
 import { toTypedSchema } from '@/forms/toTypedSchema';
 import type { MessageKey } from '@/i18n';
+import type { ErrorMessage } from '@/i18n/errorText';
 import { jobFunctions, membershipRoles } from './inviteSchema';
 import MembershipSelect from './MembershipSelect.vue';
 import { teamFailureText } from './teamErrors';
-import type { ErrorMessage } from '@/i18n/errorText';
 
 interface ChangeMembershipDialogProps {
   open: boolean;

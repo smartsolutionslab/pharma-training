@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { ApiError } from '@/api/baseApi';
 import { setLanguage, t } from '@/i18n';
 import { type ErrorMessage, messageText } from '@/i18n/errorText';
-import { type TeamAction, teamFailureKey, teamLoadFailureKey } from './teamErrors';
+import { type TeamAction, teamFailureMessage, teamLoadFailureMessage } from './teamErrors';
 
 // What the members and invitations page (#12) says when an action is refused or fails, as an ErrorMessage of
 // src/i18n/errorText.ts (#147): a code the catalog knows gives its errors.<code> text; the unique index's
@@ -219,14 +219,14 @@ const fallbackCases = failed.flatMap(([action, values, key, german, english]) =>
 
 describe('in German', () => {
   test.each(knownCases)('%s on %s says its own text', (code, action, status, key, german) => {
-    const failure = teamFailureKey(action, new ApiError(status, problem(status, code)));
+    const failure = teamFailureMessage(action, new ApiError(status, problem(status, code)));
 
     expect(failure).toEqual({ key, values: expect.any(Object) });
     expect(textOf(failure)).toBe(german);
   });
 
   test.each(fallbackCases)('%s on %s says the action failed', (_answer, action, values, error, key, german) => {
-    const failure = teamFailureKey(action, error(), values);
+    const failure = teamFailureMessage(action, error(), values);
 
     expect(failure).toEqual({ key, values });
     expect(textOf(failure)).toBe(german);
@@ -236,7 +236,7 @@ describe('in German', () => {
 describe('in English', () => {
   test.each(knownCases)('%s on %s says its own text', (code, action, status, key, _german, english) => {
     setLanguage('en-GB', { remember: false });
-    const failure = teamFailureKey(action, new ApiError(status, problem(status, code)));
+    const failure = teamFailureMessage(action, new ApiError(status, problem(status, code)));
 
     expect(failure).toEqual({ key, values: expect.any(Object) });
     expect(textOf(failure)).toBe(english);
@@ -246,7 +246,7 @@ describe('in English', () => {
     '%s on %s says the action failed',
     (_answer, action, values, error, key, _german, english) => {
       setLanguage('en-GB', { remember: false });
-      const failure = teamFailureKey(action, error(), values);
+      const failure = teamFailureMessage(action, error(), values);
 
       expect(failure).toEqual({ key, values });
       expect(textOf(failure)).toBe(english);
@@ -260,7 +260,7 @@ test.each(['de-DE', 'en-GB'] as const)(
   "the unique index's 409 already-exists says the address is already a member or invited, in %s",
   (language) => {
     setLanguage(language, { remember: false });
-    const failure = teamFailureKey('invite', refusal(409, 'already-exists')(), { email: 'ben@example.com' });
+    const failure = teamFailureMessage('invite', refusal(409, 'already-exists')(), { email: 'ben@example.com' });
 
     expect(failure).toEqual({ key: 'errors.organisation.already-member-or-invited', values: expect.any(Object) });
     expect(textOf(failure)).toBe(t('errors.organisation.already-member-or-invited'));
@@ -269,10 +269,14 @@ test.each(['de-DE', 'en-GB'] as const)(
 
 // #147: a module's own words are shown as the host sent them only for a code the catalog does not know.
 test.each(actions)('a module code the catalog does not know shows the host’s own message on %s', (action) => {
-  const failure = teamFailureKey(action, refusal(409, 'organisation.something-new', 'Die Apotheke ist gesperrt.')(), {
-    email: 'ben@example.com',
-    name: 'Anna Albers',
-  });
+  const failure = teamFailureMessage(
+    action,
+    refusal(409, 'organisation.something-new', 'Die Apotheke ist gesperrt.')(),
+    {
+      email: 'ben@example.com',
+      name: 'Anna Albers',
+    },
+  );
 
   expect(failure).toEqual({ serverMessage: 'Die Apotheke ist gesperrt.' });
   expect(textOf(failure)).toBe('Die Apotheke ist gesperrt.');
@@ -280,7 +284,7 @@ test.each(actions)('a module code the catalog does not know shows the host’s o
 
 test("the host's words are never what the page says for a code it knows", () => {
   for (const [code, action, status] of knownCases) {
-    expect(textOf(teamFailureKey(action, new ApiError(status, problem(status, code))))).not.toContain(
+    expect(textOf(teamFailureMessage(action, new ApiError(status, problem(status, code))))).not.toContain(
       'Words of the host',
     );
   }
@@ -293,7 +297,7 @@ test.each<['de-DE' | 'en-GB', string]>([
   setLanguage(language, { remember: false });
 
   const shown = textOf(
-    teamFailureKey('renew', refusal(409, 'organisation.invitation-changed', 'SERVER WORDS')(), {
+    teamFailureMessage('renew', refusal(409, 'organisation.invitation-changed', 'SERVER WORDS')(), {
       email: 'ben@example.com',
     }),
   );
@@ -309,7 +313,7 @@ test.each([
   [() => new ApiError(500, ''), 'organisation.team.members.loadFailed'],
   [() => new TypeError('Failed to fetch'), 'organisation.team.members.loadFailed'],
 ])('a list read refused or failed says the message of its code, else that it failed (%#)', (error, key) => {
-  expect(teamLoadFailureKey(error(), 'organisation.team.members.loadFailed')).toEqual({
+  expect(teamLoadFailureMessage(error(), 'organisation.team.members.loadFailed')).toEqual({
     key,
     values: expect.any(Object),
   });
