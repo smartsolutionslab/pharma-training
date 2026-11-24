@@ -1,15 +1,21 @@
 import { computed, type MaybeRefOrGetter, shallowRef, toValue, watch } from 'vue';
 import { useGetCertificationVerifyCode } from '@/api/generated';
+import { today } from '@/lib/germanDay';
 import { type CertificateVerification, certificateVerificationSchema } from './certificateVerification';
 import { type VerificationOutcome, verificationLoadFailed, verificationOutcome } from './verificationErrors';
 
 /** What the verification page shows once an attempt has settled: the certificate, or why it is not shown. */
 export type VerificationShown = { kind: 'verified'; certificate: CertificateVerification } | VerificationOutcome;
 
+/** The German day of an instant the query cache recorded (milliseconds since the epoch). */
+const answeredOn = (instant: number) => today(() => new Date(instant));
+
 /**
  * The host's verification of a code (#54): none for a malformed code, which is never sent. Every request spends the
  * limit every verifier shares (ADR 0026): nothing is asked again by itself (no retry, no refetch on focus or on
- * reconnect), and retry asks once, never while a request is on its way.
+ * reconnect, nor when the page is opened again after a refusal), and retry asks once, never while a request is on its way.
+ * The one exception: whether a certificate is valid changes with the German day, so a verification answered on an
+ * earlier day is asked again, once, when the window regains focus.
  *
  * What it shows is the outcome of the last attempt that settled, kept while the next one is on its way (TanStack clears
  * a query's error while it refetches one without data), with that attempt's number, so that the same refusal again is
@@ -18,9 +24,15 @@ export type VerificationShown = { kind: 'verified'; certificate: CertificateVeri
 export function useCertificateVerification(code: MaybeRefOrGetter<string | undefined>) {
   const { data, error, isFetching, refetch } = useGetCertificationVerifyCode(() => toValue(code) ?? '', {
     query: {
-      enabled: computed(() => toValue(code) !== undefined),
+      // A refusal stays until Retry (refetch, which runs on a disabled query too): TanStack counts a query without data
+      // as stale whatever its staleTime, and would otherwise ask again whenever an observer's options are set anew.
+      enabled: (query) => toValue(code) !== undefined && query.state.status !== 'error',
       retry: false,
-      refetchOnWindowFocus: false,
+      retryOnMount: false,
+      refetchOnWindowFocus: (query) =>
+        query.state.status === 'success' && answeredOn(query.state.dataUpdatedAt) !== today(() => new Date())
+          ? 'always'
+          : false,
       refetchOnReconnect: false,
       staleTime: Infinity,
     },
