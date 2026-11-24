@@ -7,7 +7,8 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersion
 /// <summary>
 /// The owner's decision of 2026-11-23 (#246): with four eyes on, the editor who last changed a version's test blueprint
 /// does not publish it, as the submitter does not. <see cref="CourseVersion.BlueprintChangedBy"/> records that editor
-/// on every change that takes effect, whether or not an approval was reset; the last change wins, a return and a
+/// on a change that reset at least one approval (the issue's "changed after its last approval"; orchestrator default,
+/// 2026-11-24): a change with no approval to reset records no one. The last such change wins, a return and a
 /// resubmission keep it, and the next version starts without one. The refusal is <see cref="FourEyesRequired"/>, checked
 /// before <see cref="PublisherApprovedQuestions"/>. With four eyes off nothing changes.
 /// </summary>
@@ -34,8 +35,9 @@ public class FourEyesBlueprintTests
     public void With_four_eyes_on_a_blueprint_changer_who_also_approved_is_refused_with_the_four_eyes_code()
     {
         var version = DraftWithChapter(out var chapter);
-        version.SetBlueprint(OneQuestion(80), Reviewer).IsSuccess.ShouldBeTrue();
         var question = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
+        version.ApproveQuestion(question, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(OneQuestion(80), Reviewer).IsSuccess.ShouldBeTrue();
         version.ApproveQuestion(question, Reviewer, ReviewersName, Now).IsSuccess.ShouldBeTrue();
         version.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
 
@@ -64,9 +66,11 @@ public class FourEyesBlueprintTests
     public void With_four_eyes_on_only_the_last_blueprint_changer_is_refused()
     {
         var version = DraftWithChapter(out var chapter);
-        version.SetBlueprint(OneQuestion(80), Approver).IsSuccess.ShouldBeTrue();
-        version.SetBlueprint(OneQuestion(81), Reviewer).IsSuccess.ShouldBeTrue();
         var question = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
+        version.ApproveQuestion(question, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(OneQuestion(80), Approver).IsSuccess.ShouldBeTrue();
+        version.ApproveQuestion(question, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(OneQuestion(81), Reviewer).IsSuccess.ShouldBeTrue();
         version.ApproveQuestion(question, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
         version.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
         version.BlueprintChangedBy.ShouldBe(Reviewer);
@@ -95,26 +99,28 @@ public class FourEyesBlueprintTests
     }
 
     [Fact]
-    public void Changing_the_blueprint_records_the_editor_even_without_an_approval_to_reset()
+    public void Changing_the_blueprint_with_no_approval_to_reset_records_no_changer()
     {
-        var version = Draft();
-        version.BlueprintChangedBy.ShouldBeNull();
+        var version = DraftWithChapter(out var chapter);
+        version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).IsSuccess.ShouldBeTrue();
 
         version.SetBlueprint(OneQuestion(80), Reviewer).IsSuccess.ShouldBeTrue();
 
-        version.Questions.ShouldBeEmpty();
-        version.BlueprintChangedBy.ShouldBe(Reviewer);
+        version.BlueprintChangedBy.ShouldBeNull();
     }
 
     [Fact]
     public void Saving_the_same_blueprint_again_records_no_changer()
     {
-        var version = Draft();
+        var version = DraftWithChapter(out var chapter);
+        var question = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
+        version.ApproveQuestion(question, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
 
         version.SetBlueprint(TestBlueprint.Default, Reviewer).IsSuccess.ShouldBeTrue();
         version.BlueprintChangedBy.ShouldBeNull();
 
         version.SetBlueprint(OneQuestion(80), Approver).IsSuccess.ShouldBeTrue();
+        version.ApproveQuestion(question, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
         version.SetBlueprint(OneQuestion(80), Reviewer).IsSuccess.ShouldBeTrue();
         version.BlueprintChangedBy.ShouldBe(Approver);
     }
@@ -150,8 +156,9 @@ public class FourEyesBlueprintTests
     [Fact]
     public void The_next_version_starts_without_a_blueprint_changer()
     {
-        var published = Published();
-        published.BlueprintChangedBy.ShouldBe(Author);
+        var published = InReviewWithBlueprintChangedBy(Reviewer);
+        published.Publish(Approver, ReviewPolicy.FourEyes, Now).IsSuccess.ShouldBeTrue();
+        published.BlueprintChangedBy.ShouldBe(Reviewer);
 
         var next = published.DraftNext(CourseVersionId.New(), Author, ChapterId.New, QuestionId.New, AnswerOptionId.New).Value;
 
@@ -159,14 +166,15 @@ public class FourEyesBlueprintTests
     }
 
     /// <summary>
-    /// A version of one question whose blueprint the given editor changed; the author approved the question and
-    /// submitted the version.
+    /// A version of one question whose blueprint the given editor changed after the author had approved the question,
+    /// which reset that approval; the author approved it again and submitted the version.
     /// </summary>
     private static CourseVersion InReviewWithBlueprintChangedBy(PersonId changer)
     {
         var version = DraftWithChapter(out var chapter);
-        version.SetBlueprint(OneQuestion(80), changer).IsSuccess.ShouldBeTrue();
         var question = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
+        version.ApproveQuestion(question, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(OneQuestion(80), changer).IsSuccess.ShouldBeTrue();
         version.ApproveQuestion(question, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
         version.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
         return version;
