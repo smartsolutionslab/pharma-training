@@ -685,9 +685,19 @@
     "message": "There is no pharmacy of yours with this id."
   },
   {
+    "code": "organisation.recipient-mailed-recently",
+    "status": 429,
+    "message": "This address was sent an invitation mail a moment ago; invite it once the waiting time has passed."
+  },
+  {
     "code": "organisation.sample-not-found",
     "status": 404,
     "message": "There is no such sample."
+  },
+  {
+    "code": "organisation.too-many-invitations-sent-today",
+    "status": 429,
+    "message": "You have sent as many invitation mails today as you may; try again later."
   },
   {
     "code": "organisation.too-many-invitations-today",
