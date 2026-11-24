@@ -9,8 +9,6 @@ const readers = new Set(['src/api/baseApi.ts', 'src/i18n/errorText.ts']);
 // The call sites that still read it, until #147's page tasks (T3 to T7) move each to the helper and take it off this
 // list. A file on it that no longer reads serverMessage fails below, so the list only shrinks; once it is empty it goes.
 const pending = new Set([
-  // T5, the workflow
-  'src/modules/editorial/workflowErrors.ts',
   // T6, organisation
   'src/modules/organisation/teamErrors.ts',
   'src/modules/organisation/useRegisterPharmacy.ts',
