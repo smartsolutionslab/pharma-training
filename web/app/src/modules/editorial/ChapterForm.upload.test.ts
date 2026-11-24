@@ -74,6 +74,7 @@ const handwashing: EditorialChapterDto = {
   text: null,
   file: `course-versions/${versionId}/0198c1a0-0000-7000-8000-0000000000f3.mp4`,
   durationSeconds: 725,
+  pdfText: null,
 };
 
 const titleField = () => screen.getByRole('textbox', { name: t('editorial.chapterForm.title') });

@@ -17,6 +17,7 @@
 
 ## Consequences
 
+- **Amended for #157:** the page text extracted from PDF chapters is now sent to the model for an AI test draft, like a chapter's Markdown, so a deployment sends it to OpenAI's EU endpoint under its data residency terms (ADR 0008 D5, D11; a PDF's metadata is never read).
 - A deployment's prompts and answers are processed by OpenAI in the EU under its data residency terms, not by an Azure resource in the project's own subscription. That is what the owner accepted for MVP 1; moving to Azure OpenAI in Germany West Central is setting the two parameters to that resource's endpoint and key, and this ADR is then superseded.
 - Nothing checks that the endpoint is the EU one: `https://api.openai.com/v1` would work as well and process data outside the EU. Reviewing the environments' secrets and variables is where that is seen.
 - The parameters keep their Azure names (`azure-openai-*`) although they name an OpenAI endpoint; renaming them is a fabric decision, not this one's.

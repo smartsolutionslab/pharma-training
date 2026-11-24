@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.PdfText;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application;
@@ -11,6 +13,19 @@ internal static class FileChapters
             _ => (kind == ChapterKind.Pdf && duration is null) || (kind == ChapterKind.Video && duration is not null),
             "A file chapter is a PDF without a duration or a video with one.");
 
-    public static Chapter Of(ChapterId id, ChapterTitle title, ChapterKind kind, BlobReference file, VideoDuration? duration) =>
-        duration is { } length ? Chapter.OfVideo(id, title, file, length) : Chapter.OfPdf(id, title, file);
+    /// <summary>
+    /// The chapter: a video, or a PDF with what was extracted from its pages, which a PDF chapter always has; a missing
+    /// one is a bug.
+    /// </summary>
+    public static Chapter Of(ChapterId id, ChapterTitle title, BlobReference file, VideoDuration? duration, PdfChapterText? text)
+    {
+        if (duration is { } length)
+        {
+            return Chapter.OfVideo(id, title, file, length);
+        }
+
+        return text is { } extracted
+            ? Chapter.OfPdf(id, title, file, extracted.Extraction, extracted.Text)
+            : throw new UnreachableException("A PDF chapter is recorded with what was extracted from its pages.");
+    }
 }

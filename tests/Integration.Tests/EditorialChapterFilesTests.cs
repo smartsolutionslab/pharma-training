@@ -12,7 +12,8 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// unique index refuses a second chapter of the version holding the same file, while chapters of other versions (a
 /// chapter copied into the next version keeps its file) and chapters without a file are not limited. A request that
 /// checked the version before another writer recorded the same file loses at the index and answers 409
-/// <c>already-exists</c>, never a server error and never a second chapter.
+/// <c>already-exists</c>, never a server error and never a second chapter. A recorded PDF says whether its pages' text
+/// was extracted (#157).
 /// </summary>
 [Collection(EditorialDrafts.Name)]
 public class EditorialChapterFilesTests(AspireFixture aspire)
@@ -82,6 +83,54 @@ public class EditorialChapterFilesTests(AspireFixture aspire)
         (await ReadAsync(client, id, cancellationToken)).Chapters.Select(chapter => chapter.Id).ShouldBe([winner], "only the other writer's chapter holds the file");
     }
 
+    [Fact]
+    public async Task A_pdf_with_text_uploaded_and_recorded_shows_that_its_text_was_extracted_whole()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var id = await CreateAsync(client, cancellationToken);
+
+        var chapter = await AddPdfChapterAsync(client, id, EditorialPdfs.WithText(), cancellationToken);
+
+        var recorded = (await ReadAsync(client, id, cancellationToken)).Chapters.Single(candidate => candidate.Id == chapter);
+        recorded.Kind.ShouldBe("Pdf");
+        recorded.PdfText.ShouldBe("Complete");
+    }
+
+    [Fact]
+    public async Task The_pdf_stub_and_an_image_only_pdf_are_recorded_and_show_they_have_no_text()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var id = await CreateAsync(client, cancellationToken);
+
+        var stub = await AddPdfChapterAsync(client, id, SmallPdf, cancellationToken);
+        var scan = await AddPdfChapterAsync(client, id, EditorialPdfs.ImageOnly(), cancellationToken);
+
+        var chapters = (await ReadAsync(client, id, cancellationToken)).Chapters;
+        chapters.Single(chapter => chapter.Id == stub).PdfText.ShouldBe("NoText");
+        chapters.Single(chapter => chapter.Id == scan).PdfText.ShouldBe("NoText");
+    }
+
+    [Fact]
+    public async Task A_pdf_chapter_recorded_before_extraction_shows_no_text_and_a_text_chapter_shows_none()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var connectionString = await EditorialDatabase.ConnectionStringAsync(aspire, cancellationToken);
+        var id = await CreateAsync(client, cancellationToken);
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        // Rows as #157's migration leaves those recorded before it: no extraction, no text.
+        var legacy = await InsertChapterAsync(connection, null, id, 1, "Pdf", $"course-versions/{id:D}/{Guid.CreateVersion7():D}.pdf", cancellationToken);
+        var text = await InsertChapterAsync(connection, null, id, 2, "Text", null, cancellationToken);
+
+        var chapters = (await ReadAsync(client, id, cancellationToken)).Chapters;
+        chapters.Single(chapter => chapter.Id == legacy).PdfText.ShouldBe("NoText");
+        chapters.Single(chapter => chapter.Id == text).PdfText.ShouldBeNull();
+    }
+
     private static Uri Version(Guid id) => new($"/editorial/course-versions/{id}", UriKind.Relative);
 
     private static Uri Chapters(Guid id) => new($"/editorial/course-versions/{id}/chapters", UriKind.Relative);
@@ -132,6 +181,16 @@ public class EditorialChapterFilesTests(AspireFixture aspire)
         return false;
     }
 
+    /// <summary>Requests an upload, puts the bytes as the browser does and records them as a PDF chapter: its id.</summary>
+    private static async Task<Guid> AddPdfChapterAsync(HttpClient client, Guid id, byte[] pdf, CancellationToken cancellationToken)
+    {
+        var upload = await RequestUploadAsync(client, id, cancellationToken);
+        await PutBlobAsync(upload, pdf, cancellationToken);
+        using var added = await client.PostAsJsonAsync(Chapters(id), new { title = "Merkblatt", kind = "Pdf", file = upload.BlobName }, cancellationToken);
+        added.StatusCode.ShouldBe(HttpStatusCode.Created, $"POST {Chapters(id)} answered {(int)added.StatusCode} {await added.Content.ReadAsStringAsync(cancellationToken)}");
+        return await added.Content.ReadFromJsonAsync<Guid>(cancellationToken);
+    }
+
     private static async Task<Guid> CreateAsync(HttpClient client, CancellationToken cancellationToken)
     {
         using var created = await client.PostAsJsonAsync(Courses, new { title = $"Hygiene {Guid.CreateVersion7()}" }, cancellationToken);
@@ -171,7 +230,7 @@ public class EditorialChapterFilesTests(AspireFixture aspire)
 
     private sealed record CourseVersion(Guid Id, IReadOnlyList<ChapterView> Chapters);
 
-    private sealed record ChapterView(Guid Id, string? File);
+    private sealed record ChapterView(Guid Id, string? File, string Kind, string? PdfText);
 
     private sealed record Problem(string Code);
 }

@@ -66,13 +66,13 @@ public static class CourseVersionFailures
 
     public static ApiError InvalidValidity() => new InvalidValidity();
 
-    /// <summary>The AI test draft asks only about text chapters, and the version has none.</summary>
+    /// <summary>The AI test draft asks only about chapters with text, and the version has none.</summary>
     public static ApiError NoTextChapters() => new NoTextChapters();
 
     /// <summary>The approved questions already fill the blueprint, so the AI test draft has nothing to add.</summary>
     public static ApiError NothingToDraft() => new NothingToDraft();
 
-    /// <summary>The text chapters are too long to send to the model in one AI test draft request.</summary>
+    /// <summary>The chapters with text are too long to send to the model in one AI test draft request.</summary>
     public static ApiError TooMuchContentToDraft() => new TooMuchContentToDraft();
 
     /// <summary>The model's answer to an AI test draft could not be used; <paramref name="defect"/> says why.</summary>
