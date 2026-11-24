@@ -35,7 +35,7 @@ public sealed partial class ReannounceContentCompletionsHandler(
         Ensure.That(command).IsNotNull();
 
         var now = time.GetUtcNow();
-        var found = await unannounced.FindAsync(now - settings.Lookback, now - settings.GracePeriod, settings.BatchSize, cancellationToken);
+        var found = await unannounced.FindAsync(now - settings.Lookback, now - settings.GracePeriod, UnannouncedEvent.BeforeFirst, settings.BatchSize, cancellationToken);
         foreach (var stored in found)
         {
             var announcement = await AnnouncementOfAsync(stored, cancellationToken);

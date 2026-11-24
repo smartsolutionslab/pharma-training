@@ -20,8 +20,8 @@ public sealed class UnannouncedContentCompletions(IDocumentStore store) : IUnann
     /// <summary>Marten's stored name of <see cref="ContentCompleted"/>.</summary>
     public const string SweptEventType = "content_completed";
 
-    public Task<IReadOnlyList<UnannouncedEvent>> FindAsync(DateTimeOffset storedFrom, DateTimeOffset storedUntil, int limit, CancellationToken cancellationToken) =>
-        UnannouncedEvents.FindAsync(store, Schema, SweptEventType, storedFrom, storedUntil, limit, cancellationToken);
+    public Task<IReadOnlyList<UnannouncedEvent>> FindAsync(DateTimeOffset storedFrom, DateTimeOffset storedUntil, long after, int limit, CancellationToken cancellationToken) =>
+        UnannouncedEvents.FindAsync(store, Schema, SweptEventType, storedFrom, storedUntil, after, limit, cancellationToken);
 
     public async Task<ContentCompleted> LoadAsync(UnannouncedEvent found, CancellationToken cancellationToken)
     {
