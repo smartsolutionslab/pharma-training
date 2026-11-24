@@ -1,8 +1,10 @@
+using System.Data.Common;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Testing;
 using Npgsql;
@@ -232,6 +234,76 @@ public class EditorialRepublishTests(AspireFixture aspire)
         logger.Collector.GetSnapshot().ShouldHaveSingleItem().Level.ShouldBe(LogLevel.Warning);
     }
 
+    /// <summary>
+    /// A run that leaves its context's connection open (#357's review): closing the lock's hold of it leaves it open,
+    /// so the context still points at the run's own session and is not pointed back at the pool, which would throw on an
+    /// open connection. Disposing the lock unlocks on that session and throws nothing; disposing the context ends it.
+    /// </summary>
+    [Fact]
+    public async Task A_run_that_leaves_its_connection_open_releases_the_lock_without_throwing()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var connectionString = await EditorialDatabase.ConnectionStringAsync(aspire, cancellationToken);
+        var options = new DbContextOptionsBuilder<EditorialDbContext>().UseNpgsql(connectionString).Options;
+        var logger = new FakeLogger<EditorialRepublishLock>();
+        Exception? released = null;
+        await using (var context = new EditorialDbContext(options, NoServices.Instance))
+        {
+            var taken = await new EditorialRepublishLock(context, logger).TryTakeAsync(cancellationToken);
+            taken.HasValue.ShouldBeTrue("no other run may hold the republish's lock while this test takes it");
+            await context.Database.OpenConnectionAsync(cancellationToken);
+            try
+            {
+                await taken.Value.DisposeAsync();
+            }
+            catch (InvalidOperationException exception)
+            {
+                released = exception;
+            }
+
+            await EditorialDatabase.WaitUntilRepublishLockIsFreeAsync(connectionString, cancellationToken);
+        }
+
+        released.ShouldBeNull("a connection the run left open stays on its session, never repointed while open");
+        logger.Collector.GetSnapshot().ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// A release that fails with something other than a database error (#357's review), here a timeout of the unlock's
+    /// command, is logged as a warning and never thrown out of the run's dispose, as a failed release is: closing the
+    /// session, which follows, frees the lock.
+    /// </summary>
+    [Fact]
+    public async Task A_run_whose_unlock_times_out_logs_it_and_leaves_the_lock_free()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var connectionString = await EditorialDatabase.ConnectionStringAsync(aspire, cancellationToken);
+        var options = new DbContextOptionsBuilder<EditorialDbContext>()
+            .UseNpgsql(connectionString)
+            .AddInterceptors(new UnlockTimesOut())
+            .Options;
+        await using var context = new EditorialDbContext(options, NoServices.Instance);
+        var logger = new FakeLogger<EditorialRepublishLock>();
+
+        var taken = await new EditorialRepublishLock(context, logger).TryTakeAsync(cancellationToken);
+        taken.HasValue.ShouldBeTrue("no other run may hold the republish's lock while this test takes it");
+        Exception? released = null;
+        try
+        {
+            await taken.Value.DisposeAsync();
+        }
+        catch (TimeoutException exception)
+        {
+            released = exception;
+        }
+
+        await EditorialDatabase.WaitUntilRepublishLockIsFreeAsync(connectionString, cancellationToken);
+        released.ShouldBeNull("a failed release is logged, never thrown out of the run's dispose");
+        var logged = logger.Collector.GetSnapshot().ShouldHaveSingleItem();
+        logged.Level.ShouldBe(LogLevel.Warning);
+        logged.Exception.ShouldBeOfType<TimeoutException>();
+    }
+
     private static async Task<RepublishedCounts> RepublishAsync(HttpClient client, CancellationToken cancellationToken)
     {
         using var response = await client.PostAsync(Republish, null, cancellationToken);
@@ -322,4 +394,22 @@ public class EditorialRepublishTests(AspireFixture aspire)
     private sealed record RepublishedCounts(int CourseVersions, int TestDefinitions, int Retirements);
 
     private sealed record NextVersion(Guid Id, IReadOnlyList<Guid> Chapters, IReadOnlyList<Guid> Questions);
+
+    /// <summary>Fails the unlock's command with a timeout, as a server that does not answer in time would.</summary>
+    private sealed class UnlockTimesOut : DbCommandInterceptor
+    {
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
+            DbCommand command,
+            CommandEventData eventData,
+            InterceptionResult<DbDataReader> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (command.CommandText.Contains("pg_advisory_unlock", StringComparison.Ordinal))
+            {
+                throw new TimeoutException("The unlock's command timed out.");
+            }
+
+            return base.ReaderExecutingAsync(command, eventData, result, cancellationToken);
+        }
+    }
 }

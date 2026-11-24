@@ -248,6 +248,36 @@ public class TestDraftRequestTests
         Characters(request).ShouldBeLessThanOrEqualTo(TestDraftRequest.MaxCharacters);
     }
 
+    [Fact]
+    public void Kept_questions_pdf_numbering_and_the_limit_combine_in_one_request()
+    {
+        // #245's count with #157's numbering and allowances, together: a PDF without text first, a text chapter of the
+        // longest Markdown, and a PDF whose text passes what the limit leaves it. One hand-written question stays and
+        // one untouched AI-drafted question is replaced, so five in the blueprint ask for four, two per chapter sent.
+        var version = Draft();
+        var withoutText = ChapterId.New();
+        var text = ChapterId.New();
+        var pdf = ChapterId.New();
+        version.AddChapter(Chapter.OfPdf(withoutText, ChapterTitle.From("A"), BlobReference.From($"chapters/{Guid.CreateVersion7()}.pdf"), PdfTextExtraction.NoText, null)).IsSuccess.ShouldBeTrue();
+        version.AddChapter(TextChapter(text, "B", new string('b', MarkdownText.MaxLength))).IsSuccess.ShouldBeTrue();
+        var left = TestDraftRequest.MaxCharacters - MarkdownText.MaxLength - 2;
+        version.AddChapter(TestDraftVersions.PdfWithText(pdf, "C", new string('c', left + 1))).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(Blueprint(5)).IsSuccess.ShouldBeTrue();
+        version.AddQuestion(QuestionId.New(), SingleChoice(text), AnswerOptionId.New).IsSuccess.ShouldBeTrue();
+        version.ApplyAiTestDraft([SingleChoice(pdf)], QuestionId.New, AnswerOptionId.New).IsSuccess.ShouldBeTrue();
+
+        var request = TestDraftRequest.For(version).Value;
+
+        request.Questions.ShouldBe(QuestionCount.From(4));
+        request.Chapters.Select(chapter => chapter.Number).ShouldBe([1, 2]);
+        request.Chapters.Select(chapter => chapter.Id).ShouldBe([text, pdf]);
+        request.Chapters.Select(chapter => chapter.Quota.Value).ShouldBe([2, 2]);
+        request.Chapters[1].Text.Length.ShouldBe(left);
+        Characters(request).ShouldBe(TestDraftRequest.MaxCharacters);
+        request.LeftOutChapters.ShouldBe([withoutText]);
+        request.TruncatedChapters.ShouldBe([pdf]);
+    }
+
     private static long Characters(TestDraftRequest request) =>
         request.Chapters.Sum(chapter => (long)chapter.Title.Value.Length + chapter.Text.Length);
 

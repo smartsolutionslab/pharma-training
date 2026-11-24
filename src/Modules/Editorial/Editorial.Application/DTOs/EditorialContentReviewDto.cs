@@ -6,7 +6,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.DTOs;
 /// </summary>
 /// <param name="ReviewedChapterIds">The text chapters and the PDF chapters with text that were sent, in the version's order.</param>
 /// <param name="Hints">The hints on the reviewed chapters, ordered by chapter.</param>
-/// <param name="LeftOutChapterIds">The video chapters and PDF chapters without text the model was not asked about, in the version's order. Empty when every chapter has text.</param>
+/// <param name="LeftOutChapterIds">The chapters the model was not asked about, in the version's order: video chapters, PDF chapters without text, and PDF chapters left out for the content limit. Empty when every chapter was sent.</param>
 /// <param name="TruncatedChapterIds">The PDF chapters reviewed from text cut at a limit, in the version's order, whose later pages were not reviewed. Empty when no text was cut.</param>
 public sealed record EditorialContentReviewDto(
     IReadOnlyList<Guid> ReviewedChapterIds,
