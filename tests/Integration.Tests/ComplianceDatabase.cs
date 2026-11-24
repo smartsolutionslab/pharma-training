@@ -156,6 +156,21 @@ internal static class ComplianceDatabase
         (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1, $"Compliance holds no dead letter {deadLetter}.");
     }
 
+    /// <summary>
+    /// Hands a stored envelope of Compliance's durable inbox back to Wolverine as one no node has taken yet
+    /// (<c>Incoming</c>, owner 0, no attempts), as a node that died while handling it leaves it; the durability agent
+    /// recovers it and delivers it again.
+    /// </summary>
+    public static async Task ReturnToInboxAsync(AspireFixture aspire, Guid envelope, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(aspire, cancellationToken);
+        await using var command = new NpgsqlCommand(
+            "UPDATE wolverine.wolverine_incoming_envelopes SET status = 'Incoming', owner_id = 0, attempts = 0, keep_until = NULL WHERE id = @id",
+            connection);
+        command.Parameters.AddWithValue("id", envelope);
+        (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1, $"There is no stored envelope {envelope}.");
+    }
+
     /// <summary>The rows a counting query finds for the id.</summary>
     public static async Task<long> CountAsync(AspireFixture aspire, string query, Guid id, CancellationToken cancellationToken)
     {
