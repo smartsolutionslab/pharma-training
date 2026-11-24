@@ -16,7 +16,8 @@ export interface StatusLook {
 export const statusLooks: Record<CellStatus, StatusLook> = {
   Open: { icon: Circle, tone: 'text-muted-foreground', line: 'due', needsAction: false },
   InProgress: { icon: CircleDot, tone: 'text-foreground', line: 'due', needsAction: false },
-  Locked: { icon: Lock, tone: 'text-destructive', line: 'due', needsAction: false },
+  // Locked waits like Open and counts as compliant: the neutral tone of the pending states, told apart by icon and word.
+  Locked: { icon: Lock, tone: 'text-muted-foreground', line: 'due', needsAction: false },
   Overdue: { icon: CircleAlert, tone: 'text-destructive font-medium', line: 'due', needsAction: true },
   Completed: { icon: CircleCheck, tone: 'text-primary', line: 'validUntil', needsAction: false },
   CompletedLate: { icon: CircleCheck, tone: 'text-primary', line: 'validUntil', needsAction: false },
