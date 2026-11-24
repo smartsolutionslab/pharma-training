@@ -9,11 +9,6 @@ const readers = new Set(['src/api/baseApi.ts', 'src/i18n/errorText.ts']);
 // The call sites that still read it, until #147's page tasks (T3 to T7) move each to the helper and take it off this
 // list. A file on it that no longer reads serverMessage fails below, so the list only shrinks; once it is empty it goes.
 const pending = new Set([
-  // T3, the editorial test page
-  'src/modules/editorial/useTestBlueprint.ts',
-  'src/modules/editorial/TestBlueprintSection.vue',
-  'src/modules/editorial/useQuestionMutations.ts',
-  'src/modules/editorial/CourseTestPage.vue',
   // T4, the course version and editorial pages
   'src/modules/editorial/useChapterMutations.ts',
   'src/modules/editorial/useReorderChapters.ts',
