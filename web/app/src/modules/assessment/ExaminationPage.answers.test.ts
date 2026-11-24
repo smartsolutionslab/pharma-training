@@ -287,11 +287,12 @@ test('an answer cannot be cleared: unchecking the last option sends nothing and 
   expect(puts()).toEqual([]);
 });
 
-test('an attempt submitted elsewhere (no-open-attempt) says so, reads the examination again and links to the result', async () => {
+test('an attempt submitted elsewhere (no-open-attempt) says so and links to the result while the examination is read again', async () => {
   const user = userEvent.setup();
   answers.answering = async () => refusal(409, 'assessment.no-open-attempt');
   await renderPage();
-  answers.reading = async () => Response.json(examination({ attemptsUsed: 1, lastResult: result() }));
+  const reread = deferred();
+  answers.reading = () => reread.answer;
 
   await user.click(within(await questionGroup(1)).getByRole('radio', { name: '30 Sekunden' }));
 
@@ -300,6 +301,33 @@ test('an attempt submitted elsewhere (no-open-attempt) says so, reads the examin
     'href',
     `/assessment/sessions/${sessionId}/result`,
   );
+  reread.release(Response.json(examination({ attemptsUsed: 1, lastResult: result() })));
+});
+
+test('once the examination read again after a no-open-attempt shows a new attempt can start, the page offers it, and its answers are saved', async () => {
+  const user = userEvent.setup();
+  answers.answering = async () => refusal(409, 'assessment.no-open-attempt');
+  await renderPage();
+  answers.reading = async () => Response.json(examination({ attemptsUsed: 1, lastResult: result() }));
+  await user.click(within(await questionGroup(1)).getByRole('radio', { name: '30 Sekunden' }));
+
+  const start = await screen.findByRole('button', { name: t('assessment.test.start') });
+  expect(screen.getByRole('link', { name: t('assessment.test.toResult') })).toHaveAttribute(
+    'href',
+    `/assessment/sessions/${sessionId}/result`,
+  );
+
+  storing(inAttempt(undefined, { attemptsUsed: 1, lastResult: result() }));
+  await user.click(start);
+  const duration = await questionGroup(1);
+  await user.click(within(duration).getByRole('radio', { name: '5 Sekunden' }));
+
+  expect(await within(duration).findByText(t('assessment.test.save.saved'))).toBeInTheDocument();
+  expect(puts().at(-1)).toEqual({
+    method: 'PUT',
+    path: answerPath(durationQuestion.id),
+    body: { optionIds: [fiveSeconds] },
+  });
 });
 
 test('nothing about the answers is kept in the browser: the server is the only record', async () => {
