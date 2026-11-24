@@ -290,6 +290,7 @@ public class TestPassedV1ConsumerTests
             PersonId.From(person),
             PharmacyId.From(Guid.CreateVersion7()),
             HolderName.From(name),
+            MembershipRole.Employee,
             Timestamp.From(startedAt));
         memberships.Memberships.Add(membership);
         return membership;

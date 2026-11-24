@@ -5,9 +5,11 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { defineComponent, h } from 'vue';
 import { createMemoryHistory, RouterView } from 'vue-router';
 import type { EditorialChapterDto, EditorialCourseVersionDto, EditorialQuestionDto } from '@/api/generated';
+import { authKey } from '@/auth/useAuth';
 import { setLanguage, t } from '@/i18n';
 import { createAppRouter } from '@/router';
 import CourseTestPage from './CourseTestPage.vue';
+import { signedInAsEditor } from './workflowPageHost';
 import {
   approvedAi,
   handWritten,
@@ -684,7 +686,7 @@ describe('the draft', () => {
     expect(draftStatus()).toHaveTextContent('The AI read only the beginning of 2 PDF chapters; see the note.');
   });
 
-  test('dismissing the note puts focus on the draft’s status, never on the body', async () => {
+  test('dismissing the note puts focus on the draft’s explanation, visible and named, never on the body (#361)', async () => {
     const user = userEvent.setup();
     version = versionOf('Draft', { chapters: [introduction, manual], questions: [] });
     drafting = async () =>
@@ -697,7 +699,9 @@ describe('the draft', () => {
     await user.click(dismiss);
 
     await waitFor(() => expect(truncatedNote()).toBeNull());
-    expect(draftStatus()).toHaveFocus();
+    const explanation = screen.getByText(t('editorial.test.draft.explain'));
+    expect(explanation).toHaveFocus();
+    expect(explanation).not.toHaveTextContent(/^$/);
     expect(document.activeElement).not.toBe(document.body);
   });
 
@@ -1050,7 +1054,10 @@ describe('the running draft outlives the page', () => {
     const router = createAppRouter(createMemoryHistory());
     await router.push(`/editorial/versions/${versionId}/test`);
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-    render(App, { global: { plugins: [router, [VueQueryPlugin, { queryClient }]] } });
+    // The version page shows its return history (#201), which says whose each return was: it needs the user.
+    render(App, {
+      global: { plugins: [router, [VueQueryPlugin, { queryClient }]], provide: { [authKey]: signedInAsEditor } },
+    });
     await screen.findByRole('heading', { level: 1, name: t('editorial.test.heading', { title: version.title }) });
 
     await confirmDraft(user);

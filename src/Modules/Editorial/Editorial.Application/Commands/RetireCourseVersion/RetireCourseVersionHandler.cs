@@ -31,9 +31,10 @@ public sealed class RetireCourseVersionHandler(ICourseVersionStore versions, IEd
 
         await unitOfWork.PublishAsync(version.ToCourseVersionRetiredV1());
 
-        if (!await unitOfWork.TryCommitAsync(cancellationToken))
+        var saved = await unitOfWork.TryCommitAsync(cancellationToken);
+        if (saved.IsFailure)
         {
-            return Failure(CourseVersionFailures.Changed(command.Version.Value));
+            return Failure(CourseVersionFailures.LostRace(saved.Error, command.Version.Value));
         }
 
         return Success(Unit.Value);

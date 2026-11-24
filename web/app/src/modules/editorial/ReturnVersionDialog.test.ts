@@ -42,6 +42,12 @@ afterEach(cleanup);
 const title = 'Hygiene in der Apotheke';
 const hint = 'Bitte nennen Sie im Grund keine Personen, sondern beschreiben Sie, was an der Version zu ändern ist.';
 
+/** The host's whole rule for a reason, as the field states it when the host refuses one (#201). */
+const reasonRule = {
+  de: 'Der Grund muss ohne Leerraum am Anfang und Ende 1 bis 1000 Zeichen lang sein und darf außer Zeilenumbrüchen und Tabulatoren keine Steuer- oder Formatzeichen enthalten.',
+  en: 'The reason must be 1 to 1000 characters long without leading or trailing spaces, and may contain no control or format characters other than line breaks and tabs.',
+};
+
 const posts = () => requestsOf(fetch).filter(({ method }) => method === 'POST');
 
 /** The page of a version in review with the return dialog open. */
@@ -185,22 +191,38 @@ describe('the return dialog', () => {
     expect(posts()).toHaveLength(1);
   });
 
-  test('refused for its reason stays open with the field’s message, the reason kept and the focus in it', async () => {
+  // The host refuses a reason for more than a control character (ADR 0013), and the page cannot tell which rule it
+  // broke: the field states the host's whole rule (#201), not only the client's character check.
+  test('refused for its reason stays open with the host’s whole rule, the reason kept and the focus in it', async () => {
     host.step = async () => refused(400, 'editorial.invalid-return-reason');
     const { user, dialog, reason, confirm } = await openReturn();
 
     await user.type(reason, 'Kapitel 2 fehlt die Quelle.');
     await user.click(confirm);
 
-    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
-      'Der Grund enthält unzulässige Steuer- oder Formatzeichen.',
-    );
+    const message = await within(dialog).findByRole('alert');
+    expect(message).toHaveTextContent(reasonRule.de);
     expect(screen.getByRole('dialog')).toBeVisible();
     expect(reason).toHaveValue('Kapitel 2 fehlt die Quelle.');
     expect(reason).toHaveAttribute('aria-invalid', 'true');
+    expect(reason).toHaveAccessibleDescription(`${hint} ${reasonRule.de}`);
     await waitFor(() => expect(reason).toHaveFocus());
     expect(notify.success).not.toHaveBeenCalled();
-    expect(notify.failure).not.toHaveBeenCalledWith(expect.stringContaining('Words of the host'));
+    expect(notify.failure).not.toHaveBeenCalled();
+  });
+
+  test('refused for its reason states the host’s whole rule in English', async () => {
+    setLanguage('en-GB', { remember: false });
+    host.step = async () => refused(400, 'editorial.invalid-return-reason');
+    const { user, dialog, reason, confirm } = await openReturn();
+
+    await user.type(reason, 'Chapter 2 lacks its source.');
+    await user.click(confirm);
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(reasonRule.en);
+    expect(screen.getByRole('dialog')).toBeVisible();
+    expect(reason).toHaveValue('Chapter 2 lacks its source.');
+    await waitFor(() => expect(reason).toHaveFocus());
   });
 
   test('refused because the version changed meanwhile stays open with the reason, says so, and returns it when sent again', async () => {

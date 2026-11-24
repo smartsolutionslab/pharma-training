@@ -5,14 +5,26 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// <summary>
 /// The MigrationRunner as a service's init container runs it once published (docs/adr/0005): its own process, built in the
 /// test's configuration, given the module, the administrator's connection string as <c>ConnectionStrings:database</c> and
-/// the role's as <c>ConnectionStrings:application</c>, and nothing else: no broker, no queue, no other setting.
+/// the role's as <c>ConnectionStrings:application</c>, and only the runner settings a test names: no broker, no queue.
 /// </summary>
 public static class MigrationRunnerProcess
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromMinutes(3);
 
     /// <summary>Runs it to its end; answers its exit code and everything it printed.</summary>
-    public static async Task<(int ExitCode, string Output)> RunAsync(string module, string administrator, string application, CancellationToken cancellationToken)
+    public static Task<(int ExitCode, string Output)> RunAsync(string module, string administrator, string application, CancellationToken cancellationToken) =>
+        RunAsync(module, administrator, application, new Dictionary<string, string>(), cancellationToken);
+
+    /// <summary>
+    /// Runs it to its end with further runner settings, by their configuration key (<c>Migrations:IndexLockTimeout</c>),
+    /// passed as an init container's environment; answers its exit code and everything it printed.
+    /// </summary>
+    public static async Task<(int ExitCode, string Output)> RunAsync(
+        string module,
+        string administrator,
+        string application,
+        IReadOnlyDictionary<string, string> settings,
+        CancellationToken cancellationToken)
     {
         var start = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet")
         {
@@ -26,6 +38,10 @@ public static class MigrationRunnerProcess
         start.Environment["ConnectionStrings__application"] = application;
         start.Environment["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1";
         start.Environment.Remove("OTEL_EXPORTER_OTLP_ENDPOINT");
+        foreach (var (key, value) in settings)
+        {
+            start.Environment[key.Replace(":", "__", StringComparison.Ordinal)] = value;
+        }
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(Timeout);

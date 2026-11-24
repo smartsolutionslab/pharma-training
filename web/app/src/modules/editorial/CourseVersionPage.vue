@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { BookOpen } from '@lucide/vue';
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, ref, useTemplateRef, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { z } from 'zod';
@@ -24,6 +24,7 @@ import { inboxStatuses } from './inboxQuery';
 import { publishChecklist, type PublishRefusal } from './publishChecklist';
 import PublishChecklist from './PublishChecklist.vue';
 import RemoveChapterDialog from './RemoveChapterDialog.vue';
+import ReturnHistory from './ReturnHistory.vue';
 import ReturnVersionDialog from './ReturnVersionDialog.vue';
 import { useChapterMutations } from './useChapterMutations';
 import { useCourseVersionWorkflow, type WorkflowResult } from './useCourseVersionWorkflow';
@@ -42,7 +43,11 @@ const { data: version, isPending, error } = useGetEditorialCourseVersionsId(id, 
 const { add, replace, remove, isSaving } = useChapterMutations(id);
 const { reorder } = useReorderChapters(id);
 const { draftNext } = useDraftNextVersion(id);
-const workflow = useCourseVersionWorkflow(id);
+/** The version's return history: a return taken shows on its first page. */
+const returnHistory = useTemplateRef<InstanceType<typeof ReturnHistory>>('returnHistory');
+// A return taken turns the history to its first page before the returns are read again, so the page read again is
+// the one the new return is on, and no page shows as it was before.
+const workflow = useCourseVersionWorkflow(id, { onReturned: () => returnHistory.value?.showFirstPage() });
 const { t } = useI18n();
 
 /** The chapter form while it is open: with the chapter it replaces, or none to add one. */
@@ -300,13 +305,13 @@ async function returnVersion(reason: string): Promise<'done' | 'reasonRefused' |
     'return',
     () => workflow.returnToDraft(reason),
     (failure) =>
-      isKey(failure, 'editorial.workflow.returnForm.reasonInvalid') ||
+      isKey(failure, 'editorial.workflow.returnForm.reasonRefused') ||
       (isKey(failure, 'editorial.workflow.errors.changed') && version.value?.status === 'InReview'),
   );
   if (outcome === 'done') {
     return 'done';
   }
-  if (isKey(outcome, 'editorial.workflow.returnForm.reasonInvalid')) {
+  if (isKey(outcome, 'editorial.workflow.returnForm.reasonRefused')) {
     return 'reasonRefused';
   }
   notify.failure(workflowFailureText(outcome));
@@ -396,6 +401,7 @@ async function confirmRemove(chapter: EditorialChapterDto) {
           </Button>
         </div>
       </section>
+      <ReturnHistory ref="returnHistory" :version-id="id" />
       <section aria-labelledby="course-version-chapters" class="flex flex-col gap-4">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <h2 id="course-version-chapters">{{ t('editorial.chapters.title') }}</h2>

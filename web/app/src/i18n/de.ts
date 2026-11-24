@@ -95,7 +95,7 @@ export const de = {
       },
     },
     certification: {
-      title: 'Teilnahmebestätigungen',
+      title: 'Meine Teilnahmebestätigungen',
       entries: {
         verify: { title: 'Bestätigung prüfen' },
       },
@@ -144,6 +144,25 @@ export const de = {
       loadFailed: 'Die Bestätigung konnte nicht geprüft werden.',
     },
     retry: 'Erneut versuchen',
+    mine: {
+      columns: {
+        course: 'Schulung',
+        issuedOn: 'Ausgestellt am',
+        validUntil: 'Gültig bis',
+        validity: 'Status',
+        document: 'PDF',
+      },
+      documentReady: 'Bereit',
+      documentPending: 'Wird erstellt',
+      open: 'PDF öffnen',
+      openFor: 'PDF öffnen für {course}',
+      documentNotReady:
+        'Die Teilnahmebestätigung für {course} wird noch erstellt. Versuchen Sie es gleich noch einmal.',
+      documentFailed: 'Das PDF für {course} konnte nicht geöffnet werden.',
+      empty: 'Sie haben noch keine Teilnahmebestätigung.',
+      toCourses: 'Zu meinen Schulungen',
+      loadFailed: 'Ihre Teilnahmebestätigungen konnten nicht geladen werden.',
+    },
   },
   compliance: {
     matrix: {
@@ -222,6 +241,8 @@ export const de = {
       submit: 'Zuweisen',
       retry: 'Erneut versuchen',
       changed: 'Die Zuweisungen wurden inzwischen geändert. Prüfen Sie die Angaben und weisen Sie erneut zu.',
+      concurrentSave:
+        'Gleichzeitig wurde eine andere Änderung an den Zuweisungen gespeichert; es wurde nichts zugewiesen. Weisen Sie erneut zu.',
       failed: 'Die Schulung konnte nicht zugewiesen werden. Versuchen Sie es erneut.',
       course: {
         title: 'Schulung wählen',
@@ -454,6 +475,18 @@ export const de = {
         InReview: 'Keine Versionen in Prüfung.',
         Published: 'Keine veröffentlichten Versionen.',
       },
+    },
+    returns: {
+      title: 'Rückgaben',
+      columns: {
+        returnedAt: 'Zurückgegeben am',
+        returnedBy: 'Zurückgegeben von',
+        reason: 'Grund',
+      },
+      empty: 'Diese Version wurde noch nie zur Überarbeitung zurückgegeben.',
+      loadFailed: 'Die Rückgaben dieser Version konnten nicht geladen werden.',
+      byYou: 'Ihnen',
+      byAnotherEditor: 'einer anderen Person aus der Redaktion',
     },
     course: {
       new: 'Neue Schulung',
@@ -726,6 +759,8 @@ export const de = {
         reasonRequired: 'Geben Sie einen Grund an.',
         reasonTooLong: 'Der Grund darf höchstens {max} Zeichen lang sein.',
         reasonInvalid: 'Der Grund enthält unzulässige Steuer- oder Formatzeichen.',
+        reasonRefused:
+          'Der Grund muss ohne Leerraum am Anfang und Ende 1 bis {max} Zeichen lang sein und darf außer Zeilenumbrüchen und Tabulatoren keine Steuer- oder Formatzeichen enthalten.',
       },
       errors: {
         notADraft: 'Nur ein Entwurf kann eingereicht werden.',
@@ -984,13 +1019,19 @@ export const de = {
       'sample-not-found': 'Dieses Beispiel gibt es nicht.',
     },
     certification: {
+      'capability-missing': 'Ihre Rolle in dieser Apotheke erlaubt das nicht.',
       'certificate-not-found': 'Diese Teilnahmebestätigung gibt es nicht, oder sie gehört nicht Ihnen.',
       'certificate-not-verifiable':
         'Zu diesem Code gibt es keine Teilnahmebestätigung. Prüfen Sie, ob Sie den vollständigen Link aus dem QR-Code geöffnet haben.',
       'document-not-ready':
         'Das PDF der Teilnahmebestätigung wird gerade erstellt. Versuchen Sie es gleich noch einmal.',
+      'export-too-large':
+        'Ein Export enthält höchstens 2000 Teilnahmebestätigungen. Wählen Sie einen kürzeren Zeitraum.',
       'identity-incomplete': 'Ihre Anmeldung nennt keine Person. Melden Sie sich erneut an.',
+      'invalid-export-period':
+        'Wählen Sie Beginn und Ende; das Ende darf nicht vor dem Beginn und höchstens fünf Jahre danach liegen.',
       'invalid-sample-name': 'Der Name eines Beispiels hat 1 bis {max} Zeichen und darf nicht leer sein.',
+      'pharmacy-not-found': 'Sie sind nicht Mitglied dieser Apotheke, oder es gibt sie nicht.',
       'sample-not-found': 'Dieses Beispiel gibt es nicht.',
       'verification-limit-reached':
         'Gerade werden zu viele Prüfungen angefragt. Versuchen Sie es in einer Minute erneut.',
@@ -1001,6 +1042,8 @@ export const de = {
       'assignment-not-found': 'Diese Zuweisung gibt es in dieser Apotheke nicht mehr.',
       'assignments-changed':
         'Die Zuweisungen wurden inzwischen geändert. Prüfen Sie den aktuellen Stand und versuchen Sie es erneut.',
+      'concurrent-save':
+        'Gleichzeitig wurde eine andere Änderung an den Zuweisungen gespeichert; es wurde nichts gespeichert. Versuchen Sie es erneut.',
       'capability-missing': 'Ihre Rolle in dieser Apotheke erlaubt das nicht.',
       'certificate-predates-assignment': 'Eine Teilnahmebestätigung von vor der Zuweisung erfüllt sie nicht.',
       'course-missing': 'Wählen Sie eine Schulung.',
@@ -1032,6 +1075,8 @@ export const de = {
       'chapter-not-found': 'Dieses Kapitel gibt es in der Version nicht mehr.',
       'course-version-changed':
         'Die Version wurde inzwischen geändert. Laden Sie sie neu und wiederholen Sie die Änderung.',
+      'concurrent-save':
+        'Gleichzeitig wurde eine andere Änderung an der Version gespeichert; es wurde nichts gespeichert. Versuchen Sie es erneut.',
       'course-version-not-found': 'Diese Version gibt es nicht mehr.',
       'file-in-use': 'Diese Datei gehört schon zu einem anderen Kapitel der Version.',
       'four-eyes':
@@ -1062,7 +1107,7 @@ export const de = {
       'no-chapters': 'Die Version braucht mindestens ein Kapitel.',
       'no-text-chapters':
         'Die KI entwirft nur aus Kapiteln mit Text: aus Textkapiteln und aus PDF-Kapiteln, deren Text sich lesen lässt. Legen Sie zuerst ein solches Kapitel an.',
-      'no-text-chapters-to-review': 'Die Version hat kein Textkapitel, das die KI prüfen könnte.',
+      'no-text-chapters-to-review': 'Die Version hat kein Kapitel mit Text, das die KI prüfen könnte.',
       'not-a-draft': 'Nur ein Entwurf kann bearbeitet werden.',
       'not-in-review': 'Die Version ist nicht mehr in Prüfung.',
       'not-published': 'Die Version ist nicht veröffentlicht.',
@@ -1135,6 +1180,8 @@ export const de = {
       'person-already-member': 'Sie sind bereits Mitglied dieser Apotheke.',
       'pharmacy-changed':
         'Die Apotheke wurde gerade gleichzeitig geändert. Prüfen Sie den aktuellen Stand und versuchen Sie es erneut.',
+      'concurrent-save':
+        'Gleichzeitig wurde eine andere Änderung an der Apotheke gespeichert; es wurde nichts gespeichert. Versuchen Sie es erneut.',
       'pharmacy-not-found': 'Sie sind nicht mehr Mitglied dieser Apotheke.',
       'recipient-mailed-recently':
         'An diese Adresse wurde gerade erst eine Einladung gesendet. Sie können sie nach einer kurzen Wartezeit erneut einladen.',

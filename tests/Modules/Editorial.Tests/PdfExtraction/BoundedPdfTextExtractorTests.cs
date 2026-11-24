@@ -1,7 +1,9 @@
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.PdfText;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Infrastructure.PdfText;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Extensions.Time.Testing;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.PdfExtraction;
@@ -234,6 +236,72 @@ public sealed class BoundedPdfTextExtractorTests : IDisposable
         ignoring.Finish(1, BlockingPdfTextParser.Answer);
         (await next).Value.ShouldBe(BlockingPdfTextParser.Answer);
     }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_parse_that_fails_after_its_deadline_answered_is_logged_with_the_exceptions_type(bool outOfMemory)
+    {
+        var logger = new FakeLogger<BoundedPdfTextExtractor>();
+        var extractor = Bounded(ignoring, 1, logger);
+        var abandoned = extractor.ExtractAsync(Pdf, Cancellation);
+        await ignoring.Started(0);
+        time.Advance(Timeout);
+        (await abandoned).Value.Extraction.ShouldBe(PdfTextExtraction.NoText);
+
+        var failure = Failure(outOfMemory);
+        await FailAndWaitForTheSlot(extractor, failure);
+
+        ShouldBeLoggedAsAbandonedFailure(logger, failure, outOfMemory);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_parse_that_fails_after_its_request_was_cancelled_is_logged_with_the_exceptions_type(bool outOfMemory)
+    {
+        var logger = new FakeLogger<BoundedPdfTextExtractor>();
+        var extractor = Bounded(ignoring, 1, logger);
+        using var cancellation = new CancellationTokenSource();
+        var cancelled = extractor.ExtractAsync(Pdf, cancellation.Token);
+        await ignoring.Started(0);
+        await cancellation.CancelAsync();
+        await Should.ThrowAsync<OperationCanceledException>(cancelled);
+
+        var failure = Failure(outOfMemory);
+        await FailAndWaitForTheSlot(extractor, failure);
+
+        ShouldBeLoggedAsAbandonedFailure(logger, failure, outOfMemory);
+    }
+
+    private static Exception Failure(bool outOfMemory) =>
+        outOfMemory ? Activator.CreateInstance<OutOfMemoryException>() : new InvalidOperationException("bug");
+
+    private static void ShouldBeLoggedAsAbandonedFailure(FakeLogger<BoundedPdfTextExtractor> logger, Exception failure, bool outOfMemory)
+    {
+        var type = failure.GetType().ToString();
+        var records = logger.Collector.GetSnapshot();
+        var naming = records.Where(record => record.Message.Contains(type, StringComparison.Ordinal)).ToList();
+        naming.Count.ShouldBe(1, $"the abandoned parse's {type} must leave a trace, not be dropped");
+        naming[0].Level.ShouldBe(outOfMemory ? LogLevel.Error : LogLevel.Warning);
+        records.ShouldNotContain(record => record.Level == LogLevel.Information, "a parse that failed did not end normally");
+    }
+
+    /// <summary>
+    /// Fails the abandoned parse 0 and waits until the next request gets its slot: the slot is freed after the parse's
+    /// thread has logged, so its records are all in by then.
+    /// </summary>
+    private async Task FailAndWaitForTheSlot(BoundedPdfTextExtractor extractor, Exception failure)
+    {
+        var next = extractor.ExtractAsync(Pdf, Cancellation);
+        ignoring.Fail(0, failure);
+        await ignoring.Started(1);
+        ignoring.Finish(1, BlockingPdfTextParser.Answer);
+        (await next).Value.ShouldBe(BlockingPdfTextParser.Answer);
+    }
+
+    private BoundedPdfTextExtractor Bounded(IPdfTextParser parser, int maxConcurrentParses, ILogger<BoundedPdfTextExtractor> logger) =>
+        new(parser, PdfTextLimits.Of(maxConcurrentParses, Timeout), time, logger);
 
     private BoundedPdfTextExtractor Bounded(IPdfTextParser parser, int maxConcurrentParses) =>
         new(parser, PdfTextLimits.Of(maxConcurrentParses, Timeout), time, NullLogger<BoundedPdfTextExtractor>.Instance);

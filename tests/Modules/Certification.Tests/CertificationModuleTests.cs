@@ -50,4 +50,21 @@ public class CertificationModuleTests
         provider.GetRequiredService<IBlobWrites>().ShouldBeOfType<AzureBlobWrites>();
         provider.GetRequiredService<IFrontendLinks>().ShouldBeOfType<FrontendLinks>();
     }
+
+    /// <summary>The export reads each stored PDF from the module's own container by its location (#52, docs/adr/0030).</summary>
+    [Fact]
+    public void The_module_registers_the_blob_reads()
+    {
+        var services = new ServiceCollection().AddLogging();
+        services.AddSingleton<TimeProvider>(new FakeTimeProvider());
+        services.AddSingleton<Microsoft.Extensions.AI.IChatClient>(_ => new SmartSolutionsLab.PharmaTraining.Tests.Fakes.FakeChatClient("unused"));
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:database"] = "Host=localhost" })
+            .Build();
+
+        new CertificationModule().AddServices(services, configuration);
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<IBlobReads>().ShouldBeOfType<AzureBlobReads>();
+    }
 }

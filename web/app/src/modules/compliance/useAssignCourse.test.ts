@@ -193,6 +193,16 @@ describe('a refusal of the whole request', () => {
     }
   });
 
+  test('409 compliance.concurrent-save means another save came at the same moment, to try again', async () => {
+    host.mockImplementation(async () => problem(409, 'compliance.concurrent-save', 'Gleichzeitig gespeichert.'));
+    const { assignment, queryClient } = renderAssignment();
+
+    await expect(assignment.assign(pharmacy, request)).resolves.toEqual({ kind: 'concurrentSave' });
+    for (const key of catalogKeys) {
+      expect(queryClient.getQueryState(key)?.isInvalidated).toBe(false);
+    }
+  });
+
   test.each([
     ['a failure of the host', () => new Response('', { status: 500 })],
     ['a request too large', () => new Response('', { status: 413 })],

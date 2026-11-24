@@ -1,3 +1,4 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.Contracts;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.InvitationRecipients;
@@ -21,6 +22,8 @@ internal sealed class InMemoryPharmacyStore : IPharmacyStore, IInvitationRecipie
     private readonly List<InvitationSender> addedSenders = [];
     private readonly List<IntegrationEvent> queued = [];
     private bool loseNextCommit;
+
+    private LostRace how = new VersionMovedOn();
     private Exception? failNextCommit;
     private Exception? failNextFind;
     private Action? onCommit;
@@ -134,20 +137,27 @@ internal sealed class InMemoryPharmacyStore : IPharmacyStore, IInvitationRecipie
     /// <summary>The next <see cref="FindAsync"/> throws the failure; <see cref="LoadAsync"/> is not affected.</summary>
     public void FailNextFind(Exception failure) => failNextFind = failure;
 
-    /// <summary>The next <see cref="TryCommitAsync"/> answers <see langword="false"/> and stores and sends nothing.</summary>
-    public void LoseNextCommit() => loseNextCommit = true;
+    /// <summary>
+    /// The next <see cref="TryCommitAsync"/> loses a race, as a version that moved on unless <paramref name="how"/>
+    /// says otherwise, and stores and sends nothing.
+    /// </summary>
+    public void LoseNextCommit(LostRace? how = null)
+    {
+        loseNextCommit = true;
+        this.how = how ?? new VersionMovedOn();
+    }
 
-    public async Task<bool> TryCommitAsync(CancellationToken cancellationToken)
+    public async Task<Result<Unit, LostRace>> TryCommitAsync(CancellationToken cancellationToken)
     {
         if (loseNextCommit)
         {
             loseNextCommit = false;
             Discard();
-            return false;
+            return Failure(how);
         }
 
         await CommitAsync(cancellationToken);
-        return true;
+        return Success(Unit.Value);
     }
 
     private Option<Pharmacy> Lookup(PharmacyId id) =>

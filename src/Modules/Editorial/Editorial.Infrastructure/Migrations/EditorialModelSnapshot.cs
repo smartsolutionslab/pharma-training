@@ -262,6 +262,12 @@ partial class EditorialModelSnapshot : ModelSnapshot
                     .HasColumnType("uuid")
                     .HasColumnName("id");
 
+                b.Property<string>("ApprovalHistory")
+                    .IsRequired()
+                    .HasMaxLength(20)
+                    .HasColumnType("character varying(20)")
+                    .HasColumnName("approval_history");
+
                 b.Property<Guid>("Chapter")
                     .HasColumnType("uuid")
                     .HasColumnName("chapter_id");
@@ -269,6 +275,18 @@ partial class EditorialModelSnapshot : ModelSnapshot
                 b.Property<Guid>("CourseVersionId")
                     .HasColumnType("uuid")
                     .HasColumnName("course_version_id");
+
+                b.Property<string>("EditHistory")
+                    .IsRequired()
+                    .HasMaxLength(20)
+                    .HasColumnType("character varying(20)")
+                    .HasColumnName("edit_history");
+
+                b.Property<string>("Origin")
+                    .IsRequired()
+                    .HasMaxLength(20)
+                    .HasColumnType("character varying(20)")
+                    .HasColumnName("origin");
 
                 b.Property<int>("Position")
                     .HasColumnType("integer")

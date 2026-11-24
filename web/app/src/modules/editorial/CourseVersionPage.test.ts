@@ -12,10 +12,12 @@ import {
   getGetEditorialCourseVersionsQueryKey,
 } from '@/api/generated';
 import { setLanguage, t } from '@/i18n';
+import { authKey } from '@/auth/useAuth';
 import { createAppRouter } from '@/router';
 import CourseVersionPage from './CourseVersionPage.vue';
 import { FakeXhr } from './fakeXhr';
 import { route } from './routes';
+import { signedInAsEditor } from './workflowPageHost';
 
 const notify = vi.hoisted(() => ({ success: vi.fn(), failure: vi.fn() }));
 vi.mock('@/lib/notify', () => ({ notify }));
@@ -71,6 +73,7 @@ function question(id: string, chapterId: string, review: 'Approved' | 'Unreviewe
       { id: `${id}-2`, text: '5 Sekunden', correct: false },
     ],
     provenance: 'Human',
+    origin: 'HandWritten',
     review,
     reviewedBy: null,
     reviewedAt: null,
@@ -117,6 +120,10 @@ beforeEach(() => {
     if (method === 'GET' && url.pathname === `/api/editorial/course-versions/${versionId}`) {
       return reading();
     }
+    // Every version's return history (#201) is empty here; CourseVersionPage.returns.test.ts shows one.
+    if (method === 'GET' && /^\/api\/editorial\/course-versions\/[0-9a-f-]{36}\/returns$/.test(url.pathname)) {
+      return Response.json({ items: [], totalCount: 0, page: 1, pageSize: 20 });
+    }
     if (url.pathname.startsWith(`/api/editorial/course-versions/${versionId}/`)) {
       return changing(method, url.pathname, init?.body === undefined ? undefined : JSON.parse(String(init.body)));
     }
@@ -135,14 +142,17 @@ const requests = () =>
     method: init?.method ?? 'GET',
     path: new URL(String(input), 'http://localhost').pathname.replace(/^\/api/, ''),
   }));
-const reads = () => requests().filter(({ method }) => method === 'GET');
+/** The version's reads: its return history (#201) is read beside it, and left out here. */
+const reads = () => requests().filter(({ method, path }) => method === 'GET' && !path.endsWith('/returns'));
 
 /** The page at its address, with a query client of its own that does not retry, so a failure shows at once. */
 async function renderPage(id = versionId) {
   const router = createAppRouter(createMemoryHistory());
   await router.push(`/editorial/versions/${id}`);
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  const { container } = render(CourseVersionPage, { global: { plugins: [router, [VueQueryPlugin, { queryClient }]] } });
+  const { container } = render(CourseVersionPage, {
+    global: { plugins: [router, [VueQueryPlugin, { queryClient }]], provide: { [authKey]: signedInAsEditor } },
+  });
   await screen.findByRole('heading', { level: 1, name: version.title });
   return { router, queryClient, container };
 }
@@ -308,15 +318,24 @@ describe.each([
       [],
     );
     expect(screen.queryByTitle(t('editorial.chapters.dragHint'))).not.toBeInTheDocument();
-    expect(container.querySelector('form, input, textarea, select, [draggable="true"]')).toBeNull();
+    // The return history's table (#201) has a column chooser, its fieldset's checkboxes: they change the table's view,
+    // not the version. Any other control, in the history or not, would.
+    const history = screen.getByRole('region', { name: t('editorial.returns.title') });
+    const columnChoosers = [...history.querySelectorAll('fieldset input[type="checkbox"]')];
+    const controls = [...container.querySelectorAll('form, input, textarea, select, [draggable="true"]')];
+    expect(controls.filter((control) => !columnChoosers.includes(control))).toEqual([]);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  test('asks the host for nothing but the version', async () => {
+  test('asks the host for nothing but the version and its return history', async () => {
     await renderPage();
 
-    await waitFor(() => expect(reads()).toEqual([{ method: 'GET', path: `/editorial/course-versions/${versionId}` }]));
-    expect(requests().filter(({ method }) => method !== 'GET')).toEqual([]);
+    await waitFor(() =>
+      expect(requests()).toEqual([
+        { method: 'GET', path: `/editorial/course-versions/${versionId}` },
+        { method: 'GET', path: `/editorial/course-versions/${versionId}/returns` },
+      ]),
+    );
   });
 
   test('shows its chapters read-only: position, title, kind, a video its duration, a file that it was uploaded', async () => {
@@ -393,7 +412,9 @@ test('while the version loads the page shows skeletons shaped like its header an
   await router.push(`/editorial/versions/${versionId}`);
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
-  const { container } = render(CourseVersionPage, { global: { plugins: [router, [VueQueryPlugin, { queryClient }]] } });
+  const { container } = render(CourseVersionPage, {
+    global: { plugins: [router, [VueQueryPlugin, { queryClient }]], provide: { [authKey]: signedInAsEditor } },
+  });
 
   await waitFor(() => expect(container.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThanOrEqual(4));
   expect(screen.queryByRole('heading', { level: 1, name: version.title })).not.toBeInTheDocument();
@@ -406,7 +427,9 @@ async function renderAnswering(response: () => Response) {
   const router = createAppRouter(createMemoryHistory());
   await router.push(`/editorial/versions/${versionId}`);
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(CourseVersionPage, { global: { plugins: [router, [VueQueryPlugin, { queryClient }]] } });
+  render(CourseVersionPage, {
+    global: { plugins: [router, [VueQueryPlugin, { queryClient }]], provide: { [authKey]: signedInAsEditor } },
+  });
 }
 
 test('a version the host does not know says it does not exist', async () => {
@@ -979,7 +1002,9 @@ test.each([['abc'], ['../../me'], [`${versionId}/chapters`]])(
     expect(router.currentRoute.value.params.id).toBe(id);
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
-    render(CourseVersionPage, { global: { plugins: [router, [VueQueryPlugin, { queryClient }]] } });
+    render(CourseVersionPage, {
+      global: { plugins: [router, [VueQueryPlugin, { queryClient }]], provide: { [authKey]: signedInAsEditor } },
+    });
 
     expect(await screen.findByText(t('editorial.version.notFound'))).toBeVisible();
     expect(screen.getByText('Diese Version gibt es nicht.')).toBeVisible();

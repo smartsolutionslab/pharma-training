@@ -8,7 +8,8 @@ namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.EventStore;
 /// and the module's store tells Marten to leave it alone (<see cref="ModuleEventStore"/>). It is built concurrently
 /// (#337): a plain build holds a SHARE lock on <c>mt_events</c> for as long as it reads the table, and appends from the
 /// replicas still running during a rolling deploy would wait for it. A concurrent build that fails leaves an invalid index
-/// of its name behind, which <c>if not exists</c> would keep for good, so a run first drops an invalid one.
+/// of its name behind, which <c>if not exists</c> would keep for good, so a run first drops an invalid one. The lock waits
+/// of both are bounded by the runner's setting <see cref="IndexLockTimeout"/> (#351, #359).
 /// </summary>
 public sealed class SweptEventIndex
 {
@@ -17,8 +18,16 @@ public sealed class SweptEventIndex
         // Query refuses a schema or type that is not a plain SQL identifier; the index is written from the same two.
         _ = UnannouncedEvents.Query(schema, storedType);
 
+        Schema = schema;
         Name = NameOf(storedType);
         CreateStatement = $"create index concurrently if not exists {Name} on {schema}.mt_events (timestamp) where type = '{storedType}'";
+        IsValidQuery = $"""
+            select exists (select 1
+                             from pg_catalog.pg_index i
+                             join pg_catalog.pg_class c on c.oid = i.indexrelid
+                             join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+                            where n.nspname = '{schema}' and c.relname = '{Name}' and i.indisvalid)
+            """;
         IsInvalidQuery = $"""
             select exists (select 1
                              from pg_catalog.pg_index i
@@ -29,6 +38,9 @@ public sealed class SweptEventIndex
         DropStatement = $"drop index concurrently if exists {schema}.{Name}";
     }
 
+    /// <summary>The schema of the module's event store, which holds <c>mt_events</c>.</summary>
+    public string Schema { get; }
+
     public string Name { get; }
 
     /// <summary>
@@ -36,6 +48,9 @@ public sealed class SweptEventIndex
     /// runs outside a transaction, and waits for the transactions that write to <c>mt_events</c> without stopping them.
     /// </summary>
     public string CreateStatement { get; }
+
+    /// <summary>Answers whether an index of this name exists and is valid: a run then neither drops nor builds it.</summary>
+    public string IsValidQuery { get; }
 
     /// <summary>Answers whether an index of this name exists and is invalid, as a concurrent build that failed leaves it.</summary>
     public string IsInvalidQuery { get; }

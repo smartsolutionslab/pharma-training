@@ -531,6 +531,82 @@
         }
       }
     },
+    "/certification/pharmacies/{id}/certificates/export": {
+      "get": {
+        "tags": [
+          "CertificateExportEndpoint"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stream"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/certification/me/certificates": {
       "get": {
         "tags": [
@@ -4394,7 +4470,9 @@
       "EditorialContentReviewDto": {
         "required": [
           "reviewedChapterIds",
-          "hints"
+          "hints",
+          "leftOutChapterIds",
+          "truncatedChapterIds"
         ],
         "type": "object",
         "properties": {
@@ -4409,6 +4487,20 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/EditorialContentHintDto"
+            }
+          },
+          "leftOutChapterIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "truncatedChapterIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
             }
           }
         }
@@ -4557,6 +4649,7 @@
           "type",
           "options",
           "provenance",
+          "origin",
           "review",
           "reviewedBy",
           "reviewedAt",
@@ -4596,6 +4689,9 @@
           "provenance": {
             "$ref": "#/components/schemas/EditorialQuestionProvenance"
           },
+          "origin": {
+            "$ref": "#/components/schemas/EditorialQuestionOrigin"
+          },
           "review": {
             "$ref": "#/components/schemas/EditorialQuestionReview"
           },
@@ -4627,6 +4723,13 @@
             "format": "date-time"
           }
         }
+      },
+      "EditorialQuestionOrigin": {
+        "enum": [
+          "AiDraft",
+          "Copied",
+          "HandWritten"
+        ]
       },
       "EditorialQuestionProvenance": {
         "enum": [
@@ -5973,6 +6076,10 @@
           }
         }
       },
+      "Stream": {
+        "type": "string",
+        "format": "binary"
+      },
       "Unit": {
         "type": "object"
       }
@@ -5987,6 +6094,9 @@
     },
     {
       "name": "CertificateDocumentEndpoints"
+    },
+    {
+      "name": "CertificateExportEndpoint"
     },
     {
       "name": "MyCertificatesEndpoints"

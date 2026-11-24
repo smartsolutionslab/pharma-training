@@ -84,7 +84,7 @@ export const en: MessageSchema = {
       },
     },
     certification: {
-      title: 'Certificates',
+      title: 'My certificates',
       entries: {
         verify: { title: 'Verify a certificate' },
       },
@@ -133,6 +133,24 @@ export const en: MessageSchema = {
       loadFailed: 'The certificate could not be verified.',
     },
     retry: 'Try again',
+    mine: {
+      columns: {
+        course: 'Course',
+        issuedOn: 'Issued on',
+        validUntil: 'Valid until',
+        validity: 'Status',
+        document: 'PDF',
+      },
+      documentReady: 'Ready',
+      documentPending: 'Being prepared',
+      open: 'Open PDF',
+      openFor: 'Open PDF for {course}',
+      documentNotReady: 'The certificate for {course} is still being prepared. Please try again in a moment.',
+      documentFailed: 'The PDF for {course} could not be opened.',
+      empty: 'You have no certificates yet.',
+      toCourses: 'Go to my courses',
+      loadFailed: 'Your certificates could not be loaded.',
+    },
   },
   compliance: {
     matrix: {
@@ -211,6 +229,8 @@ export const en: MessageSchema = {
       submit: 'Assign',
       retry: 'Try again',
       changed: 'The assignments have changed in the meantime. Check the details and assign again.',
+      concurrentSave:
+        'Another change to the assignments was saved at the same moment; nothing was assigned. Please assign again.',
       failed: 'The course could not be assigned. Please try again.',
       course: {
         title: 'Choose a course',
@@ -443,6 +463,18 @@ export const en: MessageSchema = {
         InReview: 'No versions in review.',
         Published: 'No published versions.',
       },
+    },
+    returns: {
+      title: 'Returns',
+      columns: {
+        returnedAt: 'Returned on',
+        returnedBy: 'Returned by',
+        reason: 'Reason',
+      },
+      empty: 'This version has never been returned to draft.',
+      loadFailed: 'The returns of this version could not be loaded.',
+      byYou: 'You',
+      byAnotherEditor: 'Another person in the editorial team',
     },
     course: {
       new: 'New course',
@@ -711,6 +743,8 @@ export const en: MessageSchema = {
         reasonRequired: 'Please give a reason.',
         reasonTooLong: 'The reason can be at most {max} characters long.',
         reasonInvalid: 'The reason contains control or format characters that are not allowed.',
+        reasonRefused:
+          'The reason must be 1 to {max} characters long without leading or trailing spaces, and may contain no control or format characters other than line breaks and tabs.',
       },
       errors: {
         notADraft: 'Only a draft can be submitted.',
@@ -961,12 +995,17 @@ export const en: MessageSchema = {
       'sample-not-found': 'This sample does not exist.',
     },
     certification: {
+      'capability-missing': 'Your role in this pharmacy does not allow this.',
       'certificate-not-found': 'This certificate does not exist, or it is not yours.',
       'certificate-not-verifiable':
         'There is no certificate for this code. Check that you opened the complete link from the QR code.',
       'document-not-ready': "The certificate's PDF is being created. Try again in a moment.",
+      'export-too-large': 'An export holds at most 2000 certificates. Choose a shorter period.',
       'identity-incomplete': 'Your sign-in names no person. Please sign in again.',
+      'invalid-export-period':
+        'Choose a start and an end date; the end may not be before the start and at most five years after it.',
       'invalid-sample-name': "A sample's name has 1 to {max} characters and must not be blank.",
+      'pharmacy-not-found': 'You are not a member of this pharmacy, or it does not exist.',
       'sample-not-found': 'This sample does not exist.',
       'verification-limit-reached': 'Too many checks are being requested right now. Try again in a minute.',
     },
@@ -975,6 +1014,8 @@ export const en: MessageSchema = {
       'assignment-not-active': 'The assignment is no longer open.',
       'assignment-not-found': 'This assignment no longer exists in this pharmacy.',
       'assignments-changed': 'The assignments were changed in the meantime. Check their current state and try again.',
+      'concurrent-save':
+        'Another change to the assignments was saved at the same moment; nothing was saved. Try again.',
       'capability-missing': 'Your role in this pharmacy does not allow this.',
       'certificate-predates-assignment': 'A certificate from before the assignment does not fulfil it.',
       'course-missing': 'Choose a course.',
@@ -1004,6 +1045,7 @@ export const en: MessageSchema = {
         "The content does not match the chapter's kind: a text chapter has text, a PDF chapter a PDF file, a video chapter a video with its duration.",
       'chapter-not-found': 'This chapter no longer exists in the version.',
       'course-version-changed': 'The version has changed in the meantime. Reload it and repeat the change.',
+      'concurrent-save': 'Another change to the version was saved at the same moment; nothing was saved. Try again.',
       'course-version-not-found': 'This version no longer exists.',
       'file-in-use': 'This file already belongs to another chapter of the version.',
       'four-eyes':
@@ -1035,7 +1077,7 @@ export const en: MessageSchema = {
       'no-chapters': 'The version needs at least one chapter.',
       'no-text-chapters':
         'The AI drafts only from chapters with text: text chapters and PDF chapters whose text can be read. Add such a chapter first.',
-      'no-text-chapters-to-review': 'The version has no text chapter for the AI to review.',
+      'no-text-chapters-to-review': 'The version has no chapter with text for the AI to review.',
       'not-a-draft': 'Only a draft can be edited.',
       'not-in-review': 'The version is no longer in review.',
       'not-published': 'The version is not published.',
@@ -1104,6 +1146,7 @@ export const en: MessageSchema = {
       'no-open-invitation': 'This invitation is no longer open: it was accepted or revoked.',
       'person-already-member': 'You are already a member of this pharmacy.',
       'pharmacy-changed': 'The pharmacy was changed at the same time. Check its current state and try again.',
+      'concurrent-save': 'Another change to the pharmacy was saved at the same moment; nothing was saved. Try again.',
       'pharmacy-not-found': 'You are no longer a member of this pharmacy.',
       'recipient-mailed-recently':
         'An invitation was only just sent to this address. You can invite it again after a short wait.',

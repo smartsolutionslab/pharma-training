@@ -25,6 +25,14 @@ public sealed record Timestamp : IValueObject<DateTimeOffset>, IComparable<Times
     public CalendarDate DayInGermany() =>
         CalendarDate.From(DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(Value, GermanTime.Value).DateTime));
 
+    /// <summary>The instant a calendar day begins in Germany: its midnight in German local time, as UTC.</summary>
+    public static Timestamp StartOfDayInGermany(CalendarDate day)
+    {
+        Ensure.That(day).IsNotNull();
+        var midnight = day.Value.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified);
+        return new Timestamp(new DateTimeOffset(midnight, GermanTime.Value.GetUtcOffset(midnight)).ToUniversalTime());
+    }
+
     public int CompareTo(Timestamp? other) => other is null ? 1 : Value.CompareTo(other.Value);
 
     public override string ToString() => Value.ToString("O", System.Globalization.CultureInfo.InvariantCulture);

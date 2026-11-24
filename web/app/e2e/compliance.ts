@@ -189,16 +189,24 @@ export async function signInTo(page: Page, pharmacy: string) {
   const region = page.getByRole('region', { name: 'Apotheke', exact: true });
   const switcher = region.getByRole('button', { name: /^Apotheke( wählen$|: )/ });
   const name = region.getByText(pharmacy, { exact: true });
-  await expect(switcher.or(name)).toBeVisible();
-  if (await switcher.isVisible()) {
+  const chosen = region.getByRole('button', { name: `Apotheke: ${pharmacy}`, exact: true });
+  const only = region.getByRole('paragraph').filter({ has: page.getByText(pharmacy, { exact: true }) });
+  // Any switcher but this pharmacy's, by its whole name: a name that holds this one ("… Nord") is another.
+  const escaped = pharmacy.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const another = region.getByRole('button', { name: new RegExp(`^Apotheke( wählen|: (?!${escaped}$).+)$`) });
+  // A settled state before deciding, as the MVP 1 spec's choose(): the pharmacy is current (chosen on the switcher, or the
+  // only one), or the switcher shows another (or none). While the memberships load, or a list read before the pharmacy
+  // was added names only another, neither shows and the wait goes on; either one stays until the test chooses.
+  await expect(chosen.or(only).or(another)).toBeVisible();
+  if (await another.isVisible()) {
     await switcher.click();
     await page
       .getByRole('menu', { name: 'Apotheken' })
       .getByRole('menuitemradio', { name: new RegExp(`^${pharmacy}`) })
       .click();
-    await expect(region.getByRole('button', { name: `Apotheke: ${pharmacy}` })).toBeVisible();
+    await expect(chosen).toBeVisible();
   }
-  await expect(name).toBeVisible();
+  await expect(name.first()).toBeVisible();
 }
 
 /** A day the given number of days from today, in the browser's (and the test's) local time, as yyyy-mm-dd. */
@@ -213,6 +221,14 @@ export function daysAhead(days: number) {
 export function germanDate(day: string) {
   const [year, month, date] = day.split('-');
   return `${date ?? ''}.${month ?? ''}.${year ?? ''}`;
+}
+
+/** A day (yyyy-mm-dd) as the app writes it in full in German, as the assignment wizard's review does: 24. Dezember 2026. */
+export function germanLongDate(day: string) {
+  const [year, month, date] = day.split('-').map(Number);
+  return new Intl.DateTimeFormat('de-DE', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(
+    new Date(Date.UTC(year ?? 0, (month ?? 1) - 1, date ?? 1)),
+  );
 }
 
 /** One of the developer's active assignments in a pharmacy, as Compliance answers GET /compliance/me/assignments. */

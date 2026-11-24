@@ -2,6 +2,7 @@ import { maximumLearners, maximumYearsAhead } from '@/modules/compliance/assignS
 import { chapterTitleMaxLength, maxDurationSeconds, maxTextLength } from '@/modules/editorial/chapterSchema';
 import { courseTitleMaxLength } from '@/modules/editorial/courseTitle';
 import { questionBounds } from '@/modules/editorial/questionSchema';
+import { returnReasonMaxLength } from '@/modules/editorial/returnReasonSchema';
 import { blueprintBounds } from '@/modules/editorial/testBlueprintSchema';
 
 // The limits an error text names. Where a form holds a value to a bound of its own, the bound comes from that form's
@@ -32,6 +33,8 @@ export const errorValues: Partial<Record<string, Readonly<Record<string, number>
   'editorial.invalid-passing-score': blueprintBounds.passingScorePercent,
   'editorial.invalid-question-count': blueprintBounds.questions,
   'editorial.invalid-question-text': { max: questionBounds.text.max },
+  // The course version page says this refusal with its own returnForm.reasonRefused, which names the longest reason.
+  'editorial.invalid-return-reason': { max: returnReasonMaxLength },
   'editorial.invalid-validity': blueprintBounds.validityMonths,
   'editorial.invalid-video-duration': { hours: maxDurationSeconds / 3600 },
   'editorial.too-few-options': { min: questionBounds.options.min },

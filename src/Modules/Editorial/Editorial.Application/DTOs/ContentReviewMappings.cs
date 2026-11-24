@@ -8,6 +8,10 @@ public static class ContentReviewMappings
     public static EditorialContentReviewDto ToDto(this ContentReview review)
     {
         Ensure.That(review).IsNotNull();
-        return new EditorialContentReviewDto([.. review.Reviewed.Select(chapter => chapter.Value)], [.. review.Hints.Select(hint => hint.ToDto())]);
+        return new EditorialContentReviewDto(
+            [.. review.Reviewed.Select(chapter => chapter.Value)],
+            [.. review.Hints.Select(hint => hint.ToDto())],
+            [.. review.LeftOutChapters.Select(chapter => chapter.Value)],
+            [.. review.TruncatedChapters.Select(chapter => chapter.Value)]);
     }
 }

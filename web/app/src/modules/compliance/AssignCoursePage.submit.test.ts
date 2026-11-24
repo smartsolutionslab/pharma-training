@@ -418,6 +418,28 @@ describe('a refusal of the whole request', () => {
     expect(postsOf(host)[1]?.body).toEqual(postsOf(host)[0]?.body);
   });
 
+  test('409 compliance.concurrent-save says to assign again on the review, which keeps the selection to send again', async () => {
+    const [status, code] = [409, 'compliance.concurrent-save'];
+    const user = userEvent.setup();
+    state.assignment = async () => problem(status, code, 'Gleichzeitig gespeichert.');
+    await renderAssignPage();
+    await toReview(user, { members: [anna, ben] });
+
+    await user.click(submitButton());
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(t('compliance.assign.concurrentSave'));
+    expect(screen.getByRole('heading', { level: 2, name: t('compliance.assign.review.title') })).toBeInTheDocument();
+    expect(screen.getByText(anna.name, { exact: false })).toBeInTheDocument();
+    expect(screen.getByText(ben.name, { exact: false })).toBeInTheDocument();
+    await waitFor(() => expect(submitButton()).toBeEnabled());
+
+    state.assignment = hostState().assignment;
+    await user.click(submitButton());
+    await stepHeading('compliance.assign.result.title');
+    expect(postsOf(host)).toHaveLength(2);
+    expect(postsOf(host)[1]?.body).toEqual(postsOf(host)[0]?.body);
+  });
+
   test.each([
     ['a failure of the host', () => new Response('', { status: 500 })],
     ['a request too large', () => new Response('', { status: 413 })],
