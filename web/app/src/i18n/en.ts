@@ -863,8 +863,11 @@ export const en: MessageSchema = {
       'sample-not-found': 'This sample does not exist.',
     },
     certification: {
+      'certificate-not-found': 'This certificate does not exist, or it is not yours.',
       'certificate-not-verifiable':
         'There is no certificate for this code. Check that you opened the complete link from the QR code.',
+      'document-not-ready': "The certificate's PDF is being created. Try again in a moment.",
+      'identity-incomplete': 'Your sign-in names no person. Please sign in again.',
       'invalid-sample-name': "A sample's name has 1 to {max} characters and must not be blank.",
       'sample-not-found': 'This sample does not exist.',
       'verification-limit-reached': 'Too many checks are being requested right now. Try again in a minute.',
