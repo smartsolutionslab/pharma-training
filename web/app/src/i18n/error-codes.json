@@ -5,14 +5,59 @@
     "message": "Something with that name or key already exists."
   },
   {
+    "code": "assessment.examination-changed",
+    "status": 409,
+    "message": "The examination changed in the meantime; try again."
+  },
+  {
+    "code": "assessment.examination-not-found",
+    "status": 404,
+    "message": "There is no such examination of yours."
+  },
+  {
+    "code": "assessment.examination-not-unlocked",
+    "status": 409,
+    "message": "The test is not unlocked at the moment."
+  },
+  {
+    "code": "assessment.identity-incomplete",
+    "status": 403,
+    "message": "The access token names no person (its subject is missing or no Guid)."
+  },
+  {
     "code": "assessment.invalid-sample-name",
     "status": 400,
     "message": "A sample's name is 1 to 100 characters and not blank."
   },
   {
+    "code": "assessment.no-open-attempt",
+    "status": 409,
+    "message": "No test attempt is running at the moment."
+  },
+  {
+    "code": "assessment.option-not-in-question",
+    "status": 422,
+    "message": "The option is not one of the question's options."
+  },
+  {
+    "code": "assessment.question-not-in-attempt",
+    "status": 404,
+    "message": "This question does not belong to this attempt."
+  },
+  {
     "code": "assessment.sample-not-found",
     "status": 404,
     "message": "There is no such sample."
+  },
+  {
+    "code": "assessment.single-choice-takes-one-option",
+    "status": 422,
+    "message": "The question is single choice: choose exactly one option."
+  },
+  {
+    "code": "assessment.test-definition-missing",
+    "status": 409,
+    "message": "The test of this course version has not arrived yet; try again later."
   },
   {
     "code": "catalog.course-version-not-found",

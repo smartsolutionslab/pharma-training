@@ -11,16 +11,13 @@ public class ErrorCodesExportTests
 
     /// <summary>
     /// Domain codes no endpoint answers yet, so no <c>*Failures</c> method gives them a status and the export leaves them
-    /// out; they are still bound by the rules on their messages. Assessment's four examination errors wait for #271,
-    /// which maps them; <c>organisation.invitation-link-limit-reached</c> is only thrown inside a message consumer. Take
-    /// a code off this list once an endpoint answers it.
+    /// out; they are still bound by the rules on their messages. <c>assessment.definition-of-another-version</c> is a bug
+    /// Assessment throws rather than answers (#271); <c>organisation.invitation-link-limit-reached</c> is only thrown
+    /// inside a message consumer. Take a code off this list once an endpoint answers it.
     /// </summary>
     private static readonly HashSet<string> NoEndpointAnswers = new(
         [
             "assessment.definition-of-another-version",
-            "assessment.examination-not-unlocked",
-            "assessment.no-open-attempt",
-            "assessment.question-not-in-attempt",
             "organisation.invitation-link-limit-reached",
         ],
         StringComparer.Ordinal);
