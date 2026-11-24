@@ -1,6 +1,6 @@
 # 0025: Learning notes each exhaustion in the session's stream
 
-**Status:** Accepted (#42)
+**Status:** Accepted (#42); a consequence amended for #307
 
 ## Context
 
@@ -34,6 +34,6 @@
 
 - `ExhaustionNoted` and `ExhaustionNotice` are stored forever and never renamed.
 - A session's stream grows by one note per exhaustion, at most one per cycle.
-- An `AttemptsExhaustedV1` that Assessment re-published under a *new* identifier would count as a new lock. Assessment's outbox does not do that; should it ever republish (as Editorial does, ADR 0019), it must keep the identifier, or this decision is revisited.
+- An `AttemptsExhaustedV1` that Assessment re-published under a *new* identifier would count as a new lock. Assessment's outbox does not do that. Its sweep of locks (#307, ADR 0016) does announce a lock under a new identifier, but only one whose announcement never left: the `announced_events` marker is committed with each announcement, and the sweep skips every lock that has one, so a marker-guarded re-announce never duplicates, and Learning sees exactly one identifier per lock. Any other republish (as Editorial does, ADR 0019) must keep the identifier, or this decision is revisited.
 - Outcomes for unknown sessions dead-letter. An erasure of sessions (#115) must account for them.
 - The view (`GET /learning/sessions/{id}`) shows no notices; the projection's step for `ExhaustionNoted` changes nothing.
