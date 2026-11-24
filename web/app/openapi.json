@@ -4394,7 +4394,9 @@
       "EditorialContentReviewDto": {
         "required": [
           "reviewedChapterIds",
-          "hints"
+          "hints",
+          "leftOutChapterIds",
+          "truncatedChapterIds"
         ],
         "type": "object",
         "properties": {
@@ -4409,6 +4411,20 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/EditorialContentHintDto"
+            }
+          },
+          "leftOutChapterIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "truncatedChapterIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
             }
           }
         }
