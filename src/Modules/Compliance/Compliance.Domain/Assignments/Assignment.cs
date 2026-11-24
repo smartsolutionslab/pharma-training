@@ -21,7 +21,8 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
         DueDate dueDate,
         RecurrenceInterval? recurrence,
         PersonId assignedBy,
-        Timestamp assignedAt)
+        Timestamp assignedAt,
+        AssignmentId? follows)
         : this(id)
     {
         Learner = learner;
@@ -31,6 +32,7 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
         Recurrence = recurrence;
         AssignedBy = assignedBy;
         AssignedAt = assignedAt;
+        Follows = follows;
         Status = AssignmentStatus.Open;
         TestAccess = TestAccess.Available;
     }
@@ -68,6 +70,9 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
 
     public CertificateId? Certificate { get; private set; }
 
+    /// <summary>The assignment this one follows up, when it was created by <see cref="FollowUp"/>; null for one assigned by hand.</summary>
+    public AssignmentId? Follows { get; }
+
     /// <summary>A read-only view: a cast does not lead back to the list behind it.</summary>
     public IReadOnlyList<AssignmentChange> History => history.AsReadOnly();
 
@@ -100,7 +105,7 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
             return Failure(AssignmentErrors.DueDateInThePast(dueDate));
         }
 
-        var assignment = new Assignment(id, learner, pharmacy, course, dueDate, recurrence, assignedBy, now);
+        var assignment = new Assignment(id, learner, pharmacy, course, dueDate, recurrence, assignedBy, now, null);
         assignment.Raise(new CourseAssigned(id, learner, pharmacy, course, dueDate));
         return Success(assignment);
     }
@@ -219,7 +224,9 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
 
     /// <summary>
     /// A certificate for this course was issued (CertificateIssued). Allowed from Open too, because the certificate
-    /// can overtake LearningSessionStarted on the bus. The same certificate twice is a no-op.
+    /// can overtake LearningSessionStarted on the bus. The same certificate twice is a no-op. A follow-up refuses a
+    /// certificate issued at or before it was assigned, so the certificate that completed its predecessor never completes
+    /// it, whatever the two services' clocks say (docs/adr/0026).
     /// </summary>
     public Result<Unit, AssignmentError> Complete(CertificateId certificate, Timestamp issuedAt)
     {
@@ -236,7 +243,7 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
             return Failure(AssignmentErrors.NotActive(Id, Status));
         }
 
-        if (issuedAt < AssignedAt)
+        if (Predates(issuedAt))
         {
             return Failure(AssignmentErrors.CertificatePredatesAssignment(Id, certificate));
         }
@@ -251,7 +258,8 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
 
     /// <summary>
     /// The next assignment of a recurring one: due one interval after completion, which is the day the certificate
-    /// runs out. Called by the reaction to AssignmentCompleted.
+    /// runs out. It records the assignment it follows and is never assigned before the completion it follows. Called by
+    /// the consumer of the follow-up request (docs/adr/0026).
     /// </summary>
     public Option<Assignment> FollowUp(AssignmentId id, Timestamp now)
     {
@@ -264,7 +272,8 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
         }
 
         var dueDate = DueDate.On(CompletedAt.DayInGermany().Plus(Recurrence));
-        var next = new Assignment(id, Learner, Pharmacy, Course, dueDate, Recurrence, AssignedBy, now);
+        var assignedAt = now > CompletedAt ? now : CompletedAt;
+        var next = new Assignment(id, Learner, Pharmacy, Course, dueDate, Recurrence, AssignedBy, assignedAt, Id);
         next.Raise(new CourseAssigned(id, Learner, Pharmacy, Course, dueDate));
         return Option<Assignment>.Some(next);
     }
@@ -285,4 +294,6 @@ public sealed class Assignment : AggregateRoot<AssignmentId>
             _ => AssignmentState.Open,
         };
     }
+
+    private bool Predates(Timestamp issuedAt) => Follows is null ? issuedAt < AssignedAt : issuedAt <= AssignedAt;
 }

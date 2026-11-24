@@ -5,6 +5,25 @@
     "version": "1.0.0"
   },
   "paths": {
+    "/config.json": {
+      "get": {
+        "tags": [
+          "Host"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FrontendConfiguration"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/me": {
       "get": {
         "tags": [
@@ -4490,6 +4509,21 @@
         "properties": {
           "kind": {
             "$ref": "#/components/schemas/EditorialUploadKind"
+          }
+        }
+      },
+      "FrontendConfiguration": {
+        "required": [
+          "oidcAuthority",
+          "clientId"
+        ],
+        "type": "object",
+        "properties": {
+          "oidcAuthority": {
+            "type": "string"
+          },
+          "clientId": {
+            "type": "string"
           }
         }
       },

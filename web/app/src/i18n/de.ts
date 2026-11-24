@@ -65,6 +65,7 @@ export const de = {
     signInFailed: 'Anmeldung fehlgeschlagen: {message}',
     signingIn: 'Anmeldung läuft…',
     signingOut: 'Abmeldung läuft…',
+    configurationUnavailable: 'Die Anwendung kann gerade nicht geladen werden. Bitte versuchen Sie es später erneut.',
   },
   theme: {
     label: 'Farbschema',
