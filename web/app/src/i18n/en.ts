@@ -1075,7 +1075,7 @@ export const en: MessageSchema = {
       'no-chapters': 'The version needs at least one chapter.',
       'no-text-chapters':
         'The AI drafts only from chapters with text: text chapters and PDF chapters whose text can be read. Add such a chapter first.',
-      'no-text-chapters-to-review': 'The version has no text chapter for the AI to review.',
+      'no-text-chapters-to-review': 'The version has no chapter with text for the AI to review.',
       'not-a-draft': 'Only a draft can be edited.',
       'not-in-review': 'The version is no longer in review.',
       'not-published': 'The version is not published.',

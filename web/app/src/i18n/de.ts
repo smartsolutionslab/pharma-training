@@ -1107,7 +1107,7 @@ export const de = {
       'no-chapters': 'Die Version braucht mindestens ein Kapitel.',
       'no-text-chapters':
         'Die KI entwirft nur aus Kapiteln mit Text: aus Textkapiteln und aus PDF-Kapiteln, deren Text sich lesen lässt. Legen Sie zuerst ein solches Kapitel an.',
-      'no-text-chapters-to-review': 'Die Version hat kein Textkapitel, das die KI prüfen könnte.',
+      'no-text-chapters-to-review': 'Die Version hat kein Kapitel mit Text, das die KI prüfen könnte.',
       'not-a-draft': 'Nur ein Entwurf kann bearbeitet werden.',
       'not-in-review': 'Die Version ist nicht mehr in Prüfung.',
       'not-published': 'Die Version ist nicht veröffentlicht.',

@@ -48,6 +48,21 @@ public class ContentReviewerReviewTests
         model.Requests.ShouldHaveSingleItem();
     }
 
+    [Fact]
+    public async Task Review_of_a_pdf_only_version_maps_hints_onto_its_pdf_chapters_and_names_the_scan_it_left_out()
+    {
+        var version = TestDrafting.TestDraftVersions.WithChapters(3, "PNP", out var ids);
+        using var model = new FakeChatClient(Answer(Hint(2, "Contradiction", "„6 °C“ widerspricht „PDF-Kapitel 1“.")));
+
+        var result = await ContentReviewer.ReviewAsync(model, version, TestContext.Current.CancellationToken);
+
+        result.IsSuccess.ShouldBeTrue(result.IsFailure ? result.Error.Code : string.Empty);
+        result.Value.Reviewed.ShouldBe([ids[0], ids[2]]);
+        result.Value.Hints.ShouldBe([new ContentHint(ids[2], ContentHintKind.Contradiction, "„6 °C“ widerspricht „PDF-Kapitel 1“.")]);
+        result.Value.LeftOutChapters.ShouldBe([ids[1]]);
+        result.Value.TruncatedChapters.ShouldBeEmpty();
+    }
+
     [Theory]
     [InlineData("Alles gut.", nameof(ContentReviewDefect.Unreadable))]
     [InlineData("""{"hints":[{"chapter":3,"kind":"Gap","text":"Schritt 3 fehlt."}]}""", nameof(ContentReviewDefect.UnknownChapter))]
