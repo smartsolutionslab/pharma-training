@@ -23,9 +23,10 @@ public class LearningCourseVersionLifecycleTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var editor = await aspire.CreateHostClientAsync("editor");
+        using var publisher = await aspire.CreateHostClientAsync(Publisher);
         using var learner = await aspire.CreateHostClientAsync("employee-a");
         await MemberAsync(aspire, SubjectOf(learner), cancellationToken);
-        var v1 = await PublishedAsync(editor, cancellationToken);
+        var v1 = await PublishedAsync(editor, publisher, cancellationToken);
         await WaitUntilHeldAsync(aspire, v1.Id, cancellationToken);
         using var started = await StartAsync(learner, v1.Id, cancellationToken);
         started.StatusCode.ShouldBe(HttpStatusCode.Created, await started.Content.ReadAsStringAsync(cancellationToken));
@@ -61,9 +62,10 @@ public class LearningCourseVersionLifecycleTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var editor = await aspire.CreateHostClientAsync("editor");
+        using var publisher = await aspire.CreateHostClientAsync(Publisher);
         using var learner = await aspire.CreateHostClientAsync("employee-a");
         await MemberAsync(aspire, SubjectOf(learner), cancellationToken);
-        var v1 = await PublishedAsync(editor, cancellationToken);
+        var v1 = await PublishedAsync(editor, publisher, cancellationToken);
         await WaitUntilHeldAsync(aspire, v1.Id, cancellationToken);
         using var started = await StartAsync(learner, v1.Id, cancellationToken);
         started.StatusCode.ShouldBe(HttpStatusCode.Created, await started.Content.ReadAsStringAsync(cancellationToken));
@@ -71,7 +73,7 @@ public class LearningCourseVersionLifecycleTests(AspireFixture aspire)
 
         var v2 = await DraftNextAsync(editor, v1.Id, cancellationToken);
         await SubmitAsync(editor, v2, cancellationToken);
-        await PublishAsync(editor, v2, cancellationToken);
+        await PublishAsync(publisher, v2, cancellationToken);
         (await ReadAsync(editor, v1.Id, cancellationToken)).Status.ShouldBe("Superseded");
         await WaitUntilHeldAsync(aspire, v2, cancellationToken);
 
@@ -99,11 +101,12 @@ public class LearningCourseVersionLifecycleTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var editor = await aspire.CreateHostClientAsync("editor");
+        using var publisher = await aspire.CreateHostClientAsync(Publisher);
         using var learner = await aspire.CreateHostClientAsync("employee-a");
         using var latecomer = await aspire.CreateHostClientAsync("employee-b");
         await MemberAsync(aspire, SubjectOf(learner), cancellationToken);
         await MemberAsync(aspire, SubjectOf(latecomer), cancellationToken);
-        var v1 = await PublishedAsync(editor, cancellationToken);
+        var v1 = await PublishedAsync(editor, publisher, cancellationToken);
         await WaitUntilHeldAsync(aspire, v1.Id, cancellationToken);
         using var started = await StartAsync(learner, v1.Id, cancellationToken);
         started.StatusCode.ShouldBe(HttpStatusCode.Created, await started.Content.ReadAsStringAsync(cancellationToken));
@@ -138,14 +141,15 @@ public class LearningCourseVersionLifecycleTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var editor = await aspire.CreateHostClientAsync("editor");
+        using var publisher = await aspire.CreateHostClientAsync(Publisher);
         using var latecomer = await aspire.CreateHostClientAsync("employee-b");
         await MemberAsync(aspire, SubjectOf(latecomer), cancellationToken);
-        var v1 = await PublishedAsync(editor, cancellationToken);
+        var v1 = await PublishedAsync(editor, publisher, cancellationToken);
         await WaitUntilHeldAsync(aspire, v1.Id, cancellationToken);
 
         var v2 = await DraftNextAsync(editor, v1.Id, cancellationToken);
         await SubmitAsync(editor, v2, cancellationToken);
-        await PublishAsync(editor, v2, cancellationToken);
+        await PublishAsync(publisher, v2, cancellationToken);
         (await ReadAsync(editor, v1.Id, cancellationToken)).Status.ShouldBe("Superseded");
         await WaitUntilHeldAsync(aspire, v2, cancellationToken);
 

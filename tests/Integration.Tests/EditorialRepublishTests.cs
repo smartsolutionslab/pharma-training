@@ -36,8 +36,9 @@ public class EditorialRepublishTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await aspire.CreateHostClientAsync("editor");
-        var first = await PublishedAsync(client, cancellationToken);
-        var second = await SupersedeAsync(client, first.Id, cancellationToken);
+        using var publisher = await aspire.CreateHostClientAsync(Publisher);
+        var first = await PublishedAsync(client, publisher, cancellationToken);
+        var second = await SupersedeAsync(client, publisher, first.Id, cancellationToken);
         await RetireAsync(client, first.Id, cancellationToken);
 
         await using var connection = await Broker.ConnectAsync(aspire, cancellationToken);
@@ -74,7 +75,7 @@ public class EditorialRepublishTests(AspireFixture aspire)
         QuestionIdsOf(secondTest).ShouldBe(second.Questions);
 
         // A version retired after the republish is a marker: its retirement reaches the queue after every republished one.
-        var marker = await PublishedAsync(client, cancellationToken);
+        var marker = await PublishedAsync(client, publisher, cancellationToken);
         await RetireAsync(client, marker.Id, cancellationToken);
         var retirements = await Broker.ReceiveUntilAsync<JsonElement>(channel, retiredQueue, received => VersionOf(received) == marker.Id, cancellationToken);
         retirements.Where(received => VersionOf(received) == first.Id).ShouldHaveSingleItem().GetProperty("courseId").GetGuid().ShouldBe(first.CourseId);
@@ -90,17 +91,18 @@ public class EditorialRepublishTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await aspire.CreateHostClientAsync("editor");
+        using var publisher = await aspire.CreateHostClientAsync(Publisher);
         await using var connection = await Broker.ConnectAsync(aspire, cancellationToken);
         await using var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
 
         // A version published first, so Editorial has sent a test definition and Wolverine has declared its exchange.
-        await PublishedAsync(client, cancellationToken);
+        await PublishedAsync(client, publisher, cancellationToken);
         await Broker.WaitForExchangeAsync(connection, CourseVersionPublishedExchange, cancellationToken);
         await Broker.WaitForExchangeAsync(connection, TestDefinitionPublishedExchange, cancellationToken);
         var originalCourseQueue = await Broker.BindQueueAsync(channel, CourseVersionPublishedExchange, cancellationToken);
         var originalTestQueue = await Broker.BindQueueAsync(channel, TestDefinitionPublishedExchange, cancellationToken);
 
-        var published = await PublishedAsync(client, cancellationToken);
+        var published = await PublishedAsync(client, publisher, cancellationToken);
         var originalCourse = await Broker.ReceiveAsync<JsonElement>(channel, originalCourseQueue, received => VersionOf(received) == published.Id, cancellationToken);
         var originalTest = await Broker.ReceiveAsync<JsonElement>(channel, originalTestQueue, received => VersionOf(received) == published.Id, cancellationToken);
         var republishedCourseQueue = await Broker.BindQueueAsync(channel, CourseVersionPublishedExchange, cancellationToken);
@@ -123,7 +125,8 @@ public class EditorialRepublishTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await aspire.CreateHostClientAsync("editor");
-        var published = await PublishedAsync(client, cancellationToken);
+        using var publisher = await aspire.CreateHostClientAsync(Publisher);
+        var published = await PublishedAsync(client, publisher, cancellationToken);
         await RetireAsync(client, published.Id, cancellationToken);
 
         await RepublishAsync(client, cancellationToken);
@@ -168,7 +171,7 @@ public class EditorialRepublishTests(AspireFixture aspire)
     /// Drafts, changes and publishes the next version of a published one, which supersedes it. Its chapter is rewritten,
     /// which sends its question back for approval, so the editor approves it again before publishing.
     /// </summary>
-    private static async Task<NextVersion> SupersedeAsync(HttpClient client, Guid id, CancellationToken cancellationToken)
+    private static async Task<NextVersion> SupersedeAsync(HttpClient client, HttpClient publisher, Guid id, CancellationToken cancellationToken)
     {
         var nextId = await DraftNextAsync(client, id, cancellationToken);
         var drafted = await ContentAsync(client, nextId, cancellationToken);
@@ -180,7 +183,7 @@ public class EditorialRepublishTests(AspireFixture aspire)
 
         await SubmitAsync(client, nextId, cancellationToken);
         await ApproveAllAsync(client, nextId, cancellationToken);
-        await PublishAsync(client, nextId, cancellationToken);
+        await PublishAsync(publisher, nextId, cancellationToken);
         return await ContentAsync(client, nextId, cancellationToken);
     }
 

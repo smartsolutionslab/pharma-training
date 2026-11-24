@@ -17,7 +17,8 @@ public class EditorialNextVersionTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await aspire.CreateHostClientAsync("editor");
-        var first = await PublishedAsync(client, cancellationToken);
+        using var publisher = await aspire.CreateHostClientAsync(Publisher);
+        var first = await PublishedAsync(client, publisher, cancellationToken);
 
         using var response = await client.PostAsync(NextOf(first.Id), null, cancellationToken);
 
@@ -44,7 +45,8 @@ public class EditorialNextVersionTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await aspire.CreateHostClientAsync("editor");
-        var first = await PublishedAsync(client, cancellationToken);
+        using var publisher = await aspire.CreateHostClientAsync(Publisher);
+        var first = await PublishedAsync(client, publisher, cancellationToken);
         var id = await DraftNextAsync(client, first.Id, cancellationToken);
         var copied = await ReadContentAsync(client, id, cancellationToken);
         var chapter = copied.Chapters.ShouldHaveSingleItem();
@@ -67,7 +69,8 @@ public class EditorialNextVersionTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await aspire.CreateHostClientAsync("editor");
-        var first = await PublishedAsync(client, cancellationToken);
+        using var publisher = await aspire.CreateHostClientAsync(Publisher);
+        var first = await PublishedAsync(client, publisher, cancellationToken);
         var id = await DraftNextAsync(client, first.Id, cancellationToken);
         var copied = await ReadContentAsync(client, id, cancellationToken);
         copied.Questions.ShouldNotBeEmpty();
@@ -89,7 +92,8 @@ public class EditorialNextVersionTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await aspire.CreateHostClientAsync("editor");
-        var first = await PublishedAsync(client, cancellationToken);
+        using var publisher = await aspire.CreateHostClientAsync(Publisher);
+        var first = await PublishedAsync(client, publisher, cancellationToken);
         await DraftNextAsync(client, first.Id, cancellationToken);
 
         using var refused = await client.PostAsync(NextOf(first.Id), null, cancellationToken);
@@ -106,10 +110,11 @@ public class EditorialNextVersionTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await aspire.CreateHostClientAsync("editor");
+        using var publisher = await aspire.CreateHostClientAsync(Publisher);
         var id = state switch
         {
             "Draft" => await CreateAsync(client, cancellationToken),
-            "Retired" => await RetiredAsync(client, cancellationToken),
+            "Retired" => await RetiredAsync(client, publisher, cancellationToken),
             _ => throw new InvalidOperationException($"No version in state {state}."),
         };
 
@@ -144,8 +149,9 @@ public class EditorialNextVersionTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await aspire.CreateHostClientAsync("editor");
+        using var publisher = await aspire.CreateHostClientAsync(Publisher);
         var connectionString = await EditorialDatabase.ConnectionStringAsync(aspire, cancellationToken);
-        var first = await PublishedAsync(client, cancellationToken);
+        var first = await PublishedAsync(client, publisher, cancellationToken);
 
         await using (var gate = await EditorialDatabase.HoldVersionNumberAsync(connectionString, first.CourseId, 2, cancellationToken))
         {
@@ -167,7 +173,8 @@ public class EditorialNextVersionTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await aspire.CreateHostClientAsync("editor");
-        var first = await PublishedAsync(client, cancellationToken);
+        using var publisher = await aspire.CreateHostClientAsync(Publisher);
+        var first = await PublishedAsync(client, publisher, cancellationToken);
 
         var id = await DraftNextAsync(client, first.Id, cancellationToken);
 
@@ -185,7 +192,8 @@ public class EditorialNextVersionTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await aspire.CreateHostClientAsync("editor");
-        var first = await PublishedAsync(client, cancellationToken);
+        using var publisher = await aspire.CreateHostClientAsync(Publisher);
+        var first = await PublishedAsync(client, publisher, cancellationToken);
 
         var id = await DraftNextAsync(client, first.Id, cancellationToken);
 
@@ -206,9 +214,9 @@ public class EditorialNextVersionTests(AspireFixture aspire)
         return await created.Content.ReadFromJsonAsync<Guid>(cancellationToken);
     }
 
-    private static async Task<Guid> RetiredAsync(HttpClient client, CancellationToken cancellationToken)
+    private static async Task<Guid> RetiredAsync(HttpClient client, HttpClient publisher, CancellationToken cancellationToken)
     {
-        var published = await PublishedAsync(client, cancellationToken);
+        var published = await PublishedAsync(client, publisher, cancellationToken);
         using var retired = await StepAsync(client, published.Id, "retire", cancellationToken);
         retired.StatusCode.ShouldBe(HttpStatusCode.OK, $"POST …/{published.Id}/retire answered {(int)retired.StatusCode}.");
         return published.Id;
