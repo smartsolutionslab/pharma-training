@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toTypedSchema } from '@/forms/toTypedSchema';
 import type { MessageKey } from '@/i18n';
+import { courseTitleMaxLength } from './courseTitle';
 
 interface CreateCourseFormProps {
   /** Starts the course; resolves to whether it was started. */
@@ -27,7 +28,7 @@ const courseSchema = z.object({
     .string()
     .trim()
     .min(1, { error: 'editorial.course.form.titleRequired' satisfies MessageKey })
-    .max(150, { error: 'editorial.course.form.titleTooLong' satisfies MessageKey })
+    .max(courseTitleMaxLength, { error: 'editorial.course.form.titleTooLong' satisfies MessageKey })
     .refine((title) => !title.includes('\u0000'), { error: 'editorial.course.form.titleHasNul' satisfies MessageKey }),
 });
 

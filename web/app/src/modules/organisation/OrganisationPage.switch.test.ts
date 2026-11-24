@@ -96,7 +96,7 @@ test('a refused end on one pharmacy is gone once the page shows another', async 
   const { user, store } = await renderOnMarkt();
   await user.click(await endButton(you));
   await user.click(await confirmIn(t('organisation.team.end.confirm')));
-  const message = t('organisation.team.errors.lastManager');
+  const message = t('errors.organisation.last-manager');
   expect(await within(membersSection()).findByRole('alert')).toHaveTextContent(message);
 
   store.choose(ufer.id);
@@ -112,7 +112,7 @@ test('a refused revoke on one pharmacy is gone once the page shows another', asy
   const { user, store } = await renderOnMarkt();
   await user.click(await revokeButton(ben));
   await user.click(await confirmIn(t('organisation.team.revoke.confirm')));
-  const message = t('organisation.team.errors.noOpenInvitation');
+  const message = t('errors.organisation.no-open-invitation');
   expect(await within(invitationsSection()).findByRole('alert')).toHaveTextContent(message);
 
   store.choose(ufer.id);
@@ -140,7 +140,7 @@ test('an end refused only after the page switched to another pharmacy is not sho
   await handled(queryClient, () => expect(notify.failure).toHaveBeenCalled());
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   expect(within(membersSection()).queryByRole('alert')).not.toBeInTheDocument();
-  expect(screen.queryByText(t('organisation.team.errors.lastManager'))).not.toBeInTheDocument();
+  expect(screen.queryByText(t('errors.organisation.last-manager'))).not.toBeInTheDocument();
 });
 
 test('a revoke refused only after the page switched to another pharmacy is not shown there', async () => {
@@ -159,7 +159,7 @@ test('a revoke refused only after the page switched to another pharmacy is not s
   await handled(queryClient, () => expect(notify.failure).toHaveBeenCalled());
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   expect(within(invitationsSection()).queryByRole('alert')).not.toBeInTheDocument();
-  expect(screen.queryByText(t('organisation.team.errors.noOpenInvitation'))).not.toBeInTheDocument();
+  expect(screen.queryByText(t('errors.organisation.no-open-invitation'))).not.toBeInTheDocument();
 });
 
 // A dialog opened on one pharmacy asks about that pharmacy: switched to another, it closes, so it never names the other
@@ -203,7 +203,7 @@ test('an invitation refused only after the page switched to another pharmacy is 
   // and the lists it reads again have come back.
   await handled(queryClient, () => expect(notify.failure).toHaveBeenCalled());
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-  expect(screen.queryByText(t('organisation.team.errors.alreadyMemberOrInvited'))).not.toBeInTheDocument();
+  expect(screen.queryByText(t('errors.organisation.already-member-or-invited'))).not.toBeInTheDocument();
   expect(uferWrites()).toEqual([]);
 });
 
@@ -232,7 +232,7 @@ test('a change refused only after the page switched to another pharmacy is not s
   expect(
     screen.queryByText(t('organisation.team.change.description', { name: anna.name, pharmacy: ufer.name })),
   ).not.toBeInTheDocument();
-  expect(screen.queryByText(t('organisation.team.errors.lastManager'))).not.toBeInTheDocument();
+  expect(screen.queryByText(t('errors.organisation.last-manager'))).not.toBeInTheDocument();
   expect(uferWrites()).toEqual([]);
 });
 
@@ -325,9 +325,7 @@ test('an end refused after switching to another pharmacy and back shows under th
   answer(problem(409, 'organisation.last-manager', 'x'));
 
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-  expect(await within(membersSection()).findByRole('alert')).toHaveTextContent(
-    t('organisation.team.errors.lastManager'),
-  );
+  expect(await within(membersSection()).findByRole('alert')).toHaveTextContent(t('errors.organisation.last-manager'));
 });
 
 test('a revoke refused after switching to another pharmacy and back shows under the invitations again', async () => {
@@ -346,9 +344,9 @@ test('a revoke refused after switching to another pharmacy and back shows under 
 
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   expect(await within(invitationsSection()).findByRole('alert')).toHaveTextContent(
-    t('organisation.team.errors.noOpenInvitation'),
+    t('errors.organisation.no-open-invitation'),
   );
-  expect(notify.failure).toHaveBeenCalledWith(t('organisation.team.errors.noOpenInvitation'));
+  expect(notify.failure).toHaveBeenCalledWith(t('errors.organisation.no-open-invitation'));
 });
 
 // A dialog closed by a switch and opened again is a new question: the answer to what the first opening sent never
@@ -440,7 +438,7 @@ test('an invitation sent before a switch, refused after it, shows nothing in the
   expect(dialog.getByRole('textbox', { name: t('organisation.team.invite.email') })).not.toHaveAttribute(
     'aria-invalid',
   );
-  expect(screen.queryByText(t('organisation.team.errors.alreadyMemberOrInvited'))).not.toBeInTheDocument();
+  expect(screen.queryByText(t('errors.organisation.already-member-or-invited'))).not.toBeInTheDocument();
 });
 
 test('an invitation still on its way from one pharmacy does not keep the invite dialog of another from sending', async () => {
@@ -496,7 +494,7 @@ test('a change sent before switching away and back, refused after it, shows noth
 
   const dialog = within(screen.getByRole('dialog', { name: t('organisation.team.change.title') }));
   expect(dialog.queryByRole('alert')).not.toBeInTheDocument();
-  expect(screen.queryByText(t('organisation.team.errors.lastManager'))).not.toBeInTheDocument();
+  expect(screen.queryByText(t('errors.organisation.last-manager'))).not.toBeInTheDocument();
 });
 
 test('a change sent before switching away and back, made after it, leaves the change dialog opened since open', async () => {

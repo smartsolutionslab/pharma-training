@@ -7,10 +7,9 @@ import {
   usePostEditorialCourseVersionsIdChapters,
   usePutEditorialCourseVersionsIdChaptersChapterId,
 } from '@/api/generated';
-import { ApiError } from '@/api/baseApi';
 
-/** What changing a chapter came to: ok, or a failure with the host's words where a module sent some. */
-export type ChapterChange = { ok: true } | { ok: false; serverMessage?: string };
+/** What changing a chapter came to: ok, or a failure carrying what the call rejected with (shown by errorText). */
+export type ChapterChange = { ok: true } | { ok: false; error: unknown };
 
 /**
  * Adds, replaces and deletes a chapter of the version. Afterwards the version is stale, also after a refusal: a 409
@@ -31,9 +30,7 @@ export function useChapterMutations(versionId: MaybeRefOrGetter<string>) {
       await change;
       return { ok: true };
     } catch (error) {
-      return error instanceof ApiError && error.serverMessage !== undefined
-        ? { ok: false, serverMessage: error.serverMessage }
-        : { ok: false };
+      return { ok: false, error };
     }
   };
 

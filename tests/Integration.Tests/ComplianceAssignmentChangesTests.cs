@@ -173,6 +173,35 @@ public class ComplianceAssignmentChangesTests(AspireFixture aspire)
         (await DueDateAsync(own, cancellationToken)).ShouldBe(InTwoMonths());
     }
 
+    /// <summary>
+    /// A pharmacy's only manager moves and withdraws their own assignment themselves, and the history marks each as a
+    /// self-change (#284, the orchestrator's default the owner may overrule).
+    /// </summary>
+    [Fact]
+    public async Task A_sole_manager_moves_and_withdraws_their_own_assignment_and_the_history_marks_it_as_a_self_change()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var setting = await PharmacyAsync(cancellationToken);
+        var course = await CourseAsync(cancellationToken);
+        using var manager = await aspire.CreateHostClientAsync("developer");
+        var own = await AssignAsync(manager, setting.Pharmacy, course, setting.Manager, cancellationToken);
+
+        using (var moved = await ChangeAsync(manager, setting.Pharmacy, own, InTwoMonths(), "Urlaub", cancellationToken))
+        {
+            moved.StatusCode.ShouldBe(HttpStatusCode.OK);
+        }
+
+        using (var withdrawn = await manager.DeleteAsync(AssignmentUri(setting.Pharmacy, own), cancellationToken))
+        {
+            withdrawn.StatusCode.ShouldBe(HttpStatusCode.OK);
+        }
+
+        var read = await ReadAsync(manager, setting.Pharmacy, own, cancellationToken);
+        read.Status.ShouldBe("Cancelled");
+        read.History.Select(change => (change.Kind, change.ChangedBy, change.BySelf))
+            .ShouldBe([("DueDateChanged", setting.Manager, true), ("Cancelled", setting.Manager, true)]);
+    }
+
     [Theory]
     [InlineData("GET")]
     [InlineData("PATCH")]
@@ -604,7 +633,7 @@ public class ComplianceAssignmentChangesTests(AspireFixture aspire)
         DateTimeOffset? CompletedAt,
         IReadOnlyList<ChangeView> History);
 
-    private sealed record ChangeView(string Kind, Guid ChangedBy, DateTimeOffset ChangedAt, DateOnly? PreviousDueDate, DateOnly? NewDueDate, string? Reason);
+    private sealed record ChangeView(string Kind, Guid ChangedBy, DateTimeOffset ChangedAt, DateOnly? PreviousDueDate, DateOnly? NewDueDate, string? Reason, bool BySelf);
 
     private sealed record Problem(string Code);
 

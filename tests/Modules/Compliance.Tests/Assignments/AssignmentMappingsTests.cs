@@ -93,9 +93,9 @@ public class AssignmentMappingsTests
         var at = Timestamp.From(Monday.AddDays(1));
         var change = new AssignmentChange(AssignmentChangeKind.DueDateChanged, Manager, at, EndOfMarch, EndOfApril, ChangeReason.From("Urlaub"));
 
-        var dto = change.ToDto();
+        var dto = change.ToDto(learner: Anna);
 
-        dto.ShouldBe(new ComplianceAssignmentChangeDto(ComplianceAssignmentChangeKind.DueDateChanged, Manager.Value, at.Value, EndOfMarch.Value, EndOfApril.Value, "Urlaub"));
+        dto.ShouldBe(new ComplianceAssignmentChangeDto(ComplianceAssignmentChangeKind.DueDateChanged, Manager.Value, at.Value, EndOfMarch.Value, EndOfApril.Value, "Urlaub", BySelf: false));
     }
 
     [Fact]
@@ -104,9 +104,9 @@ public class AssignmentMappingsTests
         var at = Timestamp.From(Monday.AddDays(1));
         var change = new AssignmentChange(AssignmentChangeKind.Cancelled, Anna, at, null, null, null);
 
-        var dto = change.ToDto();
+        var dto = change.ToDto(learner: Anna);
 
-        dto.ShouldBe(new ComplianceAssignmentChangeDto(ComplianceAssignmentChangeKind.Cancelled, Anna.Value, at.Value, null, null, null));
+        dto.ShouldBe(new ComplianceAssignmentChangeDto(ComplianceAssignmentChangeKind.Cancelled, Anna.Value, at.Value, null, null, null, BySelf: true));
     }
 
     [Fact]
@@ -118,7 +118,7 @@ public class AssignmentMappingsTests
 
         var dto = assignment.ToDto();
 
-        dto.History.ShouldBe([.. assignment.History.Select(change => change.ToDto())]);
+        dto.History.ShouldBe([.. assignment.History.Select(change => change.ToDto(assignment.Learner))]);
         dto.History.Select(change => change.Kind).ShouldBe([ComplianceAssignmentChangeKind.DueDateChanged, ComplianceAssignmentChangeKind.Cancelled]);
         dto.Status.ShouldBe(ComplianceAssignmentStatus.Cancelled);
     }

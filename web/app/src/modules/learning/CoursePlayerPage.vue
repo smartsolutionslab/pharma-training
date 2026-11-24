@@ -167,6 +167,12 @@ const chapterHeadingId = 'course-player-chapter';
       <!-- A lasting panel, no second status region: the polite region above has said it once already. -->
       <section v-if="contentCompleted" class="bg-card text-body shadow-elevation-1 rounded-md p-4">
         <p>{{ t('learning.player.contentCompleted') }}</p>
+        <RouterLink
+          :to="`/assessment/sessions/${sessionId}`"
+          class="text-primary mt-2 inline-block underline underline-offset-4"
+        >
+          {{ t('learning.player.toTest') }}
+        </RouterLink>
       </section>
 
       <EmptyState v-if="chapters.length === 0">

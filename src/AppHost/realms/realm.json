@@ -153,6 +153,15 @@
       "credentials": [{ "type": "password", "value": "employee-b", "temporary": false }]
     },
     {
+      "username": "employee-c",
+      "enabled": true,
+      "email": "employee-c@example.com",
+      "emailVerified": true,
+      "firstName": "Clara",
+      "lastName": "Employee",
+      "credentials": [{ "type": "password", "value": "employee-c", "temporary": false }]
+    },
+    {
       "username": "former-employee",
       "enabled": true,
       "email": "former-employee@example.com",
