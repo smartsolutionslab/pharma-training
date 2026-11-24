@@ -1,6 +1,5 @@
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Azure;
-using Aspire.Hosting.Azure.AppContainers;
 using Azure.Provisioning;
 using Azure.Provisioning.Expressions;
 using Azure.Provisioning.Storage;
@@ -31,9 +30,6 @@ public static class BrowserUploads
 
     // The storage module's parameter main.bicep sets to frontend-url.
     private const string FrontendUrl = "frontend_url";
-
-    // The environment's output Aspire writes in its Bicep; the property that reads it is not public.
-    private const string DefaultDomainOutput = "AZURE_CONTAINER_APPS_ENVIRONMENT_DEFAULT_DOMAIN";
 
     public static IResourceBuilder<AzureStorageResource> AllowBrowserAccessFrom<TWeb>(this IResourceBuilder<AzureStorageResource> storage, IResourceBuilder<TWeb> web)
         where TWeb : IResourceWithEndpoints, IResourceWithWaitSupport
@@ -76,11 +72,9 @@ public static class BrowserUploads
             return storage;
         }
 
-        var environment = storage.ApplicationBuilder.Resources.OfType<AzureContainerAppEnvironmentResource>().SingleOrDefault()
-            ?? throw new InvalidOperationException($"{edge.Resource.Name} is published to no Container Apps environment; add it first (AddContainerAppsEnvironment).");
         var edgeName = edge.Resource.Name;
         return storage
-            .WithParameter(DefaultDomain, new BicepOutputReference(DefaultDomainOutput, environment))
+            .WithParameter(DefaultDomain, PublicAddresses.DefaultDomain(storage.ApplicationBuilder))
             .WithParameter(FrontendUrl, frontendUrl)
             .ConfigureInfrastructure(infrastructure =>
             {
