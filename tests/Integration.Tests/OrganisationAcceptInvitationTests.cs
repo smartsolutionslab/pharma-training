@@ -14,6 +14,7 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// The invited person accepts an invitation through the running application, with the token from the link, as Keycloak
 /// knows them; and the database backs the rule the aggregate checks: a person is active at most once per pharmacy.
 /// </summary>
+[Collection(InvitationSenders.Name)]
 public partial class OrganisationAcceptInvitationTests(AspireFixture aspire)
 {
     private const string UniqueViolation = "23505";

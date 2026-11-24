@@ -3,8 +3,8 @@ using Npgsql;
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 
 /// <summary>
-/// A transaction a test holds on a pharmacy's row and its memberships' rows; committing it lets the requests waiting
-/// on them go on.
+/// A transaction a test holds on rows or a table (a pharmacy's row and its memberships' rows, or the invitation
+/// recipients' table); committing it lets the requests waiting on them go on.
 /// </summary>
 public sealed class PharmacyLock(NpgsqlConnection connection, NpgsqlTransaction transaction) : IAsyncDisposable
 {

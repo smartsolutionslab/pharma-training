@@ -13,6 +13,7 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// A pharmacy's management invites an address, renews and revokes the invitation through the running application,
 /// and the database backs the rules the aggregate checks: one invited-or-active row per address, one row per token hash.
 /// </summary>
+[Collection(InvitationSenders.Name)]
 public partial class OrganisationInvitationsTests(AspireFixture aspire)
 {
     private const string UniqueViolation = "23505";
@@ -136,6 +137,8 @@ public partial class OrganisationInvitationsTests(AspireFixture aspire)
         await ShouldBeRefusedAsync(renewed, HttpStatusCode.NotFound, "organisation.no-open-invitation", cancellationToken);
         using var revokedAgain = await owner.DeleteAsync(InvitationUri(pharmacy, membership), cancellationToken);
         await ShouldBeRefusedAsync(revokedAgain, HttpStatusCode.NotFound, "organisation.no-open-invitation", cancellationToken);
+        // A revoke gives the address's recipient cooldown nothing back (#265): it is re-invited once 10 minutes have passed.
+        await database.MoveRecipientMailBackAsync(address, TimeSpan.FromMinutes(10), cancellationToken);
         await InviteAsync(owner, pharmacy, address, cancellationToken, earlierMails: 1);
         (await database.StatusesOfAsync(pharmacy, address, cancellationToken)).ShouldBe(["Revoked", "Invited"]);
     }

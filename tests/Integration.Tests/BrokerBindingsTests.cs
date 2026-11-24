@@ -17,6 +17,7 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// and consumes travels on the host's local queue only, so the broker has no exchange or binding for it, and nobody
 /// with broker credentials can hand the host one; an event another service publishes is still bound to its consumer's queue.
 /// </summary>
+[Collection(InvitationSenders.Name)]
 public partial class BrokerBindingsTests(AspireFixture aspire)
 {
     private const string OrganisationQueue = "organisation";
