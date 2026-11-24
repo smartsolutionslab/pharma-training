@@ -99,6 +99,9 @@ export const de = {
       entries: {
         verify: { title: 'Bestätigung prüfen' },
       },
+      pages: {
+        export: { title: 'Nachweise exportieren' },
+      },
     },
     compliance: {
       title: 'Team-Matrix',
@@ -144,6 +147,21 @@ export const de = {
       loadFailed: 'Die Bestätigung konnte nicht geprüft werden.',
     },
     retry: 'Erneut versuchen',
+    export: {
+      intro:
+        'Laden Sie die Teilnahmebestätigungen der Mitglieder von {pharmacy} als ZIP herunter: die PDFs und eine CSV-Übersicht. Enthalten sind nur Bestätigungen, die während der Mitgliedschaft in dieser Apotheke ausgestellt wurden; ein PDF, das noch erstellt wird, steht nur in der Übersicht.',
+      from: 'Ausgestellt ab',
+      to: 'Ausgestellt bis',
+      period: {
+        invalid: 'Geben Sie ein gültiges Datum ein.',
+        order: 'Das Ende darf nicht vor dem Beginn liegen.',
+        tooLong: 'Ein Export umfasst höchstens fünf Jahre.',
+      },
+      submit: 'ZIP herunterladen',
+      preparing: 'Wird erstellt…',
+      done: 'Der Export wurde heruntergeladen.',
+      failed: 'Der Export konnte nicht erstellt werden. Versuchen Sie es erneut.',
+    },
   },
   compliance: {
     matrix: {
