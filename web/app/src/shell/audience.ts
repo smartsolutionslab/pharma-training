@@ -30,15 +30,13 @@ export function canReach(audience: Audience, { current, isEditor }: Reach): bool
     case 'signed-in':
       return true;
     case 'public':
-      // Stub for #54 (T2, red first): a public page is not reachable yet.
-      return false;
+      return true;
   }
 }
 
-/** Whether an address is a public page's, which anyone opens, signed in or not. Stub for #54 (T2, red first). */
+/** Whether an address is a public page's, which anyone opens, signed in or not: SignedIn and App.vue ask it. */
 export function isPublicAddress(path: string): boolean {
-  void path;
-  return false;
+  return pageOf(path)?.audience === 'public';
 }
 
 /** The module an address is in, by its first segment; none for the start page or an address no module has. */
@@ -47,9 +45,14 @@ export function moduleOf(path: string): ModuleRoute | undefined {
   return first === undefined ? undefined : moduleRoutes.find((route) => route.path === first);
 }
 
-/** Whether the segments below a module match a detail's path: a static segment is equal, `:name` any one segment. */
-function matches(detail: ModuleDetail, segments: string[]): boolean {
-  const pattern = detail.path.split('/').filter((segment) => segment !== '');
+/** The non-empty segments of a path. */
+function segmentsOf(path: string): string[] {
+  return path.split('/').filter((segment) => segment !== '');
+}
+
+/** Whether segments match a path's pattern: a static segment is equal, `:name` any one segment, and as many of them. */
+function matches(path: string, segments: string[]): boolean {
+  const pattern = segmentsOf(path);
   return (
     pattern.length === segments.length &&
     pattern.every((part, index) => part.startsWith(':') || part === segments[index])
@@ -63,17 +66,21 @@ export function detailOf(path: string): { module: ModuleRoute; detail: ModuleDet
     return undefined;
   }
   const [, ...below] = path.split('/').filter((segment) => segment !== '');
-  const detail = module.details?.find((candidate) => matches(candidate, below));
+  const detail = module.details?.find((candidate) => matches(candidate.path, below));
   return detail === undefined ? undefined : { module, detail };
 }
 
-/** The entry page at exactly this address, whichever module it is of; none for any other address. */
+/**
+ * The entry page whose path's pattern this address matches, whichever module it is of (an entry without a parameter at
+ * exactly its address); none for any other address.
+ */
 export function entryOf(path: string): ModuleEntry | undefined {
-  return moduleRoutes.flatMap((route) => route.entries ?? []).find((entry) => entry.path === path);
+  const segments = segmentsOf(path);
+  return moduleRoutes.flatMap((route) => route.entries ?? []).find((entry) => matches(entry.path, segments));
 }
 
 /**
- * What governs an address: the entry page at exactly that address, else the module's detail page whose pattern it matches, else the module's page below it named by
+ * What governs an address: the entry page whose pattern it matches, else the module's detail page whose pattern it matches, else the module's page below it named by
  * the address's second segment, otherwise the module the address is in; none for the start page or an address no
  * module has.
  */
