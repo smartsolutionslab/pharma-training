@@ -99,12 +99,27 @@ public sealed class Membership : Entity<MembershipId>
 
     internal void RecordMailed(InvitationVersion version) => InvitationMailedFor = version;
 
-    /// <summary>The instant from which the invitation may be renewed again; none while no mail was ever requested.</summary>
-    internal Option<Timestamp> RenewableFrom(RenewCooldown cooldown)
+    /// <summary>
+    /// The instant from which the invitation may be renewed again; none while no mail was ever requested, and none when
+    /// the stored request time lies a cooldown or more beyond <paramref name="now"/>, which is not trusted (the recipient
+    /// rule's predicate, docs/adr/0004), so no faulty instant blocks renewing for more than two cooldowns.
+    /// </summary>
+    internal Option<Timestamp> RenewableFrom(Timestamp now, RenewCooldown cooldown)
     {
-        if (InvitationRequestedAt is { } requestedAt)
+        if (InvitationRequestedAt is { } requestedAt && requestedAt < now.Plus(cooldown.Value))
         {
             return Option<Timestamp>.Some(requestedAt.Plus(cooldown.Value));
+        }
+
+        return Option<Timestamp>.None;
+    }
+
+    /// <summary>The stored request time when it lies a cooldown or more beyond <paramref name="now"/>; none otherwise.</summary>
+    internal Option<Timestamp> RequestedBeyondCooldown(Timestamp now, RenewCooldown cooldown)
+    {
+        if (InvitationRequestedAt is { } requestedAt && requestedAt >= now.Plus(cooldown.Value))
+        {
+            return Option<Timestamp>.Some(requestedAt);
         }
 
         return Option<Timestamp>.None;
