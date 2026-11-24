@@ -122,3 +122,47 @@ export const emptyExamples: Record<string, unknown> = {
     blueprint: { questions: 10, passingScorePercent: 80, validityMonths: 12 },
   },
 };
+
+// A draft of PDF chapters only (#301), after the AI drafted it: one PDF read whole, one cut at a limit, one without text
+// and a video. The draft's answer (POST …/test-draft) left out the PDF without text and the video and cut the long PDF,
+// so the page names both in its note; the axe check presses the draft and confirms it to show them.
+const pdfChapterOf = (suffix: string, position: number, title: string, pdfText: string) => ({
+  id: `0198c1a0-0000-7000-8000-0000000000${suffix}`,
+  position,
+  title,
+  kind: 'Pdf',
+  text: null,
+  file: `course-versions/${versionId}/0198c1a0-0000-7000-8000-0000000001${suffix}.pdf`,
+  durationSeconds: null,
+  pdfText,
+});
+const guideline = pdfChapterOf('e4', 1, 'Leitlinie Händehygiene', 'Complete');
+const manual = pdfChapterOf('e5', 2, 'Handbuch Hygiene', 'Truncated');
+const scan = pdfChapterOf('e6', 3, 'Gescannter Aushang', 'NoText');
+const clip = {
+  id: '0198c1a0-0000-7000-8000-0000000000e7',
+  position: 4,
+  title: 'Hände waschen im Video',
+  kind: 'Video',
+  text: null,
+  file: `course-versions/${versionId}/0198c1a0-0000-7000-8000-0000000001e7.mp4`,
+  durationSeconds: 60,
+  pdfText: null,
+};
+export const pdfDraftExamples: Record<string, unknown> = {
+  useGetEditorialCourseVersionsId: {
+    id: versionId,
+    courseId: '0198c1a0-0000-7000-8000-0000000000d1',
+    number: 1,
+    title: 'Händehygiene aus der Leitlinie',
+    status: 'Draft',
+    chapters: [guideline, manual, scan, clip],
+    questions: [],
+    blueprint: { questions: 10, passingScorePercent: 80, validityMonths: 12 },
+  },
+  usePostEditorialCourseVersionsIdTestDraft: {
+    draftedQuestionIds: ['0198c1a0-0000-7000-8000-0000000000a7'],
+    leftOutChapterIds: [scan.id, clip.id],
+    truncatedChapterIds: [manual.id],
+  },
+};

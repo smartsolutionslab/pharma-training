@@ -52,3 +52,46 @@ test('the draft marks stale the version it was asked for, though the version cha
   await vi.waitFor(() => expect(queryClient.getQueryState(versionKey)?.isInvalidated).toBe(true));
   expect(queryClient.getQueryState(otherVersionKey)?.isInvalidated).toBe(false);
 });
+
+/** Renders a component that drafts the version, and hands back its draft. */
+function drafter() {
+  const used: { drafting?: ReturnType<typeof useTestDraft> } = {};
+  const Host = defineComponent({
+    setup() {
+      used.drafting = useTestDraft(versionId);
+      return () => null;
+    },
+  });
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  render(Host, { global: { plugins: [[VueQueryPlugin, { queryClient }]] } });
+  if (used.drafting === undefined) {
+    throw new Error('The component did not set up.');
+  }
+  return used.drafting;
+}
+
+test('the draft passes on the chapters it left out and the chapters it cut (#301)', async () => {
+  const leftOut = '0198c1a0-0000-7000-8000-0000000000e6';
+  const cut = '0198c1a0-0000-7000-8000-0000000000e5';
+  host.mockResolvedValue(
+    Response.json({
+      draftedQuestionIds: ['0198c1a0-0000-7000-8000-0000000000a7'],
+      leftOutChapterIds: [leftOut],
+      truncatedChapterIds: [cut],
+    }),
+  );
+
+  const outcome = await drafter().draft();
+
+  expect(outcome).toEqual({ status: 'drafted', drafted: 1, leftOutChapterIds: [leftOut], truncatedChapterIds: [cut] });
+});
+
+test('an answer whose cut chapters are not ids is not the draft’s shape', async () => {
+  host.mockResolvedValue(
+    Response.json({ draftedQuestionIds: [], leftOutChapterIds: [], truncatedChapterIds: [42, { id: 'x' }] }),
+  );
+
+  const outcome = await drafter().draft();
+
+  expect(outcome).toEqual({ status: 'unreadable' });
+});
