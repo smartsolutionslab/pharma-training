@@ -89,10 +89,51 @@ export async function apiFetch<T>(url: string, init: RequestInit): Promise<T> {
     headers.set('Authorization', `Bearer ${token}`);
   }
   const response = await fetch(`/api${url}`, { ...init, headers });
+  if (response.ok && isBinary(response.headers.get('Content-Type'))) {
+    return (await binaryOf(response)) as T;
+  }
   const body = await response.text();
   if (!response.ok) {
     throw new ApiError(response.status, body);
   }
 
   return (body === '' ? undefined : JSON.parse(body)) as T;
+}
+
+/** An answer neither JSON nor without a type: a file the host streams (ADR 0032's certificate export). */
+function isBinary(contentType: string | null): boolean {
+  if (contentType === null || contentType.trim() === '') {
+    return false;
+  }
+  const mediaType = (contentType.split(';')[0] ?? '').trim().toLowerCase();
+  return mediaType !== 'application/json' && !mediaType.endsWith('+json');
+}
+
+/**
+ * The bytes, as a File named by Content-Disposition where it names one, else as a Blob. Built from the bytes rather
+ * than with response.blob(), so the answer is the page's own Blob wherever fetch comes from.
+ */
+async function binaryOf(response: Response): Promise<Blob> {
+  const type = response.headers.get('Content-Type') ?? '';
+  const bytes = await response.arrayBuffer();
+  const name = fileNameOf(response.headers.get('Content-Disposition'));
+  return name === undefined ? new Blob([bytes], { type }) : new File([bytes], name, { type });
+}
+
+/** The file a Content-Disposition names: filename* (RFC 5987) first, else filename. */
+function fileNameOf(disposition: string | null): string | undefined {
+  if (disposition === null) {
+    return undefined;
+  }
+  const extended = /filename\*\s*=\s*[^']*'[^']*'([^;]+)/i.exec(disposition)?.[1];
+  if (extended !== undefined) {
+    try {
+      return decodeURIComponent(extended.trim());
+    } catch {
+      // A malformed filename*: fall back to filename.
+    }
+  }
+  const plain = /filename\s*=\s*(?:"([^"]*)"|([^;]+))/i.exec(disposition);
+  const name = (plain?.[1] ?? plain?.[2])?.trim();
+  return name === undefined || name === '' ? undefined : name;
 }
