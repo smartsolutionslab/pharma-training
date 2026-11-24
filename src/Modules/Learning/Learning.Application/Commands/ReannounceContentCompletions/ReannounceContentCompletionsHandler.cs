@@ -31,8 +31,9 @@ public sealed partial class ReannounceContentCompletionsHandler(
         var found = await unannounced.FindAsync(now - settings.Lookback, now - settings.GracePeriod, settings.BatchSize, cancellationToken);
         foreach (var stored in found)
         {
-            var stream = stored.Completed.Session.Value;
-            await unitOfWork.PublishAsync(stored.Completed.ToIntegrationEvent());
+            var completed = await unannounced.LoadAsync(stored, cancellationToken);
+            var stream = completed.Session.Value;
+            await unitOfWork.PublishAsync(completed.ToIntegrationEvent());
             announced.Add(new AnnouncedEvent { StreamId = stream, StreamVersion = stored.StreamVersion, AnnouncedAt = now });
             LogReannounced(logger, nameof(Domain.LearningSessions.Events.ContentCompleted), stream, stored.StreamVersion, stored.StoredAt);
             await unitOfWork.CommitAsync(cancellationToken);
