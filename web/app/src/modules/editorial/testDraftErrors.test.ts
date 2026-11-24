@@ -55,8 +55,8 @@ const answers: [string, () => unknown, Parameters<typeof t>[0], string, string][
     '409 no-text-chapters',
     () => new ApiError(409, problem(409, 'editorial.no-text-chapters')),
     'editorial.test.draft.noTextChapters',
-    'Die KI entwirft nur aus Textkapiteln. Legen Sie zuerst ein Textkapitel an.',
-    'The AI drafts from text chapters only. Add a text chapter first.',
+    'Die KI entwirft nur aus Kapiteln mit Text: aus Textkapiteln und aus PDF-Kapiteln, deren Text sich lesen lässt. Legen Sie zuerst ein solches Kapitel an.',
+    'The AI drafts only from chapters with text: text chapters and PDF chapters whose text can be read. Add such a chapter first.',
   ],
   [
     '409 nothing-to-draft',
@@ -69,8 +69,8 @@ const answers: [string, () => unknown, Parameters<typeof t>[0], string, string][
     '422 too-much-content-to-draft',
     () => new ApiError(422, problem(422, 'editorial.too-much-content-to-draft')),
     'errors.editorial.too-much-content-to-draft',
-    'Die Textkapitel sind zu lang für einen KI-Entwurf. Kürzen Sie sie oder schreiben Sie die Fragen von Hand.',
-    'The text chapters are too long for an AI draft. Shorten them or write the questions by hand.',
+    'Die Textkapitel sind zusammen zu lang für einen KI-Entwurf; PDF-Kapitel werden dafür gekürzt, Textkapitel nicht. Kürzen Sie die Textkapitel oder schreiben Sie die Fragen von Hand.',
+    'The text chapters together are too long for an AI draft; PDF chapters are cut to fit, text chapters are not. Shorten the text chapters or write the questions by hand.',
   ],
   [
     '409 course-version-changed',

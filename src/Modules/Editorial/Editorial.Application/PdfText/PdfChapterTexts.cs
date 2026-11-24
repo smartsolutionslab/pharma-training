@@ -8,7 +8,8 @@ public static class PdfChapterTexts
     /// <summary>
     /// The text of the PDF <paramref name="pdf"/> names, read as the version its lookup found (at most
     /// <see cref="ChapterUploads.MaxPdfBytes"/>, which <see cref="ChapterUploads.AcceptAsync"/> checked). Fewer bytes than
-    /// it had mean another upload replaced it since: not accepted, and the extractor is never asked.
+    /// it had mean another upload replaced it since: not accepted, and the extractor is never asked. Readers all busy
+    /// refuse it for now, to retry later (#316).
     /// </summary>
     public static async Task<Result<PdfChapterText, ApiError>> ExtractAsync(IStoredBlobs blobs, IPdfTextExtractor extractor, StoredBlob pdf, CancellationToken cancellationToken)
     {
@@ -22,6 +23,12 @@ public static class PdfChapterTexts
             return Failure(CourseVersionFailures.UploadNotAccepted());
         }
 
-        return Success(extractor.Extract(content, cancellationToken));
+        var extracted = await extractor.ExtractAsync(content, cancellationToken);
+        if (extracted.IsFailure)
+        {
+            return Failure(PdfTextFailures.From(extracted.Error));
+        }
+
+        return Success(extracted.Value);
     }
 }

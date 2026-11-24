@@ -24,8 +24,9 @@ public sealed record UtcDay : IValueObject<DateOnly>
     /// <summary>
     /// The stored day of a tally of invitation mails when it still counts: today, or tomorrow, so a request racing
     /// 00:00 UTC adds to the new day's tally instead of restarting the old day's. A stored day before today, or beyond
-    /// tomorrow (a hand-edited row: every instance reads the database's clock), counts for nothing, and today's tally
-    /// starts afresh; it never locks invitation mail (docs/adr/0004).
+    /// tomorrow (every instance reads the database's clock, so only a hand-edited row or a database clock that moved
+    /// back, by a failover or a restore, stores one), counts for nothing, and today's tally starts afresh; it never
+    /// locks invitation mail (docs/adr/0004).
     /// </summary>
     public static Option<UtcDay> CountingDay(Timestamp now, UtcDay? stored)
     {
@@ -40,7 +41,10 @@ public sealed record UtcDay : IValueObject<DateOnly>
         return Option<UtcDay>.None;
     }
 
-    /// <summary>The stored day of a tally when it lies beyond tomorrow, which only a hand-edited row stores; none otherwise.</summary>
+    /// <summary>
+    /// The stored day of a tally when it lies beyond tomorrow, which only a hand-edited row, or a database clock that
+    /// moved back (a failover or a restore), stores; none otherwise.
+    /// </summary>
     public static Option<UtcDay> BeyondTomorrow(Timestamp now, UtcDay? stored)
     {
         Ensure.That(now).IsNotNull();

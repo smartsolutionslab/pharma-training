@@ -155,6 +155,56 @@ public class ReannounceTestPassesTests
     }
 
     [Fact]
+    public async Task A_batch_of_test_passes_that_cannot_be_read_holds_up_no_newer_test_pass()
+    {
+        // Unreadable events at the old end of the window fill the first page; the pass reads on after the last of them.
+        List<StoredTestPass> unreadable = [.. Enumerable.Range(1, 3).Select(version => Stored(streamVersion: version, storedAt: Now.AddDays(-6)))];
+        var readable = Stored(streamVersion: 7, storedAt: Now.AddMinutes(-10));
+        unannounced.Stored.AddRange([.. unreadable, readable]);
+        unannounced.Unreadable.UnionWith(unreadable);
+
+        var passed = await PassAsync(Settings(batchSize: "3"));
+
+        passed.IsSuccess.ShouldBeTrue();
+        unitOfWork.Published.ShouldBe([readable.Passed.ToIntegrationEvent()]);
+        announced.Added.ShouldHaveSingleItem().StreamVersion.ShouldBe(7);
+        unitOfWork.Commits.ShouldBe(1);
+        unannounced.Asked.Select(question => question.After).ShouldBe([UnannouncedEvent.BeforeFirst, 3L]);
+    }
+
+    [Fact]
+    public async Task A_pass_that_reads_past_skipped_test_passes_still_announces_at_most_a_batch()
+    {
+        var unreadable = Stored(streamVersion: 1, storedAt: Now.AddHours(-6));
+        var first = Stored(streamVersion: 2, storedAt: Now.AddHours(-5));
+        var second = Stored(streamVersion: 3, storedAt: Now.AddHours(-4));
+        var third = Stored(streamVersion: 4, storedAt: Now.AddHours(-3));
+        unannounced.Stored.AddRange([unreadable, first, second, third]);
+        unannounced.Unreadable.Add(unreadable);
+
+        await PassAsync(Settings(batchSize: "2"));
+
+        unitOfWork.Published.ShouldBe([first.Passed.ToIntegrationEvent(), second.Passed.ToIntegrationEvent()]);
+        unitOfWork.Commits.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task A_pass_reads_at_most_its_most_pages_of_test_passes()
+    {
+        List<StoredTestPass> unreadable = [.. Enumerable.Range(1, AnnouncementSweepSettings.MostPagesPerPass + 1).Select(version => Stored(streamVersion: version, storedAt: Now.AddDays(-6)))];
+        var readable = Stored(streamVersion: 99, storedAt: Now.AddMinutes(-10));
+        unannounced.Stored.AddRange([.. unreadable, readable]);
+        unannounced.Unreadable.UnionWith(unreadable);
+
+        var passed = await PassAsync(Settings(batchSize: "1"));
+
+        passed.IsSuccess.ShouldBeTrue();
+        unannounced.Asked.Count.ShouldBe(AnnouncementSweepSettings.MostPagesPerPass);
+        unitOfWork.Published.ShouldBeEmpty();
+        unitOfWork.Commits.ShouldBe(0);
+    }
+
+    [Fact]
     public async Task A_database_that_fails_while_an_event_is_loaded_ends_the_pass_with_the_failure()
     {
         // An outage is not unreadable data: it is not skipped with a warning but ends the pass, which the periodic

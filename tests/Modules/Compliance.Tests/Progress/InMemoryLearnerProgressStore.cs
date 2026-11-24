@@ -28,6 +28,12 @@ internal sealed class InMemoryLearnerProgressStore : ILearnerProgressStore
 
     public void Add(IssuedCertificate certificate) => Certificates.Add(certificate);
 
+    public Task<IReadOnlyList<IssuedCertificate>> FindCertificatesAsync(IReadOnlyCollection<CertificateId> certificates, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<IssuedCertificate> found = [.. Certificates.Where(issued => certificates.Contains(issued.Id))];
+        return Task.FromResult(found);
+    }
+
     public Task<IReadOnlyList<LearnerProgress>> OfLearnerAsync(PersonId learner, IReadOnlyCollection<CourseId> courses, CancellationToken cancellationToken)
     {
         IReadOnlyList<LearnerProgress> progress =

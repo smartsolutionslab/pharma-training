@@ -9,8 +9,12 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Application;
 /// </summary>
 public interface IUnannouncedContentCompletions
 {
-    /// <summary>Those stored from <paramref name="storedFrom"/> to <paramref name="storedUntil"/>, oldest first, at most <paramref name="limit"/>; their data is not read.</summary>
-    Task<IReadOnlyList<UnannouncedEvent>> FindAsync(DateTimeOffset storedFrom, DateTimeOffset storedUntil, int limit, CancellationToken cancellationToken);
+    /// <summary>
+    /// Those stored from <paramref name="storedFrom"/> to <paramref name="storedUntil"/> and after <paramref name="after"/>
+    /// in the event store's sequence (<see cref="UnannouncedEvent.Sequence"/>), oldest first, at most
+    /// <paramref name="limit"/>; their data is not read.
+    /// </summary>
+    Task<IReadOnlyList<UnannouncedEvent>> FindAsync(DateTimeOffset storedFrom, DateTimeOffset storedUntil, long after, int limit, CancellationToken cancellationToken);
 
     /// <summary>The stored completion <paramref name="found"/> names, as Marten stored it; throws when it cannot be read.</summary>
     Task<ContentCompleted> LoadAsync(UnannouncedEvent found, CancellationToken cancellationToken);

@@ -45,6 +45,21 @@ internal sealed class InMemoryCertificateStore : ICertificateStore, ICertificati
         return Task.FromResult(Option<Certificate>.Some(found));
     }
 
+    /// <summary>
+    /// A page of the holder's stored certificates, newest first (issued later, then the larger id), and how many the
+    /// holder has in all, as the database orders, skips and counts them.
+    /// </summary>
+    public Task<(IReadOnlyList<Certificate> Items, int TotalCount)> ListForHolderAsync(PersonId holder, Page page, PageSize pageSize, CancellationToken cancellationToken)
+    {
+        var holders = Stored
+            .Where(certificate => certificate.Holder == holder)
+            .OrderByDescending(certificate => certificate.IssuedAt)
+            .ThenByDescending(certificate => certificate.Id.Value.ToString("N"), StringComparer.Ordinal)
+            .ToList();
+        IReadOnlyList<Certificate> items = [.. holders.Skip(page.Skip(pageSize)).Take(pageSize.Value)];
+        return Task.FromResult((items, holders.Count));
+    }
+
     public void Add(Certificate certificate) => added.Add(certificate);
 
     public Task PublishAsync(IntegrationEvent integrationEvent)

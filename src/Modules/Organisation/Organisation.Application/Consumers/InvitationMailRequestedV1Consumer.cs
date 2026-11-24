@@ -26,7 +26,8 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Cons
 /// </para>
 /// <para>
 /// It does not deduplicate on <c>Metadata.EventIdentifier</c>: a send that failed must be sent again, and the
-/// invitation's version and its mailed mark are the key. An invitation that is no longer open or has run out is dropped.
+/// invitation's version and its mailed mark are the key. An invitation that is no longer open or has run out, on the
+/// database's clock that stamped its expiry, is dropped.
 /// Two gaps remain, in which both links work and nothing is lost: when the send returned but recording it failed, a
 /// redelivery mails the version again; and two runs of one version that overlap (an invite and a quick renewal's
 /// message, or a parallel redelivery) can each mail before either records it, each using up one of the cap's links.
@@ -37,7 +38,7 @@ public sealed partial class InvitationMailRequestedV1Consumer(
     IOrganisationUnitOfWork unitOfWork,
     IMailSender mails,
     IFrontendLinks links,
-    TimeProvider time,
+    IDatabaseClock clock,
     ILogger<InvitationMailRequestedV1Consumer> logger)
 {
     public async Task HandleAsync(InvitationMailRequestedV1 message, CancellationToken cancellationToken)
@@ -64,7 +65,7 @@ public sealed partial class InvitationMailRequestedV1Consumer(
         }
 
         var token = InvitationTokens.Next();
-        var issued = pharmacy.IssueInvitationLink(membership, token, Timestamp.From(time.GetUtcNow()));
+        var issued = pharmacy.IssueInvitationLink(membership, token, await clock.NowAsync(cancellationToken));
         if (issued.IsFailure)
         {
             switch (issued.Error)

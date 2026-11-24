@@ -1,4 +1,3 @@
-import { keepPreviousData } from '@tanstack/vue-query';
 import { computed, type Ref } from 'vue';
 import { type ComplianceMyAssignmentDto, type MyPharmacyDto, useGetComplianceMeAssignments } from '@/api/generated';
 
@@ -14,7 +13,22 @@ const none: ComplianceMyAssignmentDto[] = [];
 export function useMyCourses(current: Ref<MyPharmacyDto | undefined>, page: Ref<number>) {
   const assignments = useGetComplianceMeAssignments(
     () => ({ pharmacyId: current.value?.id, page: page.value, pageSize: myCoursesPageSize }),
-    { query: { enabled: computed(() => current.value !== undefined), placeholderData: keepPreviousData } },
+    {
+      query: {
+        enabled: computed(() => current.value !== undefined),
+        // The page shown is kept while the next one loads, but never another pharmacy's courses (#341's review).
+        placeholderData: (previous, previousQuery) =>
+          previousQuery?.queryKey.some(
+            (part) =>
+              typeof part === 'object' &&
+              part !== null &&
+              'pharmacyId' in part &&
+              part.pharmacyId === current.value?.id,
+          )
+            ? previous
+            : undefined,
+      },
+    },
   );
 
   const items = computed(() => assignments.data.value?.items ?? none);

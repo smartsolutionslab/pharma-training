@@ -1,6 +1,7 @@
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using System.Net;
 using System.Runtime.CompilerServices;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.PdfText;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.TestDrafting;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 
@@ -28,6 +29,9 @@ public static class CourseVersionFailures
     public static ApiError InvalidAnswerText() => new InvalidAnswerText();
 
     public static ApiError IdentityIncomplete() => new IdentityIncomplete();
+
+    /// <summary>A republish asked for while another one runs (ADR 0019).</summary>
+    public static ApiError RepublishRunning() => new RepublishRunning();
 
     /// <summary>An approval (#205) or a return (#220) whose token names no display name that fits a <see cref="ReviewerName"/>.</summary>
     public static ApiError ReviewerNameMissing() => new ReviewerNameMissing();
@@ -129,6 +133,8 @@ public static class CourseVersionFailures
         TooFewOptions or SingleChoiceNeedsOneCorrect or MultipleChoiceNeedsACorrect => ApiError.From(error, HttpStatusCode.UnprocessableEntity),
         TooFewQuestions => ApiError.From(error, HttpStatusCode.BadRequest),
         FourEyesRequired or PublisherApprovedQuestions => ApiError.From(error, HttpStatusCode.Forbidden),
+        // Busy PDF readers are the host's capacity, not a rule of the version: a refusal for now wherever they surface (#316).
+        PdfReadersBusy busy => PdfTextFailures.From(busy),
         // This arm documents the rule that these refusals are conflicts with the version's state; it does not enforce it,
         // since the discard arm below answers 409 for them all the same.
         NotADraft or OrderDoesNotMatchChapters or FileInUse or TooManyQuestions or NotInReview or NotPublished or NoChapters or TestIncomplete

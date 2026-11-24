@@ -85,7 +85,7 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
 
         if (DailyCapReached(now, limits.DailyMailCap) is Some<Timestamp> tomorrow)
         {
-            return Failure(PharmacyErrors.TooManyInvitationsToday(Id, tomorrow.Value));
+            return Failure(PharmacyErrors.TooManyInvitationsToday(Id, tomorrow.Value, now));
         }
 
         var expiresAt = now.PlusDays(InvitationValidityDays);
@@ -111,14 +111,14 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
             return Failure(PharmacyErrors.NoOpenInvitation(Id, membership));
         }
 
-        if (invited.RenewableFrom(limits.RenewCooldown) is Some<Timestamp> renewableFrom && now < renewableFrom.Value)
+        if (invited.RenewableFrom(now, limits.RenewCooldown) is Some<Timestamp> renewableFrom && now < renewableFrom.Value)
         {
-            return Failure(PharmacyErrors.InvitationRenewedTooSoon(Id, membership, renewableFrom.Value));
+            return Failure(PharmacyErrors.InvitationRenewedTooSoon(Id, membership, renewableFrom.Value, now));
         }
 
         if (DailyCapReached(now, limits.DailyMailCap) is Some<Timestamp> tomorrow)
         {
-            return Failure(PharmacyErrors.TooManyInvitationsToday(Id, tomorrow.Value));
+            return Failure(PharmacyErrors.TooManyInvitationsToday(Id, tomorrow.Value, now));
         }
 
         var expiresAt = now.PlusDays(InvitationValidityDays);
@@ -317,9 +317,29 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
     }
 
     /// <summary>
+    /// The stored request time of this pharmacy's open invitation <paramref name="membership"/> when it lies a cooldown
+    /// or more beyond <paramref name="now"/>; none for any other membership, status or instant. With every instance on
+    /// the database's clock only a hand-edited row, or a database clock that moved back (a failover or a restore), stores
+    /// one: it is not trusted, so the invitation may be renewed, and the caller reports it.
+    /// </summary>
+    public Option<Timestamp> InvitationRequestedBeyondCooldown(MembershipId membership, Timestamp now, RenewCooldown cooldown)
+    {
+        Ensure.That(membership).IsNotNull();
+        Ensure.That(now).IsNotNull();
+        Ensure.That(cooldown).IsNotNull();
+
+        if (Find(membership) is { Status: MembershipStatus.Invited } invited)
+        {
+            return invited.RequestedBeyondCooldown(now, cooldown);
+        }
+
+        return Option<Timestamp>.None;
+    }
+
+    /// <summary>
     /// The stored day of the invitation mail tally when it lies beyond tomorrow; none otherwise. With every instance on
-    /// the database's clock only a hand-edited row stores one: it is discarded and today's tally starts afresh, and the
-    /// caller reports it.
+    /// the database's clock only a hand-edited row, or a database clock that moved back (a failover or a restore),
+    /// stores one: it is discarded and today's tally starts afresh, and the caller reports it.
     /// </summary>
     public Option<UtcDay> InvitationMailDayBeyondTomorrow(Timestamp now)
     {

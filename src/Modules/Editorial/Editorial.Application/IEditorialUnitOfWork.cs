@@ -15,4 +15,12 @@ public interface IEditorialUnitOfWork : IUnitOfWork
         await CommitAsync(cancellationToken);
         return Success(Unit.Value);
     }
+
+    /// <summary>
+    /// Saves like <see cref="IUnitOfWork.CommitAsync"/> and sends at once exactly the events published since the scope's
+    /// last commit, for the one use case that commits several times in a scope: the republish (ADR 0019). Nothing it
+    /// saves can lose a race. Every other use case commits with <see cref="IUnitOfWork.CommitAsync"/> or
+    /// <see cref="TryCommitAsync"/>, which flush a scope once.
+    /// </summary>
+    Task CommitOneOfSeveralAsync(CancellationToken cancellationToken);
 }

@@ -435,6 +435,11 @@
     "message": "The order must name every chapter exactly once."
   },
   {
+    "code": "editorial.pdf-readers-busy",
+    "status": 429,
+    "message": "Too many PDFs are being read right now; try again in a few seconds."
+  },
+  {
     "code": "editorial.publisher-approved-questions",
     "status": 403,
     "message": "Under four eyes, an editor who approved a question of this version cannot publish it."
@@ -453,6 +458,11 @@
     "code": "editorial.question-not-found",
     "status": 404,
     "message": "The course version has no such question."
+  },
+  {
+    "code": "editorial.republish-running",
+    "status": 409,
+    "message": "A republish of the course versions is running already; wait until it has finished, then run it again if needed."
   },
   {
     "code": "editorial.reviewer-name-missing",

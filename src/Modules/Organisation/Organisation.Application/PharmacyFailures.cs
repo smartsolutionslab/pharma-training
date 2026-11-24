@@ -75,10 +75,10 @@ public static class PharmacyFailures
             AlreadyMemberOrInvited => ApiError.From(error, HttpStatusCode.Conflict),
             NoOpenInvitation => ApiError.From(error, HttpStatusCode.NotFound),
             InvitationExpired => ApiError.From(error, HttpStatusCode.Gone),
-            InvitationRenewedTooSoon tooSoon => ApiError.RetryLater(tooSoon, tooSoon.RetryAt.Value),
-            TooManyInvitationsToday tooMany => ApiError.RetryLater(tooMany, tooMany.RetryAt.Value),
-            RecipientMailedRecently recently => ApiError.RetryLater(recently, recently.RetryAt.Value),
-            TooManyInvitationsSentToday tooManySent => ApiError.RetryLater(tooManySent, tooManySent.RetryAt.Value),
+            InvitationRenewedTooSoon tooSoon => ApiError.RetryLater(tooSoon, tooSoon.RetryAt.Value, tooSoon.RefusedAt.Value),
+            TooManyInvitationsToday tooMany => ApiError.RetryLater(tooMany, tooMany.RetryAt.Value, tooMany.RefusedAt.Value),
+            RecipientMailedRecently recently => ApiError.RetryLater(recently, recently.RetryAt.Value, recently.RefusedAt.Value),
+            TooManyInvitationsSentToday tooManySent => ApiError.RetryLater(tooManySent, tooManySent.RetryAt.Value, tooManySent.RefusedAt.Value),
             _ => throw new UnreachableException(
                 $"{error.Code} is not returned by an Organisation use case yet; map it where it is first returned."),
         };

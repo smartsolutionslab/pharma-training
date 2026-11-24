@@ -363,6 +363,30 @@ public class ReplaceFileChapterTests
     }
 
     [Fact]
+    public async Task A_pdf_refused_by_busy_readers_is_refused_with_retry_later_and_the_chapter_stays_as_it_was()
+    {
+        var version = Draft();
+        store.Stored.Add(version);
+        var pdf = ChapterId.New();
+        var held = BlobReference.From(IssuedName(version.Id, ".pdf"));
+        version.AddChapter(Chapter.OfPdf(pdf, ChapterTitle.From("Hygieneplan"), held, PdfTextExtraction.Complete, PdfText.From(Extracted))).IsSuccess.ShouldBeTrue();
+        var file = IssuedName(version.Id, ".pdf");
+        blobs.Upload(file, "application/pdf", 1024);
+        var retryAt = new DateTimeOffset(2026, 11, 24, 9, 0, 5, TimeSpan.Zero);
+
+        var replaced = await Handler(FakePdfTextExtractor.Busy(retryAt)).HandleAsync(Command(version.Id, pdf, ChapterKind.Pdf, file), TestContext.Current.CancellationToken);
+
+        ShouldBeRefused(replaced.IsFailure ? replaced.Error : null, "editorial.pdf-readers-busy", HttpStatusCode.TooManyRequests, "every PDF reader is busy");
+        replaced.Error.ShouldBeOfType<RetryLaterFailure>().RetryAt.ShouldBe(retryAt);
+        var stored = version.Chapters.ShouldHaveSingleItem();
+        stored.Title.ShouldBe(ChapterTitle.From("Hygieneplan"));
+        stored.File.ShouldBe(held);
+        stored.Extraction.ShouldBe(PdfTextExtraction.Complete);
+        stored.ExtractedText.ShouldBe(PdfText.From(Extracted));
+        store.Commits.ShouldBe(0);
+    }
+
+    [Fact]
     public async Task A_pdf_chapter_that_keeps_its_own_file_keeps_its_extraction_without_reading_the_file()
     {
         var version = Draft();

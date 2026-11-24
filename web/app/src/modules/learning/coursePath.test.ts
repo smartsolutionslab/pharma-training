@@ -16,3 +16,9 @@ test('each version has an address of its own', () => {
     '/learning/courses/0198c1a0-0000-7000-8000-0000000000b2',
   );
 });
+
+// From #341's review: the id comes from the host's answer, so the address is built with it encoded, whatever the DTO
+// carries one day; a Guid, as today, is unchanged by that.
+test('an id that is no Guid stays one segment of the address', () => {
+  expect(coursePath('a/b?c#d')).toBe('/learning/courses/a%2Fb%3Fc%23d');
+});

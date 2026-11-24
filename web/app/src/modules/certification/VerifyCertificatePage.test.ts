@@ -1,5 +1,5 @@
 import { onlineManager, QueryClient, VueQueryPlugin } from '@tanstack/vue-query';
-import { render, screen, waitFor, within } from '@testing-library/vue';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/vue';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { axe } from 'vitest-axe';
@@ -419,5 +419,69 @@ describe.each(languages)('in %s', (language) => {
     );
 
     expect(await axe(container)).toHaveNoViolations();
+  });
+});
+
+// Review of #317. The page itself asks again only on Retry: going back to it after a refusal, while the query is still
+// cached, must not spend the limit again (TanStack retries a failed query when a component mounts it).
+test('after the limit, opening the page again sends nothing by itself', async () => {
+  answer = tooMany;
+  const { router, queryClient } = await renderPage();
+  await screen.findByRole('alert');
+  cleanup();
+
+  render(VerifyCertificatePage, { global: { plugins: [router, [VueQueryPlugin, { queryClient }]] } });
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(limitText);
+  expect(queryClient.isFetching()).toBe(0);
+  expect(verifications()).toEqual([verifyPath()]);
+});
+
+// Review of #317. Whether a certificate is valid changes with the German day: a tab left open past midnight asks again
+// once when it regains focus, and only then; a refusal is never asked again by itself.
+describe('when the window regains focus', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-24T22:30:00Z')); // 23:30 in Germany
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  test('on a later German day, the page asks the host again, once', async () => {
+    const { queryClient } = await renderPage();
+    await screen.findByRole('heading', { level: 2, name: 'Gültig' });
+
+    vi.setSystemTime(new Date('2026-11-24T23:30:00Z')); // 00:30 on the 25th in Germany
+    queryClient.getQueryCache().onFocus();
+    await waitFor(() => expect(verifications()).toEqual([verifyPath(), verifyPath()]));
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+
+    queryClient.getQueryCache().onFocus();
+    expect(queryClient.isFetching()).toBe(0);
+    expect(verifications()).toEqual([verifyPath(), verifyPath()]);
+  });
+
+  test('on the same German day, it does not', async () => {
+    const { queryClient } = await renderPage();
+    await screen.findByRole('heading', { level: 2, name: 'Gültig' });
+
+    vi.setSystemTime(new Date('2026-11-24T22:59:00Z')); // 23:59 in Germany
+    queryClient.getQueryCache().onFocus();
+
+    expect(queryClient.isFetching()).toBe(0);
+    expect(verifications()).toEqual([verifyPath()]);
+  });
+
+  test('after the limit, a later German day does not ask again by itself either', async () => {
+    answer = tooMany;
+    const { queryClient } = await renderPage();
+    await screen.findByRole('alert');
+
+    vi.setSystemTime(new Date('2026-11-24T23:30:00Z'));
+    queryClient.getQueryCache().onFocus();
+
+    expect(queryClient.isFetching()).toBe(0);
+    expect(verifications()).toEqual([verifyPath()]);
   });
 });

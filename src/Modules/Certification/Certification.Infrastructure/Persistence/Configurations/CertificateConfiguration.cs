@@ -35,5 +35,7 @@ public sealed class CertificateConfiguration : IEntityTypeConfiguration<Certific
         builder.HasIndex(certificate => certificate.Attempt).IsUnique().HasDatabaseName("ix_certificates_attempt_id");
         // A verification code names one certificate; a collision is refused, and the retry draws another code.
         builder.HasIndex(certificate => certificate.VerificationCode).IsUnique().HasDatabaseName("ix_certificates_verification_code");
+        // A person lists their own certificates (#295), filtered by holder.
+        builder.HasIndex(certificate => certificate.Holder).HasDatabaseName("ix_certificates_holder_id");
     }
 }

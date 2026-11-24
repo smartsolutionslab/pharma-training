@@ -24,6 +24,22 @@ public sealed class LearnerProgressStore(ComplianceDbContext context) : ILearner
 
     public void Add(IssuedCertificate certificate) => context.Add(certificate);
 
+    public async Task<IReadOnlyList<IssuedCertificate>> FindCertificatesAsync(IReadOnlyCollection<CertificateId> certificates, CancellationToken cancellationToken)
+    {
+        Ensure.That(certificates).IsNotNull();
+
+        List<CertificateId> asked = [.. certificates.Distinct()];
+        if (asked.Count == 0)
+        {
+            return [];
+        }
+
+        return await context.Set<IssuedCertificate>()
+            .AsNoTracking()
+            .Where(issued => asked.Contains(issued.Id))
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<IReadOnlyList<LearnerProgress>> OfLearnerAsync(PersonId learner, IReadOnlyCollection<CourseId> courses, CancellationToken cancellationToken)
     {
         Ensure.That(learner).IsNotNull();

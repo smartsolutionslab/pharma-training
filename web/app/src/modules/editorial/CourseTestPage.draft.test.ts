@@ -31,6 +31,42 @@ const host = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Res
 vi.stubGlobal('fetch', host);
 
 const versionPath = `/api/editorial/course-versions/${versionId}`;
+
+// PDF chapters as the host reports their text (#157, #301): whole, cut at a limit, or none to read; and a video.
+const guideline: EditorialChapterDto = {
+  ...handout,
+  id: '0198c1a0-0000-7000-8000-0000000000e4',
+  position: 1,
+  title: 'Leitlinie Händehygiene',
+  file: `course-versions/${versionId}/0198c1a0-0000-7000-8000-0000000000f4.pdf`,
+  pdfText: 'Complete',
+};
+const manual: EditorialChapterDto = {
+  ...handout,
+  id: '0198c1a0-0000-7000-8000-0000000000e5',
+  position: 2,
+  title: 'Handbuch <i>Hygiene</i>',
+  file: `course-versions/${versionId}/0198c1a0-0000-7000-8000-0000000000f5.pdf`,
+  pdfText: 'Truncated',
+};
+const scan: EditorialChapterDto = {
+  ...handout,
+  id: '0198c1a0-0000-7000-8000-0000000000e6',
+  position: 3,
+  title: 'Gescannter Aushang',
+  file: `course-versions/${versionId}/0198c1a0-0000-7000-8000-0000000000f6.pdf`,
+  pdfText: 'NoText',
+};
+const clip: EditorialChapterDto = {
+  id: '0198c1a0-0000-7000-8000-0000000000e7',
+  position: 4,
+  title: 'Hände waschen im Video',
+  kind: 'Video',
+  text: null,
+  file: `course-versions/${versionId}/0198c1a0-0000-7000-8000-0000000000f7.mp4`,
+  durationSeconds: 60,
+  pdfText: null,
+};
 const draftPath = `${versionPath}/test-draft`;
 
 /** Two questions the AI drafted about the introduction, as the host keeps them after the draft. */
@@ -66,6 +102,7 @@ beforeEach(() => {
     return Response.json({
       draftedQuestionIds: drafted.map((question) => question.id),
       leftOutChapterIds: [handout.id],
+      truncatedChapterIds: [],
     });
   };
   host.mockImplementation(async (input, init) => {
@@ -110,6 +147,8 @@ const blueprintSection = () =>
       document.body,
   );
 const startButton = () => blueprintSection().getByRole('button', { name: t('editorial.test.draft.start') });
+/** The draft's polite status under the button. */
+const draftStatus = () => document.getElementById('course-test-draft-status');
 
 /** The dialog that asks before the draft, an alert dialog or a dialog. */
 const confirmation = () =>
@@ -142,6 +181,15 @@ function leftOutNote(): HTMLElement | null {
   return note;
 }
 
+/** The note's part that lists the chapters the draft cut: the element around its sentence that holds a list. */
+function truncatedNote(): HTMLElement | null {
+  let note: HTMLElement | null = screen.queryByText(t('editorial.test.draft.truncated'));
+  while (note !== null && note.querySelector('ul') === null) {
+    note = note.parentElement;
+  }
+  return note;
+}
+
 describe('the draft block', () => {
   test('a draft explains the AI draft in the blueprint’s section and offers it', async () => {
     await renderPage();
@@ -149,21 +197,57 @@ describe('the draft block', () => {
     expect(blueprintSection().getByText(t('editorial.test.draft.explain'))).toBeInTheDocument();
     expect(
       blueprintSection().getByText(
-        'Die KI entwirft die fehlenden Fragen aus den Textkapiteln. Sie prüfen jede Frage, bevor sie gilt.',
+        'Die KI entwirft die fehlenden Fragen aus den Textkapiteln und dem Text der PDF-Kapitel; Videos sieht sie sich nicht an. Sie prüfen jede Frage, bevor sie gilt.',
       ),
     ).toBeInTheDocument();
     expect(startButton()).toBeEnabled();
     expect(blueprintSection().getByRole('button', { name: 'KI-Entwurf erstellen' })).toBe(startButton());
   });
 
-  test('the draft is disabled without a text chapter, and says why', async () => {
+  test('the draft is disabled without a chapter with text, and says why', async () => {
     version = versionOf('Draft', { chapters: [handout], questions: [handWritten] });
     await renderPage();
 
     expect(startButton()).toBeDisabled();
     expect(startButton()).toHaveAccessibleDescription(t('editorial.test.draft.noTextChapters'));
     expect(startButton()).toHaveAccessibleDescription(
-      'Die KI entwirft nur aus Textkapiteln. Legen Sie zuerst ein Textkapitel an.',
+      'Die KI entwirft nur aus Kapiteln mit Text: aus Textkapiteln und aus PDF-Kapiteln, deren Text sich lesen lässt. Legen Sie zuerst ein solches Kapitel an.',
+    );
+  });
+
+  test('PDF chapters without text and videos are not enough for a draft', async () => {
+    version = versionOf('Draft', { chapters: [scan, clip], questions: [] });
+    await renderPage();
+
+    expect(startButton()).toBeDisabled();
+    expect(startButton()).toHaveAccessibleDescription(t('editorial.test.draft.noTextChapters'));
+  });
+
+  test.each([
+    ['whole', guideline],
+    ['cut at a limit', manual],
+  ])('a version of PDF chapters only is drafted when a PDF’s text is %s', async (_, pdf) => {
+    version = versionOf('Draft', { chapters: [pdf, scan], questions: [] });
+    await renderPage();
+
+    expect(startButton()).toBeEnabled();
+    expect(startButton()).not.toHaveAttribute('aria-describedby');
+    expect(screen.queryByText(t('editorial.test.draft.noTextChapters'))).not.toBeInTheDocument();
+  });
+
+  test('the draft block speaks English when switched', async () => {
+    version = versionOf('Draft', { chapters: [scan], questions: [] });
+    await renderPage();
+
+    setLanguage('en-GB', { remember: false });
+
+    expect(
+      await screen.findByText(
+        'The AI drafts the missing questions from the text chapters and the text of the PDF chapters; it does not watch videos. You approve each question before it counts.',
+      ),
+    ).toBeInTheDocument();
+    expect(startButton()).toHaveAccessibleDescription(
+      'The AI drafts only from chapters with text: text chapters and PDF chapters whose text can be read. Add such a chapter first.',
     );
   });
 
@@ -188,6 +272,50 @@ describe('the draft block', () => {
       expect(screen.queryByRole('button', { name: 'KI-Entwurf erstellen' })).not.toBeInTheDocument();
     },
   );
+});
+
+describe('a second draft', () => {
+  test.each([
+    ['refused', () => refusal(409, 'editorial.course-version-changed', 'Die Version wurde geändert.')],
+    [
+      'answered with nothing cut or left out',
+      () => Response.json({ draftedQuestionIds: [drafted[0]?.id], leftOutChapterIds: [], truncatedChapterIds: [] }),
+    ],
+  ])('takes the first draft’s notes away once asked for, and they stay away when it is %s', async (_, second) => {
+    const user = userEvent.setup();
+    version = versionOf('Draft', { chapters: [introduction, manual, scan], questions: [] });
+    drafting = async () =>
+      Response.json({
+        draftedQuestionIds: [drafted[0]?.id],
+        leftOutChapterIds: [scan.id],
+        truncatedChapterIds: [manual.id],
+      });
+    await renderPage();
+    await confirmDraft(user);
+    await waitFor(() => expect(truncatedNote()).not.toBeNull());
+    expect(leftOutNote()).not.toBeNull();
+
+    let answer: (response: Response) => void = () => undefined;
+    drafting = () =>
+      new Promise<Response>((resolve) => {
+        answer = resolve;
+      });
+    await waitFor(() => expect(startButton()).toBeEnabled());
+    await confirmDraft(user);
+
+    // While the second draft runs, the first one's notes no longer hold.
+    await screen.findByText(t('editorial.test.draft.running'));
+    expect(leftOutNote()).toBeNull();
+    expect(truncatedNote()).toBeNull();
+
+    answer(second());
+
+    await waitFor(() => expect(notify.success.mock.calls.length + notify.failure.mock.calls.length).toBe(2));
+    await waitFor(() => expect(screen.queryByText(t('editorial.test.draft.running'))).not.toBeInTheDocument());
+    expect(leftOutNote()).toBeNull();
+    expect(truncatedNote()).toBeNull();
+    expect(drafts()).toHaveLength(2);
+  });
 });
 
 describe('the confirmation', () => {
@@ -263,7 +391,7 @@ describe('the confirmation', () => {
     expect(dialog.queryByText(/ungeprüfte Frage/)).not.toBeInTheDocument();
   });
 
-  test('a version with a PDF chapter is told PDF and video chapters are not read', async () => {
+  test('a version with a PDF chapter without text is told such chapters and videos are not read', async () => {
     const user = userEvent.setup();
     await renderPage();
 
@@ -271,11 +399,23 @@ describe('the confirmation', () => {
 
     expect(dialog.getByText(t('editorial.test.draft.confirm.leftOut'))).toBeInTheDocument();
     expect(
-      dialog.getByText('PDF- und Videokapitel liest die KI nicht; Fragen dazu schreiben Sie von Hand.'),
+      dialog.getByText(
+        'Videokapitel und PDF-Kapitel ohne lesbaren Text liest die KI nicht; Fragen dazu schreiben Sie von Hand.',
+      ),
     ).toBeInTheDocument();
   });
 
-  test('a version of text chapters only is not told about PDF and video chapters', async () => {
+  test('a version with a video chapter is told it is not read', async () => {
+    const user = userEvent.setup();
+    version = versionOf('Draft', { chapters: [introduction, clip], questions: [] });
+    await renderPage();
+
+    const dialog = await openConfirmation(user);
+
+    expect(dialog.getByText(t('editorial.test.draft.confirm.leftOut'))).toBeInTheDocument();
+  });
+
+  test('a version of text chapters only is not told about chapters left out', async () => {
     const user = userEvent.setup();
     version = versionOf('Draft', { chapters: [introduction], questions: [approvedAi, unreviewedAi] });
     await renderPage();
@@ -283,7 +423,18 @@ describe('the confirmation', () => {
     const dialog = await openConfirmation(user);
 
     expect(dialog.getByText('Die KI entwirft 9 Fragen. Geprüfte Fragen bleiben erhalten.')).toBeInTheDocument();
-    expect(dialog.queryByText(/PDF- und Videokapitel/)).not.toBeInTheDocument();
+    expect(dialog.queryByText(t('editorial.test.draft.confirm.leftOut'))).not.toBeInTheDocument();
+  });
+
+  test('a version whose PDF chapters all have text is not told about chapters left out', async () => {
+    const user = userEvent.setup();
+    version = versionOf('Draft', { chapters: [introduction, guideline, manual], questions: [] });
+    await renderPage();
+
+    const dialog = await openConfirmation(user);
+
+    expect(dialog.getByText('Die KI entwirft 10 Fragen. Geprüfte Fragen bleiben erhalten.')).toBeInTheDocument();
+    expect(dialog.queryByText(t('editorial.test.draft.confirm.leftOut'))).not.toBeInTheDocument();
   });
 
   test('the confirmation speaks English when switched', async () => {
@@ -308,7 +459,9 @@ describe('the confirmation', () => {
       dialog.getByText('2 unreviewed questions will be replaced, including those written by hand.'),
     ).toBeInTheDocument();
     expect(
-      dialog.getByText('The AI does not read PDF and video chapters; write their questions by hand.'),
+      dialog.getByText(
+        'The AI does not read video chapters or PDF chapters without readable text; write their questions by hand.',
+      ),
     ).toBeInTheDocument();
     expect(dialog.getByRole('button', { name: 'Draft' })).toBeInTheDocument();
   });
@@ -349,7 +502,7 @@ describe('the draft', () => {
     // And no way to cancel it: the model call would go on.
     expect(screen.queryByRole('button', { name: t('editorial.cancel') })).not.toBeInTheDocument();
 
-    answer(Response.json({ draftedQuestionIds: [], leftOutChapterIds: [] }));
+    answer(Response.json({ draftedQuestionIds: [], leftOutChapterIds: [], truncatedChapterIds: [] }));
 
     await waitFor(() => expect(screen.queryByText(t('editorial.test.draft.running'))).not.toBeInTheDocument());
     await waitFor(() => expect(startButton()).toBeEnabled());
@@ -383,7 +536,8 @@ describe('the draft', () => {
 
   test('one drafted question is reported in the singular, in English when switched', async () => {
     const user = userEvent.setup();
-    drafting = async () => Response.json({ draftedQuestionIds: [drafted[0]?.id], leftOutChapterIds: [] });
+    drafting = async () =>
+      Response.json({ draftedQuestionIds: [drafted[0]?.id], leftOutChapterIds: [], truncatedChapterIds: [] });
     await renderPage();
 
     setLanguage('en-GB', { remember: false });
@@ -417,6 +571,7 @@ describe('the draft', () => {
         draftedQuestionIds: drafted.map((question) => question.id),
         // A chapter the version does not have is skipped.
         leftOutChapterIds: [handout.id, '0198c1a0-0000-7000-8000-0000000000ef', video.id],
+        truncatedChapterIds: [],
       });
     };
     const { container } = await renderPage();
@@ -441,11 +596,158 @@ describe('the draft', () => {
     expect(screen.queryByRole('button', { name: 'Hinweis schließen' })).not.toBeInTheDocument();
   });
 
+  test('a version of PDF chapters only is drafted, and the chapters it cut and left out are named', async () => {
+    const user = userEvent.setup();
+    version = versionOf('Draft', { chapters: [guideline, manual, scan, clip], questions: [] });
+    drafting = async () => {
+      version = {
+        ...version,
+        questions: drafted.map((question) => ({ ...question, chapterId: guideline.id })),
+      };
+      return Response.json({
+        draftedQuestionIds: drafted.map((question) => question.id),
+        leftOutChapterIds: [scan.id, clip.id],
+        // A chapter the version does not have is skipped.
+        truncatedChapterIds: ['0198c1a0-0000-7000-8000-0000000000ef', manual.id],
+      });
+    };
+    const { container } = await renderPage();
+
+    await confirmDraft(user);
+
+    await waitFor(() => expect(truncatedNote()).not.toBeNull());
+    expect(drafts()).toHaveLength(1);
+    expect(screen.getByText(t('editorial.test.draft.truncated'))).toHaveTextContent(
+      'Von diesen PDF-Kapiteln hat die KI nur den Anfang gelesen; Fragen zu den späteren Seiten schreiben Sie von Hand:',
+    );
+    const cut = within(truncatedNote()?.querySelector('ul') ?? document.body);
+    expect(cut.getAllByRole('listitem').map((item) => item.textContent?.trim())).toEqual(['Handbuch <i>Hygiene</i>']);
+    // A title is text, never markup.
+    expect(container.querySelector('i')).toBeNull();
+    const leftOut = within(leftOutNote()?.querySelector('ul') ?? document.body);
+    expect(leftOut.getAllByRole('listitem').map((item) => item.textContent?.trim())).toEqual([
+      'Gescannter Aushang',
+      'Hände waschen im Video',
+    ]);
+
+    await user.click(screen.getByRole('button', { name: t('editorial.test.draft.dismiss') }));
+
+    await waitFor(() => expect(truncatedNote()).toBeNull());
+    expect(leftOutNote()).toBeNull();
+  });
+
+  test('the draft’s status sums up the chapters cut and left out, for those who do not see the note', async () => {
+    const user = userEvent.setup();
+    version = versionOf('Draft', { chapters: [guideline, manual, scan, clip], questions: [] });
+    drafting = async () =>
+      Response.json({
+        draftedQuestionIds: [drafted[0]?.id],
+        leftOutChapterIds: [scan.id, clip.id],
+        truncatedChapterIds: [manual.id],
+      });
+    await renderPage();
+
+    await confirmDraft(user);
+
+    await waitFor(() => expect(truncatedNote()).not.toBeNull());
+    const status = draftStatus();
+    expect(status).toHaveAttribute('role', 'status');
+    expect(status).toHaveTextContent('Zu 2 Kapiteln hat die KI keine Fragen entworfen; siehe den Hinweis.');
+    expect(status).toHaveTextContent('Von einem PDF-Kapitel hat die KI nur den Anfang gelesen; siehe den Hinweis.');
+
+    await user.click(screen.getByRole('button', { name: t('editorial.test.draft.dismiss') }));
+
+    await waitFor(() => expect(draftStatus()).toHaveTextContent(/^$/));
+  });
+
+  test('the status’s summary speaks in the singular and plural of each language', async () => {
+    const user = userEvent.setup();
+    version = versionOf('Draft', { chapters: [guideline, manual, scan], questions: [] });
+    drafting = async () =>
+      Response.json({
+        draftedQuestionIds: [drafted[0]?.id],
+        leftOutChapterIds: [scan.id],
+        truncatedChapterIds: [guideline.id, manual.id],
+      });
+    await renderPage();
+
+    await confirmDraft(user);
+
+    await waitFor(() =>
+      expect(draftStatus()).toHaveTextContent('Zu einem Kapitel hat die KI keine Fragen entworfen; siehe den Hinweis.'),
+    );
+    expect(draftStatus()).toHaveTextContent('Von 2 PDF-Kapiteln hat die KI nur den Anfang gelesen; siehe den Hinweis.');
+    setLanguage('en-GB', { remember: false });
+    await waitFor(() =>
+      expect(draftStatus()).toHaveTextContent('The AI drafted no questions for one chapter; see the note.'),
+    );
+    expect(draftStatus()).toHaveTextContent('The AI read only the beginning of 2 PDF chapters; see the note.');
+  });
+
+  test('dismissing the note puts focus on the draft’s explanation, visible and named, never on the body (#361)', async () => {
+    const user = userEvent.setup();
+    version = versionOf('Draft', { chapters: [introduction, manual], questions: [] });
+    drafting = async () =>
+      Response.json({ draftedQuestionIds: [drafted[0]?.id], leftOutChapterIds: [], truncatedChapterIds: [manual.id] });
+    await renderPage();
+
+    await confirmDraft(user);
+    await waitFor(() => expect(truncatedNote()).not.toBeNull());
+    const dismiss = screen.getByRole('button', { name: t('editorial.test.draft.dismiss') });
+    await user.click(dismiss);
+
+    await waitFor(() => expect(truncatedNote()).toBeNull());
+    const explanation = screen.getByText(t('editorial.test.draft.explain'));
+    expect(explanation).toHaveFocus();
+    expect(explanation).not.toHaveTextContent(/^$/);
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  test('a draft that only cut chapters names them without a list of chapters left out', async () => {
+    const user = userEvent.setup();
+    version = versionOf('Draft', { chapters: [introduction, manual], questions: [] });
+    drafting = async () =>
+      Response.json({ draftedQuestionIds: [drafted[0]?.id], leftOutChapterIds: [], truncatedChapterIds: [manual.id] });
+    await renderPage();
+
+    await confirmDraft(user);
+
+    await waitFor(() => expect(truncatedNote()).not.toBeNull());
+    expect(screen.queryByText(t('editorial.test.draft.leftOut'))).not.toBeInTheDocument();
+  });
+
+  test('the chapters cut are named in English when switched', async () => {
+    const user = userEvent.setup();
+    version = versionOf('Draft', { chapters: [manual], questions: [] });
+    drafting = async () =>
+      Response.json({ draftedQuestionIds: [drafted[0]?.id], leftOutChapterIds: [], truncatedChapterIds: [manual.id] });
+    await renderPage();
+
+    setLanguage('en-GB', { remember: false });
+    await screen.findByRole('button', { name: 'Draft with AI' });
+    await user.click(startButton());
+    const dialog = await waitFor(() => {
+      expect(confirmation()).not.toBeNull();
+      return within(confirmation() ?? document.body);
+    });
+    await user.click(dialog.getByRole('button', { name: 'Draft' }));
+
+    expect(
+      await screen.findByText(
+        'The AI read only the beginning of these PDF chapters; write questions about their later pages by hand:',
+      ),
+    ).toBeInTheDocument();
+  });
+
   test('a draft that left nothing out lists nothing', async () => {
     const user = userEvent.setup();
     drafting = async () => {
       version = { ...version, questions: [approvedAi, ...drafted] };
-      return Response.json({ draftedQuestionIds: drafted.map((question) => question.id), leftOutChapterIds: [] });
+      return Response.json({
+        draftedQuestionIds: drafted.map((question) => question.id),
+        leftOutChapterIds: [],
+        truncatedChapterIds: [],
+      });
     };
     await renderPage();
 
@@ -453,6 +755,7 @@ describe('the draft', () => {
 
     await waitFor(() => expect(notify.success).toHaveBeenCalledOnce());
     expect(screen.queryByText(t('editorial.test.draft.leftOut'))).not.toBeInTheDocument();
+    expect(screen.queryByText(t('editorial.test.draft.truncated'))).not.toBeInTheDocument();
   });
 
   test('an answer of the host that is not the draft’s shape is not trusted: nothing of it is shown', async () => {
@@ -461,6 +764,7 @@ describe('the draft', () => {
       Response.json({
         draftedQuestionIds: 'alle',
         leftOutChapterIds: [42, '<img src=x onerror="window.hacked = true">', { id: handout.id }],
+        truncatedChapterIds: [],
       });
     const { container } = await renderPage();
 
@@ -515,7 +819,7 @@ describe('a refused or failed draft', () => {
     [
       '409 no-text-chapters',
       () => refusal(409, 'editorial.no-text-chapters', 'Keine Textkapitel.'),
-      'Die KI entwirft nur aus Textkapiteln. Legen Sie zuerst ein Textkapitel an.',
+      'Die KI entwirft nur aus Kapiteln mit Text: aus Textkapiteln und aus PDF-Kapiteln, deren Text sich lesen lässt. Legen Sie zuerst ein solches Kapitel an.',
     ],
     [
       '409 nothing-to-draft',
@@ -525,7 +829,7 @@ describe('a refused or failed draft', () => {
     [
       '422 too-much-content-to-draft',
       () => refusal(422, 'editorial.too-much-content-to-draft', 'Zu viel Inhalt.'),
-      'Die Textkapitel sind zu lang für einen KI-Entwurf. Kürzen Sie sie oder schreiben Sie die Fragen von Hand.',
+      'Die Textkapitel sind zusammen zu lang für einen KI-Entwurf; PDF-Kapitel werden dafür gekürzt, Textkapitel nicht. Kürzen Sie die Textkapitel oder schreiben Sie die Fragen von Hand.',
     ],
     [
       '409 course-version-changed',
@@ -682,7 +986,7 @@ describe('one draft at a time', () => {
 
     await screen.findByText(t('editorial.test.draft.running'));
     expect(drafts()).toHaveLength(1);
-    answer(Response.json({ draftedQuestionIds: [], leftOutChapterIds: [] }));
+    answer(Response.json({ draftedQuestionIds: [], leftOutChapterIds: [], truncatedChapterIds: [] }));
     await waitFor(() => expect(startButton()).toBeEnabled());
     expect(drafts()).toHaveLength(1);
   });
@@ -704,7 +1008,7 @@ describe('one draft at a time', () => {
 
     await waitFor(() => expect(drafts()).toHaveLength(1));
     expect(submit.isConnected ? submit.hasAttribute('disabled') : true).toBe(true);
-    answer(Response.json({ draftedQuestionIds: [], leftOutChapterIds: [] }));
+    answer(Response.json({ draftedQuestionIds: [], leftOutChapterIds: [], truncatedChapterIds: [] }));
     await waitFor(() => expect(startButton()).toBeEnabled());
     expect(drafts()).toHaveLength(1);
   });
@@ -767,7 +1071,7 @@ describe('the running draft outlives the page', () => {
     expect(startButton()).toBeDisabled();
     expect(drafts()).toHaveLength(1);
 
-    answer(Response.json({ draftedQuestionIds: [], leftOutChapterIds: [] }));
+    answer(Response.json({ draftedQuestionIds: [], leftOutChapterIds: [], truncatedChapterIds: [] }));
 
     await waitFor(() => expect(screen.queryByText(t('editorial.test.draft.running'))).not.toBeInTheDocument());
     await waitFor(() => expect(startButton()).toBeEnabled());
@@ -777,7 +1081,7 @@ describe('the running draft outlives the page', () => {
 test('the done report counts in the page’s number format', async () => {
   const user = userEvent.setup();
   const many = Array.from({ length: 1000 }, (_, index) => `0198c1a0-0000-7000-8002-${String(index).padStart(12, '0')}`);
-  drafting = async () => Response.json({ draftedQuestionIds: many, leftOutChapterIds: [] });
+  drafting = async () => Response.json({ draftedQuestionIds: many, leftOutChapterIds: [], truncatedChapterIds: [] });
   await renderPage();
 
   await confirmDraft(user);
