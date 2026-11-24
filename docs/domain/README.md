@@ -266,7 +266,7 @@ Status: `Draft` → `InReview` → `Published` → `Superseded` bzw. `Retired`.
 | `ApplyAiTestDraft` | Ersetzt nur ungeprüfte Fragen; jede Frage trägt Herkunft `AiDrafted` |
 | `EditQuestion` / `ApproveQuestion` | Freigabe vermerkt Redakteur und Zeitpunkt |
 | `SubmitForReview` | Mindestens ein Kapitel; Test vollständig laut Vorgaben |
-| `Publish` | Alle Fragen freigegeben; jede Frage einem Kapitel zugeordnet; Single Choice genau eine richtige Option, Multiple Choice mindestens eine; bei Vier-Augen-Einstellung freigebende ≠ einreichende Person |
+| `Publish` | Alle Fragen freigegeben; jede Frage einem Kapitel zugeordnet; Single Choice genau eine richtige Option, Multiple Choice mindestens eine; bei Vier-Augen-Einstellung freigebende ≠ einreichende Person und ≠ Person, die die Testvorgaben zuletzt geändert hat |
 | `Retire` | Nur veröffentlicht; laufende Durchläufe bleiben gültig |
 
 `Publish` führt zu den Integration Events `CourseVersionPublished` und `TestDefinitionPublished`. Der LLM-Aufruf für den Testentwurf liegt im Application-Layer; die Domäne bekommt nur die entworfenen Fragen.
