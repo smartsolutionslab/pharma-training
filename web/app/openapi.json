@@ -449,6 +449,55 @@
         }
       }
     },
+    "/certification/verify/{code}": {
+      "get": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificateVerificationDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/compliance/pharmacies/{id}/assignments/{assignmentId}": {
       "get": {
         "tags": [
@@ -2864,6 +2913,41 @@
           },
           "name": {
             "type": "string"
+          }
+        }
+      },
+      "CertificateValidity": {
+        "enum": [
+          "Valid",
+          "Expired"
+        ]
+      },
+      "CertificateVerificationDto": {
+        "required": [
+          "holderName",
+          "courseTitle",
+          "issuedOn",
+          "validUntil",
+          "validity"
+        ],
+        "type": "object",
+        "properties": {
+          "holderName": {
+            "type": "string"
+          },
+          "courseTitle": {
+            "type": "string"
+          },
+          "issuedOn": {
+            "type": "string",
+            "format": "date"
+          },
+          "validUntil": {
+            "type": "string",
+            "format": "date"
+          },
+          "validity": {
+            "$ref": "#/components/schemas/CertificateValidity"
           }
         }
       },
