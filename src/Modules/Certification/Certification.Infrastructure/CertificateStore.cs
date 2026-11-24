@@ -37,5 +37,18 @@ public sealed class CertificateStore(CertificationDbContext context) : ICertific
         return Option<Certificate>.Some(certificate);
     }
 
+    public async Task<IReadOnlyList<Certificate>> IssuedToAsync(IReadOnlyCollection<PersonId> holders, Timestamp issuedFrom, Timestamp issuedBefore, CancellationToken cancellationToken)
+    {
+        Ensure.That(holders).IsNotNull();
+
+        List<PersonId> asked = [.. holders];
+        return await context.Set<Certificate>()
+            .AsNoTracking()
+            .Where(certificate => asked.Contains(certificate.Holder) && certificate.IssuedAt >= issuedFrom && certificate.IssuedAt < issuedBefore)
+            .OrderBy(certificate => certificate.IssuedAt)
+            .ThenBy(certificate => certificate.Id)
+            .ToListAsync(cancellationToken);
+    }
+
     public void Add(Certificate certificate) => context.Add(certificate);
 }

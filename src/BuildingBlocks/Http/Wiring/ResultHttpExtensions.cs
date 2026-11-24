@@ -54,6 +54,21 @@ public static class ResultHttpExtensions
     }
 
     /// <summary>
+    /// The value's bytes written straight into the response body by <paramref name="stream"/>, or problem details carrying
+    /// the error's status and code: for a download the service assembles as it sends it.
+    /// </summary>
+    public static Results<PushStreamHttpResult, ProblemHttpResult> ToStreamHttpResult<TValue, TError>(this Result<TValue, TError> result, Func<TValue, PushStreamHttpResult> stream)
+        where TValue : notnull
+        where TError : ApiError
+    {
+        Ensure.That(stream).IsNotNull();
+
+        return result.Match<Results<PushStreamHttpResult, ProblemHttpResult>>(
+            value => stream(value),
+            error => ProblemOf(error));
+    }
+
+    /// <summary>
     /// Problem details carrying the error's status and code, and for a refusal to retry later
     /// (<see cref="RetryLaterFailure"/>) the instant as <c>retryAt</c>, from which the module's route group sets <c>Retry-After</c>.
     /// </summary>

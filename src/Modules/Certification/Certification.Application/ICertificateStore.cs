@@ -20,5 +20,11 @@ public interface ICertificateStore
     /// <summary>The certificate the code names, read without tracking, if any.</summary>
     Task<Option<Certificate>> FindByVerificationCodeAsync(VerificationCode code, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// The holders' certificates issued from <paramref name="issuedFrom"/> on and before <paramref name="issuedBefore"/>,
+    /// read without tracking, oldest first, then by id.
+    /// </summary>
+    Task<IReadOnlyList<Certificate>> IssuedToAsync(IReadOnlyCollection<PersonId> holders, Timestamp issuedFrom, Timestamp issuedBefore, CancellationToken cancellationToken);
+
     void Add(Certificate certificate);
 }

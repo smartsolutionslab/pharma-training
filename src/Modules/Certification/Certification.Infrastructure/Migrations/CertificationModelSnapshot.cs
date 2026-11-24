@@ -16,7 +16,7 @@ partial class CertificationModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261124012644_KeepCourseVersionNumbers";
+    public override string LastMigrationId => "20261124113324_AddMembershipRolesAndChanges";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -106,6 +106,9 @@ partial class CertificationModelSnapshot : ModelSnapshot
                     .IsUnique()
                     .HasDatabaseName("ix_certificates_verification_code");
 
+                b.HasIndex("Holder", "IssuedAt")
+                    .HasDatabaseName("ix_certificates_holder_id_issued_at");
+
                 b.ToTable("certificates", "certification");
             });
 
@@ -159,6 +162,12 @@ partial class CertificationModelSnapshot : ModelSnapshot
                     .HasColumnType("uuid")
                     .HasColumnName("pharmacy_id");
 
+                b.Property<string>("Role")
+                    .IsRequired()
+                    .HasMaxLength(16)
+                    .HasColumnType("character varying(16)")
+                    .HasColumnName("role");
+
                 b.Property<DateTimeOffset>("StartedAt")
                     .HasColumnType("timestamp with time zone")
                     .HasColumnName("started_at");
@@ -169,7 +178,40 @@ partial class CertificationModelSnapshot : ModelSnapshot
                 b.HasIndex("Person")
                     .HasDatabaseName("ix_memberships_person_id");
 
+                b.HasIndex("Pharmacy")
+                    .HasDatabaseName("ix_memberships_pharmacy_id");
+
                 b.ToTable("memberships", "certification");
+            });
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Memberships.MembershipChange", b =>
+            {
+                b.Property<Guid>("Membership")
+                    .HasColumnType("uuid")
+                    .HasColumnName("membership_id");
+
+                b.Property<int>("Version")
+                    .HasColumnType("integer")
+                    .HasColumnName("version");
+
+                b.Property<Guid>("Person")
+                    .HasColumnType("uuid")
+                    .HasColumnName("person_id");
+
+                b.Property<Guid>("Pharmacy")
+                    .HasColumnType("uuid")
+                    .HasColumnName("pharmacy_id");
+
+                b.Property<string>("Role")
+                    .IsRequired()
+                    .HasMaxLength(16)
+                    .HasColumnType("character varying(16)")
+                    .HasColumnName("role");
+
+                b.HasKey("Membership", "Version")
+                    .HasName("pk_membership_changes");
+
+                b.ToTable("membership_changes", "certification");
             });
 
         modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Memberships.MembershipEnding", b =>
