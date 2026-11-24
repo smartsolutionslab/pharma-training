@@ -127,7 +127,7 @@ public class SetTestBlueprintTests
     {
         var version = Draft();
         store.Stored.Add(version);
-        unitOfWork.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(Failure<LostRace>(new VersionMovedOn()));
+        unitOfWork.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(Failure(LostRaces.VersionMovedOn()));
 
         var set = await SetAsync(version.Id, Blueprint(5, 70, 24));
 

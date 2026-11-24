@@ -105,7 +105,7 @@ public class DraftNextVersionTests
         var source = Published();
         store.Stored.Add(source);
         var lostRace = Substitute.For<IEditorialUnitOfWork>();
-        lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(Failure<LostRace>(new VersionMovedOn()));
+        lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(Failure(LostRaces.VersionMovedOn()));
 
         var drafted = await Handler(store, lostRace).HandleAsync(new DraftNextVersion(source.Id, Editor), TestContext.Current.CancellationToken);
 
@@ -163,7 +163,7 @@ public class DraftNextVersionTests
         lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(_ =>
         {
             store.Stored.Add(concurrent);
-            return Failure<LostRace>(new VersionMovedOn());
+            return Failure(LostRaces.VersionMovedOn());
         });
 
         var drafted = await Handler(store, lostRace).HandleAsync(new DraftNextVersion(source.Id, Editor), TestContext.Current.CancellationToken);

@@ -24,7 +24,7 @@ public class LostRaceTests
     {
         version = DraftWithChapter(out chapter);
         store.Stored.Add(version);
-        lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(Failure<LostRace>(new VersionMovedOn()));
+        lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(Failure(LostRaces.VersionMovedOn()));
     }
 
     [Fact]

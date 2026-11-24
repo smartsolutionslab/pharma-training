@@ -188,7 +188,7 @@ public class PublishCourseVersionTests
         var version = InReview();
         store.Stored.Add(version);
         var lostRace = Substitute.For<IEditorialUnitOfWork>();
-        lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(Failure<LostRace>(new VersionMovedOn()));
+        lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(Failure(LostRaces.VersionMovedOn()));
 
         var published = await new PublishCourseVersionHandler(store, lostRace, urls, ReviewSettings.Default, time)
             .HandleAsync(new PublishCourseVersion(version.Id, Reviewer), TestContext.Current.CancellationToken);
@@ -237,7 +237,7 @@ public class PublishCourseVersionTests
         var version = InReview();
         store.Stored.Add(version);
         var lostRace = Substitute.For<IEditorialUnitOfWork>();
-        lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(Failure<LostRace>(new VersionMovedOn()));
+        lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(Failure(LostRaces.VersionMovedOn()));
 
         var published = await new PublishCourseVersionHandler(store, lostRace, urls, ReviewSettings.Default, time)
             .HandleAsync(new PublishCourseVersion(version.Id, Reviewer), TestContext.Current.CancellationToken);

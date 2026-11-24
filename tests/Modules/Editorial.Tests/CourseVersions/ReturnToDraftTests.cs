@@ -137,7 +137,7 @@ public class ReturnToDraftTests
         var version = InReview();
         store.Stored.Add(version);
         var lostRace = Substitute.For<IEditorialUnitOfWork>();
-        lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(Failure<LostRace>(new VersionMovedOn()));
+        lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(Failure(LostRaces.VersionMovedOn()));
 
         var returned = await new ReturnToDraftHandler(store, lostRace, time).HandleAsync(new ReturnToDraft(version.Id, Reviewer, ReviewersName, Reason), TestContext.Current.CancellationToken);
 

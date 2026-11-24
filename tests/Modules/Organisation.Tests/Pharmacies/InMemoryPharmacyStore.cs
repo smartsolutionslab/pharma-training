@@ -153,7 +153,7 @@ internal sealed class InMemoryPharmacyStore : IPharmacyStore, IInvitationRecipie
         {
             loseNextCommit = false;
             Discard();
-            return Failure<LostRace>(how);
+            return Failure(how);
         }
 
         await CommitAsync(cancellationToken);

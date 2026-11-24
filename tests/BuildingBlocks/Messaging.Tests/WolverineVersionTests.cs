@@ -12,7 +12,7 @@ namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging.Tests;
 /// </summary>
 public class WolverineVersionTests
 {
-    private static readonly Version Checked = new(6, 64, 0);
+    private const string Checked = "6.64.0";
 
     [Fact]
     public void The_wolverine_ef_core_outbox_is_the_version_try_commit_async_was_checked_against()
@@ -22,8 +22,23 @@ public class WolverineVersionTests
         var package = DependencyContext.Default.ShouldNotBeNull().RuntimeLibraries
             .Single(library => library.Name == "WolverineFx.EntityFrameworkCore");
 
-        Version.Parse(package.Version).ShouldBe(
+        ShouldBeTheCheckedVersion(package.Version);
+    }
+
+    /// <summary>A prerelease of the next version (6.65.0-beta.1) fails with the same guidance as a release, not a parse error.</summary>
+    [Theory]
+    [InlineData("6.65.0")]
+    [InlineData("6.65.0-beta.1")]
+    [InlineData("6.64.0-rc.2")]
+    public void Any_other_version_fails_with_the_guidance_to_recheck(string resolved)
+    {
+        var failed = Should.Throw<ShouldAssertException>(() => ShouldBeTheCheckedVersion(resolved));
+
+        failed.Message.ShouldContain("recheck ModuleUnitOfWork.TryCommitAsync");
+    }
+
+    private static void ShouldBeTheCheckedVersion(string resolved) =>
+        resolved.ShouldBe(
             Checked,
             "WolverineFx.EntityFrameworkCore moved: recheck ModuleUnitOfWork.TryCommitAsync against its SaveChangesAndFlushMessagesAsync before moving this version.");
-    }
 }

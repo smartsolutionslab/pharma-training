@@ -114,7 +114,7 @@ public class RetireCourseVersionTests
         var version = Published();
         store.Stored.Add(version);
         var lostRace = Substitute.For<IEditorialUnitOfWork>();
-        lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(Failure<LostRace>(new VersionMovedOn()));
+        lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(Failure(LostRaces.VersionMovedOn()));
 
         var retired = await new RetireCourseVersionHandler(store, lostRace, time).HandleAsync(new RetireCourseVersion(version.Id, Reviewer), TestContext.Current.CancellationToken);
 

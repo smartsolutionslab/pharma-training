@@ -78,7 +78,7 @@ public class SubmitForReviewTests
         var version = ReadyToSubmit();
         store.Stored.Add(version);
         var lostRace = Substitute.For<IEditorialUnitOfWork>();
-        lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(Failure<LostRace>(new VersionMovedOn()));
+        lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(Failure(LostRaces.VersionMovedOn()));
 
         var submitted = await new SubmitForReviewHandler(store, lostRace).HandleAsync(new SubmitForReview(version.Id, Author), TestContext.Current.CancellationToken);
 

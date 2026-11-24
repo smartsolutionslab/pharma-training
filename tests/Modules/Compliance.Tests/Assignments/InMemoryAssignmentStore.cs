@@ -122,7 +122,7 @@ internal sealed class InMemoryAssignmentStore : IAssignmentStore, IComplianceUni
             loseNextCommit = false;
             added.Clear();
             queued.Clear();
-            return Failure<LostRace>(how);
+            return Failure(how);
         }
 
         await CommitAsync(cancellationToken);

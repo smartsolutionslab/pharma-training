@@ -145,7 +145,7 @@ public class ApplyAiTestDraftTests
         var version = TestDraftVersions.WithTextChapters(2, "Händehygiene", "Flächen");
         store.Stored.Add(version);
         var lostRace = Substitute.For<IEditorialUnitOfWork>();
-        lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(Failure<LostRace>(new VersionMovedOn()));
+        lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(Failure(LostRaces.VersionMovedOn()));
         using var model = new FakeChatClient(Sound(1, 2));
 
         var result = await new ApplyAiTestDraftHandler(store, lostRace, model)
