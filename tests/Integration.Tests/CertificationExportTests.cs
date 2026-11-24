@@ -174,6 +174,36 @@ public class CertificationExportTests(AspireFixture aspire)
         export.PdfsShouldBePdfs();
     }
 
+    /// <summary>
+    /// Retention (#53, docs/adr/0034): the pharmacy's export leaves out a certificate issued five years ago or longer,
+    /// whatever period is asked for. On the host's own clock, a certificate passed five years and a day ago is not
+    /// exported and one passed five years less a day ago is; the exact instant is the unit tests' (FakeTimeProvider).
+    /// </summary>
+    [Fact]
+    public async Task Certificates_issued_five_years_ago_or_longer_are_not_exported()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var developer = await aspire.CreateHostClientAsync("developer");
+        var pharmacy = await ManagedPharmacyAsync(developer, cancellationToken);
+        var member = StartedIn(Guid.CreateVersion7(), pharmacy, "Employee", LongAgo);
+        await CertificationDatabase.DeliverAsync(aspire, StartedType, member, cancellationToken);
+        var published = Published();
+        await CertificationDatabase.DeliverAsync(aspire, PublishedType, published, cancellationToken);
+        var fiveYearsAgo = TimeProvider.System.GetUtcNow().AddYears(-5);
+        var expired = await PassAsync(member, published, fiveYearsAgo.AddDays(-1), cancellationToken);
+        var kept = await PassAsync(member, published, fiveYearsAgo.AddDays(1), cancellationToken);
+        await CertificationDatabase.WaitUntilCountAsync(aspire, StoredOfHolder, member.PersonId, 2, cancellationToken);
+
+        var export = await ExportAsync(developer, pharmacy, DayOf(fiveYearsAgo.AddDays(-3)), DayOf(fiveYearsAgo.AddDays(3)), cancellationToken);
+
+        export.ExportedIds().ShouldBe([kept]);
+        export.Entries.Select(entry => entry.Name).ShouldBe(["index.csv", $"pdf/{kept:D}.pdf"]);
+        export.ShouldNotMention(expired);
+        export.PdfsShouldBePdfs();
+    }
+
+    private static string DayOf(DateTimeOffset instant) => instant.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+
     private static Uri Export(Guid pharmacy, string query) => new($"/certification/pharmacies/{pharmacy:D}/certificates/export{query}", UriKind.Relative);
 
     private static async Task ShouldBeRefusedAsync(HttpResponseMessage response, HttpStatusCode status, string code, CancellationToken cancellationToken)

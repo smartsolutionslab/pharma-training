@@ -15,7 +15,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Que
 /// day in Germany lies within the period. Nothing is read from blob storage here: the archive reads each PDF as it is
 /// written into the response.
 /// </summary>
-public sealed class ExportPharmacyCertificatesHandler(IMembershipStore memberships, ICertificateStore certificates, IBlobReads blobs)
+public sealed class ExportPharmacyCertificatesHandler(IMembershipStore memberships, ICertificateStore certificates, IBlobReads blobs, TimeProvider time)
     : IQueryHandler<ExportPharmacyCertificates, Result<CertificateExportArchive, ApiError>>
 {
     public async Task<Result<CertificateExportArchive, ApiError>> HandleAsync(ExportPharmacyCertificates query, CancellationToken cancellationToken)
@@ -49,7 +49,11 @@ public sealed class ExportPharmacyCertificatesHandler(IMembershipStore membershi
         var periods = await memberships.PeriodsInPharmacyAsync(pharmacy, cancellationToken);
         List<PersonId> holders = [.. periods.Select(membership => membership.Person).Distinct()];
         var issued = await certificates.IssuedToAsync(holders, period.Value.Start, period.Value.End, cancellationToken);
-        List<Certificate> chosen = [.. issued.Where(certificate => periods.Any(membership => membership.Person == certificate.Holder && membership.Covers(certificate.IssuedAt)))];
+
+        // Retention (#53, docs/adr/0034) is applied before the limit is counted: a certificate the pharmacy no longer
+        // keeps neither appears in the export nor makes it too large.
+        var now = Timestamp.From(time.GetUtcNow());
+        List<Certificate> chosen = [.. issued.Where(certificate => certificate.IsKeptByPharmaciesAt(now) && periods.Any(membership => membership.Person == certificate.Holder && membership.Covers(certificate.IssuedAt)))];
         if (chosen.Count > CertificateExportArchive.MaxCertificates)
         {
             return Failure(ExportFailures.TooLarge());

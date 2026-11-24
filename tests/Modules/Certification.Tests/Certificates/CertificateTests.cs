@@ -63,6 +63,23 @@ public class CertificateTests
         certificate.CourseVersionNumber.ShouldBe(CourseVersionNumber.From(3));
     }
 
+    /// <summary>
+    /// #53 (docs/adr/0034): a pharmacy sees a certificate until five years after it was issued, to the instant; at
+    /// IssuedAt + 5 years it is gone from the pharmacy's view. The holder keeps it.
+    /// </summary>
+    [Theory]
+    [InlineData("2032-02-28T23:30:00Z", true)] // 4 years 364 days
+    [InlineData("2032-02-29T23:30:00Z", true)] // 4 years 365 days, a day before (2032 is a leap year)
+    [InlineData("2032-03-01T23:29:59.9999999Z", true)]
+    [InlineData("2032-03-01T23:30:00Z", false)] // exactly 5 years
+    [InlineData("2040-01-01T00:00:00Z", false)]
+    public void A_pharmacy_keeps_a_certificate_until_five_years_after_its_issue(string now, bool kept)
+    {
+        var at = Timestamp.From(DateTimeOffset.Parse(now, System.Globalization.CultureInfo.InvariantCulture));
+
+        Issue(RecurrenceInterval.Yearly).IsKeptByPharmaciesAt(at).ShouldBe(kept);
+    }
+
     [Fact]
     public void A_verification_code_is_never_short()
     {

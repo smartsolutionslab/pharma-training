@@ -9,6 +9,9 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Certific
 /// </summary>
 public sealed class Certificate : AggregateRoot<CertificateId>
 {
+    // Decision "Aufbewahrung" (docs/domain/README.md): five years from issue; a period per pharmacy is a follow-up.
+    private const int PharmacyRetentionYears = 5;
+
     private Certificate(
         CertificateId id,
         AttemptId attempt,
@@ -96,4 +99,15 @@ public sealed class Certificate : AggregateRoot<CertificateId>
     }
 
     public Validity ValidityOn(CalendarDate today) => today > ValidUntil ? Validity.Expired : Validity.Valid;
+
+    /// <summary>
+    /// Whether a pharmacy still sees this certificate in its view at <paramref name="now"/> (#53, docs/adr/0034): until
+    /// <see cref="PharmacyRetentionYears"/> years after <see cref="IssuedAt"/>, to the instant, and no longer from then on.
+    /// The holder keeps the certificate in their own account whatever this answers.
+    /// </summary>
+    public bool IsKeptByPharmaciesAt(Timestamp now)
+    {
+        Ensure.That(now).IsNotNull();
+        return IssuedAt.Value.AddYears(PharmacyRetentionYears) > now.Value;
+    }
 }
