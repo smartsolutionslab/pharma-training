@@ -39,4 +39,39 @@ public static class ComplianceAccess
 
         return Success(memberships[0]);
     }
+
+    /// <summary>That the person has a membership in the pharmacy that has not ended, whatever its role; else not found (docs/adr/0003).</summary>
+    public static async Task<Result<Unit, ApiError>> RequireMembershipAsync(IMemberStore members, PersonId person, PharmacyId pharmacy, CancellationToken cancellationToken)
+    {
+        Ensure.That(members).IsNotNull();
+        Ensure.That(person).IsNotNull();
+        Ensure.That(pharmacy).IsNotNull();
+
+        var memberships = await members.ActiveMembershipsAsync(person, pharmacy, cancellationToken);
+        if (memberships.Count == 0)
+        {
+            return Failure(AssignmentFailures.PharmacyNotFound(pharmacy.Value));
+        }
+
+        return Success(Unit.Value);
+    }
+
+    /// <summary>
+    /// Whether someone other than the person holds the capability in the pharmacy through an active membership: who else
+    /// could act there instead (#284).
+    /// </summary>
+    public static async Task<bool> AnotherHoldsAsync(
+        IMemberStore members,
+        PersonId person,
+        PharmacyId pharmacy,
+        Capability capability,
+        CancellationToken cancellationToken)
+    {
+        Ensure.That(members).IsNotNull();
+        Ensure.That(person).IsNotNull();
+        Ensure.That(pharmacy).IsNotNull();
+
+        var memberships = await members.ActiveMembershipsInPharmacyAsync(pharmacy, cancellationToken);
+        return memberships.Any(membership => membership.Person != person && membership.Grants(capability));
+    }
 }

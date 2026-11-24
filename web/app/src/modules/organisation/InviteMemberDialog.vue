@@ -15,14 +15,15 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { toTypedSchema } from '@/forms/toTypedSchema';
+import type { ErrorMessage } from '@/i18n/errorText';
 import { inviteInitialValues, inviteSchema, jobFunctions, membershipRoles } from './inviteSchema';
 import MembershipSelect from './MembershipSelect.vue';
-import { type TeamFailure, teamFailureText } from './teamErrors';
+import { teamFailureText } from './teamErrors';
 
 interface InviteMemberDialogProps {
   open: boolean;
   /** Sends the invitation; resolves with the failure the dialog shows, or nothing once it was sent. */
-  invite: (request: InviteOrganisationMemberRequest) => Promise<TeamFailure | undefined>;
+  invite: (request: InviteOrganisationMemberRequest) => Promise<ErrorMessage | undefined>;
 }
 
 // Asks for the address, the job function and the role of a new member, checked as the host checks them. A refusal
@@ -34,7 +35,7 @@ const { t } = useI18n();
 const id = useId();
 const emailField = `${id}-email`;
 
-const { defineField, errors, handleSubmit, isSubmitting, resetForm, setFieldError } = useForm({
+const { defineField, errors, handleSubmit, resetForm, setFieldError } = useForm({
   validationSchema: toTypedSchema(inviteSchema),
   initialValues: inviteInitialValues,
 });
@@ -42,13 +43,20 @@ const [email, emailAttributes] = defineField('email');
 const [jobFunction, jobFunctionAttributes] = defineField('jobFunction');
 const [role, roleAttributes] = defineField('role');
 
+/** Counts the dialog's openings: an answer to what an earlier opening sent shows nothing in this one. */
+const opening = ref(0);
+/** The opening whose submit is on its way: only that opening is busy, so a dialog opened again can send. */
+const sendingIn = ref<number>();
+const sending = computed(() => sendingIn.value === opening.value);
+
 /** Why the last invitation was refused, until the form is sent again or opened anew. */
-const failure = ref<TeamFailure>();
+const failure = ref<ErrorMessage>();
 
 watch(
   () => open,
   (shown) => {
     if (shown) {
+      opening.value += 1;
       resetForm({ values: inviteInitialValues });
       failure.value = undefined;
     }
@@ -67,24 +75,35 @@ const sendOnce = handleSubmit((values) => {
   return invite(values);
 });
 
-// A submit while one is on its way is ignored, or a double click would send two invitations. A refusal shows once the
-// submit has settled, with the button enabled again.
+// A submit while one of this opening is on its way is ignored, or a double click would send two invitations. A
+// refusal shows once the submit has settled, with the button enabled again, unless the dialog was opened anew since.
 async function submit(event: Event) {
-  if (isSubmitting.value) {
+  const asked = opening.value;
+  if (sendingIn.value === asked) {
     event.preventDefault();
     return;
   }
-  const refused = await sendOnce(event);
-  failure.value = refused;
-  if (refused !== undefined && 'key' in refused && refused.key === 'organisation.team.errors.invalidEmail') {
-    setFieldError('email', refused.key);
+  sendingIn.value = asked;
+  try {
+    const refused = await sendOnce(event);
+    if (asked !== opening.value) {
+      return;
+    }
+    failure.value = refused;
+    if (refused !== undefined && 'key' in refused && refused.key === 'errors.organisation.invalid-email') {
+      setFieldError('email', refused.key);
+    }
+  } finally {
+    if (sendingIn.value === asked) {
+      sendingIn.value = undefined;
+    }
   }
 }
 </script>
 
 <template>
-  <Dialog :open="open" @update:open="(shown) => !shown && !isSubmitting && emit('cancel')">
-    <DialogContent :close-disabled="isSubmitting" @close-auto-focus="(event: Event) => emit('closed', event)">
+  <Dialog :open="open" @update:open="(shown) => !shown && !sending && emit('cancel')">
+    <DialogContent :close-disabled="sending" @close-auto-focus="(event: Event) => emit('closed', event)">
       <DialogHeader>
         <DialogTitle>{{ t('organisation.team.invite.title') }}</DialogTitle>
         <DialogDescription>{{ t('organisation.team.invite.description') }}</DialogDescription>
@@ -128,11 +147,9 @@ async function submit(event: Event) {
         </p>
         <DialogFooter>
           <DialogClose as-child>
-            <Button type="button" variant="outline" :disabled="isSubmitting">{{
-              t('organisation.team.cancel')
-            }}</Button>
+            <Button type="button" variant="outline" :disabled="sending">{{ t('organisation.team.cancel') }}</Button>
           </DialogClose>
-          <Button type="submit" :disabled="isSubmitting">{{ t('organisation.team.invite.submit') }}</Button>
+          <Button type="submit" :disabled="sending">{{ t('organisation.team.invite.submit') }}</Button>
         </DialogFooter>
       </form>
     </DialogContent>

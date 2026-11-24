@@ -24,6 +24,20 @@ internal sealed class InMemoryAssignmentStore : IAssignmentStore, IComplianceUni
 
     public int Commits { get; private set; }
 
+    public Task<Option<Assignment>> ReadAsync(AssignmentId assignment, CancellationToken cancellationToken)
+    {
+        var found = Stored.FirstOrDefault(stored => stored.Id == assignment);
+        if (found is null)
+        {
+            return Task.FromResult(Option<Assignment>.None);
+        }
+
+        return Task.FromResult(Option<Assignment>.Some(found));
+    }
+
+    public Task<bool> HasFollowUpAsync(AssignmentId assignment, CancellationToken cancellationToken) =>
+        Task.FromResult(Stored.Any(stored => stored.Follows == assignment));
+
     public Task<IReadOnlyList<Assignment>> InPharmacyAsync(PharmacyId pharmacy, CancellationToken cancellationToken)
     {
         IReadOnlyList<Assignment> inPharmacy = [.. Stored.Where(assignment => assignment.Pharmacy == pharmacy)];
@@ -61,8 +75,23 @@ internal sealed class InMemoryAssignmentStore : IAssignmentStore, IComplianceUni
     public Task<Option<Assignment>> ReadInPharmacyAsync(PharmacyId pharmacy, AssignmentId assignment, CancellationToken cancellationToken) =>
         Task.FromResult(InPharmacy(pharmacy, assignment));
 
+    /// <summary>How often a tracked read of a learner's active assignments in a pharmacy was asked for; a query asks for none.</summary>
+    public int TrackedReadsOfLearnerInPharmacy { get; private set; }
+
+    public Task<IReadOnlyList<Assignment>> ReadActiveOfLearnerInPharmacyAsync(PersonId learner, PharmacyId pharmacy, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<Assignment> active =
+        [
+            .. Stored.Where(assignment => assignment.Learner == learner
+                && assignment.Pharmacy == pharmacy
+                && assignment.Status is AssignmentStatus.Open or AssignmentStatus.InProgress),
+        ];
+        return Task.FromResult(active);
+    }
+
     public Task<IReadOnlyList<Assignment>> ActiveOfLearnerInPharmacyAsync(PersonId learner, PharmacyId pharmacy, CancellationToken cancellationToken)
     {
+        TrackedReadsOfLearnerInPharmacy++;
         IReadOnlyList<Assignment> active =
         [
             .. Stored.Where(assignment => assignment.Learner == learner

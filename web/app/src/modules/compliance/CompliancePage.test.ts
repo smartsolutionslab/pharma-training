@@ -126,11 +126,11 @@ test('while the matrix loads the region is busy and shows skeletons', async () =
 });
 
 // What the page says for each refusal of the spec's "Refusal → UI": a code it has words for says what it is, never the
-// host's English; the alert takes the place of the rate, the filters and the table, and the heading and the intro stay.
+// host's words; the alert takes the place of the rate, the filters and the table, and the heading and the intro stay.
 test.each([
   [403, 'compliance.capability-missing', 'compliance.matrix.notAllowed'],
-  [404, 'compliance.pharmacy-not-found', 'compliance.matrix.pharmacyNotFound'],
-  [403, 'compliance.identity-incomplete', 'compliance.matrix.identityIncomplete'],
+  [404, 'compliance.pharmacy-not-found', 'errors.compliance.pharmacy-not-found'],
+  [403, 'compliance.identity-incomplete', 'errors.compliance.identity-incomplete'],
 ])('a matrix the host refuses with %i %s says %s, in place of the matrix', async (status, code, key) => {
   host.matrix = async () => problem(status, code);
   await renderMatrixPage();
@@ -156,11 +156,24 @@ test('a pharmacy the caller is no longer a member of reads the memberships again
   host.matrix = async () => problem(404, 'compliance.pharmacy-not-found');
   await renderMatrixPage();
 
-  await alertSaying(t('compliance.matrix.pharmacyNotFound'));
+  await alertSaying(t('errors.compliance.pharmacy-not-found'));
   await waitFor(() => expect(readsOf(fetch, minePath).length).toBeGreaterThan(1));
 });
 
-test('another refusal of the module shows the host’s own words', async () => {
+// A code the page has no words of its own for, but the catalog has (#147): its text, never the host's.
+test.each([
+  ['de-DE', 'Ihre eigene Zuweisung kann nur ein anderer Apothekenleiter ändern oder zurückziehen.'],
+  ['en-GB', 'Only another pharmacy manager can change or withdraw your own assignment.'],
+] as const)('a matrix refused with own-assignment says the catalog text, in %s', async (language, text) => {
+  setLanguage(language, { remember: false });
+  host.matrix = async () => problem(403, 'compliance.own-assignment', 'SERVER WORDS');
+  await renderMatrixPage();
+
+  const alert = await alertSaying(text);
+  expect(alert).not.toHaveTextContent('SERVER WORDS');
+});
+
+test('another refusal of the module, whose code the catalog does not know, shows the host’s own words', async () => {
   host.matrix = async () => problem(409, 'compliance.something-new', 'Etwas Neues aus dem Host.');
   await renderMatrixPage();
 
@@ -183,6 +196,49 @@ test.each([
 
   await waitFor(() => expect(readsOf(fetch, matrixPath())).toHaveLength(2));
   await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+});
+
+// Retry shows for any failure to load the matrix but the two a second read cannot turn round: the member may not see it,
+// or is no member any more. A refusal keeps its own text beside Retry.
+test.each([
+  ['a framework’s invalid-argument', () => problem(400, 'invalid-argument'), () => t('errors.invalid-argument')],
+  [
+    'another module’s code',
+    () => problem(403, 'organisation.capability-missing'),
+    () => t('errors.organisation.capability-missing'),
+  ],
+  [
+    'a code of the module’s the catalog knows',
+    () => problem(403, 'compliance.identity-incomplete'),
+    () => t('errors.compliance.identity-incomplete'),
+  ],
+  [
+    'a code of the module’s the catalog does not know',
+    () => problem(409, 'compliance.something-new', 'Etwas Neues aus dem Host.'),
+    () => 'Etwas Neues aus dem Host.',
+  ],
+])('%s keeps its text, and Retry reads the matrix again', async (_name, failure, text) => {
+  const user = userEvent.setup();
+  host.matrix = async () => failure();
+  await renderMatrixPage();
+
+  const alert = await alertSaying(text());
+  host.matrix = async () => Response.json(matrixOf());
+  await user.click(within(alert).getByRole('button', { name: t('compliance.matrix.retry') }));
+
+  await waitFor(() => expect(readsOf(fetch, matrixPath())).toHaveLength(2));
+  await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+});
+
+test.each([
+  [403, 'compliance.capability-missing', 'compliance.matrix.notAllowed'],
+  [404, 'compliance.pharmacy-not-found', 'errors.compliance.pharmacy-not-found'],
+])('a %i %s offers no Retry: reading again cannot help', async (status, code, key) => {
+  host.matrix = async () => problem(status, code);
+  await renderMatrixPage();
+
+  const alert = await alertSaying(t(key));
+  expect(within(alert).queryByRole('button', { name: t('compliance.matrix.retry') })).not.toBeInTheDocument();
 });
 
 test('a refusal is shown in English once switched', async () => {

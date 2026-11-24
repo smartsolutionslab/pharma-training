@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Http;
 
 namespace Microsoft.Extensions.DependencyInjection;
 
@@ -10,7 +11,7 @@ public static partial class ErrorResponses
 {
     /// <summary>
     /// Problem details for every error the host answers: a failed guard (<see cref="GuardException"/>) is a 400
-    /// with the code <see cref="GuardExceptionHandler.Code"/>; a request the endpoint cannot read or bind
+    /// with the code of <see cref="InvalidArgument"/>; a request the endpoint cannot read or bind
     /// (<see cref="BadHttpRequestException"/>) answers its own status, a 400; any other exception, an
     /// <see cref="ArgumentException"/> included, is a 500 that says nothing about itself.
     /// </summary>
@@ -34,8 +35,8 @@ public static partial class ErrorResponses
     /// </summary>
     private sealed partial class GuardExceptionHandler(IProblemDetailsService problemDetails, ILogger<GuardExceptionHandler> logger) : IExceptionHandler
     {
-        /// <summary>The <c>code</c> of every problem a failed guard answers.</summary>
-        public const string Code = "invalid-argument";
+        /// <summary>The code, title and status of every problem a failed guard answers.</summary>
+        private static readonly InvalidArgument Refusal = new();
 
         public async ValueTask<bool> TryHandleAsync(HttpContext httpContext, Exception exception, CancellationToken cancellationToken)
         {
@@ -48,7 +49,7 @@ public static partial class ErrorResponses
 
             LogRejected(logger, guard.ParamName, guard.Message);
 
-            httpContext.Response.StatusCode = StatusCodes.Status400BadRequest;
+            httpContext.Response.StatusCode = (int)Refusal.Status;
 
             // A caller that accepts no JSON still gets the status, without a body.
             await problemDetails.TryWriteAsync(new ProblemDetailsContext
@@ -56,10 +57,11 @@ public static partial class ErrorResponses
                 HttpContext = httpContext,
                 ProblemDetails =
                 {
-                    Status = StatusCodes.Status400BadRequest,
-                    Title = "The request is invalid.",
-                    Detail = guard.Message,
-                    Extensions = { ["code"] = Code },
+                    Status = (int)Refusal.Status,
+                    Title = Refusal.Message,
+                    // The guard's own message may be German or name the rejected value; it is logged above, never sent (ADR 0027).
+                    Detail = Refusal.Message,
+                    Extensions = { ["code"] = Refusal.Code },
                 },
             });
 

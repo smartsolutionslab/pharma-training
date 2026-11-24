@@ -1,4 +1,6 @@
-import { cleanup, render, screen } from '@testing-library/vue';
+import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query';
+import { cleanup, render, screen, within } from '@testing-library/vue';
+import { createPinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { createMemoryHistory } from 'vue-router';
@@ -98,13 +100,25 @@ async function renderPage() {
   const router = createAppRouter(createMemoryHistory());
   await router.push('/learning');
 
+  // The page reads the current pharmacy (a Pinia store over the memberships) and the query client (it reads the
+  // memberships again when the host no longer counts the caller a member).
   const { container } = render(LearningPage, {
-    global: { plugins: [router, signedInAsDeveloper] },
+    global: {
+      plugins: [router, createPinia(), [VueQueryPlugin, { queryClient: new QueryClient() }], signedInAsDeveloper],
+    },
   });
   // The screen speaks the language of the moment: axe checks what that language's user hears.
   expect(screen.getByRole('heading', { level: 1, name: t(route.titleKey) })).toBeInTheDocument();
   return container;
 }
+
+// The check sees what it claims to check: the courses with their example, or the page with nothing to show.
+const showsTheCourses = () =>
+  expect(within(screen.getByRole('list')).getAllByRole('listitem')).toHaveLength(
+    (examples.useGetComplianceMeAssignments as { items: unknown[] }).items.length,
+  );
+const showsNothingToShow = () =>
+  expect(screen.getByText(t('learning.myCourses.empty', { pharmacy: 'Apotheke am Markt' }))).toBeInTheDocument();
 
 // Each language in turn: the texts differ, and so may what axe finds in them.
 describe.each(languages)('in %s', (language) => {
@@ -132,6 +146,7 @@ describe.each(languages)('in %s', (language) => {
   test.runIf(Object.keys(examples).length > 0)('the Learning page passes axe with its example data', async () => {
     shown.examples = examples;
     const container = await renderPage();
+    showsTheCourses();
 
     expect(await axe(container)).toHaveNoViolations();
   });
@@ -142,6 +157,7 @@ describe.each(languages)('in %s', (language) => {
       shown.examples = examples;
       switchOn();
       const container = await renderPage();
+      showsTheCourses();
 
       expect(await axe(container)).toHaveNoViolations();
     },
@@ -153,6 +169,7 @@ describe.each(languages)('in %s', (language) => {
     async () => {
       shown.examples = emptyExamples;
       const container = await renderPage();
+      showsNothingToShow();
 
       expect(await axe(container)).toHaveNoViolations();
     },
@@ -164,6 +181,7 @@ describe.each(languages)('in %s', (language) => {
       shown.examples = emptyExamples;
       switchOn();
       const container = await renderPage();
+      showsNothingToShow();
 
       expect(await axe(container)).toHaveNoViolations();
     },

@@ -17,7 +17,7 @@ partial class ComplianceModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261123154132_AddAssignmentTestAccessChangedAt";
+    public override string LastMigrationId => "20261124063950_AddLearnerProgress";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -58,6 +58,10 @@ partial class ComplianceModelSnapshot : ModelSnapshot
                 b.Property<DateOnly>("DueDate")
                     .HasColumnType("date")
                     .HasColumnName("due_date");
+
+                b.Property<Guid?>("Follows")
+                    .HasColumnType("uuid")
+                    .HasColumnName("follows_assignment_id");
 
                 b.Property<Guid>("Learner")
                     .HasColumnType("uuid")
@@ -120,6 +124,10 @@ partial class ComplianceModelSnapshot : ModelSnapshot
 
                 b.HasKey("Id")
                     .HasName("pk_assignments");
+
+                b.HasIndex("Follows")
+                    .IsUnique()
+                    .HasDatabaseName("ux_assignments_follows_assignment_id");
 
                 b.HasIndex("Learner")
                     .HasDatabaseName("ix_assignments_learner_id");
@@ -292,6 +300,68 @@ partial class ComplianceModelSnapshot : ModelSnapshot
                     .HasName("pk_membership_endings");
 
                 b.ToTable("membership_endings", "compliance");
+            });
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Progress.IssuedCertificate", b =>
+            {
+                b.Property<Guid>("Id")
+                    .HasColumnType("uuid")
+                    .HasColumnName("id");
+
+                b.Property<Guid>("Course")
+                    .HasColumnType("uuid")
+                    .HasColumnName("course_id");
+
+                b.Property<DateTimeOffset>("IssuedAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("issued_at");
+
+                b.Property<Guid>("Learner")
+                    .HasColumnType("uuid")
+                    .HasColumnName("learner_id");
+
+                b.Property<Guid>("Version")
+                    .HasColumnType("uuid")
+                    .HasColumnName("course_version_id");
+
+                b.HasKey("Id")
+                    .HasName("pk_issued_certificates");
+
+                b.HasIndex("Learner", "Course")
+                    .HasDatabaseName("ix_issued_certificates_learner_id_course_id");
+
+                b.ToTable("issued_certificates", "compliance");
+            });
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Progress.LearningSessionStart", b =>
+            {
+                b.Property<Guid>("Id")
+                    .HasColumnType("uuid")
+                    .HasColumnName("id");
+
+                b.Property<Guid>("Course")
+                    .HasColumnType("uuid")
+                    .HasColumnName("course_id");
+
+                b.Property<Guid>("Learner")
+                    .HasColumnType("uuid")
+                    .HasColumnName("learner_id");
+
+                b.Property<DateTimeOffset>("StartedAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("started_at");
+
+                b.Property<Guid>("Version")
+                    .HasColumnType("uuid")
+                    .HasColumnName("course_version_id");
+
+                b.HasKey("Id")
+                    .HasName("pk_learning_session_starts");
+
+                b.HasIndex("Learner", "Course")
+                    .HasDatabaseName("ix_learning_session_starts_learner_id_course_id");
+
+                b.ToTable("learning_session_starts", "compliance");
             });
 
         modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Samples.Sample", b =>

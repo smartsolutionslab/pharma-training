@@ -12,7 +12,10 @@ internal static class CourseVersionEvents
         Published(courseId, courseVersionId, title, 12);
 
     public static CourseVersionPublishedV1 Published(Guid courseId, Guid courseVersionId, string title, int validityMonths) =>
-        new(courseId, courseVersionId, 1, title, validityMonths, [new CourseChapterV1(Guid.CreateVersion7(), 1, "Grundlagen", ChapterKindV1.Text, null, "# Grundlagen", null)]) { Metadata = NewMetadata() };
+        Published(courseId, courseVersionId, 1, title, validityMonths);
+
+    public static CourseVersionPublishedV1 Published(Guid courseId, Guid courseVersionId, int versionNumber, string title, int validityMonths) =>
+        new(courseId, courseVersionId, versionNumber, title, validityMonths, [new CourseChapterV1(Guid.CreateVersion7(), 1, "Grundlagen", ChapterKindV1.Text, null, "# Grundlagen", null)]) { Metadata = NewMetadata() };
 
     private static EventMetadata NewMetadata() => new(Guid.CreateVersion7(), PublishedAt);
 }

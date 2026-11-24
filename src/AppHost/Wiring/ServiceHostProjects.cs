@@ -39,22 +39,32 @@ public static class ServiceHostProjects
     /// name: <c>&lt;SendsMail&gt;true&lt;/SendsMail&gt;</c>, true or false in any letter case, absent for false
     /// (docs/adr/0004). Only such a host is given the mail settings. Any other value stops the AppHost, naming the project.
     /// </summary>
-    public static bool SendsMail(string projectPath)
+    public static bool SendsMail(string projectPath) => Flag(projectPath, "SendsMail");
+
+    /// <summary>
+    /// Whether the service host at <paramref name="projectPath"/> builds links into the web app without sending mail, as
+    /// its project says: <c>&lt;LinksToFrontend&gt;true&lt;/LinksToFrontend&gt;</c>, read like <c>&lt;SendsMail&gt;</c>.
+    /// Such a host, and one that sends mail, is given the web app's address, <c>Frontend__BaseUrl</c>; such a host
+    /// prints links into the web app on documents it renders.
+    /// </summary>
+    public static bool LinksToFrontend(string projectPath) => Flag(projectPath, "LinksToFrontend");
+
+    private static bool Flag(string projectPath, string name)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(projectPath);
 
-        var value = XDocument.Load(projectPath).Descendants().LastOrDefault(element => element.Name.LocalName == "SendsMail")?.Value;
+        var value = XDocument.Load(projectPath).Descendants().LastOrDefault(element => element.Name.LocalName == name)?.Value;
         if (value is null)
         {
             return false;
         }
 
-        if (bool.TryParse(value.Trim(), out var sends))
+        if (bool.TryParse(value.Trim(), out var flag))
         {
-            return sends;
+            return flag;
         }
 
-        throw new InvalidOperationException($"{projectPath} says <SendsMail> is \"{value}\"; it is true or false, or absent for false.");
+        throw new InvalidOperationException($"{projectPath} says <{name}> is \"{value}\"; it is true or false, or absent for false.");
     }
 
     /// <summary>Adds the service host at <paramref name="projectPath"/> through its generated project metadata.</summary>

@@ -12,4 +12,12 @@ public static class CertificationIntegrationEventMappings
 
         return new CertificateIssuedV1(issued.Certificate.Value, issued.Holder.Value, issued.Course.Value, issued.CourseVersion.Value, issued.IssuedAt.Value, issued.ValidUntil.Value);
     }
+
+    /// <summary>The request for the issued certificate's PDF, which stays on Certification's host (#50).</summary>
+    public static CertificateDocumentRequestedV1 ToDocumentRequest(this CertificateIssued issued)
+    {
+        Ensure.That(issued).IsNotNull();
+
+        return new CertificateDocumentRequestedV1(issued.Certificate.Value);
+    }
 }

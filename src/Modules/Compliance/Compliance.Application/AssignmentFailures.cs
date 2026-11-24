@@ -10,6 +10,8 @@ public static class AssignmentFailures
 
     public static ApiError PharmacyNotFound(Guid id) => new PharmacyNotFound(id);
 
+    public static ApiError PharmacyMissing() => new PharmacyMissing();
+
     public static ApiError CapabilityMissing() => new CapabilityMissing();
 
     public static ApiError CourseMissing() => new CourseMissing();
@@ -20,16 +22,16 @@ public static class AssignmentFailures
 
     public static ApiError NoLearners() => new NoLearners();
 
-    public static ApiError TooManyLearners(int maximum) => new TooManyLearners(maximum);
+    public static ApiError TooManyLearners() => new TooManyLearners();
 
     public static ApiError InvalidPerson() => new InvalidPerson();
 
     public static ApiError DueDateMissing() => new DueDateMissing();
 
-    /// <summary>The due date lies more than the years ahead of today in Germany.</summary>
-    public static ApiError DueDateTooFar(int maximumYears) => new DueDateTooFar(maximumYears);
+    /// <summary>The due date lies more than <see cref="Commands.AssignCourse.AssignCourse.MaximumYearsAhead"/> years ahead of today in Germany.</summary>
+    public static ApiError DueDateTooFar() => new DueDateTooFar();
 
-    public static ApiError InvalidRecurrence() => new InvalidRecurrence(RecurrenceInterval.MinimumMonths, RecurrenceInterval.MaximumMonths);
+    public static ApiError InvalidRecurrence() => new InvalidRecurrence();
 
     /// <summary>The job function asked for is a number no job function has.</summary>
     public static ApiError InvalidJobFunction() => new InvalidJobFunction();
@@ -38,9 +40,9 @@ public static class AssignmentFailures
     public static ApiError AssignmentNotFound(Guid id) => new AssignmentNotFound(id);
 
     /// <summary>A change's reason is longer than <see cref="ChangeReason.MaxLength"/>.</summary>
-    public static ApiError InvalidChangeReason() => new InvalidChangeReason(ChangeReason.MaxLength);
+    public static ApiError InvalidChangeReason() => new InvalidChangeReason();
 
-    /// <summary>A manager may not move or withdraw an assignment of their own (orchestrator's default on #269).</summary>
+    /// <summary>A manager may not move or withdraw an assignment of their own while another manager can (orchestrator's default on #269 and #284).</summary>
     public static ApiError OwnAssignment() => new OwnAssignment();
 
     public static ApiError LearnerNotAMember(Guid person) => new LearnerNotAMember(person);

@@ -25,6 +25,7 @@ const introduction: EditorialChapterDto = {
   text: '# Willkommen\n\nDas ist **wichtig**.',
   file: null,
   durationSeconds: null,
+  pdfText: null,
 };
 
 /** A question about the chapter, approved or not yet reviewed. */

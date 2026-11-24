@@ -33,6 +33,9 @@ public sealed class ChapterConfiguration : IEntityTypeConfiguration<Chapter>
         builder.Property(chapter => chapter.Text).HasColumnName("text").HasColumnType("text");
         builder.Property(chapter => chapter.File).HasColumnName("file").HasMaxLength(BlobReference.MaxLength);
         builder.Property(chapter => chapter.Duration).HasColumnName("duration_seconds");
+        // A PDF's extraction (#157): null for text and video chapters, and for PDFs recorded before it existed.
+        builder.Property(chapter => chapter.Extraction).HasColumnName("pdf_text_extraction").HasConversion<string>().HasMaxLength(EnumLength);
+        builder.Property(chapter => chapter.ExtractedText).HasColumnName("pdf_text").HasColumnType("text");
 
         builder.HasIndex(CourseVersionId);
 

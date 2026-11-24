@@ -6,8 +6,16 @@ using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies.Ev
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Commands.RenewInvitation;
 
-/// <summary>Gives the open or expired invitation a fresh token valid for 14 more days, so the old link stops working. In the same commit it requests the new mail (InvitationMailRequestedV1), which the consumer sends. Within the invitation's cooldown or beyond the pharmacy's daily cap of invitation mails it answers 429 with the instant it may renew.</summary>
-public sealed class RenewInvitationHandler(IPharmacyStore pharmacies, IOrganisationUnitOfWork unitOfWork, IDatabaseClock clock, InvitationMailLimits limits, ILogger<RenewInvitationHandler> logger)
+/// <summary>Gives the open or expired invitation a fresh token valid for 14 more days, so the old link stops working. In the same commit it requests the new mail (InvitationMailRequestedV1), which the consumer sends. Within the invitation's cooldown, beyond the pharmacy's daily cap of invitation mails, within the address's cooldown (whichever pharmacy mailed it) or beyond the renewing manager's daily cap across their pharmacies it answers 429 with the instant it may renew, in that order, and commits nothing.</summary>
+public sealed class RenewInvitationHandler(
+    IPharmacyStore pharmacies,
+    IInvitationRecipientStore recipients,
+    IInvitationSenderStore senders,
+    IOrganisationUnitOfWork unitOfWork,
+    IDatabaseClock clock,
+    InvitationMailLimits limits,
+    RecipientAndSenderMailLimits recipientAndSenderLimits,
+    ILogger<RenewInvitationHandler> logger)
     : ICommandHandler<RenewInvitation, Result<Unit, ApiError>>
 {
     public async Task<Result<Unit, ApiError>> HandleAsync(RenewInvitation command, CancellationToken cancellationToken)
@@ -31,10 +39,20 @@ public sealed class RenewInvitationHandler(IPharmacyStore pharmacies, IOrganisat
         // instance shares, so a clock days apart cannot lift or lock the limits (docs/adr/0004).
         var now = await clock.NowAsync(cancellationToken);
         InvitationMailClock.WarnWhenAhead(logger, pharmacy, now);
+        InvitationMailClock.WarnWhenRequestedAhead(logger, pharmacy, command.Membership, now, limits.RenewCooldown);
         var changed = pharmacy.RenewInvitation(command.Membership, now, limits);
         if (changed.IsFailure)
         {
             return Failure(PharmacyFailures.From(changed.Error));
+        }
+
+        // Counted on the renewed membership's address and on the manager who renews, in the same commit as the pharmacy
+        // (docs/adr/0004).
+        var renewed = pharmacy.Memberships.Single(membership => membership.Id == command.Membership);
+        var counted = await InvitationMailCounting.CountAsync(recipients, senders, recipientAndSenderLimits, logger, renewed.Email, command.By, now, cancellationToken);
+        if (counted.IsFailure)
+        {
+            return Failure(counted.Error);
         }
 
         foreach (var requested in pharmacy.DomainEvents.OfType<MemberInvited>())

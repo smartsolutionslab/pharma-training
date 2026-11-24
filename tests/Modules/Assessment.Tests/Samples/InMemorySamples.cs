@@ -45,6 +45,13 @@ internal sealed class InMemorySamples : IAssessmentAggregateStore, ISampleSummar
         return Task.CompletedTask;
     }
 
+    /// <summary>The samples never race, so a save here always lands.</summary>
+    public async Task<bool> TrySaveAsync(IEventSourced aggregate, CancellationToken cancellationToken)
+    {
+        await SaveAsync(aggregate, cancellationToken);
+        return true;
+    }
+
     public Task RecordAsync(Sample sample, CancellationToken cancellationToken)
     {
         recorded[sample.Id.Value] = new SampleSummary { Id = sample.Id.Value, Name = sample.Name.Value };

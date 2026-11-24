@@ -18,8 +18,23 @@ public sealed partial class AspireFixture : IAsyncLifetime
     /// <summary>Every editorial model limit of this run, per minute and per day, for content review and test draft alike.</summary>
     public const int EditorialModelLimit = 50;
 
+    /// <summary>The per-address limit on public certificate verification of this run, per minute (docs/adr/0029).</summary>
+    public const int CertificationVerificationLimit = 20;
+
+    /// <summary>The per-address limit on public certificate verification of this run, per day.</summary>
+    public const int CertificationVerificationDailyLimit = 1000;
+
     /// <summary>How many invitations one user may accept a minute in this run (docs/adr/0004), raised from the default 10.</summary>
     public const int OrganisationAcceptsPerMinute = 30;
+
+    /// <summary>How many invitation mails one user may send a UTC day in this run (#265), raised from the default 100.</summary>
+    public const int InvitationMailsPerSenderPerDay = 1000;
+
+    /// <summary>How often Learning's and Assessment's announcement sweeps run in this run (#277), lowered from the default minute.</summary>
+    public static readonly TimeSpan AnnouncementSweepInterval = TimeSpan.FromSeconds(1);
+
+    /// <summary>How long the sweeps leave a stored event to its handler in this run (#277), lowered from the default two minutes.</summary>
+    public static readonly TimeSpan AnnouncementGracePeriod = TimeSpan.FromSeconds(5);
 
     // Twice the largest start-up of the green CI runs listed in #134 (204 s), rounded up to the minute. Before #126 the
     // edge and every service host were rebuilt at each start, which took 3.5 to over 5 minutes; now every project starts
@@ -64,11 +79,37 @@ public sealed partial class AspireFixture : IAsyncLifetime
             editorial.WithEnvironment($"Editorial__ModelLimits__{setting}", EditorialModelLimit.ToString(CultureInfo.InvariantCulture));
         }
 
+        // The run sets the per-address verification limit (docs/adr/0029) to CertificationVerificationLimit a minute, so
+        // CertificationVerificationTests reaches it in a few dozen calls, and the day far above it, so the minute alone
+        // refuses. Every local caller reaches Certification from one address, the edge's, so every call of the run shares
+        // one count: only that collection calls /certification/verify, and it leaves the minute's window reset.
+        var certification = builder.CreateResourceBuilder(builder.Resources.OfType<ProjectResource>().Single(resource => resource.Name == "certification"));
+        certification.WithEnvironment("Certification__VerificationLimits__PerMinute", CertificationVerificationLimit.ToString(CultureInfo.InvariantCulture));
+        certification.WithEnvironment("Certification__VerificationLimits__PerDay", CertificationVerificationDailyLimit.ToString(CultureInfo.InvariantCulture));
+
         // The accept tests accept as employee-a up to about 15 times in quick succession, more than the default 10 a minute
         // (docs/adr/0004), so the run raises the per-minute accept limit to OrganisationAcceptsPerMinute; every user stays
         // under it, and only OrganisationAcceptLimitTests accepts as visitor, to reach it.
         var organisation = builder.CreateResourceBuilder(builder.Resources.OfType<ProjectResource>().Single(resource => resource.Name == "organisation"));
         organisation.WithEnvironment("Organisation__AcceptLimit__PerMinute", OrganisationAcceptsPerMinute.ToString(CultureInfo.InvariantCulture));
+
+        // Every invite and renewal as owner counts on owner's one sender tally (#265), about 50 a run and growing, more
+        // than the default 100 a day would leave room for. The run raises the cap to InvitationMailsPerSenderPerDay, and
+        // OrganisationMailRecipientAndSenderLimitsTests reaches it with editor-b, a user only it invites as.
+        organisation.WithEnvironment("Organisation__InvitationLimits__MailsPerSenderPerDay", InvitationMailsPerSenderPerDay.ToString(CultureInfo.InvariantCulture));
+
+        // The announcement sweeps (#277) announce a stored ContentCompleted or ExaminationPassed whose announcement never
+        // left once it is older than the grace period, every interval. The defaults (a minute, two minutes) would keep
+        // LearningAnnouncementSweepTests and AssessmentAnnouncementSweepTests waiting for minutes, so the run sweeps every
+        // AnnouncementSweepInterval after AnnouncementGracePeriod. Five seconds is still far above the milliseconds a
+        // report or submit takes between its append and its outbox commit, even under CI load, so no other test's
+        // announcement is ever taken for a lost one.
+        foreach (var (service, module) in new[] { ("learning", "Learning"), ("assessment", "Assessment") })
+        {
+            var sweeping = builder.CreateResourceBuilder(builder.Resources.OfType<ProjectResource>().Single(resource => resource.Name == service));
+            sweeping.WithEnvironment($"{module}__AnnouncementSweep__Interval", AnnouncementSweepInterval.ToString("c", CultureInfo.InvariantCulture));
+            sweeping.WithEnvironment($"{module}__AnnouncementSweep__GracePeriod", AnnouncementGracePeriod.ToString("c", CultureInfo.InvariantCulture));
+        }
 
         app = await builder.BuildAsync(timeout.Token);
         await app.StartAsync(timeout.Token);

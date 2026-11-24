@@ -10,14 +10,27 @@ using Microsoft.EntityFrameworkCore;
 var builder = Host.CreateApplicationBuilder(args);
 builder.AddServiceDefaults();
 
-var module = builder.Configuration["Migrations:Module"]
+// Published, Keycloak's init container names no module but the schema its role owns (Migrations:OwnedSchema): it ensures
+// that role and schema alone, and nothing below runs (MigrationRun). A run naming neither fails here.
+using (var loggers = LoggerFactory.Create(logging => logging.AddConfiguration(builder.Configuration.GetSection("Logging")).AddSimpleConsole()))
+{
+    if (await MigrationRun.RunOwnedSchemaModeAsync(builder.Configuration, loggers.CreateLogger("MigrationRunner"), CancellationToken.None))
+    {
+        return;
+    }
+}
+
+var module = builder.Configuration[MigrationRun.ModuleSetting]
     ?? throw new InvalidOperationException("Migrations:Module is missing; the AppHost names the module whose database this run migrates.");
 // Every session the runner opens as the administrator, EF Core's and Marten's too (both read ConnectionStrings:database),
 // resolves unqualified names in pg_catalog alone: defence in depth, should a role ever hold CREATE on the database and plant
 // code on the administrator's search_path that these sessions would run with the administrator's rights (CVE-2018-1058,
 // AdministratorSession). What they make names the module's schema explicitly.
-var administrator = AdministratorSession.Pinned(builder.Configuration.GetConnectionString("database")
-    ?? throw new InvalidOperationException("Connection string 'database' is missing; the AppHost gives the administrator's for the module's database."));
+var database = builder.Configuration.GetConnectionString("database")
+    ?? throw new InvalidOperationException("Connection string 'database' is missing; the AppHost gives the administrator's for the module's database.");
+// The runner never starts its host, so it checks here what a service's host checks as it starts (DatabaseErrorDetailGuard).
+DatabaseErrorDetail.RefuseOutsideDevelopment(database, builder.Environment);
+var administrator = AdministratorSession.Pinned(database);
 builder.Configuration.AddInMemoryCollection([new("ConnectionStrings:database", administrator)]);
 var application = builder.Configuration.GetConnectionString("application");
 var infrastructure = Assembly.LoadFrom(Path.Combine(AppContext.BaseDirectory, $"SmartSolutionsLab.PharmaTraining.Modules.{Namespace(module)}.Infrastructure.dll"));
@@ -51,14 +64,16 @@ await using (await MigrationGate.EnterAsync(administrator, host.Services.GetRequ
 
     // Wolverine's inbox, outbox and dead letters, with the service hosts' own configuration, owned by the administrator;
     // the role's grants below cover it like every schema the administrator owns. A schema of that name some other role
-    // owns, or holds an object of, fails the run.
+    // owns, or holds an object of, fails the run, as does a trigger, rule, policy or SECURITY DEFINER function there that
+    // Wolverine does not make.
     await ModuleMessageStorage.BuildAsync(administrator, CancellationToken.None);
 
     // After every migration of the run, so the role's grants cover what they made and it never keeps write access to a
-    // migration history table they made.
+    // migration history table they made. The run fails, naming the object and the role, if the role owns anything in the
+    // database, and takes back any CREATE it holds on a schema.
     if (!string.IsNullOrWhiteSpace(application))
     {
-        await ModuleDatabaseRole.EnsureAsync(administrator, application, CancellationToken.None);
+        await ModuleDatabaseRole.EnsureAsync(administrator, application, host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("MigrationRunner"), CancellationToken.None);
     }
 }
 

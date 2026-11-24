@@ -9,6 +9,6 @@ public static class RepublishedEventsMappings
     {
         Ensure.That(events).IsNotNull();
 
-        return new EditorialRepublishedEventsDto(events.CourseVersions, events.TestDefinitions, events.Retirements);
+        return new EditorialRepublishedEventsDto(events.CourseVersions, events.TestDefinitions, events.FileReleases, events.Retirements);
     }
 }

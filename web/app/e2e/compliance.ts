@@ -214,3 +214,28 @@ export function germanDate(day: string) {
   const [year, month, date] = day.split('-');
   return `${date ?? ''}.${month ?? ''}.${year ?? ''}`;
 }
+
+/** One of the developer's active assignments in a pharmacy, as Compliance answers GET /compliance/me/assignments. */
+export type MyAssignment = {
+  assignmentId: string;
+  courseId: string;
+  courseTitle: string;
+  state: string;
+  dueDate: string;
+  startCourseVersionId: string | null;
+  continuesSession: boolean;
+};
+
+/** The developer's active assignments in the pharmacy, in the host's order (one page of 50 is all a test makes). */
+export async function myAssignmentsThroughApi(request: APIRequestContext, pharmacy: RegisteredPharmacy) {
+  const authorization = await accessToken(request, 'developer');
+  const response = await request.get('/api/compliance/me/assignments', {
+    headers: { Authorization: authorization },
+    params: { pharmacyId: pharmacy.id, page: 1, pageSize: 50 },
+  });
+  expect(response.ok(), `GET compliance/me/assignments answered ${response.status()}: ${await response.text()}`).toBe(
+    true,
+  );
+  const body = (await response.json()) as { items: MyAssignment[] };
+  return body.items;
+}

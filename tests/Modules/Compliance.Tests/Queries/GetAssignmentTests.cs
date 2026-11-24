@@ -53,8 +53,8 @@ public class GetAssignmentTests
         dto.CompletedAt.ShouldBeNull();
         dto.History.ShouldBe(
         [
-            new ComplianceAssignmentChangeDto(ComplianceAssignmentChangeKind.DueDateChanged, Manager.Value, Timestamp.From(changed).Value, EndOfMarch.Value, EndOfApril.Value, "Urlaub"),
-            new ComplianceAssignmentChangeDto(ComplianceAssignmentChangeKind.Cancelled, Manager.Value, Timestamp.From(cancelled).Value, null, null, ChangeReason.Withdrawn.Value),
+            new ComplianceAssignmentChangeDto(ComplianceAssignmentChangeKind.DueDateChanged, Manager.Value, Timestamp.From(changed).Value, EndOfMarch.Value, EndOfApril.Value, "Urlaub", BySelf: false),
+            new ComplianceAssignmentChangeDto(ComplianceAssignmentChangeKind.Cancelled, Manager.Value, Timestamp.From(cancelled).Value, null, null, ChangeReason.Withdrawn.Value, BySelf: false),
         ]);
     }
 

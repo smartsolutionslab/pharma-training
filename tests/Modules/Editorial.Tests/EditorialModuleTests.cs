@@ -1,6 +1,8 @@
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Api;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.PdfText;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Infrastructure.PdfText;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -41,5 +43,23 @@ public class EditorialModuleTests
 
         services.Count(service => service.ServiceType == typeof(ReviewSettings)).ShouldBe(1);
         provider.GetRequiredService<ReviewSettings>().Policy.ShouldBe(ReviewPolicy.FourEyes);
+    }
+
+    /// <summary>The PDF text extractor holds no state: one instance, registered once, reads every recorded PDF (#157).</summary>
+    [Fact]
+    public void The_module_registers_pdfpig_as_its_pdf_text_extractor_once_as_a_singleton()
+    {
+        var services = new ServiceCollection().AddLogging();
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:database"] = "Host=localhost" })
+            .Build();
+        services.AddSingleton<Microsoft.Extensions.AI.IChatClient>(_ => new SmartSolutionsLab.PharmaTraining.Tests.Fakes.FakeChatClient("unused"));
+
+        new EditorialModule().AddServices(services, configuration);
+        using var provider = services.BuildServiceProvider();
+
+        var registration = services.Where(service => service.ServiceType == typeof(IPdfTextExtractor)).ShouldHaveSingleItem();
+        registration.Lifetime.ShouldBe(ServiceLifetime.Singleton);
+        provider.GetRequiredService<IPdfTextExtractor>().ShouldBeOfType<PdfPigTextExtractor>();
     }
 }

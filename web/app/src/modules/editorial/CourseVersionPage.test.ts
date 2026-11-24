@@ -35,6 +35,7 @@ const introduction: EditorialChapterDto = {
   text: '# Willkommen\n\nDas ist **wichtig**.',
   file: null,
   durationSeconds: null,
+  pdfText: null,
 };
 const handout: EditorialChapterDto = {
   id: '0198c1a0-0000-7000-8000-0000000000e2',
@@ -44,6 +45,7 @@ const handout: EditorialChapterDto = {
   text: null,
   file: `course-versions/${versionId}/0198c1a0-0000-7000-8000-0000000000f2.pdf`,
   durationSeconds: null,
+  pdfText: null,
 };
 const handwashing: EditorialChapterDto = {
   id: '0198c1a0-0000-7000-8000-0000000000e3',
@@ -53,6 +55,7 @@ const handwashing: EditorialChapterDto = {
   text: null,
   file: `course-versions/${versionId}/0198c1a0-0000-7000-8000-0000000000f3.mp4`,
   durationSeconds: 725,
+  pdfText: null,
 };
 
 /** A question about the chapter, approved or not yet reviewed. */
@@ -468,15 +471,15 @@ test('the editorial detail versions/:id opens the course version page', () => {
 });
 
 // Text chapters (T7): "Kapitel hinzufügen" and a chapter's edit button open the chapter form in a dialog; a chapter's
-// delete button asks first. A module's refusal is shown in the host's words (ApiError.serverMessage), else the
-// catalog's; either way the version is read again, so the page shows what is now so.
+// delete button asks first. A module's refusal is shown by its code in the catalog's words (#147, ADR 0007), the host's
+// only for a code the catalog does not know, else the action's own; either way the version is read again.
 
 const notADraft = () =>
   new Response(
     JSON.stringify({
       title: 'Conflict',
       status: 409,
-      detail: 'Die Version ist kein Entwurf mehr und kann nicht geändert werden.',
+      detail: 'SERVER WORDS',
       code: 'editorial.not-a-draft',
     }),
     { status: 409, headers: { 'Content-Type': 'application/problem+json' } },
@@ -613,8 +616,23 @@ describe('editing a text chapter', () => {
 });
 
 test.each([
-  ['a 409 of the module', notADraft, () => 'Die Version ist kein Entwurf mehr und kann nicht geändert werden.'],
+  ['a 409 of the module', notADraft, () => 'Nur ein Entwurf kann bearbeitet werden.'],
+  [
+    'a 400 invalid-chapter-title',
+    () => problem(400, 'editorial.invalid-chapter-title', 'Bad Request', 'SERVER WORDS'),
+    () => 'Der Titel eines Kapitels hat 1 bis 150 Zeichen und darf nicht leer sein.',
+  ],
+  [
+    'a module code the catalog does not know',
+    () => problem(400, 'editorial.zzz-unknown', 'Bad Request', 'SERVER WORDS'),
+    () => 'SERVER WORDS',
+  ],
   ['a 500', () => new Response('', { status: 500 }), () => t('editorial.chapters.saveFailed', { title: 'Lagerung' })],
+  [
+    'a 502 of the edge',
+    () => new Response('', { status: 502 }),
+    () => t('editorial.chapters.saveFailed', { title: 'Lagerung' }),
+  ],
 ])(
   'a chapter the host refuses with %s is reported, the dialog stays open with what was entered, and the version is read again',
   async (_answer, answer, message) => {
@@ -715,7 +733,12 @@ describe('deleting a chapter', () => {
   });
 
   test.each([
-    ['a 409 of the module', notADraft, () => 'Die Version ist kein Entwurf mehr und kann nicht geändert werden.'],
+    ['a 409 of the module', notADraft, () => 'Nur ein Entwurf kann bearbeitet werden.'],
+    [
+      'a 409 file-in-use',
+      () => problem(409, 'editorial.file-in-use', 'Conflict', 'SERVER WORDS'),
+      () => 'Diese Datei gehört schon zu einem anderen Kapitel der Version.',
+    ],
     [
       'a 500',
       () => new Response('', { status: 500 }),
@@ -847,12 +870,12 @@ describe('reordering the chapters', () => {
           JSON.stringify({
             title: 'Conflict',
             status: 409,
-            detail: 'Die Reihenfolge nennt nicht jedes Kapitel der Version genau einmal.',
-            code: 'editorial.order-does-not-match-chapters',
+            detail: 'SERVER WORDS',
+            code: 'editorial.order-does-not-match',
           }),
           { status: 409, headers: { 'Content-Type': 'application/problem+json' } },
         ),
-      () => 'Die Reihenfolge nennt nicht jedes Kapitel der Version genau einmal.',
+      () => 'Die Reihenfolge muss jedes Kapitel genau einmal enthalten. Laden Sie die Version neu.',
     ],
     [
       'a 500',
@@ -1019,8 +1042,8 @@ test('while uploading, everything in the chapter dialog but "Upload abbrechen" i
 
 // A new version (#155): a published version offers "Neue Version anlegen", which drafts its successor
 // (POST /editorial/course-versions/{id}/next, #20) and opens it here. The successor is numbered one higher and carries
-// the chapters and questions over. A module's refusal is shown in the host's words (ApiError.serverMessage, ADR 0007,
-// until #147 translates codes), else the catalog's; either way the published version is read again.
+// the chapters and questions over. A refusal is shown by its code in the catalog's words (#147, ADR 0007), the host's
+// only for a module code the catalog does not know, else the action's own; either way the version is read again.
 
 const nextVersionId = '0198c1a0-0000-7000-8000-0000000000c2';
 /** The successor as the host answers it once drafted: a draft numbered 3, with the published version's chapters. */
@@ -1168,49 +1191,80 @@ describe('a new version', () => {
     await waitFor(() => expect(router.currentRoute.value.path).toBe(`/editorial/versions/${nextVersionId}`));
   });
 
-  // Every refusal of #20, as the host sends it: a module's code, and its message as the problem's title.
+  // Every refusal of #20, as the host sends it: a code, and its words, which only an unknown module code shows.
   test.each([
     [
       'the version already has its successor',
-      problem(
-        409,
-        'editorial.next-version-exists',
-        `Version 3 of this course already exists (${nextVersionId}); continue that one instead of drafting another from ${versionId}.`,
-      ),
+      problem(409, 'editorial.next-version-exists', 'SERVER WORDS'),
+      'Von dieser Schulung gibt es schon eine neuere Version. Bearbeiten Sie diese, statt eine weitere anzulegen.',
     ],
     [
       'the version is no longer published',
-      problem(409, 'editorial.not-published', 'Die Version ist nicht veröffentlicht.'),
+      problem(409, 'editorial.not-published', 'SERVER WORDS'),
+      'Die Version ist nicht veröffentlicht.',
     ],
     [
       'the version changed in the meantime',
-      problem(
-        409,
-        'editorial.course-version-changed',
-        `The course version ${versionId} changed in the meantime; load it again and repeat the change.`,
-      ),
+      problem(409, 'editorial.course-version-changed', 'SERVER WORDS'),
+      'Die Version wurde inzwischen geändert. Laden Sie sie neu und wiederholen Sie die Änderung.',
     ],
     [
       'the version does not exist',
-      problem(404, 'editorial.course-version-not-found', `There is no course version ${versionId}.`),
+      problem(404, 'editorial.course-version-not-found', 'SERVER WORDS'),
+      'Diese Version gibt es nicht mehr.',
     ],
     [
       'the token names no person',
-      problem(403, 'editorial.identity-incomplete', 'The access token names no subject that identifies a person.'),
+      problem(403, 'editorial.identity-incomplete', 'SERVER WORDS'),
+      'Ihre Anmeldung nennt keine Person. Melden Sie sich erneut an.',
     ],
-  ])("refused because %s, reports the host's words, stays and reads the version again", async (_, refusal) => {
-    const words = (JSON.parse(await refusal.clone().text()) as { title: string }).title;
-    changing = async () => refusal;
+    [
+      'another editor drafted it at the same moment',
+      problem(409, 'already-exists', 'Conflict', 'SERVER WORDS'),
+      'Das wurde gerade schon angelegt. Laden Sie die Seite neu und prüfen Sie den aktuellen Stand.',
+    ],
+  ])(
+    'refused because %s, reports the catalog text for its code, stays and reads the version again',
+    async (_, refusal, text) => {
+      changing = async () => refusal;
+      const user = userEvent.setup();
+      const { router } = await renderPage();
+
+      await user.click(newVersionButton());
+
+      await waitFor(() => expect(notify.failure).toHaveBeenCalledWith(text));
+      expect(String(notify.failure.mock.calls)).not.toContain('SERVER WORDS');
+      expect(notify.success).not.toHaveBeenCalled();
+      expect(router.currentRoute.value.path).toBe(`/editorial/versions/${versionId}`);
+      await waitFor(() => expect(reads().length).toBeGreaterThan(1));
+      expect(reads().every(({ path }) => path === `/editorial/course-versions/${versionId}`)).toBe(true);
+    },
+  );
+
+  test('refused because the version already has its successor, says so in English when switched', async () => {
+    changing = async () => problem(409, 'editorial.next-version-exists', 'SERVER WORDS');
     const user = userEvent.setup();
-    const { router } = await renderPage();
+    await renderPage();
+    setLanguage('en-GB', { remember: false });
+
+    await user.click(await screen.findByRole('button', { name: 'Create a new version' }));
+
+    await waitFor(() =>
+      expect(notify.failure).toHaveBeenCalledWith(
+        'A newer version of this course already exists. Continue that one instead of creating another.',
+      ),
+    );
+    expect(String(notify.failure.mock.calls)).not.toContain('SERVER WORDS');
+  });
+
+  test("refused with a module code the catalog does not know, reports the host's words", async () => {
+    changing = async () => problem(409, 'editorial.zzz-unknown', 'SERVER WORDS');
+    const user = userEvent.setup();
+    await renderPage();
 
     await user.click(newVersionButton());
 
-    await waitFor(() => expect(notify.failure).toHaveBeenCalledWith(words));
-    expect(notify.success).not.toHaveBeenCalled();
-    expect(router.currentRoute.value.path).toBe(`/editorial/versions/${versionId}`);
-    await waitFor(() => expect(reads().length).toBeGreaterThan(1));
-    expect(reads().every(({ path }) => path === `/editorial/course-versions/${versionId}`)).toBe(true);
+    await waitFor(() => expect(notify.failure).toHaveBeenCalledWith('SERVER WORDS'));
   });
 
   // Someone retired the version meanwhile: the host refuses, and the page, reading it again, offers nothing.
@@ -1228,15 +1282,11 @@ describe('a new version', () => {
     expect(newVersion()).not.toBeInTheDocument();
   });
 
-  // Refusals without a module's words (the framework's English titles, a 500, no answer at all) show the catalog's.
+  // Refusals without a code (a 500, the edge's 502, the policy's 403, no answer at all) show the action's own text.
   test.each([
     ['the host fails', () => Promise.resolve(new Response('', { status: 500 }))],
+    ['the edge fails', () => Promise.resolve(new Response('', { status: 502 }))],
     ['the policy forbids it', () => Promise.resolve(problem(403, undefined, 'Forbidden'))],
-    [
-      'another editor drafted it at the same moment',
-      () =>
-        Promise.resolve(problem(409, 'already-exists', 'Conflict', 'duplicate key value violates unique constraint')),
-    ],
     ['the network fails', () => Promise.reject(new TypeError('Failed to fetch'))],
   ])("when %s, reports it in the catalog's words and stays, ready to try again", async (_, answer) => {
     changing = answer;
@@ -1289,9 +1339,13 @@ describe('a new version', () => {
     await user.click(newVersionButton());
     await waitFor(() => expect(newVersion()).toBeDisabled());
     newVersionButton().blur();
-    answer(problem(409, 'editorial.course-version-changed', 'The course version changed in the meantime.'));
+    answer(problem(409, 'editorial.course-version-changed', 'SERVER WORDS'));
 
-    await waitFor(() => expect(notify.failure).toHaveBeenCalledWith('The course version changed in the meantime.'));
+    await waitFor(() =>
+      expect(notify.failure).toHaveBeenCalledWith(
+        'Die Version wurde inzwischen geändert. Laden Sie sie neu und wiederholen Sie die Änderung.',
+      ),
+    );
     await waitFor(() => expect(newVersion()).toHaveFocus());
   });
 

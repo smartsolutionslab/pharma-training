@@ -170,7 +170,7 @@ public class IntegrationEventMappingsTests
         pdf = ChapterId.New();
         video = ChapterId.New();
         version.AddChapter(Chapter.OfText(text, ChapterTitle.From("Grundlagen"), MarkdownText.From("# Grundlagen"))).IsSuccess.ShouldBeTrue();
-        version.AddChapter(Chapter.OfPdf(pdf, ChapterTitle.From("Merkblatt"), BlobReference.From("courses/kuehlkette/merkblatt.pdf"))).IsSuccess.ShouldBeTrue();
+        version.AddChapter(Chapter.OfPdf(pdf, ChapterTitle.From("Merkblatt"), BlobReference.From("courses/kuehlkette/merkblatt.pdf"), PdfTextExtraction.NoText, null)).IsSuccess.ShouldBeTrue();
         version.AddChapter(Chapter.OfVideo(video, ChapterTitle.From("Praxis"), BlobReference.From("courses/kuehlkette/praxis.mp4"), VideoDuration.From(754))).IsSuccess.ShouldBeTrue();
         version.SetBlueprint(new TestBlueprint(QuestionCount.From(2), ScorePercent.From(70), RecurrenceInterval.From(24))).IsSuccess.ShouldBeTrue();
 

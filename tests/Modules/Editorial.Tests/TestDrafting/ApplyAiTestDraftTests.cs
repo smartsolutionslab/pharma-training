@@ -79,7 +79,7 @@ public class ApplyAiTestDraftTests
     }
 
     [Fact]
-    public async Task The_response_names_the_pdf_and_video_chapters_left_out_in_the_versions_order()
+    public async Task The_response_names_the_pdf_chapters_without_text_and_video_chapters_left_out_in_the_versions_order()
     {
         var version = TestDraftVersions.WithTextPdfAndVideoChapters(2, out var leftOut);
         store.Stored.Add(version);
@@ -90,6 +90,54 @@ public class ApplyAiTestDraftTests
         result.IsSuccess.ShouldBeTrue();
         result.Value.LeftOutChapterIds.ShouldBe([.. leftOut.Select(chapter => chapter.Value)]);
         result.Value.DraftedQuestionIds.Count.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task A_version_of_pdf_chapters_only_is_drafted_and_applied_with_questions_on_its_pdf_chapters()
+    {
+        var version = TestDraftVersions.WithChapters(4, "PP", out var ids);
+        store.Stored.Add(version);
+        using var model = new FakeChatClient(Sound(1, 2, 2, 1));
+
+        var result = await HandleAsync(model, version.Id);
+
+        result.IsSuccess.ShouldBeTrue(result.IsFailure ? result.Error.Code : string.Empty);
+        version.Questions.Select(question => question.Chapter).ShouldBe([ids[0], ids[1], ids[1], ids[0]]);
+        version.Questions.ShouldAllBe(question => question.Provenance == Provenance.AiDrafted && question.Review == ReviewState.Unreviewed);
+        result.Value.DraftedQuestionIds.ShouldBe([.. version.Questions.Select(question => question.Id.Value)]);
+        result.Value.LeftOutChapterIds.ShouldBeEmpty();
+        result.Value.TruncatedChapterIds.ShouldBeEmpty();
+        store.Commits.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task The_response_names_the_left_out_and_the_cut_off_chapters_in_the_versions_order()
+    {
+        var version = TestDraftVersions.WithChapters(4, "RVTLPN", out var ids);
+        store.Stored.Add(version);
+        using var model = new FakeChatClient(Sound(1, 2, 3, 1));
+
+        var result = await HandleAsync(model, version.Id);
+
+        result.IsSuccess.ShouldBeTrue(result.IsFailure ? result.Error.Code : string.Empty);
+        result.Value.LeftOutChapterIds.ShouldBe([ids[1].Value, ids[3].Value, ids[5].Value]);
+        result.Value.TruncatedChapterIds.ShouldBe([ids[0].Value]);
+        version.Questions.Select(question => question.Chapter).ShouldBe([ids[0], ids[2], ids[4], ids[0]]);
+    }
+
+    [Fact]
+    public async Task The_model_is_asked_about_a_pdf_chapters_extracted_text()
+    {
+        var version = TestDraftVersions.WithChapters(2, "TP", out _);
+        store.Stored.Add(version);
+        using var model = new FakeChatClient(Sound(1, 2));
+
+        await HandleAsync(model, version.Id);
+
+        var user = model.Requests.ShouldHaveSingleItem().Where(message => message.Role == ChatRole.User).ShouldHaveSingleItem().Text;
+        user.ShouldContain("PDF-Kapitel 2");
+        user.ShouldContain("\"source\":\"pdf\"");
+        user.ShouldContain("Zytostatika werden ge-");
     }
 
     [Fact]

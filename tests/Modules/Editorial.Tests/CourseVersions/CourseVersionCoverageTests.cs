@@ -86,7 +86,7 @@ public class CourseVersionCoverageTests
     [Fact]
     public void A_pdf_chapter_holds_its_file_and_a_video_chapter_its_file_and_length()
     {
-        var pdf = Chapter.OfPdf(ChapterId.New(), ChapterTitle.From("Hygieneplan"), BlobReference.From("courses/plan.pdf"));
+        var pdf = Chapter.OfPdf(ChapterId.New(), ChapterTitle.From("Hygieneplan"), BlobReference.From("courses/plan.pdf"), PdfTextExtraction.NoText, null);
         var video = Chapter.OfVideo(ChapterId.New(), ChapterTitle.From("Vorführung"), BlobReference.From("courses/demo.mp4"), VideoDuration.From(90));
 
         pdf.Kind.ShouldBe(ChapterKind.Pdf);
@@ -107,7 +107,7 @@ public class CourseVersionCoverageTests
         version.AddChapter(TextChapter(second, "Flächendesinfektion", "Wischen.")).IsSuccess.ShouldBeTrue();
         var stored = version.Chapters[0];
 
-        var replaced = version.ReplaceChapter(Chapter.OfPdf(first, ChapterTitle.From("Hygieneplan"), BlobReference.From("courses/plan.pdf")));
+        var replaced = version.ReplaceChapter(Chapter.OfPdf(first, ChapterTitle.From("Hygieneplan"), BlobReference.From("courses/plan.pdf"), PdfTextExtraction.NoText, null));
 
         replaced.IsSuccess.ShouldBeTrue();
         version.Chapters.Select(chapter => chapter.Id).ShouldBe([first, second]);
@@ -388,7 +388,7 @@ public class CourseVersionCoverageTests
     }
 
     [Fact]
-    public void A_test_short_of_its_blueprint_names_how_many_questions_it_needs()
+    public void A_test_short_of_its_blueprint_is_refused_as_incomplete()
     {
         var version = DraftWithChapter(out _);
 
@@ -397,7 +397,7 @@ public class CourseVersionCoverageTests
         var incomplete = submitted.Error.Value.ShouldBeOfType<TestIncomplete>();
         incomplete.ShouldBe(new TestIncomplete(version.Id, QuestionCount.Default, QuestionCount.From(0)));
         incomplete.Code.ShouldBe("editorial.test-incomplete");
-        incomplete.Message.ShouldBe("Der Test braucht 10 Fragen.");
+        incomplete.Message.ShouldBe("The test does not have the number of questions its blueprint asks for.");
     }
 
     [Fact]

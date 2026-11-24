@@ -408,6 +408,7 @@ describe('the draft', () => {
       text: null,
       file: `course-versions/${versionId}/0198c1a0-0000-7000-8000-0000000000f3.mp4`,
       durationSeconds: 95,
+      pdfText: null,
     };
     version = versionOf('Draft', { chapters: [introduction, handout, video] });
     drafting = async () => {
@@ -492,7 +493,7 @@ describe('a refused or failed draft', () => {
     [
       '503 model-not-configured',
       () => refusal(503, 'model-not-configured', 'No language model is configured.'),
-      'Für KI-Entwürfe ist kein Sprachmodell eingerichtet. Wenden Sie sich an den Betrieb der Plattform.',
+      'Es ist kein Sprachmodell eingerichtet; KI-Funktionen stehen nicht zur Verfügung. Wenden Sie sich an den Betrieb der Plattform.',
     ],
     [
       '429',
@@ -504,7 +505,7 @@ describe('a refused or failed draft', () => {
       '429 model-limit-reached',
       () =>
         refusal(429, 'editorial.model-limit-reached', 'You have reached your limit of AI requests; try again later.'),
-      'Sie haben Ihr Limit für KI-Entwürfe erreicht. Versuchen Sie es später erneut.',
+      'Sie haben Ihr Limit für KI-Anfragen erreicht. Versuchen Sie es später erneut.',
     ],
     [
       '502 ai-draft-malformed',
@@ -642,7 +643,7 @@ describe('a refused or failed draft', () => {
 
     await waitFor(() =>
       expect(notify.failure).toHaveBeenCalledWith(
-        "No language model is set up for AI drafts. Contact the platform's operators.",
+        "No language model is set up, so AI features are not available. Contact the platform's operators.",
       ),
     );
   });
@@ -660,7 +661,7 @@ describe('a refused or failed draft', () => {
     await user.click(within(confirmation() ?? document.body).getByRole('button', { name: 'Draft' }));
 
     await waitFor(() =>
-      expect(notify.failure).toHaveBeenCalledWith('You have reached your limit for AI drafts. Try again later.'),
+      expect(notify.failure).toHaveBeenCalledWith('You have reached your limit for AI requests. Try again later.'),
     );
     expect(notify.failure).not.toHaveBeenCalledWith('You have reached your limit of AI requests; try again later.');
   });

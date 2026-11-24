@@ -2,10 +2,10 @@
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { ComplianceMatrixCourseDto, ComplianceMatrixRowDto } from '@/api/generated';
+import AssignmentStatusLabel from '@/components/status/AssignmentStatusLabel.vue';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { calendarDate } from '@/i18n/formats';
 import { cellStatus } from './cellStatus';
-import MatrixStatus from './MatrixStatus.vue';
 
 // A member's training status, from the row already loaded: every course assigned to them in the matrix's column order,
 // whatever the course filter, with its status, its due date, when it was last completed and until when that holds. It
@@ -79,7 +79,7 @@ function returnFocus(event: Event) {
             class="flex flex-col gap-2 rounded-md border p-3"
           >
             <h3 class="text-body font-semibold">{{ course.title }}</h3>
-            <MatrixStatus :status="status" />
+            <AssignmentStatusLabel :status="status" />
             <dl class="text-body grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
               <dt class="text-muted-foreground">{{ t('compliance.matrix.person.due') }}</dt>
               <dd class="tabular-nums">{{ dateOf(cell.dueDate) }}</dd>

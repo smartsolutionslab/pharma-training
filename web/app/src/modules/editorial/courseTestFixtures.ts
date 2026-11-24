@@ -19,6 +19,7 @@ export const introduction: EditorialChapterDto = {
   text: '# Willkommen\n\nHände werden **30 Sekunden** gewaschen.',
   file: null,
   durationSeconds: null,
+  pdfText: null,
 };
 
 export const handout: EditorialChapterDto = {
@@ -29,6 +30,7 @@ export const handout: EditorialChapterDto = {
   text: null,
   file: `course-versions/${versionId}/0198c1a0-0000-7000-8000-0000000000f2.pdf`,
   durationSeconds: null,
+  pdfText: null,
 };
 
 /** Approved by another editor, Emma Editor, on 20 November 2026. */

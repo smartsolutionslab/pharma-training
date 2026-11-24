@@ -1,4 +1,6 @@
+import './lib/zodWithoutEval';
 import { type App as VueApp, type Component, createApp, h } from 'vue';
+import { bootstrap } from './bootstrap';
 import { withAuth } from './providers/auth';
 import { withI18n } from './providers/i18n';
 import { withPinia } from './providers/pinia';
@@ -19,9 +21,16 @@ const providers: Provider[] = [
   withRouter,
 ];
 
-// The root is rendered at mount, once every provider has installed itself and wrapped it.
-let root: Component = App;
-const app = createApp({ render: () => h(root) });
-root = providers.reduceRight<Component>((inner, provide) => provide(app, inner), App);
+const target = document.querySelector<HTMLElement>('#app');
+if (target === null) {
+  throw new Error('index.html has no #app to mount the app into.');
+}
 
-app.mount('#app');
+// The providers install themselves once the runtime configuration is loaded: signing in needs the identity provider it names.
+void bootstrap(target, (element) => {
+  // The root is rendered at mount, once every provider has installed itself and wrapped it.
+  let root: Component = App;
+  const app = createApp({ render: () => h(root) });
+  root = providers.reduceRight<Component>((inner, provide) => provide(app, inner), App);
+  app.mount(element);
+});
