@@ -3,7 +3,7 @@ using System.Net.Http.Headers;
 namespace SmartSolutionsLab.PharmaTraining.Edge.Tests;
 
 /// <summary>
-/// The client address the edge hands a service (#292, docs/adr/0030). Published, the edge sits behind the Container Apps
+/// The client address the edge hands a service (#292, docs/adr/0031). Published, the edge sits behind the Container Apps
 /// ingress, which appends the address it saw to <c>X-Forwarded-For</c>; the edge trusts exactly that one hop
 /// (<c>ASPNETCORE_FORWARDEDHEADERS_ENABLED</c>, which publishing sets: forward limit 1, any proxy) and forwards the
 /// address as the service's <c>X-Forwarded-For</c>, in place of the whole list. Whatever the caller wrote before it,

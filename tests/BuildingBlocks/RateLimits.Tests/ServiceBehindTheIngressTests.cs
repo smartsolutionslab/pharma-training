@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging;
 namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.RateLimits.Tests;
 
 /// <summary>
-/// The address a service's per-client limit counts, behind the Container Apps ingress (#292, docs/adr/0030). The edge
+/// The address a service's per-client limit counts, behind the Container Apps ingress (#292, docs/adr/0031). The edge
 /// sends the client's address as the one <c>X-Forwarded-For</c> entry; the internal ingress in front of the service may
 /// append the edge's own. Published, the service trusts exactly one hop, as the edge does
 /// (<c>ASPNETCORE_FORWARDEDHEADERS_ENABLED</c>), which takes the ingress's entry off the list, so

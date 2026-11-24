@@ -9,7 +9,7 @@ namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.RateLimits;
 /// ended. One singleton per host. A counter whose windows have all ended counts nothing any more and is forgotten, at
 /// most once every <see cref="SweepInterval"/>, by the request that finds the sweep due (#292): memory then holds the
 /// callers of the longest window, not every caller since the host started, which a client rotating through IPv6 /64s
-/// would otherwise grow without end (docs/adr/0030).
+/// would otherwise grow without end (docs/adr/0031).
 /// </summary>
 public sealed class UserRateLimiter
 {

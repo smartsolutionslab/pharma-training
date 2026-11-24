@@ -1,4 +1,4 @@
-# 0030: The ingress is the one trusted forwarded hop
+# 0031: The ingress is the one trusted forwarded hop
 
 **Status:** Accepted (#292)
 

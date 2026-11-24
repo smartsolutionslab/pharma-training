@@ -6,7 +6,7 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 
 /// <summary>
 /// Published, the edge and every service trust exactly one <c>X-Forwarded-For</c> hop, the Container Apps ingress in front
-/// of each (#292, docs/adr/0030): <c>ASPNETCORE_FORWARDEDHEADERS_ENABLED=true</c>, ASP.NET Core's forwarded headers with a
+/// of each (#292, docs/adr/0031): <c>ASPNETCORE_FORWARDEDHEADERS_ENABLED=true</c>, ASP.NET Core's forwarded headers with a
 /// forward limit of one and any proxy. Aspire 13.6.5 sets it on every project it publishes, and the AppHost names it on
 /// the edge and the services itself; this pins it, so an Aspire that stopped setting it fails here, not in production.
 /// </summary>
