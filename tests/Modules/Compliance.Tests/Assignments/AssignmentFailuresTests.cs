@@ -1,3 +1,4 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using System.Net;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Assignments;
@@ -79,4 +80,28 @@ public class AssignmentFailuresTests
         "CertificatePredatesAssignment" => AssignmentErrors.CertificatePredatesAssignment(AssignmentId.New(), CertificateId.From(Guid.CreateVersion7())),
         _ => throw new InvalidOperationException($"No assignment error is named {name}."),
     };
+
+    /// <summary>
+    /// A save PostgreSQL ended as a deadlock or a serialization failure is a concurrent save to try again
+    /// (compliance.concurrent-save); assignments whose row version moved on are still assignments that changed.
+    /// </summary>
+    [Theory]
+    [InlineData("40P01")]
+    [InlineData("40001")]
+    public void A_deadlocked_save_is_a_concurrent_save_to_try_again(string sqlState)
+    {
+        var error = AssignmentFailures.LostRace(new SaveDeadlocked(sqlState));
+
+        error.Code.ShouldBe("compliance.concurrent-save");
+        error.Status.ShouldBe(HttpStatusCode.Conflict);
+    }
+
+    [Fact]
+    public void Assignments_whose_version_moved_on_are_still_assignments_that_changed()
+    {
+        var error = AssignmentFailures.LostRace(new VersionMovedOn());
+
+        error.Code.ShouldBe("compliance.assignments-changed");
+        error.Status.ShouldBe(HttpStatusCode.Conflict);
+    }
 }

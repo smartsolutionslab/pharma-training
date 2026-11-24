@@ -1,3 +1,4 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using System.Net;
 using Microsoft.Extensions.Time.Testing;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Storage;
@@ -187,7 +188,7 @@ public class PublishCourseVersionTests
         var version = InReview();
         store.Stored.Add(version);
         var lostRace = Substitute.For<IEditorialUnitOfWork>();
-        lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(false);
+        lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(Failure<LostRace>(new VersionMovedOn()));
 
         var published = await new PublishCourseVersionHandler(store, lostRace, urls, ReviewSettings.Default, time)
             .HandleAsync(new PublishCourseVersion(version.Id, Reviewer), TestContext.Current.CancellationToken);
@@ -236,7 +237,7 @@ public class PublishCourseVersionTests
         var version = InReview();
         store.Stored.Add(version);
         var lostRace = Substitute.For<IEditorialUnitOfWork>();
-        lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(false);
+        lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(Failure<LostRace>(new VersionMovedOn()));
 
         var published = await new PublishCourseVersionHandler(store, lostRace, urls, ReviewSettings.Default, time)
             .HandleAsync(new PublishCourseVersion(version.Id, Reviewer), TestContext.Current.CancellationToken);

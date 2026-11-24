@@ -1,3 +1,4 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Infrastructure;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -39,7 +40,7 @@ public class CommitLostRaceTests
     {
         await using var services = OutboxFailingWith(new DbUpdateConcurrencyException("An error occurred while saving the entity changes. See the inner exception for details.", Ended(sqlState)));
 
-        (await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken)).ShouldBeFalse();
+        ShouldHaveLostTo(Deadlock, await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -47,7 +48,7 @@ public class CommitLostRaceTests
     {
         await using var services = OutboxFailingWith(new DbUpdateConcurrencyException("The row version moved on."));
 
-        (await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken)).ShouldBeFalse();
+        ShouldHaveLostTo(VersionChange, await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -65,7 +66,7 @@ public class CommitLostRaceTests
     {
         await using var services = OutboxFailingWith(Ended(sqlState));
 
-        (await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken)).ShouldBeFalse();
+        ShouldHaveLostTo(Deadlock, await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken));
     }
 
     [Theory]
@@ -75,7 +76,7 @@ public class CommitLostRaceTests
     {
         await using var services = OutboxFailingWith(new InvalidOperationException("The transaction could not be committed.", Ended(sqlState)));
 
-        (await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken)).ShouldBeFalse();
+        ShouldHaveLostTo(Deadlock, await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken));
     }
 
     [Theory]
@@ -107,7 +108,7 @@ public class CommitLostRaceTests
     {
         await using var services = OutboxFailingWith(new DbUpdateException("An error occurred while saving the entity changes. See the inner exception for details.", Ended(sqlState)));
 
-        (await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken)).ShouldBeFalse();
+        ShouldHaveLostTo(Deadlock, await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken));
     }
 
     [Theory]
@@ -143,7 +144,7 @@ public class CommitLostRaceTests
     {
         await using var services = OutboxFailingWith(Wrapped(Ended(sqlState), BehindAnotherFailureInAnAggregate));
 
-        (await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken)).ShouldBeFalse();
+        ShouldHaveLostTo(Deadlock, await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken));
     }
 
     /// <summary>
@@ -156,7 +157,7 @@ public class CommitLostRaceTests
         var other = new InvalidOperationException("The envelopes could not be flushed.");
         await using var services = OutboxFailingWith(new AggregateException(Ended(PostgresErrorCodes.DeadlockDetected), other));
 
-        (await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken)).ShouldBeFalse();
+        ShouldHaveLostTo(Deadlock, await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken));
 
         var record = services.GetFakeLogCollector().GetSnapshot().Where(each => ReferenceEquals(each.Exception, other)).ShouldHaveSingleItem();
         record.Level.ShouldBeOneOf(LogLevel.Warning, LogLevel.Error, LogLevel.Critical);
@@ -173,7 +174,7 @@ public class CommitLostRaceTests
         var other = new InvalidOperationException("The envelopes could not be flushed.");
         await using var services = OutboxFailingWith(new InvalidOperationException("flush", new AggregateException(ended, other)));
 
-        (await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken)).ShouldBeFalse();
+        ShouldHaveLostTo(Deadlock, await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken));
 
         var records = services.GetFakeLogCollector().GetSnapshot();
         var record = records.Where(each => ReferenceEquals(each.Exception, other)).ShouldHaveSingleItem("the other failure inside the wrapped aggregate was not logged once");
@@ -193,7 +194,7 @@ public class CommitLostRaceTests
         var siblingB = new TimeoutException("The outbox did not answer.");
         await using var services = OutboxFailingWith(new AggregateException(new AggregateException(ended, siblingA), siblingB));
 
-        (await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken)).ShouldBeFalse();
+        ShouldHaveLostTo(Deadlock, await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken));
 
         var records = services.GetFakeLogCollector().GetSnapshot();
         records.Where(each => ReferenceEquals(each.Exception, siblingA)).ShouldHaveSingleItem("the lost race's sibling in the inner aggregate was not logged once");
@@ -225,7 +226,7 @@ public class CommitLostRaceTests
     {
         await using var services = OutboxFailingWith(Ended(PostgresErrorCodes.DeadlockDetected), logging: false);
 
-        (await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken)).ShouldBeFalse();
+        ShouldHaveLostTo(Deadlock, await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken));
     }
 
     private const string Bare = "bare";
@@ -277,11 +278,43 @@ public class CommitLostRaceTests
     {
         await using var services = OutboxFailingWith(failure: null);
 
-        (await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken)).ShouldBeTrue();
+        (await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken)).IsSuccess.ShouldBeTrue();
 
         var outbox = services.GetRequiredService<IDbContextOutbox<EditorialDbContext>>();
         await outbox.Received(1).FlushOutgoingMessagesAsync();
         await outbox.DidNotReceive().SaveChangesAndFlushMessagesAsync(Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Where a domain-event scraper is registered, the save goes through Wolverine's own save-and-flush, which runs the
+    /// scrapers: the split save and flush would skip them.
+    /// </summary>
+    [Fact]
+    public async Task A_save_with_a_domain_event_scraper_registered_goes_through_wolverines_own_save_and_flush()
+    {
+        await using var services = OutboxFailingWith(failure: null, scraped: true);
+
+        (await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken)).IsSuccess.ShouldBeTrue();
+
+        var outbox = services.GetRequiredService<IDbContextOutbox<EditorialDbContext>>();
+        await outbox.Received(1).SaveChangesAndFlushMessagesAsync(Arg.Any<CancellationToken>());
+        await outbox.DidNotReceive().FlushOutgoingMessagesAsync();
+    }
+
+    private const string Deadlock = "a deadlock";
+
+    private const string VersionChange = "a version that moved on";
+
+    /// <summary>Fails unless the save lost a race, and lost it to <paramref name="expected"/>.</summary>
+    private static void ShouldHaveLostTo(string expected, Result<Unit, LostRace> saved)
+    {
+        saved.IsFailure.ShouldBeTrue("the save answered as committed");
+        var lostTo = saved.Error switch
+        {
+            SaveDeadlocked => Deadlock,
+            VersionMovedOn => VersionChange,
+        };
+        lostTo.ShouldBe(expected);
     }
 
     private static PostgresException Ended(string sqlState) =>
@@ -291,7 +324,7 @@ public class CommitLostRaceTests
     /// Editorial's outbox over a real context whose save ends with <paramref name="failure"/> before anything reaches the
     /// database (<see cref="FailingSave"/>); without one, the save succeeds and the flush after it answers <paramref name="flushFailure"/>.
     /// </summary>
-    private static ServiceProvider OutboxFailingWith(Exception? failure, bool logging = true, Exception? flushFailure = null)
+    private static ServiceProvider OutboxFailingWith(Exception? failure, bool logging = true, Exception? flushFailure = null, bool scraped = false)
     {
         var options = new DbContextOptionsBuilder<EditorialDbContext>()
             .UseNpgsql("Host=unused.invalid")
@@ -300,6 +333,11 @@ public class CommitLostRaceTests
         var services = new ServiceCollection();
         var outbox = Substitute.For<IDbContextOutbox<EditorialDbContext>>();
         services.AddSingleton(outbox);
+        if (scraped)
+        {
+            services.AddSingleton(Substitute.For<IDomainEventScraper>());
+        }
+
         if (logging)
         {
             services.AddFakeLogging();

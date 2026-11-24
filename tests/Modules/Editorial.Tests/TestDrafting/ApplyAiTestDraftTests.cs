@@ -1,3 +1,4 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using System.Net;
 using Microsoft.Extensions.AI;
 using NSubstitute.ExceptionExtensions;
@@ -144,7 +145,7 @@ public class ApplyAiTestDraftTests
         var version = TestDraftVersions.WithTextChapters(2, "Händehygiene", "Flächen");
         store.Stored.Add(version);
         var lostRace = Substitute.For<IEditorialUnitOfWork>();
-        lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(false);
+        lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(Failure<LostRace>(new VersionMovedOn()));
         using var model = new FakeChatClient(Sound(1, 2));
 
         var result = await new ApplyAiTestDraftHandler(store, lostRace, model)

@@ -1,3 +1,4 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using System.Net;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
@@ -243,4 +244,29 @@ public class CourseVersionFailuresTests
         nameof(MultipleChoiceNeedsACorrect) => CourseVersionErrors.MultipleChoiceNeedsACorrect(QuestionId.New()),
         _ => throw new System.Diagnostics.UnreachableException($"No rule of the version is named {rule}."),
     };
+
+    /// <summary>
+    /// A save PostgreSQL ended as a deadlock or a serialization failure rolled back with what the editor loaded maybe
+    /// still current, so it is told to try again (editorial.concurrent-save); a row version that moved on is still a
+    /// course version that changed, to load again.
+    /// </summary>
+    [Theory]
+    [InlineData("40P01")]
+    [InlineData("40001")]
+    public void A_deadlocked_save_is_a_concurrent_save_to_try_again(string sqlState)
+    {
+        var error = CourseVersionFailures.LostRace(new SaveDeadlocked(sqlState), Version.Value);
+
+        error.Code.ShouldBe("editorial.concurrent-save");
+        error.Status.ShouldBe(HttpStatusCode.Conflict);
+    }
+
+    [Fact]
+    public void A_version_that_moved_on_is_still_a_course_version_that_changed()
+    {
+        var error = CourseVersionFailures.LostRace(new VersionMovedOn(), Version.Value);
+
+        error.Code.ShouldBe("editorial.course-version-changed");
+        error.Status.ShouldBe(HttpStatusCode.Conflict);
+    }
 }

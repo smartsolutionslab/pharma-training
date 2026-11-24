@@ -1,3 +1,4 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using System.Net;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.SetTestBlueprint;
@@ -19,7 +20,7 @@ public class SetTestBlueprintTests
 
     public SetTestBlueprintTests()
     {
-        unitOfWork.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(true);
+        unitOfWork.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(Success(Unit.Value));
     }
 
     [Fact]
@@ -126,7 +127,7 @@ public class SetTestBlueprintTests
     {
         var version = Draft();
         store.Stored.Add(version);
-        unitOfWork.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(false);
+        unitOfWork.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(Failure<LostRace>(new VersionMovedOn()));
 
         var set = await SetAsync(version.Id, Blueprint(5, 70, 24));
 
