@@ -29,6 +29,8 @@ public sealed class SweptEventIndexTests(AspireFixture aspire) : IAsyncDisposabl
     [Theory]
     [InlineData("learning", "content_completed")]
     [InlineData("assessment", "examination_passed")]
+    [InlineData("assessment", "attempt_submitted")]
+    [InlineData("assessment", "examination_exhausted")]
     public async Task Running_the_migration_runner_twice_keeps_the_swept_event_index_valid(string module, string storedType)
     {
         var administrator = await DatabaseAsync();

@@ -22,6 +22,8 @@ public class AnnouncementSweepQueryPlanTests(AspireFixture aspire)
     [Theory]
     [InlineData("learning-database", "learning", "content_completed")]
     [InlineData("assessment-database", "assessment", "examination_passed")]
+    [InlineData("assessment-database", "assessment", "attempt_submitted")]
+    [InlineData("assessment-database", "assessment", "examination_exhausted")]
     public async Task The_sweeps_query_reads_the_window_of_its_terminal_events_through_an_index_never_the_whole_event_table(
         string database,
         string schema,

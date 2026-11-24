@@ -13,8 +13,10 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Assessment.Application.Comman
 /// person's examination is not found, like an unknown one. The examination is stored first; then, in the order the
 /// stream holds them, a pass is published as TestPassedV1, a failure as TestFailedV1, and the failure of the last
 /// allowed attempt also as AttemptsExhaustedV1 with every chapter failed since the last unlock, and all are committed
-/// together. A pass is committed with its marker (#277): a pass stored without its marker, because that commit never
-/// happened, is announced by the module's announcement sweep (ReannounceTestPasses, docs/adr/0016). A submit that
+/// together. Every event the submit stores is committed with its marker (#277, #307): one stored without its marker,
+/// because that commit never happened, is announced by the module's announcement sweeps (ReannounceTestPasses,
+/// ReannounceTestFailures, ReannounceExhaustions, docs/adr/0016); a passed AttemptSubmitted is announced by its
+/// ExaminationPassed, and its marker keeps the sweep of failures from reading it. A submit that
 /// lost the append race answers assessment.examination-changed and stores and publishes nothing; the server does not
 /// retry it (docs/adr/0016).
 /// </summary>
@@ -54,17 +56,17 @@ public sealed class SubmitAttemptHandler(IAssessmentAggregateStore store, ITestD
         }
 
         // Saving clears the pending events, so what is announced is taken before, and with it the version Marten stores
-        // each pass at: the examination's version before the save plus its place among the pending events, counted from 1.
+        // each event at: the examination's version before the save plus its place among the pending events, counted from 1.
         var announcements = AnnouncementsOf(examination);
-        var passed = PassesOf(examination);
+        var stored = StreamVersionsOf(examination);
         if (!await store.TrySaveAsync(examination, cancellationToken))
         {
             return Failure(ExaminationFailures.Changed(command.Examination.Value));
         }
 
         // The append has landed: a caller who goes away now must not cancel the announcement, or it is lost for good,
-        // so the outbox commit no longer takes the request's token. A pass's marker is committed with its announcement,
-        // so the sweep never announces it again; the other announcements carry none yet (docs/adr/0016).
+        // so the outbox commit no longer takes the request's token. Each stored event's marker is committed with the
+        // announcements, so no sweep announces any of them again (docs/adr/0016).
         if (announcements.Count > 0)
         {
             foreach (var announcement in announcements)
@@ -72,7 +74,7 @@ public sealed class SubmitAttemptHandler(IAssessmentAggregateStore store, ITestD
                 await unitOfWork.PublishAsync(announcement);
             }
 
-            foreach (var streamVersion in passed)
+            foreach (var streamVersion in stored)
             {
                 announced.Add(new AnnouncedEvent { StreamId = command.Examination.Value, StreamVersion = streamVersion, AnnouncedAt = now });
             }
@@ -106,13 +108,13 @@ public sealed class SubmitAttemptHandler(IAssessmentAggregateStore store, ITestD
         return announcements;
     }
 
-    /// <summary>The stream version each pending ExaminationPassed will be stored at.</summary>
-    private static List<long> PassesOf(Examination examination)
+    /// <summary>
+    /// The stream version each pending event will be stored at: a submit stores an AttemptSubmitted and, when it ends the
+    /// examination or locks it, an ExaminationPassed or ExaminationExhausted, and its commit announces each of them.
+    /// </summary>
+    private static List<long> StreamVersionsOf(Examination examination)
     {
         var sourced = (IEventSourced)examination;
-        return [.. sourced.PendingEvents
-            .Select((pending, index) => (Event: pending, StreamVersion: sourced.Version + index + 1))
-            .Where(stored => stored.Event is ExaminationPassed)
-            .Select(stored => stored.StreamVersion)];
+        return [.. sourced.PendingEvents.Select((_, index) => sourced.Version + index + 1)];
     }
 }

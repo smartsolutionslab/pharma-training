@@ -34,7 +34,7 @@ public class SubmitAttemptTests
         fixture.UnitOfWork.Published.ShouldHaveSingleItem().ShouldBeOfType<TestPassedV1>();
         fixture.UnitOfWork.Commits.ShouldBe(1);
         fixture.Stream()[^1].ShouldBeOfType<ExaminationPassed>();
-        fixture.Steps.ShouldBe([InMemoryAssessmentAggregateStore.Saved, RecordingAssessmentUnitOfWork.Queued, InMemoryAnnouncedEvents.Marked, RecordingAssessmentUnitOfWork.Committed]);
+        fixture.Steps.ShouldBe([InMemoryAssessmentAggregateStore.Saved, RecordingAssessmentUnitOfWork.Queued, InMemoryAnnouncedEvents.Marked, InMemoryAnnouncedEvents.Marked, RecordingAssessmentUnitOfWork.Committed]);
 
         var result = (await fixture.ResultAsync(submitted.Value)).Value;
         (result.AttemptId, result.Number, result.ScorePercent, result.PassingScorePercent, result.Outcome, result.AttemptsLeft)
@@ -105,7 +105,7 @@ public class SubmitAttemptTests
         submitted.IsSuccess.ShouldBeTrue();
         fixture.UnitOfWork.Published.ShouldHaveSingleItem().ShouldBeOfType<TestFailedV1>();
         fixture.UnitOfWork.Commits.ShouldBe(1);
-        fixture.Steps.ShouldBe([InMemoryAssessmentAggregateStore.Saved, RecordingAssessmentUnitOfWork.Queued, RecordingAssessmentUnitOfWork.Committed]);
+        fixture.Steps.ShouldBe([InMemoryAssessmentAggregateStore.Saved, RecordingAssessmentUnitOfWork.Queued, InMemoryAnnouncedEvents.Marked, RecordingAssessmentUnitOfWork.Committed]);
         fixture.Stream()[^1].ShouldBeOfType<AttemptSubmitted>().Outcome.ShouldBe(AttemptOutcome.Failed);
         var result = (await fixture.ResultAsync(submitted.Value)).Value;
         (result.Number, result.ScorePercent, result.PassingScorePercent, result.Outcome, result.AttemptsLeft)
@@ -267,9 +267,11 @@ public class SubmitAttemptTests
     }
 
     /// <summary>
-    /// The marker of the announced pass (#277) is added before the one commit that also carries its TestPassedV1, so the
-    /// two are stored together or not at all. It names the examination's stream and the version Marten stores the
-    /// ExaminationPassed at: the examination's version before the save plus its place among the pending events.
+    /// The markers of what a submit announces (#277, #307) are added before the one commit that also carries the
+    /// announcements, so they are stored together or not at all: one for each event the submit stores, keyed on the
+    /// examination's stream and the version Marten stores the event at (the examination's version before the save plus its
+    /// place among the pending events). A pass marks its AttemptSubmitted too, whose announcement is the pass's TestPassedV1,
+    /// so the sweep of failures never finds it.
     /// </summary>
     [Fact]
     public async Task A_passing_submit_records_its_announcement_in_the_same_commit()
@@ -284,26 +286,52 @@ public class SubmitAttemptTests
         var submitted = await fixture.SubmitAsync();
 
         submitted.IsSuccess.ShouldBeTrue();
-        var marker = fixture.Announced.Added.ShouldHaveSingleItem();
-        marker.StreamId.ShouldBe(fixture.Examination.Value);
-        marker.StreamVersion.ShouldBe(fixture.Stream().ToList().FindIndex(stored => stored is ExaminationPassed) + 1L);
-        marker.AnnouncedAt.ShouldBe(fixture.Time.GetUtcNow());
+        fixture.Announced.Added.Select(marker => (marker.StreamId, marker.StreamVersion, marker.AnnouncedAt))
+            .ShouldBe([
+                (fixture.Examination.Value, VersionOf<AttemptSubmitted>(), fixture.Time.GetUtcNow()),
+                (fixture.Examination.Value, VersionOf<ExaminationPassed>(), fixture.Time.GetUtcNow()),
+            ]);
         fixture.UnitOfWork.Published.ShouldHaveSingleItem().ShouldBeOfType<TestPassedV1>();
-        fixture.Steps.IndexOf(InMemoryAnnouncedEvents.Marked).ShouldBeLessThan(fixture.Steps.IndexOf(RecordingAssessmentUnitOfWork.Committed));
+        fixture.Steps.LastIndexOf(InMemoryAnnouncedEvents.Marked).ShouldBeLessThan(fixture.Steps.IndexOf(RecordingAssessmentUnitOfWork.Committed));
         fixture.Steps.Count(step => step == RecordingAssessmentUnitOfWork.Committed).ShouldBe(1);
     }
 
     [Fact]
-    public async Task A_failing_submit_records_no_announcement()
+    public async Task A_failing_submit_records_the_announcement_of_its_failure_in_the_same_commit()
     {
         await fixture.OpenAsync();
+        fixture.Steps.Clear();
 
         var submitted = await fixture.AttemptAsync([D], [B, C]);
 
         submitted.IsSuccess.ShouldBeTrue();
         fixture.Stream()[^1].ShouldBeOfType<AttemptSubmitted>().Outcome.ShouldBe(AttemptOutcome.Failed);
-        fixture.Announced.Added.ShouldBeEmpty();
-        fixture.Steps.ShouldNotContain(InMemoryAnnouncedEvents.Marked);
+        var marker = fixture.Announced.Added.ShouldHaveSingleItem();
+        (marker.StreamId, marker.StreamVersion, marker.AnnouncedAt).ShouldBe((fixture.Examination.Value, (long)fixture.Stream().Count, fixture.Time.GetUtcNow()));
+        fixture.UnitOfWork.Published.ShouldHaveSingleItem().ShouldBeOfType<TestFailedV1>();
+        fixture.Steps.LastIndexOf(InMemoryAnnouncedEvents.Marked).ShouldBeLessThan(fixture.Steps.LastIndexOf(RecordingAssessmentUnitOfWork.Committed));
+    }
+
+    [Fact]
+    public async Task The_third_failure_records_the_announcements_of_the_failure_and_the_lock_in_the_same_commit()
+    {
+        await fixture.OpenAsync();
+        await fixture.AttemptAsync([A], [B, E]);
+        await fixture.AttemptAsync([D], [B, C]);
+        fixture.Steps.Clear();
+        fixture.Announced.Added.Clear();
+
+        var third = await fixture.AttemptAsync([D], [B]);
+
+        third.IsSuccess.ShouldBeTrue();
+        var stream = fixture.Stream();
+        fixture.Announced.Added.Select(marker => (marker.StreamId, marker.StreamVersion))
+            .ShouldBe([(fixture.Examination.Value, stream.Count - 1L), (fixture.Examination.Value, (long)stream.Count)]);
+        stream[^2].ShouldBeOfType<AttemptSubmitted>().Outcome.ShouldBe(AttemptOutcome.Failed);
+        stream[^1].ShouldBeOfType<ExaminationExhausted>();
+        var committed = fixture.Steps.LastIndexOf(RecordingAssessmentUnitOfWork.Committed);
+        fixture.Steps.LastIndexOf(InMemoryAnnouncedEvents.Marked).ShouldBeLessThan(committed);
+        fixture.Steps.Count(step => step == RecordingAssessmentUnitOfWork.Committed).ShouldBe(1);
     }
 
     [Fact]
@@ -352,4 +380,8 @@ public class SubmitAttemptTests
         result.Error.Code.ShouldBe("assessment.examination-not-found");
         result.Error.Status.ShouldBe(HttpStatusCode.NotFound);
     }
+
+    /// <summary>The version of the stream's one event of <typeparamref name="TEvent"/>, counted from 1, as Marten stores it.</summary>
+    private long VersionOf<TEvent>()
+        where TEvent : class => fixture.Stream().ToList().FindIndex(stored => stored is TEvent) + 1L;
 }
