@@ -150,6 +150,7 @@ const draftSummary = computed(() =>
 // Where focus goes after an action (S4): the button pressed may be gone once the version is read again, so focus goes
 // where the editor goes on, never to the body.
 const draftStatus = 'course-test-draft-status';
+const draftExplanation = 'course-test-draft-explain';
 const questionsHeading = 'course-test-questions';
 const cardOf = (questionId: string) => `question-${questionId}`;
 const approveButtonOf = (questionId: string) => `question-${questionId}-approve`;
@@ -181,11 +182,14 @@ function focusPending() {
 }
 watch([focusWhenReady, questions, locked], focusPending, { flush: 'post' });
 
-/** Dismisses the draft's note; its button goes with it, so focus goes to the draft's status. */
+/**
+ * Dismisses the draft's note; its button goes with it, so focus goes to the draft's explanation, visible and named
+ * (#361): the status is empty by then, and the start button is often disabled after a draft.
+ */
 async function dismissNote() {
   dismissDraftNote();
   await nextTick();
-  document.getElementById(draftStatus)?.focus();
+  document.getElementById(draftExplanation)?.focus();
 }
 
 /** Asks for the draft once confirmed; it cannot be cancelled, since the model's call would go on. */
@@ -292,7 +296,9 @@ async function confirmRemove(question: EditorialQuestionDto) {
       </p>
       <TestBlueprintSection :version-id="id" :blueprint="version.blueprint" :editable="editable" :locked="locked">
         <div v-if="editable" class="flex flex-col gap-3 border-t pt-4">
-          <p class="text-body text-muted-foreground">{{ t('editorial.test.draft.explain') }}</p>
+          <p :id="draftExplanation" tabindex="-1" class="text-body text-muted-foreground">
+            {{ t('editorial.test.draft.explain') }}
+          </p>
           <Button
             type="button"
             class="self-start"
