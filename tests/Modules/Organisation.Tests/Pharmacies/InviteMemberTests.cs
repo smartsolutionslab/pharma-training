@@ -29,7 +29,7 @@ public class InviteMemberTests
         var time = new FakeTimeProvider(Start);
         time.Advance(TimeSpan.FromMinutes(5));
 
-        var invited = await new InviteMemberHandler(store, store, time, InvitationMailLimits.Default, NullLogger<InviteMemberHandler>.Instance)
+        var invited = await new InviteMemberHandler(store, store, new FakeDatabaseClock(time), InvitationMailLimits.Default, NullLogger<InviteMemberHandler>.Instance)
             .HandleAsync(new InviteMember(pharmacy.Id, Owner, Invitee, JobFunction.Pka, MembershipRole.Manager), TestContext.Current.CancellationToken);
 
         invited.IsSuccess.ShouldBeTrue();
@@ -179,7 +179,7 @@ public class InviteMemberTests
         var time = new FakeTimeProvider(Start);
         time.Advance(TimeSpan.FromHours(1));
 
-        var refused = await new InviteMemberHandler(store, store, time, capOfOne, NullLogger<InviteMemberHandler>.Instance)
+        var refused = await new InviteMemberHandler(store, store, new FakeDatabaseClock(time), capOfOne, NullLogger<InviteMemberHandler>.Instance)
             .HandleAsync(new InviteMember(pharmacy.Id, Owner, Invitee, JobFunction.Pta, MembershipRole.Employee), TestContext.Current.CancellationToken);
 
         refused.IsSuccess.ShouldBeFalse("a second invitation mail was requested on a day capped at one");
@@ -201,7 +201,7 @@ public class InviteMemberTests
         pharmacy.Stored(store);
         var logger = new FakeLogger<InviteMemberHandler>();
 
-        var invited = await new InviteMemberHandler(store, store, new FakeTimeProvider(Start), InvitationMailLimits.Default, logger)
+        var invited = await new InviteMemberHandler(store, store, new FakeDatabaseClock(new FakeTimeProvider(Start)), InvitationMailLimits.Default, logger)
             .HandleAsync(new InviteMember(pharmacy.Id, Owner, Invitee, JobFunction.Pta, MembershipRole.Employee), TestContext.Current.CancellationToken);
 
         invited.IsSuccess.ShouldBeTrue();
@@ -221,7 +221,7 @@ public class InviteMemberTests
         pharmacy.Stored(store);
         var logger = new FakeLogger<InviteMemberHandler>();
 
-        var invited = await new InviteMemberHandler(store, store, new FakeTimeProvider(Start), InvitationMailLimits.Default, logger)
+        var invited = await new InviteMemberHandler(store, store, new FakeDatabaseClock(new FakeTimeProvider(Start)), InvitationMailLimits.Default, logger)
             .HandleAsync(new InviteMember(pharmacy.Id, Owner, Invitee, JobFunction.Pta, MembershipRole.Employee), TestContext.Current.CancellationToken);
 
         invited.IsSuccess.ShouldBeTrue();
@@ -252,5 +252,5 @@ public class InviteMemberTests
         membership.InvitationExpiresAt.ShouldBe(Timestamp.From(Start.AddDays(14)));
     }
 
-    private static InviteMemberHandler Handler(InMemoryPharmacyStore store) => new(store, store, new FakeTimeProvider(Start), InvitationMailLimits.Default, NullLogger<InviteMemberHandler>.Instance);
+    private static InviteMemberHandler Handler(InMemoryPharmacyStore store) => new(store, store, new FakeDatabaseClock(new FakeTimeProvider(Start)), InvitationMailLimits.Default, NullLogger<InviteMemberHandler>.Instance);
 }

@@ -37,7 +37,7 @@ public class RenewInvitationTests
         time.Advance(TimeSpan.FromDays(daysOld) + TimeSpan.FromMinutes(10));
         var now = Start.AddDays(daysOld).AddMinutes(10);
 
-        var renewed = await new RenewInvitationHandler(store, store, time, InvitationMailLimits.Default, NullLogger<RenewInvitationHandler>.Instance)
+        var renewed = await new RenewInvitationHandler(store, store, new FakeDatabaseClock(time), InvitationMailLimits.Default, NullLogger<RenewInvitationHandler>.Instance)
             .HandleAsync(new RenewInvitation(pharmacy.Id, invitation, Owner), TestContext.Current.CancellationToken);
 
         renewed.IsSuccess.ShouldBeTrue();
@@ -162,7 +162,7 @@ public class RenewInvitationTests
         var time = new FakeTimeProvider(Start);
         time.Advance(TimeSpan.FromMinutes(4));
 
-        var refused = await new RenewInvitationHandler(store, store, time, InvitationMailLimits.Default, NullLogger<RenewInvitationHandler>.Instance)
+        var refused = await new RenewInvitationHandler(store, store, new FakeDatabaseClock(time), InvitationMailLimits.Default, NullLogger<RenewInvitationHandler>.Instance)
             .HandleAsync(new RenewInvitation(pharmacy.Id, invitation, Owner), TestContext.Current.CancellationToken);
 
         refused.IsSuccess.ShouldBeFalse("an invitation was renewed 4 minutes after its invite");
@@ -183,7 +183,7 @@ public class RenewInvitationTests
         pharmacy.Stored(store);
         var logger = new FakeLogger<RenewInvitationHandler>();
 
-        await new RenewInvitationHandler(store, store, new FakeTimeProvider(Start), InvitationMailLimits.Default, logger)
+        await new RenewInvitationHandler(store, store, new FakeDatabaseClock(new FakeTimeProvider(Start)), InvitationMailLimits.Default, logger)
             .HandleAsync(new RenewInvitation(pharmacy.Id, invitation, Owner), TestContext.Current.CancellationToken);
 
         var warning = logger.Collector.GetSnapshot().Where(record => record.Level == LogLevel.Warning).ShouldHaveSingleItem();
@@ -217,7 +217,7 @@ public class RenewInvitationTests
         store.Commits.ShouldBe(0);
     }
 
-    private static RenewInvitationHandler Handler(InMemoryPharmacyStore store) => new(store, store, new FakeTimeProvider(Start), InvitationMailLimits.Default, NullLogger<RenewInvitationHandler>.Instance);
+    private static RenewInvitationHandler Handler(InMemoryPharmacyStore store) => new(store, store, new FakeDatabaseClock(new FakeTimeProvider(Start)), InvitationMailLimits.Default, NullLogger<RenewInvitationHandler>.Instance);
 
     private static InvitationToken Token() => InvitationToken.From(RandomNumberGenerator.GetHexString(64));
 }
