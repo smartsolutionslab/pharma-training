@@ -1063,6 +1063,7 @@ export const de = {
       'question-already-approved': 'Diese Frage ist bereits freigegeben. Ändern Sie sie, um sie erneut freizugeben.',
       'question-not-approved': 'Jede Frage muss vor der Veröffentlichung freigegeben sein.',
       'question-not-found': 'Diese Frage gibt es in der Version nicht mehr.',
+      'republish-running': 'Eine Neuveröffentlichung läuft bereits. Bitte warten Sie, bis sie abgeschlossen ist.',
       'reviewer-name-missing':
         'Ihr Konto nennt keinen anzeigbaren Namen. Ergänzen Sie Ihr Profil und melden Sie sich erneut an.',
       'sample-not-found': 'Dieses Beispiel gibt es nicht.',

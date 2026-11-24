@@ -445,6 +445,11 @@
     "message": "The course version has no such question."
   },
   {
+    "code": "editorial.republish-running",
+    "status": 409,
+    "message": "A republish of the course versions is running already; wait until it has finished, then run it again if needed."
+  },
+  {
     "code": "editorial.reviewer-name-missing",
     "status": 403,
     "message": "The access token names no usable display name (claim `name`): it is missing, longer than 100 characters, or holds characters that cannot be shown."

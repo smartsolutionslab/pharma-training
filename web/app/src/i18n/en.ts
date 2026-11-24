@@ -1035,6 +1035,7 @@ export const en: MessageSchema = {
       'question-already-approved': 'This question is already approved. Edit it to approve it again.',
       'question-not-approved': 'Every question must be approved before publishing.',
       'question-not-found': 'This question no longer exists in the version.',
+      'republish-running': 'A republish is already running. Wait until it has finished.',
       'reviewer-name-missing': 'Your account gives no name that can be shown. Complete your profile and sign in again.',
       'sample-not-found': 'This sample does not exist.',
       'single-choice-one-correct': 'A single-choice question has exactly one correct answer.',

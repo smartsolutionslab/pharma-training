@@ -28,6 +28,9 @@ public static class CourseVersionFailures
 
     public static ApiError IdentityIncomplete() => new IdentityIncomplete();
 
+    /// <summary>A republish asked for while another one runs (ADR 0019).</summary>
+    public static ApiError RepublishRunning() => new RepublishRunning();
+
     /// <summary>An approval (#205) or a return (#220) whose token names no display name that fits a <see cref="ReviewerName"/>.</summary>
     public static ApiError ReviewerNameMissing() => new ReviewerNameMissing();
 
