@@ -425,6 +425,11 @@
     "message": "The order must name every chapter exactly once."
   },
   {
+    "code": "editorial.pdf-readers-busy",
+    "status": 429,
+    "message": "Too many PDFs are being read right now; try again in a few seconds."
+  },
+  {
     "code": "editorial.publisher-approved-questions",
     "status": 403,
     "message": "Under four eyes, an editor who approved a question of this version cannot publish it."

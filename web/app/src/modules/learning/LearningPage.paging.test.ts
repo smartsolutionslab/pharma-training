@@ -12,6 +12,7 @@ import {
   markt,
   marktManager,
   myCoursesHost,
+  never,
   type MyCoursesHost,
   pagedCourses,
   problem,
@@ -213,6 +214,21 @@ describe('another pharmacy', () => {
     expect(
       await screen.findByText('Ihre Schulungen in Apotheke am Ufer: Überfällige zuerst, dann nach Fälligkeit.'),
     ).toBeInTheDocument();
+  });
+
+  // From #341's review: the courses of the pharmacy left are not shown, with their Start links, under the one chosen
+  // while its own load.
+  test('choosing another pharmacy does not show the first one’s courses while its own load', async () => {
+    host.assignments = (pharmacyId) =>
+      pharmacyId === ufer.id ? never() : Promise.resolve(Response.json(assignmentsOf()));
+    const { store } = await renderOnMarkt();
+    expect(await screen.findAllByRole('link', { name: /^Starten: |^Fortsetzen: / })).not.toHaveLength(0);
+
+    store.choose(ufer.id);
+
+    await waitFor(() => expect(readsOf(fetch, assignmentsPath)).toContainEqual(readOf(1, ufer)));
+    await screen.findByText('Ihre Schulungen in Apotheke am Ufer: Überfällige zuerst, dann nach Fälligkeit.');
+    expect(screen.queryAllByRole('link', { name: /^Starten: |^Fortsetzen: / })).toEqual([]);
   });
 
   test('the empty state names the pharmacy chosen', async () => {

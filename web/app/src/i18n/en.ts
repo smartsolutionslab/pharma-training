@@ -598,9 +598,10 @@ export const en: MessageSchema = {
       },
       draft: {
         explain:
-          'The AI drafts the missing questions from the text chapters. You approve each question before it counts.',
+          'The AI drafts the missing questions from the text chapters and the text of the PDF chapters; it does not watch videos. You approve each question before it counts.',
         start: 'Draft with AI',
-        noTextChapters: 'The AI drafts from text chapters only. Add a text chapter first.',
+        noTextChapters:
+          'The AI drafts only from chapters with text: text chapters and PDF chapters whose text can be read. Add such a chapter first.',
         nothingToDraft: 'The approved questions already meet the blueprint; there is nothing to draft.',
         confirm: {
           title: 'Draft with AI?',
@@ -608,12 +609,19 @@ export const en: MessageSchema = {
             'The AI drafts one question. Approved questions stay. | The AI drafts {count} questions. Approved questions stay.',
           replaces:
             'One unreviewed question will be replaced, even if it was written by hand. | {count} unreviewed questions will be replaced, including those written by hand.',
-          leftOut: 'The AI does not read PDF and video chapters; write their questions by hand.',
+          leftOut:
+            'The AI does not read video chapters or PDF chapters without readable text; write their questions by hand.',
           submit: 'Draft',
         },
         running: 'The AI is drafting the test. This can take a few minutes; please keep the page open.',
         done: 'The AI drafted one question. Please review it. | The AI drafted {count} questions. Please review them.',
         leftOut: 'The AI drafted no questions for these chapters; write them by hand:',
+        truncated:
+          'The AI read only the beginning of these PDF chapters; write questions about their later pages by hand:',
+        leftOutSummary:
+          'The AI drafted no questions for one chapter; see the note. | The AI drafted no questions for {count} chapters; see the note.',
+        truncatedSummary:
+          'The AI read only the beginning of one PDF chapter; see the note. | The AI read only the beginning of {count} PDF chapters; see the note.',
         dismiss: 'Dismiss the note',
         errors: {
           tooManyRequests: 'You have asked for too many AI drafts in a short time. Try again later.',
@@ -1023,13 +1031,15 @@ export const en: MessageSchema = {
       'next-version-exists':
         'A newer version of this course already exists. Continue that one instead of creating another.',
       'no-chapters': 'The version needs at least one chapter.',
-      'no-text-chapters': 'The AI drafts only from text chapters. Add a text chapter first.',
+      'no-text-chapters':
+        'The AI drafts only from chapters with text: text chapters and PDF chapters whose text can be read. Add such a chapter first.',
       'no-text-chapters-to-review': 'The version has no chapter with text for the AI to review.',
       'not-a-draft': 'Only a draft can be edited.',
       'not-in-review': 'The version is no longer in review.',
       'not-published': 'The version is not published.',
       'nothing-to-draft': 'The approved questions already meet the blueprint; there is nothing to draft.',
       'order-does-not-match': 'The order must contain every chapter exactly once. Reload the version.',
+      'pdf-readers-busy': 'Too many PDFs are being read right now. Try again in a few seconds.',
       'publisher-approved-questions':
         'Four-eyes approval does not let whoever approved questions of this version publish it. Ask another editor.',
       'question-already-approved': 'This question is already approved. Edit it to approve it again.',
@@ -1043,7 +1053,7 @@ export const en: MessageSchema = {
       'too-few-options': 'A question needs at least {min} answer options.',
       'too-many-questions': 'A test has at most {max} questions.',
       'too-much-content-to-draft':
-        'The text chapters are too long for an AI draft. Shorten them or write the questions by hand.',
+        'The text chapters together are too long for an AI draft; PDF chapters are cut to fit, text chapters are not. Shorten the text chapters or write the questions by hand.',
       'too-much-content-to-review': 'The text chapters are too long for one AI review.',
       'upload-not-accepted': 'The file is neither a PDF nor an MP4 video.',
       'upload-not-found': 'The file has not been uploaded yet. Upload it, then save again.',

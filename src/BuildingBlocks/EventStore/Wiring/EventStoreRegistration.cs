@@ -69,12 +69,24 @@ public static class EventStoreRegistration
             return;
         }
 
+        // Concurrently (#337), so on a large event table the appends of replicas still running are not held up for the
+        // build: outside a transaction, and without a command timeout, since the build takes as long as the table needs.
         await using var connection = store.Storage.Database.CreateConnection();
         await connection.OpenAsync();
         foreach (var index in module.SweptEventIndexes)
         {
-            await using var command = new NpgsqlCommand(index.CreateStatement, connection);
-            await command.ExecuteNonQueryAsync();
+            await using (var isInvalid = new NpgsqlCommand(index.IsInvalidQuery, connection))
+            {
+                if (await isInvalid.ExecuteScalarAsync() is true)
+                {
+                    // A concurrent build that failed left it behind; "if not exists" would keep it, unused, for good.
+                    await using var drop = new NpgsqlCommand(index.DropStatement, connection) { CommandTimeout = 0 };
+                    await drop.ExecuteNonQueryAsync();
+                }
+            }
+
+            await using var create = new NpgsqlCommand(index.CreateStatement, connection) { CommandTimeout = 0 };
+            await create.ExecuteNonQueryAsync();
         }
     }
 }

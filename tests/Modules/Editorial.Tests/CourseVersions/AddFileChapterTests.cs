@@ -321,6 +321,23 @@ public class AddFileChapterTests
     }
 
     [Fact]
+    public async Task A_pdf_refused_by_busy_readers_is_refused_with_retry_later_and_nothing_is_added_or_committed()
+    {
+        var version = Draft();
+        store.Stored.Add(version);
+        var file = IssuedName(version.Id, ".pdf");
+        blobs.Upload(file, "application/pdf", 1024);
+        var retryAt = new DateTimeOffset(2026, 11, 24, 9, 0, 5, TimeSpan.Zero);
+
+        var added = await Handler(FakePdfTextExtractor.Busy(retryAt)).HandleAsync(Command(version.Id, ChapterKind.Pdf, file), TestContext.Current.CancellationToken);
+
+        ShouldBeRefused(added.IsFailure ? added.Error : null, "editorial.pdf-readers-busy", HttpStatusCode.TooManyRequests, "every PDF reader is busy");
+        added.Error.ShouldBeOfType<RetryLaterFailure>().RetryAt.ShouldBe(retryAt);
+        version.Chapters.ShouldBeEmpty();
+        store.Commits.ShouldBe(0);
+    }
+
+    [Fact]
     public async Task A_video_is_recorded_without_asking_the_extractor()
     {
         var version = Draft();

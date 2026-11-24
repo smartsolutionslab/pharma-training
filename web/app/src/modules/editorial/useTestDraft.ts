@@ -11,11 +11,12 @@ import {
 const draftAnswer = z.object({
   draftedQuestionIds: z.array(z.string()),
   leftOutChapterIds: z.array(z.string()),
+  truncatedChapterIds: z.array(z.string()),
 });
 
 /** What asking for a draft came to: the draft, an answer not of the draft's shape, or the error it failed with. */
 export type TestDraftOutcome =
-  | { status: 'drafted'; drafted: number; leftOutChapterIds: string[] }
+  | { status: 'drafted'; drafted: number; leftOutChapterIds: string[]; truncatedChapterIds: string[] }
   | { status: 'unreadable' }
   | { status: 'failed'; error: unknown };
 
@@ -48,6 +49,7 @@ export function useTestDraft(versionId: MaybeRefOrGetter<string>) {
           status: 'drafted',
           drafted: parsed.data.draftedQuestionIds.length,
           leftOutChapterIds: parsed.data.leftOutChapterIds,
+          truncatedChapterIds: parsed.data.truncatedChapterIds,
         }
       : { status: 'unreadable' };
   }

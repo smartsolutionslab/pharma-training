@@ -2,6 +2,7 @@ using System.Text.Json;
 using Aspire.Hosting.Testing;
 using Npgsql;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.EventStore;
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 
@@ -72,6 +73,7 @@ public class AnnouncementSweepQueryPlanTests(AspireFixture aspire)
         await using var explain = new NpgsqlCommand($"explain (format json) {query}", connection, transaction);
         explain.Parameters.AddWithValue("from", now.AddDays(-7));
         explain.Parameters.AddWithValue("until", now.AddMinutes(-2));
+        explain.Parameters.AddWithValue("after", UnannouncedEvent.BeforeFirst);
         explain.Parameters.AddWithValue("limit", 100);
         var plan = (string)(await explain.ExecuteScalarAsync(cancellationToken))!;
         await transaction.RollbackAsync(cancellationToken);
