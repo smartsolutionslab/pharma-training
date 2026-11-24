@@ -11,16 +11,18 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { i18n, t as translate } from '@/i18n';
 import { calendarDate } from '@/i18n/formats';
 import { notify } from '@/lib/notify';
-import { certificatesFailure, downloadFailure } from './certificateErrors';
+import { route as learning } from '@/modules/learning/routes';
+import { useCanReach } from '@/shell/useCanReach';
+import { certificatesFailure, documentFailure } from './certificateErrors';
 import CertificateValidity from './CertificateValidity.vue';
 import { parseCertificatesPage } from './certificatesQuery';
-import { downloadCertificate } from './downloadCertificate';
+import { openCertificate } from './openCertificate';
 import { titleKey } from './titleKey';
 import { useMyCertificates } from './useMyCertificates';
 
 // The signed-in user's certificates (#296, Z1), newest first, a page at a time: the course, the days it was issued and
-// is valid until, whether it is valid, and whether its PDF is ready. A ready one's PDF is downloaded from its row and
-// saved under the course's name. The page is the address's (?page=n), read through parseCertificatesPage, so an invalid
+// is valid until, whether it is valid, and whether its PDF is ready. A ready one's PDF opens from its row, in this tab.
+// Without certificates, the empty state leads to My courses only a user who may see that page. The page is the address's (?page=n), read through parseCertificatesPage, so an invalid
 // value never reaches the host.
 const day = (value: string) => i18n.global.d(calendarDate(value), 'date');
 
@@ -54,27 +56,29 @@ const { certificates: rows, page, isPending, error } = useMyCertificates(shownPa
 const { t } = useI18n();
 
 const failure = computed(() => (error.value ? certificatesFailure(error.value) : undefined));
-/** The certificate whose PDF is on its way, if any: its button waits, the others stay. */
-const downloading = ref<string>();
+/** The certificate whose PDF is being asked for, if any: its button waits, the others stay. */
+const opening = ref<string>();
+/** My courses, for a user who may see it, by the shell's own rule and its own route's audience. */
+const showsCourses = useCanReach(learning.audience);
 
 /** Shows another page of the certificates. */
 function turnTo(next: number) {
   void router.push({ query: { page: String(next) } });
 }
 
-/** Saves the certificate's PDF; a failure is reported, naming the course. */
-async function download(certificate: CertificationCertificateDto) {
-  if (downloading.value !== undefined) {
+/** Opens the certificate's PDF in this tab; a failure is reported, naming the course, and the page stays. */
+async function open(certificate: CertificationCertificateDto) {
+  if (opening.value !== undefined) {
     return;
   }
-  downloading.value = certificate.certificateId;
+  opening.value = certificate.certificateId;
   try {
-    await downloadCertificate(certificate);
+    await openCertificate(certificate.certificateId);
   } catch (refusal) {
-    const failed = downloadFailure(refusal);
+    const failed = documentFailure(refusal);
     notify.failure('key' in failed ? translate(failed.key, { course: certificate.courseTitle }) : failed.message);
   } finally {
-    downloading.value = undefined;
+    opening.value = undefined;
   }
 }
 </script>
@@ -90,21 +94,21 @@ async function download(certificate: CertificationCertificateDto) {
           type="button"
           variant="outline"
           size="sm"
-          :aria-label="t('certification.mine.downloadFor', { course: row.courseTitle })"
-          :disabled="downloading === row.certificateId"
-          :aria-busy="downloading === row.certificateId || undefined"
-          @click="download(row)"
+          :aria-label="t('certification.mine.openFor', { course: row.courseTitle })"
+          :disabled="opening === row.certificateId"
+          :aria-busy="opening === row.certificateId || undefined"
+          @click="open(row)"
         >
-          {{ t('certification.mine.download') }}
+          {{ t('certification.mine.open') }}
         </Button>
       </template>
       <template #empty>
         <EmptyState>
           <template #icon><Award /></template>
           {{ t('certification.mine.empty') }}
-          <template #action>
+          <template v-if="showsCourses" #action>
             <Button as-child variant="outline">
-              <RouterLink to="/learning">{{ t('certification.mine.toCourses') }}</RouterLink>
+              <RouterLink :to="`/${learning.path}`">{{ t('certification.mine.toCourses') }}</RouterLink>
             </Button>
           </template>
         </EmptyState>

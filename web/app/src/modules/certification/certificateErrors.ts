@@ -10,8 +10,8 @@ const listRefusals: Partial<Record<string, MessageKey>> = {
 };
 
 /** The module's refusals of a PDF the page has words for; each names the course. */
-const downloadRefusals: Partial<Record<string, MessageKey>> = {
-  'certification.document-not-ready': 'certification.mine.downloadNotReady',
+const documentRefusals: Partial<Record<string, MessageKey>> = {
+  'certification.document-not-ready': 'certification.mine.documentNotReady',
   'certification.identity-incomplete': 'certification.mine.identityIncomplete',
 };
 
@@ -37,9 +37,9 @@ export function certificatesFailure(error: unknown): CertificateFailure {
 }
 
 /**
- * What a failed download of a certificate's PDF says, by the same rules: a document not stored yet that it is still
- * being prepared; anything else, storage included, that the PDF could not be downloaded.
+ * What a PDF the host does not sign a URL for says, by the same rules: a document not stored yet that it is still being
+ * prepared; anything else, the network included, that the PDF could not be opened.
  */
-export function downloadFailure(error: unknown): CertificateFailure {
-  return failureOf(error, downloadRefusals, 'certification.mine.downloadFailed');
+export function documentFailure(error: unknown): CertificateFailure {
+  return failureOf(error, documentRefusals, 'certification.mine.documentFailed');
 }

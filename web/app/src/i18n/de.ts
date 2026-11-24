@@ -154,11 +154,11 @@ export const de = {
       },
       documentReady: 'Bereit',
       documentPending: 'Wird erstellt',
-      download: 'PDF herunterladen',
-      downloadFor: 'PDF herunterladen für {course}',
-      downloadNotReady:
+      open: 'PDF öffnen',
+      openFor: 'PDF öffnen für {course}',
+      documentNotReady:
         'Die Teilnahmebestätigung für {course} wird noch erstellt. Versuchen Sie es gleich noch einmal.',
-      downloadFailed: 'Das PDF für {course} konnte nicht heruntergeladen werden.',
+      documentFailed: 'Das PDF für {course} konnte nicht geöffnet werden.',
       empty: 'Sie haben noch keine Teilnahmebestätigung.',
       toCourses: 'Zu meinen Schulungen',
       identityIncomplete: 'Ihre Anmeldung nennt keine Person. Melden Sie sich erneut an.',
