@@ -1,6 +1,6 @@
 namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
 
-/// <summary>How many invitation mails a pharmacy may request on one UTC day: from 1 to 10000.</summary>
+/// <summary>How many invitation mails a pharmacy or a sender may request on one UTC day: from 1 to 10000.</summary>
 public sealed record DailyMailCap : IValueObject<int>
 {
     public const int Maximum = 10000;

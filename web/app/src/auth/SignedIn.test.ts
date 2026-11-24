@@ -1,8 +1,9 @@
 import { render, screen } from '@testing-library/vue';
 import { User } from 'oidc-client-ts';
 import { afterEach, expect, test, vi } from 'vitest';
-import { createMemoryHistory, createRouter } from 'vue-router';
+import { createMemoryHistory, createRouter, type Router } from 'vue-router';
 import { setLanguage, t } from '@/i18n';
+import { createAppRouter } from '@/router';
 import SignedIn from './SignedIn.vue';
 import { type AuthClient, authKey, createAuth } from './useAuth';
 
@@ -230,5 +231,111 @@ test('coming back to a path that starts with two slashes completes the sign-in a
     'http://localhost:3000//evil.example/x',
   );
   expect(window.location.href).toBe('http://localhost:3000//evil.example/x');
+  expect(fake.signinRedirect).not.toHaveBeenCalled();
+});
+
+// A public page (#54): the verification page a certificate's QR code opens, /verify/:code, renders for anyone, signed
+// in or not. SignedIn asks, once the router's first navigation has settled, whether the address is public: there it
+// renders its slot and starts no sign-in; anywhere else it signs in as before.
+const verifyAddress = '/verify/AbCdEfGhIjKlMnOpQrStUvWxYz012-_9';
+
+/** SignedIn inside the app's router, its first navigation to this address under way. */
+function renderSignedInAt(fake: AuthClient, router: Router) {
+  const auth = createAuth(fake);
+  render(SignedIn, {
+    global: { plugins: [router], provide: { [authKey]: auth } },
+    slots: { default: '<h1>pharma-training</h1>' },
+  });
+  return auth;
+}
+
+async function appRouterAt(address: string) {
+  const router = createAppRouter(createMemoryHistory());
+  await router.push(address);
+  return router;
+}
+
+test('an anonymous visitor on a public page sees the page and is not sent to the identity provider', async () => {
+  const fake = client();
+  const auth = renderSignedInAt(fake, await appRouterAt(verifyAddress));
+
+  expect(await screen.findByRole('heading', { name: 'pharma-training' })).toBeInTheDocument();
+  await vi.waitFor(() => expect(auth.isLoading.value).toBe(false));
+  expect(screen.queryByText(t('auth.signingIn'))).not.toBeInTheDocument();
+  expect(fake.signinRedirect).not.toHaveBeenCalled();
+});
+
+test('a signed-in user on a public page sees the page', async () => {
+  const fake = client({ getUser: vi.fn<AuthClient['getUser']>(() => Promise.resolve(developer)) });
+  renderSignedInAt(fake, await appRouterAt(verifyAddress));
+
+  expect(await screen.findByRole('heading', { name: 'pharma-training' })).toBeInTheDocument();
+  expect(fake.signinRedirect).not.toHaveBeenCalled();
+});
+
+// Leaving the public page for a page of the app (an address typed by hand, Back) starts the sign-in as before.
+test('an anonymous visitor who leaves a public page for a page of the app is sent to the identity provider once', async () => {
+  const fake = client();
+  const router = await appRouterAt(verifyAddress);
+  const auth = renderSignedInAt(fake, router);
+  expect(await screen.findByRole('heading', { name: 'pharma-training' })).toBeInTheDocument();
+  await vi.waitFor(() => expect(auth.isLoading.value).toBe(false));
+  expect(fake.signinRedirect).not.toHaveBeenCalled();
+
+  await router.push('/certification');
+
+  await vi.waitFor(() => expect(fake.signinRedirect).toHaveBeenCalledOnce());
+  expect(screen.queryByRole('heading', { name: 'pharma-training' })).not.toBeInTheDocument();
+});
+
+test('an anonymous visitor on a page of the app is still sent to the identity provider', async () => {
+  const fake = client();
+  renderSignedInAt(fake, await appRouterAt('/certification'));
+
+  await vi.waitFor(() => expect(fake.signinRedirect).toHaveBeenCalledOnce());
+  expect(screen.getByText(t('auth.signingIn'))).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'pharma-training' })).not.toBeInTheDocument();
+});
+
+// Until the router has settled, SignedIn cannot know whether the address is public: it shows nothing, so neither the
+// sign-in's text nor the page flashes.
+test("nothing shows before the router's first navigation has settled", async () => {
+  let settle = () => {};
+  const firstNavigation = new Promise<void>((resolve) => {
+    settle = resolve;
+  });
+  // The history starts at the address: installing the router starts its first navigation from the history, and a
+  // push made before that would be replaced by a navigation to the history's own location.
+  const history = createMemoryHistory();
+  history.replace(verifyAddress);
+  const router = createAppRouter(history);
+  const guard = vi.fn(() => firstNavigation);
+  router.beforeEach(guard);
+  const fake = client();
+  const auth = renderSignedInAt(fake, router);
+  await vi.waitFor(() => expect(guard).toHaveBeenCalledOnce());
+  await vi.waitFor(() => expect(auth.isLoading.value).toBe(false));
+
+  expect(screen.queryByText(t('auth.signingIn'))).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'pharma-training' })).not.toBeInTheDocument();
+  expect(fake.signinRedirect).not.toHaveBeenCalled();
+
+  settle();
+
+  expect(await screen.findByRole('heading', { name: 'pharma-training' })).toBeInTheDocument();
+  expect(fake.signinRedirect).not.toHaveBeenCalled();
+});
+
+// The identity provider's error is the app's: a public page never shows it, and shows itself instead.
+test('a failed sign-in is not shown on a public page', async () => {
+  window.history.replaceState({}, '', '/?error=access_denied&state=the-state');
+  const fake = client({
+    signinCallback: vi.fn<AuthClient['signinCallback']>(() => Promise.reject(new Error('access_denied'))),
+  });
+  const auth = renderSignedInAt(fake, await appRouterAt(verifyAddress));
+
+  expect(await screen.findByRole('heading', { name: 'pharma-training' })).toBeInTheDocument();
+  await vi.waitFor(() => expect(auth.error.value).not.toBeNull());
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   expect(fake.signinRedirect).not.toHaveBeenCalled();
 });

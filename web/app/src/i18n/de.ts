@@ -88,7 +88,12 @@ export const de = {
       },
     },
     assessment: { title: 'Tests' },
-    certification: { title: 'Teilnahmebestätigungen' },
+    certification: {
+      title: 'Teilnahmebestätigungen',
+      entries: {
+        verify: { title: 'Bestätigung prüfen' },
+      },
+    },
     compliance: {
       title: 'Team-Matrix',
       pages: {
@@ -112,6 +117,27 @@ export const de = {
         test: { title: 'Test' },
       },
     },
+  },
+  certification: {
+    validity: {
+      Valid: 'Gültig',
+      Expired: 'Abgelaufen',
+    },
+    verify: {
+      validText: 'Diese Teilnahmebestätigung ist echt und gültig bis {date}.',
+      expiredText: 'Diese Teilnahmebestätigung ist echt, war aber nur bis {date} gültig.',
+      holder: 'Name',
+      course: 'Schulung',
+      issuedOn: 'Ausgestellt am',
+      validUntil: 'Gültig bis',
+      notVerifiable: {
+        title: 'Nicht prüfbar',
+        text: 'Zu diesem Link gibt es keine Teilnahmebestätigung. Prüfen Sie, ob Sie den vollständigen Link aus dem QR-Code geöffnet haben.',
+      },
+      limitReached: 'Gerade werden zu viele Prüfungen angefragt. Bitte versuchen Sie es in einer Minute erneut.',
+      loadFailed: 'Die Bestätigung konnte nicht geprüft werden.',
+    },
+    retry: 'Erneut versuchen',
   },
   compliance: {
     matrix: {
