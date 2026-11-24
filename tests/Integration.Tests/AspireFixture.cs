@@ -27,6 +27,9 @@ public sealed partial class AspireFixture : IAsyncLifetime
     /// <summary>How many invitations one user may accept a minute in this run (docs/adr/0004), raised from the default 10.</summary>
     public const int OrganisationAcceptsPerMinute = 30;
 
+    /// <summary>How many invitation mails one user may send a UTC day in this run (#265), raised from the default 100.</summary>
+    public const int InvitationMailsPerSenderPerDay = 1000;
+
     /// <summary>How often Learning's and Assessment's announcement sweeps run in this run (#277), lowered from the default minute.</summary>
     public static readonly TimeSpan AnnouncementSweepInterval = TimeSpan.FromSeconds(1);
 
@@ -89,6 +92,11 @@ public sealed partial class AspireFixture : IAsyncLifetime
         // under it, and only OrganisationAcceptLimitTests accepts as visitor, to reach it.
         var organisation = builder.CreateResourceBuilder(builder.Resources.OfType<ProjectResource>().Single(resource => resource.Name == "organisation"));
         organisation.WithEnvironment("Organisation__AcceptLimit__PerMinute", OrganisationAcceptsPerMinute.ToString(CultureInfo.InvariantCulture));
+
+        // Every invite and renewal as owner counts on owner's one sender tally (#265), about 50 a run and growing, more
+        // than the default 100 a day would leave room for. The run raises the cap to InvitationMailsPerSenderPerDay, and
+        // OrganisationMailRecipientAndSenderLimitsTests reaches it with editor-b, a user only it invites as.
+        organisation.WithEnvironment("Organisation__InvitationLimits__MailsPerSenderPerDay", InvitationMailsPerSenderPerDay.ToString(CultureInfo.InvariantCulture));
 
         // The announcement sweeps (#277) announce a stored ContentCompleted or ExaminationPassed whose announcement never
         // left once it is older than the grace period, every interval. The defaults (a minute, two minutes) would keep
