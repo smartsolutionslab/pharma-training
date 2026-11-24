@@ -94,7 +94,7 @@ public class InvitationLinkWithdrawalTests
                 ])
                 .Build(),
             time);
-        var consumer = new InvitationMailRequestedV1Consumer(store, store, sender, Links(), time, logger);
+        var consumer = BothClocks.Consumer(store, sender, Links(), time, logger);
 
         for (var attempt = 1; attempt <= AttemptsBeforeDeadLetter + Pharmacy.MaxInvitationLinksPerVersion; attempt++)
         {
@@ -227,5 +227,5 @@ public class InvitationLinkWithdrawalTests
     private Membership Stored(Pharmacy pharmacy, MembershipId membership) =>
         store.Stored.Single(stored => stored.Id == pharmacy.Id).Membership(membership);
 
-    private InvitationMailRequestedV1Consumer Consumer() => new(store, store, mails, Links(), time, logger);
+    private InvitationMailRequestedV1Consumer Consumer() => BothClocks.Consumer(store, mails, Links(), time, logger);
 }

@@ -9,8 +9,8 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application;
 /// Counts one invitation mail on its address and on its sender (docs/adr/0004), after the pharmacy's own checks and in
 /// the same commit as the pharmacy: the recipient cooldown first, then the sender's daily cap. A refusal adds nothing
 /// to the unit of work; the caller then commits nothing. A sender's stored mail day beyond tomorrow, which only a
-/// hand-edited row stores, is logged as a warning naming the person and both days, never the address, and today's
-/// tally starts afresh.
+/// hand-edited row or a database clock that moved back (a failover or a restore) stores, is logged as a warning naming
+/// the person and both days, never the address, and today's tally starts afresh.
 /// </summary>
 public static partial class InvitationMailCounting
 {
@@ -73,6 +73,6 @@ public static partial class InvitationMailCounting
         return Success(Unit.Value);
     }
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Sender {Person} stored the invitation mail day {StoredDay:yyyy-MM-dd}, beyond tomorrow of today {Today:yyyy-MM-dd}; it is discarded and today's tally starts afresh. The row was edited by hand.")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Sender {Person} stored the invitation mail day {StoredDay:yyyy-MM-dd}, beyond tomorrow of today {Today:yyyy-MM-dd}; it is discarded and today's tally starts afresh. The row was edited by hand, or the database's clock moved back (a failover or a restore).")]
     private static partial void LogSenderDayAhead(ILogger logger, Guid person, DateOnly storedDay, DateOnly today);
 }

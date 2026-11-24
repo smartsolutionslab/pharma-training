@@ -65,6 +65,33 @@ public class RetryAfterHeaderTests
         problem.RootElement.TryGetProperty("retryAt", out _).ShouldBeFalse("a conflict carries a retryAt");
     }
 
+    // #294: a refusal that carries its instant counts from it, so a host whose clock is off answers the same wait.
+    [Theory]
+    [InlineData("/refusals/later-ahead")]
+    [InlineData("/refusals/later-behind")]
+    public async Task A_refusal_that_carries_its_instant_counts_retry_after_from_it_not_the_host_clock(string route)
+    {
+        var refusedAt = route == "/refusals/later-ahead" ? Now + RetryLaterEndpoints.Ahead : Now - RetryLaterEndpoints.Behind;
+
+        var answer = await InvokeAsync(HttpMethods.Get, route);
+
+        answer.Status.ShouldBe((int)HttpStatusCode.TooManyRequests);
+        answer.RetryAfter.ShouldBe("91", $"Retry-After of a refusal 90.2 seconds before it may be retried, counted from the instant it was refused at ({route})");
+        using var problem = JsonDocument.Parse(answer.Body);
+        problem.RootElement.TryGetProperty("refusedAt", out var refused).ShouldBeTrue("the problem carries no refusedAt");
+        DateTimeOffset.Parse(refused.GetString()!, CultureInfo.InvariantCulture).ShouldBe(refusedAt);
+        DateTimeOffset.Parse(problem.RootElement.GetProperty("retryAt").GetString()!, CultureInfo.InvariantCulture).ShouldBe(refusedAt + RetryLaterEndpoints.Wait);
+    }
+
+    [Fact]
+    public async Task A_refusal_without_its_instant_carries_no_refused_at()
+    {
+        var answer = await InvokeAsync(HttpMethods.Get, "/refusals/later");
+
+        using var problem = JsonDocument.Parse(answer.Body);
+        problem.RootElement.TryGetProperty("refusedAt", out _).ShouldBeFalse("a refusal without its instant carries a refusedAt");
+    }
+
     private static async Task<(int Status, string RetryAfter, byte[] Body)> InvokeAsync(string method, string route)
     {
         var builder = WebApplication.CreateSlimBuilder();

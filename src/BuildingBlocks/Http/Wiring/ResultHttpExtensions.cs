@@ -7,6 +7,12 @@ public static class ResultHttpExtensions
     /// <summary>The problem details extension holding the instant a refusal to retry later may be retried.</summary>
     public const string RetryAtExtension = "retryAt";
 
+    /// <summary>
+    /// The problem details extension holding the instant a refusal to retry later was refused at, on the clock
+    /// <see cref="RetryAtExtension"/> was computed on; present only when the refusal carries it.
+    /// </summary>
+    public const string RefusedAtExtension = "refusedAt";
+
     /// <summary>200 with the value, or problem details carrying the error's status and code.</summary>
     /// <remarks>The typed union tells the OpenAPI document what a success returns, so clients are generated with its type.</remarks>
     public static Results<Ok<TValue>, ProblemHttpResult> ToHttpResult<TValue, TError>(this Result<TValue, TError> result)
@@ -55,7 +61,8 @@ public static class ResultHttpExtensions
 
     /// <summary>
     /// Problem details carrying the error's status and code, and for a refusal to retry later
-    /// (<see cref="RetryLaterFailure"/>) the instant as <c>retryAt</c>, from which the module's route group sets <c>Retry-After</c>.
+    /// (<see cref="RetryLaterFailure"/>) the instant as <c>retryAt</c>, from which the module's route group sets <c>Retry-After</c>,
+    /// and, when the refusal carries it, the instant it was refused at as <c>refusedAt</c>, from which that wait is counted.
     /// </summary>
     private static ProblemHttpResult ProblemOf(ApiError error)
     {
@@ -63,6 +70,10 @@ public static class ResultHttpExtensions
         if (error is RetryLaterFailure later)
         {
             extensions[RetryAtExtension] = later.RetryAt;
+            if (later.RefusedAt.HasValue)
+            {
+                extensions[RefusedAtExtension] = later.RefusedAt.Value;
+            }
         }
 
         return TypedResults.Problem(title: error.Message, statusCode: (int)error.Status, extensions: extensions);

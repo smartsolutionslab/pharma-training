@@ -1,6 +1,5 @@
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 using NSubstitute.ExceptionExtensions;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Mail;
@@ -135,6 +134,38 @@ public partial class InvitationMailRequestedV1ConsumerTests
         await Consumer().HandleAsync(new InvitationMailRequestedV1(membership.Value, pharmacy.Id.Value), TestContext.Current.CancellationToken);
 
         await mails.DidNotReceive().SendAsync(Arg.Any<OutgoingMail>(), Arg.Any<CancellationToken>());
+        store.Commits.ShouldBe(0);
+    }
+
+    // #294: the expiry is stamped on the database's clock, so a link is issued on it too.
+    [Fact]
+    public async Task A_link_is_issued_and_mailed_on_the_database_clock_while_the_host_clock_is_past_the_expiry()
+    {
+        var (pharmacy, membership) = Invited();
+        var expiresAt = TestPharmacies.RegisteredAt.Value.AddDays(Pharmacy.InvitationValidityDays);
+        var host = new FakeTimeProvider(expiresAt.AddDays(1));
+        var database = new FakeTimeProvider(expiresAt.AddMinutes(-1));
+
+        await BothClocks.Consumer(store, mails, Links(), host, database: database)
+            .HandleAsync(new InvitationMailRequestedV1(membership.Value, pharmacy.Id.Value), TestContext.Current.CancellationToken);
+
+        sent.ShouldHaveSingleItem("the link was issued on the host's clock, a day past the expiry, not on the database's, a minute before it");
+        pharmacy.Membership(membership).InvitationLinks.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task An_invitation_run_out_on_the_database_clock_is_dropped_while_the_host_clock_is_before_its_expiry()
+    {
+        var (pharmacy, membership) = Invited();
+        var expiresAt = TestPharmacies.RegisteredAt.Value.AddDays(Pharmacy.InvitationValidityDays);
+        var host = new FakeTimeProvider(expiresAt.AddDays(-1));
+        var database = new FakeTimeProvider(expiresAt.AddTicks(1));
+
+        await BothClocks.Consumer(store, mails, Links(), host, database: database)
+            .HandleAsync(new InvitationMailRequestedV1(membership.Value, pharmacy.Id.Value), TestContext.Current.CancellationToken);
+
+        sent.ShouldBeEmpty("the link was issued on the host's clock, a day before the expiry, not on the database's, a tick past it");
+        pharmacy.Membership(membership).InvitationLinks.ShouldBeEmpty();
         store.Commits.ShouldBe(0);
     }
 
@@ -348,5 +379,5 @@ public partial class InvitationMailRequestedV1ConsumerTests
     }
 
     private InvitationMailRequestedV1Consumer Consumer(FrontendLinks? links = null) =>
-        new(store, store, mails, links ?? Links(), time, NullLogger<InvitationMailRequestedV1Consumer>.Instance);
+        BothClocks.Consumer(store, mails, links ?? Links(), time);
 }
