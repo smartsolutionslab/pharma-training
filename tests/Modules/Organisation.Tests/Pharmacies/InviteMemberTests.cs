@@ -1,9 +1,11 @@
 using System.Net;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Extensions.Time.Testing;
 using SmartSolutionsLab.PharmaTraining.Contracts.Organisation;
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Commands.InviteMember;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies.Events;
@@ -224,6 +226,30 @@ public class InviteMemberTests
 
         invited.IsSuccess.ShouldBeTrue();
         logger.Collector.GetSnapshot().Where(record => record.Level == LogLevel.Warning).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task An_invitation_is_counted_and_dated_on_the_database_clock_not_the_host_clock()
+    {
+        var store = new InMemoryPharmacyStore();
+        var pharmacy = TestPharmacies.Register(Owner).Stored(store);
+        await using var services = new ServiceCollection()
+            .AddSingleton<IPharmacyStore>(store)
+            .AddSingleton<IOrganisationUnitOfWork>(store)
+            .AddSingleton<TimeProvider>(new FakeTimeProvider(Start.AddDays(3)))
+            .AddSingleton<IDatabaseClock>(new FakeDatabaseClock(new FakeTimeProvider(Start)))
+            .AddSingleton(InvitationMailLimits.Default)
+            .AddLogging()
+            .BuildServiceProvider();
+
+        var invited = await ActivatorUtilities.CreateInstance<InviteMemberHandler>(services)
+            .HandleAsync(new InviteMember(pharmacy.Id, Owner, Invitee, JobFunction.Pta, MembershipRole.Employee), TestContext.Current.CancellationToken);
+
+        invited.IsSuccess.ShouldBeTrue();
+        pharmacy.InvitationMailDay.ShouldBe(UtcDay.Of(Timestamp.From(Start)), "the mail was counted on the host's day, three days ahead of the database's");
+        var membership = pharmacy.Memberships.Single(candidate => candidate.Id.Value == invited.Value);
+        membership.InvitationRequestedAt.ShouldBe(Timestamp.From(Start));
+        membership.InvitationExpiresAt.ShouldBe(Timestamp.From(Start.AddDays(14)));
     }
 
     private static InviteMemberHandler Handler(InMemoryPharmacyStore store) => new(store, store, new FakeTimeProvider(Start), InvitationMailLimits.Default, NullLogger<InviteMemberHandler>.Instance);

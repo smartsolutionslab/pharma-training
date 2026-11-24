@@ -48,7 +48,7 @@ public class OrganisationInvitationLimitsTests(AspireFixture aspire)
         var cancellationToken = TestContext.Current.CancellationToken;
         using var owner = await aspire.CreateHostClientAsync("owner");
         var pharmacy = await RegisterAsync(owner, cancellationToken);
-        await database.SetInvitationMailsAsync(pharmacy, TodayUtc(), 49, cancellationToken);
+        await database.SetInvitationMailsAsync(pharmacy, await database.TodayUtcAsync(cancellationToken), 49, cancellationToken);
         await InviteAsync(owner, pharmacy, Invitee(), cancellationToken);
         var refusedAddress = Invitee();
 
@@ -70,7 +70,7 @@ public class OrganisationInvitationLimitsTests(AspireFixture aspire)
         var cancellationToken = TestContext.Current.CancellationToken;
         using var owner = await aspire.CreateHostClientAsync("owner");
         var pharmacy = await RegisterAsync(owner, cancellationToken);
-        await database.SetInvitationMailsAsync(pharmacy, TodayUtc(), 50, cancellationToken);
+        await database.SetInvitationMailsAsync(pharmacy, await database.TodayUtcAsync(cancellationToken), 50, cancellationToken);
         var memberships = await database.MembershipsOfAsync(pharmacy, cancellationToken);
         var refusedAddress = Invitee();
 
@@ -100,7 +100,7 @@ public class OrganisationInvitationLimitsTests(AspireFixture aspire)
         var cancellationToken = TestContext.Current.CancellationToken;
         using var owner = await aspire.CreateHostClientAsync("owner");
         var pharmacy = await RegisterAsync(owner, cancellationToken);
-        await database.SetInvitationMailsAsync(pharmacy, TodayUtc(), 49, cancellationToken);
+        await database.SetInvitationMailsAsync(pharmacy, await database.TodayUtcAsync(cancellationToken), 49, cancellationToken);
 
         HttpResponseMessage[] responses;
         await using (var gate = await database.LockPharmacyAsync(pharmacy, cancellationToken))
@@ -135,9 +135,6 @@ public class OrganisationInvitationLimitsTests(AspireFixture aspire)
             }
         }
     }
-
-    /// <summary>The UTC day the host counts on: it reads <see cref="TimeProvider.System"/>, as this does, not the database's clock.</summary>
-    private static DateOnly TodayUtc() => DateOnly.FromDateTime(TimeProvider.System.GetUtcNow().UtcDateTime);
 
     private static object Invitation(string address) => new { email = address, jobFunction = "Pta", role = "Employee" };
 

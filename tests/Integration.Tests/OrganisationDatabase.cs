@@ -138,7 +138,7 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
 
     /// <summary>
     /// Sets the pharmacy's tally of invitation mails to the count given, all of them requested on the UTC day given. Pass
-    /// the day the host counts on, from <see cref="TimeProvider.System"/>, not the database's clock.
+    /// the day the module counts on, the database's (<see cref="TodayUtcAsync"/>).
     /// </summary>
     public async Task SetInvitationMailsAsync(Guid pharmacy, DateOnly day, int count, CancellationToken cancellationToken)
     {
@@ -150,6 +150,14 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         command.Parameters.Add(new NpgsqlParameter("day", NpgsqlDbType.Date) { Value = day });
         command.Parameters.AddWithValue("count", count);
         (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1, $"There is no pharmacy {pharmacy}.");
+    }
+
+    /// <summary>The database's UTC day, which the module counts invitation mails on (docs/adr/0004).</summary>
+    public async Task<DateOnly> TodayUtcAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("SELECT (now() AT TIME ZONE 'utc')::date", connection);
+        return (DateOnly)(await command.ExecuteScalarAsync(cancellationToken) ?? throw new InvalidOperationException("The database answered no day."));
     }
 
     /// <summary>Time travel for the daily cap: moves the day of the pharmacy's tally back by one, as if its mails had been requested yesterday (UTC).</summary>

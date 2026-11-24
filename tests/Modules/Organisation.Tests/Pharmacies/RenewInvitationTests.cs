@@ -1,10 +1,12 @@
 using System.Net;
 using System.Security.Cryptography;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Extensions.Time.Testing;
 using SmartSolutionsLab.PharmaTraining.Contracts.Organisation;
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Commands.RenewInvitation;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies.Events;
@@ -188,6 +190,31 @@ public class RenewInvitationTests
         warning.Message.ShouldContain(pharmacy.Id.Value.ToString());
         warning.Message.ShouldContain("2027-04-04");
         warning.Message.ShouldContain("2027-04-01");
+    }
+
+    [Fact]
+    public async Task The_renewal_cooldown_runs_on_the_database_clock_not_the_host_clock()
+    {
+        var store = new InMemoryPharmacyStore();
+        var pharmacy = TestPharmacies.Register(Owner);
+        var invitation = pharmacy.Invite(MembershipId.New(), Invitee, JobFunction.Pta, MembershipRole.Employee, Timestamp.From(Start), InvitationMailLimits.Default).Value;
+        pharmacy.Stored(store);
+        await using var services = new ServiceCollection()
+            .AddSingleton<IPharmacyStore>(store)
+            .AddSingleton<IOrganisationUnitOfWork>(store)
+            .AddSingleton<TimeProvider>(new FakeTimeProvider(Start.AddDays(3)))
+            .AddSingleton<IDatabaseClock>(new FakeDatabaseClock(new FakeTimeProvider(Start.AddMinutes(4))))
+            .AddSingleton(InvitationMailLimits.Default)
+            .AddLogging()
+            .BuildServiceProvider();
+
+        var refused = await ActivatorUtilities.CreateInstance<RenewInvitationHandler>(services)
+            .HandleAsync(new RenewInvitation(pharmacy.Id, invitation, Owner), TestContext.Current.CancellationToken);
+
+        refused.IsSuccess.ShouldBeFalse("the cooldown ran on the host's clock, three days ahead of the database's");
+        refused.Error.Code.ShouldBe("organisation.invitation-renewed-too-soon");
+        refused.Error.ShouldBeOfType<RetryLaterFailure>().RetryAt.ShouldBe(Start.AddMinutes(10));
+        store.Commits.ShouldBe(0);
     }
 
     private static RenewInvitationHandler Handler(InMemoryPharmacyStore store) => new(store, store, new FakeTimeProvider(Start), InvitationMailLimits.Default, NullLogger<RenewInvitationHandler>.Instance);
