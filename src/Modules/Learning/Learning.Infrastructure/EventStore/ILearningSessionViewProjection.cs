@@ -21,4 +21,6 @@ public interface ILearningSessionViewProjection
     void Apply(ChaptersReopened reopened, LearningSessionView view);
 
     void Apply(SessionFinished finished, LearningSessionView view);
+
+    void Apply(ExhaustionNoted noted, LearningSessionView view);
 }

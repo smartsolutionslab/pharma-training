@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { MailPlus, Users } from '@lucide/vue';
-import { computed, h, ref, useId, useTemplateRef } from 'vue';
+import { useIntervalFn } from '@vueuse/core';
+import { computed, h, nextTick, ref, shallowRef, useId, useTemplateRef, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type {
   ChangeOrganisationMembershipRequest,
@@ -18,7 +19,7 @@ import ChangeMembershipDialog from './ChangeMembershipDialog.vue';
 import ConfirmMemberActionDialog from './ConfirmMemberActionDialog.vue';
 import { isExpired } from './invitationExpiry';
 import InviteMemberDialog from './InviteMemberDialog.vue';
-import { teamLoadFailureKey } from './teamErrors';
+import { teamFailureText, teamLoadFailureKey } from './teamErrors';
 import { titleKey } from './titleKey';
 import { useTeam } from './useTeam';
 import { useTeamActions } from './useTeamActions';
@@ -30,8 +31,9 @@ import { useTeamActions } from './useTeamActions';
 /** The caller's own row says it is theirs. */
 type MemberRow = PharmacyMemberDto & { isYou: boolean };
 
-/** Now, read when the invitations' rows render: an invitation is expired once its expiry lies before it. */
-const clock = () => new Date();
+/** An invitation's row says whether it has expired, by the page's clock. */
+type InvitationRow = PharmacyInvitationDto & { isExpired: boolean };
+
 const dateOf = (value: string) => i18n.global.d(new Date(value), 'date');
 
 const memberColumns = columnsOf<MemberRow>();
@@ -55,7 +57,7 @@ const membersColumns = memberColumns.columns([
   }),
 ]);
 
-const invitationColumns = columnsOf<PharmacyInvitationDto>();
+const invitationColumns = columnsOf<InvitationRow>();
 const invitationsColumns = invitationColumns.columns([
   invitationColumns.accessor('email', translatedHeader('organisation.team.columns.email')),
   invitationColumns.accessor('jobFunction', {
@@ -75,14 +77,14 @@ const invitationsColumns = invitationColumns.columns([
     ...translatedHeader('organisation.team.columns.status'),
     // The word carries the meaning; the colour only repeats it.
     cell: ({ row }) =>
-      isExpired(row.original.expiresAt, clock())
+      row.original.isExpired
         ? h('span', { class: 'text-destructive' }, translate('organisation.team.invitations.expired'))
         : h('span', translate('organisation.team.invitations.open')),
   }),
 ]);
 
 const noMembers: MemberRow[] = [];
-const noInvitations: PharmacyInvitationDto[] = [];
+const noInvitations: InvitationRow[] = [];
 
 const { t } = useI18n();
 const { current } = useCurrentPharmacy();
@@ -104,7 +106,19 @@ const memberRows = computed<MemberRow[]>(() => {
   }
   return items.map((member) => ({ ...member, isYou: member.membershipId === current.value?.membershipId }));
 });
-const invitationRows = computed(() => invitationsPage.value?.items ?? noInvitations);
+// Now, ticking every minute (an interval, not every animation frame): an open invitation turns expired while the page
+// stays open, without reading it again.
+const now = shallowRef(new Date());
+useIntervalFn(() => {
+  now.value = new Date();
+}, 60_000);
+const invitationRows = computed<InvitationRow[]>(() => {
+  const items = invitationsPage.value?.items;
+  if (items === undefined) {
+    return noInvitations;
+  }
+  return items.map((invitation) => ({ ...invitation, isExpired: isExpired(invitation.expiresAt, now.value) }));
+});
 
 const actions = useTeamActions(current);
 const { refusal, renewingId, isRevoking, isEnding } = actions;
@@ -115,6 +129,20 @@ const invitationsHeadingId = `${id}-invitations`;
 const membersHeading = useTemplateRef<HTMLElement>('membersHeading');
 const invitationsHeading = useTemplateRef<HTMLElement>('invitationsHeading');
 const inviteOpener = useTemplateRef<InstanceType<typeof Button>>('inviteOpener');
+const pageHeading = useTemplateRef<HTMLElement>('pageHeading');
+
+// No longer allowed to manage members (demoted by their own change, say), the sections and any dialog go: the focus,
+// rather than falling to the body, goes to the page's heading, above the words that say why.
+watch(canManage, async (allowed, wasAllowed) => {
+  if (allowed || !wasAllowed) {
+    return;
+  }
+  await nextTick();
+  const focused = document.activeElement;
+  if (focused === null || focused === document.body || !focused.isConnected) {
+    pageHeading.value?.focus();
+  }
+});
 
 // Focus: a dialog gives it back to what opened it, unless what happened since says where it belongs (the section's
 // heading once a revoke or end has run, the header's Invite once an invitation was sent).
@@ -231,7 +259,7 @@ async function confirm() {
   <main class="flex flex-col gap-6">
     <div class="flex flex-wrap items-start justify-between gap-4">
       <div class="flex flex-col gap-1">
-        <h1 class="text-title">{{ t(titleKey) }}</h1>
+        <h1 ref="pageHeading" tabindex="-1" class="text-title outline-none">{{ t(titleKey) }}</h1>
         <p v-if="current !== undefined" class="text-body text-muted-foreground">
           {{
             canManage
@@ -251,7 +279,7 @@ async function confirm() {
           {{ t('organisation.team.members.title') }}
         </h2>
         <p v-if="refusal?.section === 'members'" role="alert" class="text-body text-destructive">
-          {{ refusal.text }}
+          {{ teamFailureText(refusal.failure) }}
         </p>
         <p v-if="membersFailed" role="alert" class="text-body text-destructive">
           {{ t(teamLoadFailureKey(membersError, 'organisation.team.members.loadFailed')) }}
@@ -291,7 +319,7 @@ async function confirm() {
           {{ t('organisation.team.invitations.title') }}
         </h2>
         <p v-if="refusal?.section === 'invitations'" role="alert" class="text-body text-destructive">
-          {{ refusal.text }}
+          {{ teamFailureText(refusal.failure) }}
         </p>
         <p v-if="invitationsFailed" role="alert" class="text-body text-destructive">
           {{ t(teamLoadFailureKey(invitationsError, 'organisation.team.invitations.loadFailed')) }}

@@ -14,8 +14,9 @@ const byCode: Record<string, MessageKey> = {
  * What the page says when an AI draft is refused or fails, in the language it speaks: never the host's words. The
  * missing model (503 model-not-configured) and the model's unusable answer (502 editorial.ai-draft-malformed) are told
  * apart from an edge's 503 or 502 by the problem's code at any status (ApiError.failureCode); an edge's failed. The
- * edge's timeout (504) may have been saved after all; 429 is the per-editor limit, whatever its code; a module's
- * refusal below 500 by its code. A draft whose answer the page never read (a network failure, a body that is not
+ * edge's timeout (504) may have been saved after all; 429 is the per-editor limit by its code,
+ * editorial.model-limit-reached (ADR 0020), and any other 429 says too many requests; a module's refusal below 500 by
+ * its code. A draft whose answer the page never read (a network failure, a body that is not
  * JSON) may have been applied: its outcome is unknown. Anything else failed.
  */
 export function draftFailure(error: unknown): string {
@@ -40,7 +41,9 @@ function failureKey(error: unknown): MessageKey {
     case 504:
       return 'editorial.test.draft.errors.timedOut';
     case 429:
-      return 'editorial.test.draft.errors.tooManyRequests';
+      return error.code === 'editorial.model-limit-reached'
+        ? 'editorial.test.draft.errors.limitReached'
+        : 'editorial.test.draft.errors.tooManyRequests';
     default:
       return (error.code === undefined ? undefined : byCode[error.code]) ?? 'editorial.test.draft.errors.failed';
   }

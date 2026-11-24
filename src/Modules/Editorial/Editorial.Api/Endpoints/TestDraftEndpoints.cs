@@ -13,7 +13,9 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Api.Endpoints;
 /// <summary>
 /// An editor has the model draft a version's test and applies it (story E9, ADR 0008 D10). It is a POST because every
 /// call asks the model again and replaces the unreviewed questions; it answers 200, not 201, because nothing
-/// addressable is created: the drafted questions are read back with the version. The empty Guid is no version.
+/// addressable is created: the drafted questions are read back with the version. The empty Guid is no version. Each
+/// editor may ask a limited number of times a minute and a day (docs/adr/0020); over it, 429
+/// editorial.model-limit-reached and the model is not asked.
 /// </summary>
 public sealed class TestDraftEndpoints : IEndpoint
 {
@@ -29,6 +31,8 @@ public sealed class TestDraftEndpoints : IEndpoint
             }
 
             return (await dispatcher.SendAsync(new ApplyAiTestDraft(CourseVersionId.From(id)), cancellationToken)).ToHttpResult();
-        }).RequireAuthorization(EditorialPolicyNames.Edit);
+        })
+        .RequireAuthorization(EditorialPolicyNames.Edit)
+        .RequireUserRateLimit(EditorialModelLimits.TestDraft);
     }
 }

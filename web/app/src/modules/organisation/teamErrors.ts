@@ -58,12 +58,18 @@ export function teamFailureText(failure: TeamFailure): string {
   return 'message' in failure ? failure.message : t(failure.key, failure.values);
 }
 
+/** Refusals after which the membership itself may be gone or changed: the caller's memberships are read again. */
+const membershipCodes = ['organisation.pharmacy-not-found', 'organisation.capability-missing'];
+
+/** Whether the host refused because the caller's membership is gone or may no longer manage members. */
+export function refusesMembership(error: unknown): error is ApiError & { code: string } {
+  return error instanceof ApiError && error.code !== undefined && membershipCodes.includes(error.code);
+}
+
 /** Why a list could not be read: a refusal the page has words for says what it is, anything else that it failed. */
 export function teamLoadFailureKey(error: unknown, fallback: MessageKey): MessageKey {
-  if (error instanceof ApiError && error.code !== undefined) {
-    if (error.code === 'organisation.pharmacy-not-found' || error.code === 'organisation.capability-missing') {
-      return byCode[error.code] ?? fallback;
-    }
+  if (refusesMembership(error)) {
+    return byCode[error.code] ?? fallback;
   }
   return fallback;
 }

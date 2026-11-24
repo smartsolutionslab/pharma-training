@@ -38,6 +38,9 @@ internal static class LearningSessionViews
                 case SessionFinished finished:
                     projection.Apply(finished, current);
                     break;
+                case ExhaustionNoted noted:
+                    projection.Apply(noted, current);
+                    break;
                 default:
                     throw new InvalidOperationException($"The view knows no {domainEvent.GetType().Name}.");
             }

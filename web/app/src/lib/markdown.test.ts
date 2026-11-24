@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { renderMarkdown } from './markdown';
+import { renderMarkdown, shallowestHeading } from './markdown';
 
 // An editor's Markdown, as the app renders it for a reader (spec 2.5): markdown-it without raw HTML, links it refuses
 // for a dangerous scheme, headings shifted below the page's own, and DOMPurify over the result. What it answers is HTML
@@ -134,5 +134,18 @@ describe('headings sit below the page', () => {
 
   test('a heading shifted past h6 is capped at h6', () => {
     expect(rendered('#### D', { headingOffset: 3 }).querySelector('h6')?.textContent).toBe('D');
+  });
+});
+
+describe("a text's shallowest heading, so a page can put it right below its own", () => {
+  test.each([
+    ['# Willkommen\n\n## Teil', 1],
+    ['## Merksätze\n\nText', 2],
+    ['Text\n\n### Tief\n\n#### Tiefer', 3],
+    ['Titel\n=====', 1],
+    ['Text ohne Überschrift', undefined],
+    ['```\n# kein Titel\n```', undefined],
+  ])('%j has %s', (markdown, level) => {
+    expect(shallowestHeading(markdown)).toBe(level);
   });
 });

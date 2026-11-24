@@ -24,6 +24,12 @@ internal sealed class InMemoryAssignmentStore : IAssignmentStore, IComplianceUni
 
     public int Commits { get; private set; }
 
+    public Task<IReadOnlyList<Assignment>> InPharmacyAsync(PharmacyId pharmacy, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<Assignment> inPharmacy = [.. Stored.Where(assignment => assignment.Pharmacy == pharmacy)];
+        return Task.FromResult(inPharmacy);
+    }
+
     public Task<IReadOnlySet<PersonId>> ActiveLearnersAsync(PharmacyId pharmacy, CourseId course, IReadOnlyCollection<PersonId> learners, CancellationToken cancellationToken)
     {
         IReadOnlySet<PersonId> active = Stored
@@ -47,6 +53,24 @@ internal sealed class InMemoryAssignmentStore : IAssignmentStore, IComplianceUni
     }
 
     public void Add(Assignment assignment) => added.Add(assignment);
+
+    /// <summary>The stored instance itself, so what the caller changes is "tracked" and stays changed.</summary>
+    public Task<Option<Assignment>> FindInPharmacyAsync(PharmacyId pharmacy, AssignmentId assignment, CancellationToken cancellationToken) =>
+        Task.FromResult(InPharmacy(pharmacy, assignment));
+
+    public Task<Option<Assignment>> ReadInPharmacyAsync(PharmacyId pharmacy, AssignmentId assignment, CancellationToken cancellationToken) =>
+        Task.FromResult(InPharmacy(pharmacy, assignment));
+
+    public Task<IReadOnlyList<Assignment>> ActiveOfLearnerInPharmacyAsync(PersonId learner, PharmacyId pharmacy, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<Assignment> active =
+        [
+            .. Stored.Where(assignment => assignment.Learner == learner
+                && assignment.Pharmacy == pharmacy
+                && assignment.Status is AssignmentStatus.Open or AssignmentStatus.InProgress),
+        ];
+        return Task.FromResult(active);
+    }
 
     public Task PublishAsync(IntegrationEvent integrationEvent)
     {
@@ -79,5 +103,16 @@ internal sealed class InMemoryAssignmentStore : IAssignmentStore, IComplianceUni
 
         await CommitAsync(cancellationToken);
         return true;
+    }
+
+    private Option<Assignment> InPharmacy(PharmacyId pharmacy, AssignmentId id)
+    {
+        var found = Stored.FirstOrDefault(assignment => assignment.Id == id && assignment.Pharmacy == pharmacy);
+        if (found is null)
+        {
+            return Option<Assignment>.None;
+        }
+
+        return Option<Assignment>.Some(found);
     }
 }

@@ -23,6 +23,14 @@ public class AppHostBrokerUsersTests(AspireFixture aspire)
 
     private const string TestDefinitionPublished = Contracts + "Editorial.TestDefinitionPublishedV1";
 
+    private const string AttemptsExhausted = Contracts + "Assessment.AttemptsExhaustedV1";
+
+    private const string TestPassed = Contracts + "Assessment.TestPassedV1";
+
+    private const string ContentCompleted = Contracts + "Learning.ContentCompletedV1";
+
+    private const string LearningSessionStarted = Contracts + "Learning.LearningSessionStartedV1";
+
     private const string MembershipChanged = Contracts + "Organisation.MembershipChangedV1";
 
     private const string MembershipEnded = Contracts + "Organisation.MembershipEndedV1";
@@ -32,7 +40,7 @@ public class AppHostBrokerUsersTests(AspireFixture aspire)
     /// <summary>The default exchange's name in RabbitMQ's permissions.</summary>
     private const string DefaultExchange = "amq.default";
 
-    /// <summary>The grants D1 of #183 works out for four modules on main: configure, write and read.</summary>
+    /// <summary>The grants D1 of #183 works out for five modules: configure, write and read.</summary>
     public static TheoryData<string, string[], string[], string[]> Grants { get; } = new()
     {
         {
@@ -43,15 +51,21 @@ public class AppHostBrokerUsersTests(AspireFixture aspire)
         },
         {
             "compliance",
-            ["compliance", Contracts + "Assessment.AttemptsExhaustedV1", Contracts + "Compliance.AssignmentCompletedV1", Contracts + "Compliance.CourseAssignedV1", CourseVersionPublished, CourseVersionRetired, Contracts + "Learning.ContentCompletedV1", Contracts + "Learning.LearningSessionStartedV1", MembershipChanged, MembershipEnded, MembershipStarted],
+            ["compliance", Contracts + "Assessment.AttemptsExhaustedV1", Contracts + "Certification.CertificateIssuedV1", Contracts + "Compliance.AssignmentCompletedV1", Contracts + "Compliance.CourseAssignedV1", CourseVersionPublished, CourseVersionRetired, Contracts + "Learning.ContentCompletedV1", Contracts + "Learning.LearningSessionStartedV1", MembershipChanged, MembershipEnded, MembershipStarted],
             ["compliance", Contracts + "Compliance.AssignmentCompletedV1", Contracts + "Compliance.CourseAssignedV1"],
-            ["compliance", Contracts + "Assessment.AttemptsExhaustedV1", CourseVersionPublished, CourseVersionRetired, Contracts + "Learning.ContentCompletedV1", Contracts + "Learning.LearningSessionStartedV1", MembershipChanged, MembershipEnded, MembershipStarted]
+            ["compliance", Contracts + "Assessment.AttemptsExhaustedV1", Contracts + "Certification.CertificateIssuedV1", CourseVersionPublished, CourseVersionRetired, Contracts + "Learning.ContentCompletedV1", Contracts + "Learning.LearningSessionStartedV1", MembershipChanged, MembershipEnded, MembershipStarted]
         },
         {
             "editorial",
             ["editorial", ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired, TestDefinitionPublished],
             ["editorial", ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired, TestDefinitionPublished],
             ["editorial"]
+        },
+        {
+            "learning",
+            ["learning", ContentCompleted, LearningSessionStarted, AttemptsExhausted, TestPassed, ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired, MembershipChanged, MembershipEnded, MembershipStarted],
+            ["learning", ContentCompleted, LearningSessionStarted],
+            ["learning", AttemptsExhausted, TestPassed, ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired, MembershipChanged, MembershipEnded, MembershipStarted]
         },
         {
             "organisation",

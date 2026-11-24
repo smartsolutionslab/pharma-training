@@ -69,11 +69,16 @@ export const en: MessageSchema = {
     },
   },
   modules: {
-    learning: { title: 'My courses' },
+    learning: {
+      title: 'My courses',
+      details: {
+        player: { title: 'Course' },
+      },
+    },
     assessment: { title: 'Tests' },
     certification: { title: 'Certificates' },
     compliance: {
-      title: 'Assignments',
+      title: 'Team matrix',
       pages: {
         assign: { title: 'Assign a course' },
       },
@@ -97,6 +102,70 @@ export const en: MessageSchema = {
     },
   },
   compliance: {
+    matrix: {
+      intro: 'Who in {pharmacy} has to complete which course by when.',
+      notAllowed: "You may not view the team's training status in this pharmacy.",
+      pharmacyNotFound: 'You are no longer a member of this pharmacy.',
+      identityIncomplete: 'Your account gives no name or valid email address. Complete your profile.',
+      loadFailed: 'The team matrix could not be loaded.',
+      retry: 'Try again',
+      table: {
+        title: 'Team',
+        label: 'Team matrix: members by course',
+        legend: 'Key',
+        member: 'Member',
+        courseRate: 'Rate {rate}',
+        notAssigned: 'Not assigned',
+        due: 'due {date}',
+        validUntil: 'valid until {date}',
+        openPerson: '{name}, show training status',
+      },
+      filters: {
+        label: 'Filters',
+        course: 'Course',
+        allCourses: 'All courses',
+        jobFunction: 'Job function',
+        allJobFunctions: 'All job functions',
+        reset: 'Reset filters',
+      },
+      rate: {
+        title: 'Compliance rate',
+        noValue: '–',
+        none: 'No assignments yet, so no rate.',
+        summary: 'On track: {compliant} of {assignments}',
+        overdue: 'None is overdue. | One is overdue. | {count} are overdue.',
+        scope: 'Covers: {course}; {jobFunction}',
+        explanation: 'An assignment is on track while it is not overdue and its completion is still valid.',
+      },
+      jobFunctionShort: {
+        Pharmacist: 'Pharmacist',
+        Pta: 'PTA',
+        Pka: 'PKA',
+        Trainee: 'Trainee',
+        Other: 'Other',
+      },
+      empty: {
+        noCourses: 'No course has been assigned in this pharmacy yet.',
+        noMembers: 'Nobody in this pharmacy has the job function {jobFunction}.',
+      },
+      person: {
+        count: 'No course assigned | One course assigned | {count} courses assigned',
+        due: 'Due',
+        lastCompleted: 'Last completed',
+        validUntil: 'Valid until',
+        never: 'Never',
+        none: 'No course is assigned to this member here.',
+      },
+    },
+    status: {
+      Open: 'Open',
+      InProgress: 'In progress',
+      Locked: 'Locked',
+      Overdue: 'Overdue',
+      Completed: 'Completed',
+      CompletedLate: 'Completed late',
+      Expired: 'Expired',
+    },
     assign: {
       notAllowed: 'You may not assign courses in this pharmacy.',
       steps: {
@@ -528,6 +597,7 @@ export const en: MessageSchema = {
         errors: {
           modelNotConfigured: "No language model is set up for AI drafts. Contact the platform's operators.",
           tooManyRequests: 'You have asked for too many AI drafts in a short time. Try again later.',
+          limitReached: 'You have reached your limit for AI drafts. Try again later.',
           malformed: "The AI's answer could not be used; nothing was changed. Try again.",
           tooMuchContent:
             'The text chapters are too long for an AI draft. Shorten them or write the questions by hand.',
@@ -637,6 +707,51 @@ export const en: MessageSchema = {
         publishFailed: 'The version could not be published. Please try again.',
         returnFailed: 'The version could not be returned. Please try again.',
         retireFailed: 'The version could not be retired. Please try again.',
+      },
+    },
+  },
+  learning: {
+    player: {
+      loadFailed: 'The course could not be loaded.',
+      notFound: 'This course does not exist.',
+      notReady: 'The course is being made available. Please try again in a moment.',
+      noIdentity: 'Your account is incomplete. Please sign in again.',
+      empty: 'This course has no chapters.',
+      chapters: 'Chapters',
+      state: {
+        done: 'Done',
+        progress: '{percent} done',
+        open: 'Not started',
+      },
+      next: 'Next chapter',
+      previous: 'Previous chapter',
+      chapterDone: 'Chapter “{title}” done.',
+      contentCompleted: 'You have worked through all chapters. The test is now unlocked.',
+      text: {
+        hint: 'Scroll to the end to complete the chapter.',
+      },
+      video: {
+        label: 'Video: {title}',
+        seekHint: 'You can only skip ahead to the point you have already watched.',
+        seekRefused: 'You can only skip ahead to {position}.',
+        resumed: 'Resumed at {position}.',
+        failed: 'The video could not be played.',
+      },
+      media: {
+        notReady: 'The file is still being prepared. Please try again in a moment.',
+      },
+      pdf: {
+        label: 'PDF: {title}',
+        page: 'Page {page} of {pages}',
+        hint: 'Go to the last page to complete the chapter.',
+        next: 'Next page',
+        previous: 'Previous page',
+        failed: 'The PDF could not be shown.',
+      },
+      progress: {
+        failed: 'Your progress could not be saved. It will be sent again.',
+        saveNow: 'Save now',
+        finished: 'This learning session is already finished. Further progress is not saved.',
       },
     },
   },

@@ -8,7 +8,9 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.Consumer
 /// Stores a course version Editorial published with its chapters, once: the chapter structure a session takes at
 /// start. A version is published once, so a version already stored means its event was handled, whatever the event's
 /// identifier or payload: a second delivery, or a republish, changes nothing, and the first one wins. The primary key
-/// backs the check: of two deliveries racing, the loser's insert fails and its retry finds the row.
+/// backs the check: of two deliveries racing, the loser's insert fails and its retry finds the row. A video chapter
+/// must carry its duration, which progress reports are judged against (ADR 0024); a copy without one is refused, since
+/// the first delivery's copy stays for good.
 /// </summary>
 public sealed class CourseVersionPublishedV1Consumer(ICourseVersionCopies versions, ILearningUnitOfWork unitOfWork)
 {
@@ -27,6 +29,11 @@ public sealed class CourseVersionPublishedV1Consumer(ICourseVersionCopies versio
             Ensure.That(chapter.ChapterId, nameof(chapter.ChapterId)).IsNotEmpty();
             Ensure.That(chapter.ChapterId.ToString(), nameof(chapter.ChapterId)).Satisfies(_ => chapterIds.Add(chapter.ChapterId), "A chapter id may appear once in a version.");
             Ensure.That(chapter.Position, nameof(chapter.Position)).AtLeast(1);
+            if (chapter.Kind == ChapterKindV1.Video)
+            {
+                Ensure.That(chapter.VideoDurationSeconds.GetValueOrDefault(), nameof(chapter.VideoDurationSeconds))
+                    .Satisfies(_ => chapter.VideoDurationSeconds is >= 1 and <= VideoDuration.MaxSeconds, "A video chapter lasts 1 to 14,400 seconds.");
+            }
         }
 
         var version = CourseVersionId.From(message.CourseVersionId);

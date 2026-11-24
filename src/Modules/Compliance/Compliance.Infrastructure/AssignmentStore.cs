@@ -10,6 +10,12 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Infrastructure;
 /// <summary>The module's assignments. The module's unit of work saves what is added.</summary>
 public sealed class AssignmentStore(ComplianceDbContext context) : IAssignmentStore
 {
+    public async Task<IReadOnlyList<Assignment>> InPharmacyAsync(PharmacyId pharmacy, CancellationToken cancellationToken) =>
+        await context.Set<Assignment>()
+            .AsNoTracking()
+            .Where(assignment => assignment.Pharmacy == pharmacy)
+            .ToListAsync(cancellationToken);
+
     public async Task<IReadOnlySet<PersonId>> ActiveLearnersAsync(PharmacyId pharmacy, CourseId course, IReadOnlyCollection<PersonId> learners, CancellationToken cancellationToken)
     {
         Ensure.That(learners).IsNotNull();
@@ -34,4 +40,36 @@ public sealed class AssignmentStore(ComplianceDbContext context) : IAssignmentSt
             .ToListAsync(cancellationToken);
 
     public void Add(Assignment assignment) => context.Add(assignment);
+
+    public async Task<Option<Assignment>> FindInPharmacyAsync(PharmacyId pharmacy, AssignmentId assignment, CancellationToken cancellationToken)
+    {
+        var found = await context.Set<Assignment>()
+            .FirstOrDefaultAsync(stored => stored.Id == assignment && stored.Pharmacy == pharmacy, cancellationToken);
+        return Found(found);
+    }
+
+    public async Task<Option<Assignment>> ReadInPharmacyAsync(PharmacyId pharmacy, AssignmentId assignment, CancellationToken cancellationToken)
+    {
+        var found = await context.Set<Assignment>()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(stored => stored.Id == assignment && stored.Pharmacy == pharmacy, cancellationToken);
+        return Found(found);
+    }
+
+    public async Task<IReadOnlyList<Assignment>> ActiveOfLearnerInPharmacyAsync(PersonId learner, PharmacyId pharmacy, CancellationToken cancellationToken) =>
+        await context.Set<Assignment>()
+            .Where(assignment => assignment.Learner == learner
+                && assignment.Pharmacy == pharmacy
+                && (assignment.Status == AssignmentStatus.Open || assignment.Status == AssignmentStatus.InProgress))
+            .ToListAsync(cancellationToken);
+
+    private static Option<Assignment> Found(Assignment? assignment)
+    {
+        if (assignment is null)
+        {
+            return Option<Assignment>.None;
+        }
+
+        return Option<Assignment>.Some(assignment);
+    }
 }
