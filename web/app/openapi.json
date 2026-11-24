@@ -5,6 +5,25 @@
     "version": "1.0.0"
   },
   "paths": {
+    "/config.json": {
+      "get": {
+        "tags": [
+          "Host"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FrontendConfiguration"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/me": {
       "get": {
         "tags": [
@@ -36,6 +55,138 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PermissionDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/assessment/examinations/by-session/{sessionId}": {
+      "get": {
+        "tags": [
+          "ExaminationEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssessmentExaminationDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/assessment/examinations/{id}/attempts": {
+      "post": {
+        "tags": [
+          "ExaminationEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssessmentAttemptDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/assessment/examinations/{id}/attempts/current/answers/{questionId}": {
+      "put": {
+        "tags": [
+          "ExaminationEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "questionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnswerAssessmentQuestionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/assessment/examinations/{id}/attempts/current/submit": {
+      "post": {
+        "tags": [
+          "ExaminationEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssessmentAttemptResultDto"
                 }
               }
             }
@@ -2668,6 +2819,253 @@
           }
         }
       },
+      "AnswerAssessmentQuestionRequest": {
+        "required": [
+          "optionIds"
+        ],
+        "type": "object",
+        "properties": {
+          "optionIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        }
+      },
+      "AssessmentAnswerOptionDto": {
+        "required": [
+          "id",
+          "text"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "AssessmentAttemptDto": {
+        "required": [
+          "id",
+          "number",
+          "questions"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "number": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "questions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssessmentAttemptQuestionDto"
+            }
+          }
+        }
+      },
+      "AssessmentAttemptOutcome": {
+        "enum": [
+          "Passed",
+          "Failed"
+        ]
+      },
+      "AssessmentAttemptQuestionDto": {
+        "required": [
+          "id",
+          "type",
+          "text",
+          "options",
+          "chosenOptionIds"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type": {
+            "$ref": "#/components/schemas/AssessmentQuestionType"
+          },
+          "text": {
+            "type": "string"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssessmentAnswerOptionDto"
+            }
+          },
+          "chosenOptionIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        }
+      },
+      "AssessmentAttemptResultDto": {
+        "required": [
+          "attemptId",
+          "number",
+          "scorePercent",
+          "passingScorePercent",
+          "outcome",
+          "chaptersToRepeat",
+          "attemptsLeft"
+        ],
+        "type": "object",
+        "properties": {
+          "attemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "number": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "scorePercent": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "passingScorePercent": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/AssessmentAttemptOutcome"
+          },
+          "chaptersToRepeat": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "attemptsLeft": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "AssessmentExaminationDto": {
+        "required": [
+          "id",
+          "sessionId",
+          "courseId",
+          "courseVersionId",
+          "status",
+          "attemptsUsed",
+          "maxAttempts",
+          "currentAttempt",
+          "lastResult"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sessionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "courseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "courseVersionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AssessmentExaminationStatus"
+          },
+          "attemptsUsed": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "maxAttempts": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "currentAttempt": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AssessmentAttemptDto"
+              }
+            ]
+          },
+          "lastResult": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AssessmentAttemptResultDto"
+              }
+            ]
+          }
+        }
+      },
+      "AssessmentExaminationStatus": {
+        "enum": [
+          "Locked",
+          "Unlocked",
+          "InAttempt",
+          "Passed",
+          "Exhausted"
+        ]
+      },
+      "AssessmentQuestionType": {
+        "enum": [
+          "SingleChoice",
+          "MultipleChoice"
+        ]
+      },
       "AssessmentSampleDto": {
         "required": [
           "id",
@@ -4140,6 +4538,21 @@
           }
         }
       },
+      "FrontendConfiguration": {
+        "required": [
+          "oidcAuthority",
+          "clientId"
+        ],
+        "type": "object",
+        "properties": {
+          "oidcAuthority": {
+            "type": "string"
+          },
+          "clientId": {
+            "type": "string"
+          }
+        }
+      },
       "InviteOrganisationMemberRequest": {
         "required": [
           "email",
@@ -5176,6 +5589,9 @@
   "tags": [
     {
       "name": "Host"
+    },
+    {
+      "name": "ExaminationEndpoints"
     },
     {
       "name": "AssignmentChangeEndpoints"

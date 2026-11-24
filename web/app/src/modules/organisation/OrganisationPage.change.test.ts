@@ -13,6 +13,7 @@ import {
   membersPath,
   minePath,
   never,
+  now,
   problem,
   readsOf,
   renderTeamPage,
@@ -133,13 +134,19 @@ test('saved unchanged, sends both fields as they stand', async () => {
 });
 
 test('the button is disabled while the host has not answered, so a change is sent once', async () => {
+  // The form validates for a few milliseconds before it sends (vee-validate's debounce), while the button is disabled
+  // at once: wait for the one write, then let another validation window pass and check no second write followed.
+  vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'], shouldAdvanceTime: true });
+  vi.setSystemTime(now);
   host.change = never;
   const { user, submit } = await openChange(anna);
 
   await user.dblClick(submit);
 
-  await waitFor(() => expect(submit).toBeDisabled());
+  await waitFor(() => expect(writesOf(fetch)).toHaveLength(1));
+  await vi.advanceTimersByTimeAsync(100);
   expect(writesOf(fetch)).toHaveLength(1);
+  expect(submit).toBeDisabled();
 });
 
 test('the last manager made an employee stays open, says why in it and in a toast, and keeps the choice', async () => {

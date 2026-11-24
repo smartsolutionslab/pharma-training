@@ -61,6 +61,7 @@
     <PackageVersion Include="Yarp.ReverseProxy" Version="2.3.0" />
 
     <PackageVersion Include="Aspire.Hosting.JavaScript" Version="13.6.5" />
+    <PackageVersion Include="Aspire.Hosting.Yarp" Version="13.6.5" />
     <PackageVersion Include="Marten" Version="9.59.0" />
   </ItemGroup>
 </Project>

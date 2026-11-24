@@ -349,6 +349,50 @@ public partial class OrganisationInvitationsTests(AspireFixture aspire)
         }
     }
 
+    /// <summary>
+    /// A deadlock inside Wolverine's envelope transaction, from a handler that publishes. Inviting stores the mail request
+    /// in the service's durable inbox as it publishes, in a transaction Wolverine opens then, and saves the invitation
+    /// in that same transaction afterwards. The gate holds the pharmacy's row, so the invitation waits for it while
+    /// already holding its envelope's row; the gate then asks for the inbox, which waits for the invitation. The
+    /// invitation has waited longest, so PostgreSQL's deadlock check, deadlock_timeout after it started to wait, ends it:
+    /// its save fails with 40P01, which <c>TryCommitAsync</c> answers as a lost race. The envelope rolls back with it,
+    /// so the invitation is not stored and no mail goes out.
+    /// </summary>
+    [Fact]
+    public async Task An_invitation_whose_save_deadlocks_after_it_published_its_mail_request_is_told_the_pharmacy_changed_and_mails_nothing()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var owner = await aspire.CreateHostClientAsync("owner");
+        var pharmacy = await RegisterAsync(owner, cancellationToken);
+        var address = Invitee();
+        var deadlocksBefore = await database.SettledDeadlocksAsync(cancellationToken);
+
+        HttpResponseMessage invited;
+        await using (var gate = await database.LockPharmacyAsync(pharmacy, cancellationToken))
+        {
+            var invitation = owner.PostAsJsonAsync(InvitationsUri(pharmacy), new { email = address, jobFunction = "Pta", role = "Employee" }, cancellationToken);
+            await database.WaitUntilBlockedAsync(gate, 1, cancellationToken);
+            (await database.WaitersHoldingIncomingEnvelopesAsync(gate, cancellationToken)).ShouldBe(1, "the invitation must have stored its mail request before it waited for the pharmacy");
+            await gate.LockIncomingEnvelopesAsync(cancellationToken);
+            invited = await invitation;
+        }
+
+        using (invited)
+        {
+            var body = await invited.Content.ReadAsStringAsync(cancellationToken);
+            invited.StatusCode.ShouldBe(HttpStatusCode.Conflict, body);
+            (await CodeOfAsync(invited, cancellationToken)).ShouldBe("organisation.pharmacy-changed", body);
+        }
+
+        await database.ShouldHaveDeadlockedSinceAsync(deadlocksBefore, cancellationToken);
+        (await database.StatusesOfAsync(pharmacy, address, cancellationToken)).ShouldBeEmpty();
+        (await database.MailRequestsOfPharmacyAsync(pharmacy, cancellationToken)).ShouldBe(0, "the mail request rolled back with the invitation that lost, so no mail can go out");
+
+        // The same invitation again, with nothing in its way: stored with its one mail request, which the count finds.
+        await InviteAsync(owner, pharmacy, address, cancellationToken);
+        (await database.MailRequestsOfPharmacyAsync(pharmacy, cancellationToken)).ShouldBe(1);
+    }
+
     [Fact]
     public async Task Of_renewing_and_revoking_one_invitation_at_once_one_succeeds_and_the_other_is_told_the_pharmacy_changed()
     {

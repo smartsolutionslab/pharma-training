@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Npgsql;
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Http;
 
 namespace Microsoft.Extensions.DependencyInjection;
 
@@ -10,7 +11,7 @@ public static partial class UniqueConstraintResponses
 {
     /// <summary>
     /// A write a unique index refuses answers <c>409</c> problem details with the code
-    /// <see cref="UniqueConstraintExceptionHandler.Code"/>; every other database failure stays a <c>500</c>.
+    /// of <see cref="AlreadyExists"/>; every other database failure stays a <c>500</c>.
     /// </summary>
     public static IServiceCollection AddUniqueConstraintResponses(this IServiceCollection services) =>
         services.AddProblemDetails()
@@ -23,8 +24,8 @@ public static partial class UniqueConstraintResponses
     /// </summary>
     private sealed partial class UniqueConstraintExceptionHandler(IProblemDetailsService problemDetails, ILogger<UniqueConstraintExceptionHandler> logger) : IExceptionHandler
     {
-        /// <summary>The <c>code</c> of every problem a unique-index violation answers.</summary>
-        public const string Code = "already-exists";
+        /// <summary>The code, title and status of every problem a unique-index violation answers.</summary>
+        private static readonly AlreadyExists Refusal = new();
 
         public async ValueTask<bool> TryHandleAsync(HttpContext httpContext, Exception exception, CancellationToken cancellationToken)
         {
@@ -37,7 +38,7 @@ public static partial class UniqueConstraintResponses
 
             LogRefused(logger);
 
-            httpContext.Response.StatusCode = StatusCodes.Status409Conflict;
+            httpContext.Response.StatusCode = (int)Refusal.Status;
 
             // Nothing from the exception reaches the caller: its message names the index and quotes the colliding values.
             await problemDetails.TryWriteAsync(new ProblemDetailsContext
@@ -45,10 +46,10 @@ public static partial class UniqueConstraintResponses
                 HttpContext = httpContext,
                 ProblemDetails =
                 {
-                    Status = StatusCodes.Status409Conflict,
-                    Title = "Something with that name or key already exists.",
+                    Status = (int)Refusal.Status,
+                    Title = Refusal.Message,
                     Detail = "Choose a different one; retrying this request unchanged is refused again.",
-                    Extensions = { ["code"] = Code },
+                    Extensions = { ["code"] = Refusal.Code },
                 },
             });
 

@@ -27,7 +27,9 @@ jobs:
         environment: [staging, production]
     # A placeholder for every parameter the AppHost declares without a default. The Bicep declares each one and never holds
     # its value, so a placeholder changes nothing it writes. Aspire 13.6.5's `publish --non-interactive` writes the Bicep
-    # without them; they guard against a CLI that prompts for a missing value, as the in-process test harness does.
+    # without them; they guard against a CLI that prompts for a missing value, as the in-process test harness does. They
+    # reach the AppHost (the CLI runs natively, never through dnx), so each passes the checks publishing makes
+    # (PublishedParameterChecks): database-roles-key is 32 characters or more, frontend-url an https origin.
     env:
       Parameters__postgres-username: placeholder
       Parameters__postgres-password: placeholder
@@ -49,8 +51,12 @@ jobs:
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           global-json-file: global.json
-      # The AppHost uses the Aspire CLI bundle; set it up before anything builds the AppHost.
-      - run: dnx --yes aspire.cli@13.6.5 -- setup --install-path "$HOME/.aspire"
+      # The Aspire CLI's native binary, and the bundle the AppHost uses, before anything builds the AppHost. Never run the
+      # CLI through dnx here: dnx is a /bin/sh script, and dash drops every Parameters__* variable, whose names hold '-'.
+      - name: The Aspire CLI
+        run: |
+          dotnet tool install aspire.cli --version 13.6.5 --tool-path "$HOME/.aspire/bin"
+          "$HOME/.aspire/bin/aspire" setup --install-path "$HOME/.aspire"
       # Every service has a broker password of its own, messaging-<module>-password (docs/adr/0011): a placeholder for each
       # service host, found as the AppHost finds them (src/Services/*/Host/Host.csproj and its <ModuleName>), so no module
       # is listed here.
@@ -69,11 +75,18 @@ jobs:
           echo "Set a broker password placeholder for $count services."
           test "$count" -gt 0
       - name: Publish ${{ matrix.environment }}
-        run: dnx --yes aspire.cli@13.6.5 -- publish --apphost src/AppHost/AppHost.csproj -e "${{ matrix.environment }}" -o "publish/${{ matrix.environment }}/first" --non-interactive --nologo
+        run: |
+          "$HOME/.aspire/bin/aspire" publish --apphost src/AppHost/AppHost.csproj -e "${{ matrix.environment }}" -o "publish/${{ matrix.environment }}/first" --non-interactive --nologo
       # The same commit must write the same Bicep every time, or a deploy changes what nobody changed. The first publish
       # built the AppHost.
       - name: Publish ${{ matrix.environment }} again
-        run: dnx --yes aspire.cli@13.6.5 -- publish --apphost src/AppHost/AppHost.csproj -e "${{ matrix.environment }}" -o "publish/${{ matrix.environment }}/second" --non-interactive --nologo --no-build
+        run: |
+          "$HOME/.aspire/bin/aspire" publish --apphost src/AppHost/AppHost.csproj -e "${{ matrix.environment }}" -o "publish/${{ matrix.environment }}/second" --non-interactive --nologo --no-build
+      # The CLI prints almost nothing when the AppHost fails (a parameter check, say); its log says why. Every value here is
+      # a placeholder, so the log holds no secret.
+      - name: Why the publish failed
+        if: failure()
+        run: grep -h -A3 '\[FAIL\]' "$HOME"/.aspire/logs/*.log || true
       - name: Both publishes wrote the same files
         run: diff -r "publish/${{ matrix.environment }}/first" "publish/${{ matrix.environment }}/second"
       # Every file the publish wrote: Aspire 13.6.5's main.bicep does not name the Container App modules (each service,

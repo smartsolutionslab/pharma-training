@@ -2,3 +2,4 @@
 dist
 src/api/generated.ts
 openapi.json
+src/i18n/error-codes.json

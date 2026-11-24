@@ -106,6 +106,35 @@ public class ExaminationReplayTests
     }
 
     [Fact]
+    public void Replaying_rebuilds_the_current_attempt_its_answers_and_the_chapters_to_relearn()
+    {
+        var open = Open();
+        var attempt = AttemptId.New();
+        open.StartAttempt(attempt, [GlovesQuestion, HygieneQuestion], Now).IsSuccess.ShouldBeTrue();
+        open.Answer(HygieneQuestion, [Wrong], Now).IsSuccess.ShouldBeTrue();
+        open.Answer(HygieneQuestion, [Right], Now).IsSuccess.ShouldBeTrue();
+        var exhausted = Open();
+        Fail(exhausted, wrong: HygieneQuestion);
+        Fail(exhausted, wrong: GlovesQuestion);
+        Fail(exhausted, wrong: HygieneQuestion);
+
+        var replayedOpen = Replay(open);
+        var replayedExhausted = Replay(exhausted);
+
+        var current = replayedOpen.CurrentAttempt.Value;
+        current.Id.ShouldBe(attempt);
+        current.Questions.ShouldBe([GlovesQuestion, HygieneQuestion]);
+        current.Answers[HygieneQuestion].ShouldBe([Right]);
+        current.Answers.ContainsKey(GlovesQuestion).ShouldBeFalse();
+        replayedOpen.AttemptsSinceUnlock.ShouldHaveSingleItem().Id.ShouldBe(attempt);
+        replayedOpen.ChaptersToRelearn.ShouldBeEmpty();
+
+        replayedExhausted.CurrentAttempt.HasValue.ShouldBeFalse();
+        replayedExhausted.AttemptsSinceUnlock.Select(failed => failed.FailedChapters.ShouldHaveSingleItem()).ShouldBe([Hygiene, Gloves, Hygiene]);
+        replayedExhausted.ChaptersToRelearn.ShouldBe([Hygiene, Gloves], ignoreOrder: true);
+    }
+
+    [Fact]
     public void Replaying_an_exhausted_examination_restores_when_it_was_exhausted()
     {
         var examination = Open();
