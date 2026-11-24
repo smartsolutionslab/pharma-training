@@ -167,7 +167,7 @@ test('an AI draft asks first, warns about the unreviewed question and, refused w
 
   await expect(
     page.getByRole('alert').filter({
-      hasText: 'Für KI-Entwürfe ist kein Sprachmodell eingerichtet. Wenden Sie sich an den Betrieb der Plattform.',
+      hasText: 'Es ist kein Sprachmodell eingerichtet; KI-Funktionen stehen nicht zur Verfügung.',
     }),
   ).toBeVisible();
   // Every draft the page asked for was answered by the route above: none reached the host.

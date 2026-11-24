@@ -1,7 +1,7 @@
 import { cleanup, screen, waitFor, within } from '@testing-library/vue';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { t } from '@/i18n';
+import { setLanguage, t } from '@/i18n';
 import { useSelectedPharmacyStore } from '@/stores/selectedPharmacy';
 import {
   anna,
@@ -126,6 +126,58 @@ describe('the result', () => {
     expect(screen.getByText(assigned(2))).toBeInTheDocument();
     expect(notify.success).toHaveBeenCalledWith(assigned(2));
     expect(notify.failure).not.toHaveBeenCalled();
+  });
+
+  // A refused learner (#147): the page's words for the two it knows, the catalog's for another code it has, the host's
+  // only for a code the catalog does not know, and "Nicht zugewiesen." when there are none.
+  test('a person refused with a code the catalog knows is named with its catalog text, never the host words', async () => {
+    const user = userEvent.setup();
+    state.assignment = async () =>
+      Response.json({
+        assigned: [],
+        refused: [
+          { personId: ben.personId, code: 'compliance.invalid-person', message: 'SERVER WORDS' },
+          { personId: carla.personId, code: 'compliance.something-new', message: '' },
+        ],
+      });
+    await renderAssignPage();
+    await toReview(user, { members: [anna, ben, carla] });
+
+    await user.click(submitButton());
+
+    await stepHeading('compliance.assign.result.title');
+    const refused = screen.getByRole('list', { name: t('compliance.assign.result.refused') });
+    expect(
+      within(refused)
+        .getAllByRole('listitem')
+        .map((item) => item.textContent.trim()),
+    ).toEqual([
+      t('compliance.assign.result.other', {
+        name: ben.name,
+        message: 'Eine der gewählten Personen ist ungültig. Laden Sie die Seite neu.',
+      }),
+      t('compliance.assign.result.other', { name: carla.name, message: 'Nicht zugewiesen.' }),
+    ]);
+    expect(refused).not.toHaveTextContent('SERVER WORDS');
+  });
+
+  test('a person refused with a code the catalog knows is named with its catalog text in English', async () => {
+    setLanguage('en-GB', { remember: false });
+    const user = userEvent.setup();
+    state.assignment = async () =>
+      Response.json({
+        assigned: [],
+        refused: [{ personId: ben.personId, code: 'compliance.invalid-person', message: 'SERVER WORDS' }],
+      });
+    await renderAssignPage();
+    await toReview(user, { members: [anna, ben] });
+
+    await user.click(submitButton());
+
+    await stepHeading('compliance.assign.result.title');
+    const refused = screen.getByRole('list', { name: t('compliance.assign.result.refused') });
+    expect(refused).toHaveTextContent(`${ben.name}: One of the chosen people is not valid. Reload the page.`);
+    expect(refused).not.toHaveTextContent('SERVER WORDS');
   });
 
   test('names each person refused, in its own words for the refusals it knows and the host’s for others', async () => {
@@ -303,18 +355,20 @@ describe('a refusal of the whole request', () => {
     await waitFor(() => expect(readsOf(host, catalogPath).length).toBeGreaterThan(catalogReads));
   });
 
+  // The page's own words for capability-missing, the catalog's for pharmacy-not-found (#147), never the host's.
   test.each([
     [403, 'compliance.capability-missing', 'Sie dürfen in dieser Apotheke keine Schulungen zuweisen.'],
-    [404, 'compliance.pharmacy-not-found', 'Die Apotheke wurde nicht gefunden.'],
-  ])("%i %s shows the host's message instead of the form", async (status, code, message) => {
+    [404, 'compliance.pharmacy-not-found', 'Sie sind nicht mehr Mitglied dieser Apotheke.'],
+  ])('%i %s shows its text instead of the form, never the host words', async (status, code, message) => {
     const user = userEvent.setup();
-    state.assignment = async () => problem(status, code, message);
+    state.assignment = async () => problem(status, code, 'SERVER WORDS');
     await renderAssignPage();
     await toReview(user);
 
     await user.click(submitButton());
 
     expect(await screen.findByRole('alert')).toHaveTextContent(message);
+    expect(screen.getByRole('alert')).not.toHaveTextContent('SERVER WORDS');
     expect(screen.queryByRole('list', { name: t('compliance.assign.steps.label') })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: t('compliance.assign.submit') })).not.toBeInTheDocument();
     expect(
@@ -325,10 +379,10 @@ describe('a refusal of the whole request', () => {
   // Follow-ups of #37 (#239): the section that held the focused Submit button is gone, so the alert takes the focus.
   test.each([
     [403, 'compliance.capability-missing', 'Sie dürfen in dieser Apotheke keine Schulungen zuweisen.'],
-    [404, 'compliance.pharmacy-not-found', 'Die Apotheke wurde nicht gefunden.'],
-  ])("%i %s gives the host's message the focus", async (status, code, message) => {
+    [404, 'compliance.pharmacy-not-found', 'Sie sind nicht mehr Mitglied dieser Apotheke.'],
+  ])('%i %s gives its message the focus', async (status, code, message) => {
     const user = userEvent.setup();
-    state.assignment = async () => problem(status, code, message);
+    state.assignment = async () => problem(status, code, 'SERVER WORDS');
     await renderAssignPage();
     await toReview(user);
 

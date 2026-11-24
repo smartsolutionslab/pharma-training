@@ -18,6 +18,7 @@ import {
 import { EmptyState } from '@/components/ui/empty-state';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { i18n, t as translate } from '@/i18n';
+import { errorText } from '@/i18n/errorText';
 import { notify } from '@/lib/notify';
 import CreateCourseForm from './CreateCourseForm.vue';
 import { inboxStatuses, parseInboxQuery, type InboxQuery } from './inboxQuery';
@@ -74,7 +75,7 @@ const { t } = useI18n();
 async function onCreate(title: string) {
   const result = await create(title);
   if (!result.ok) {
-    notify.failure(result.serverMessage ?? translate('editorial.course.createFailed', { title }));
+    notify.failure(errorText(result.error, 'editorial.course.createFailed', { values: { title } }));
     return false;
   }
   notify.success(translate('editorial.course.created', { title }));

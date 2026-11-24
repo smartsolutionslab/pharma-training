@@ -5,8 +5,7 @@ import {
   getGetEditorialCourseVersionsIdQueryKey,
   usePutEditorialCourseVersionsIdChaptersOrder,
 } from '@/api/generated';
-import { ApiError } from '@/api/baseApi';
-import { t } from '@/i18n';
+import { errorText } from '@/i18n/errorText';
 import { notify } from '@/lib/notify';
 
 /** The version with its chapters in the order given, numbered from 1; a chapter the order does not name stays out. */
@@ -20,7 +19,7 @@ function inOrder(version: EditorialCourseVersionDto, order: string[]): Editorial
  * order is in the version's cache before the host answers, so the list moves at once. Orders go out one at a time: a
  * move made while one is on its way waits for it, and only the latest of such moves is sent, so the host cannot save
  * an older order over a newer one. A refusal puts back the last order the host accepted, drops a move still waiting
- * and says so, in the host's words where a module sent some. Once nothing more is to be sent, the version is read
+ * and says so, by the refusal's code (errorText). Once nothing more is to be sent, the version is read
  * again. While an order is not yet settled, leaving or reloading the page asks first.
  */
 export function useReorderChapters(versionId: MaybeRefOrGetter<string>) {
@@ -56,8 +55,7 @@ export function useReorderChapters(versionId: MaybeRefOrGetter<string>) {
           if (saved !== undefined) {
             queryClient.setQueryData(queryKey, saved);
           }
-          const serverMessage = error instanceof ApiError ? error.serverMessage : undefined;
-          notify.failure(serverMessage ?? t('editorial.chapters.reorderFailed'));
+          notify.failure(errorText(error, 'editorial.chapters.reorderFailed'));
           return;
         }
         saved = saved === undefined ? undefined : inOrder(saved, current);

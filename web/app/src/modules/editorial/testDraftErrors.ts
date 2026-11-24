@@ -1,14 +1,18 @@
 import { ApiError } from '@/api/baseApi';
-import { type MessageKey, t } from '@/i18n';
+import type { MessageKey } from '@/i18n';
+import { codeMessage, type ErrorMessage, messageText } from '@/i18n/errorText';
 
-/** The page's text for a refusal of the draft a module names by its code (ADR 0008). */
-const byCode: Record<string, MessageKey> = {
+/** The page's own text for a refusal of the draft, where its words depend on the draft (ADR 0008, #147). */
+const overrides: Record<string, MessageKey> = {
   'editorial.no-text-chapters': 'editorial.test.draft.noTextChapters',
   'editorial.nothing-to-draft': 'editorial.test.draft.nothingToDraft',
-  'editorial.too-much-content-to-draft': 'editorial.test.draft.errors.tooMuchContent',
   'editorial.course-version-changed': 'editorial.test.draft.errors.changed',
   'editorial.not-a-draft': 'editorial.test.draft.errors.notADraft',
 };
+
+/** The message for a code: the page's own text, else the catalog's errors.<code>, else the draft failed. */
+const byCode = (code: string | undefined): ErrorMessage =>
+  codeMessage(code, 'editorial.test.draft.errors.failed', { overrides });
 
 /**
  * What the page says when an AI draft is refused or fails, in the language it speaks: never the host's words. The
@@ -20,31 +24,28 @@ const byCode: Record<string, MessageKey> = {
  * JSON) may have been applied: its outcome is unknown. Anything else failed.
  */
 export function draftFailure(error: unknown): string {
-  return t(failureKey(error));
+  return messageText(failureMessage(error));
 }
 
-function failureKey(error: unknown): MessageKey {
+/** The draft's message: never the host's words, so no serverMessage reaches codeMessage. */
+function failureMessage(error: unknown): ErrorMessage {
   if (!(error instanceof ApiError)) {
     return error instanceof TypeError || error instanceof SyntaxError
-      ? 'editorial.test.draft.errors.unknown'
-      : 'editorial.test.draft.errors.failed';
+      ? { key: 'editorial.test.draft.errors.unknown', values: {} }
+      : byCode(undefined);
   }
   switch (error.status) {
     case 503:
-      return error.failureCode === 'model-not-configured'
-        ? 'editorial.test.draft.errors.modelNotConfigured'
-        : 'editorial.test.draft.errors.failed';
+      return byCode(error.failureCode === 'model-not-configured' ? error.failureCode : undefined);
     case 502:
-      return error.failureCode === 'editorial.ai-draft-malformed'
-        ? 'editorial.test.draft.errors.malformed'
-        : 'editorial.test.draft.errors.failed';
+      return byCode(error.failureCode === 'editorial.ai-draft-malformed' ? error.failureCode : undefined);
     case 504:
-      return 'editorial.test.draft.errors.timedOut';
+      return { key: 'editorial.test.draft.errors.timedOut', values: {} };
     case 429:
       return error.code === 'editorial.model-limit-reached'
-        ? 'editorial.test.draft.errors.limitReached'
-        : 'editorial.test.draft.errors.tooManyRequests';
+        ? byCode(error.code)
+        : { key: 'editorial.test.draft.errors.tooManyRequests', values: {} };
     default:
-      return (error.code === undefined ? undefined : byCode[error.code]) ?? 'editorial.test.draft.errors.failed';
+      return byCode(error.failureCode);
   }
 }

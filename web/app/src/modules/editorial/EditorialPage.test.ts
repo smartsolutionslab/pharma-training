@@ -331,26 +331,47 @@ test('a course started from the inbox is posted, reported, and its first version
   await waitFor(() => expect(listsAsked().length).toBeGreaterThan(1));
 });
 
-// A module's own words are shown as the host sent them (ApiError.serverMessage); the catalog speaks when it sent none.
+/** A refusal of the course as the host sends it: a code, and its words, which only an unknown module code shows. */
+const refusedCourse = (code: string) =>
+  new Response(JSON.stringify({ title: 'Bad Request', status: 400, detail: 'SERVER WORDS', code }), {
+    status: 400,
+    headers: { 'Content-Type': 'application/problem+json' },
+  });
+
+// A refusal is shown by its code in the catalog's words (#147, ADR 0007); the host's words only for a module code the
+// catalog does not know; the action's own text for anything without a code.
 test.each([
   [
-    400,
-    () =>
-      new Response(
-        JSON.stringify({
-          title: 'Bad Request',
-          status: 400,
-          detail: 'Der Titel ist ungültig.',
-          code: 'editorial.invalid-course-title',
-        }),
-        { status: 400, headers: { 'Content-Type': 'application/problem+json' } },
-      ),
-    () => 'Der Titel ist ungültig.',
+    '400 invalid-course-title',
+    () => refusedCourse('editorial.invalid-course-title'),
+    () => 'Der Titel einer Schulung hat 1 bis 150 Zeichen und darf nicht leer sein.',
   ],
-  [500, () => new Response('', { status: 500 }), () => 'Die Schulung Hygiene II konnte nicht angelegt werden.'],
+  [
+    '403 identity-incomplete',
+    () => refusedCourse('editorial.identity-incomplete'),
+    () => 'Ihre Anmeldung nennt keine Person. Melden Sie sich erneut an.',
+  ],
+  [
+    '400 with a module code the catalog does not know',
+    () => refusedCourse('editorial.zzz-unknown'),
+    () => 'SERVER WORDS',
+  ],
+  ['500', () => new Response('', { status: 500 }), () => 'Die Schulung Hygiene II konnte nicht angelegt werden.'],
+  [
+    '502 of the edge',
+    () => new Response('', { status: 502 }),
+    () => 'Die Schulung Hygiene II konnte nicht angelegt werden.',
+  ],
+  [
+    'network error',
+    () => {
+      throw new TypeError('Failed to fetch');
+    },
+    () => 'Die Schulung Hygiene II konnte nicht angelegt werden.',
+  ],
 ])(
-  'a course the host answers with %i is reported, and the dialog stays open with the title entered',
-  async (_status, answer, message) => {
+  'a course the host answers with a %s is reported, and the dialog stays open with the title entered',
+  async (_answer, answer, message) => {
     const user = userEvent.setup();
     creation = async () => answer();
     const { router } = await renderAt();
@@ -365,6 +386,20 @@ test.each([
     expect(dialog.getByRole('textbox', { name: t('editorial.course.form.title') })).toHaveValue('Hygiene II');
   },
 );
+
+test('a course refused with invalid-course-title is reported in English when the page speaks English', async () => {
+  const user = userEvent.setup();
+  creation = async () => refusedCourse('editorial.invalid-course-title');
+  await renderAt();
+  setLanguage('en-GB', { remember: false });
+
+  await startCourse(user, 'Hygiene II');
+
+  await waitFor(() =>
+    expect(notify.failure).toHaveBeenCalledWith("A course's title has 1 to 150 characters and must not be blank."),
+  );
+  expect(String(notify.failure.mock.calls)).not.toContain('SERVER WORDS');
+});
 
 test('a blank title is refused in the dialog before anything is sent', async () => {
   const user = userEvent.setup();
