@@ -11,6 +11,7 @@ internal static class CertificationIssuing
 {
     public const string StartedType = "SmartSolutionsLab.PharmaTraining.Contracts.Organisation.MembershipStartedV1";
     public const string EndedType = "SmartSolutionsLab.PharmaTraining.Contracts.Organisation.MembershipEndedV1";
+    public const string ChangedType = "SmartSolutionsLab.PharmaTraining.Contracts.Organisation.MembershipChangedV1";
     public const string PublishedType = "SmartSolutionsLab.PharmaTraining.Contracts.Editorial.CourseVersionPublishedV1";
     public const string PassedType = "SmartSolutionsLab.PharmaTraining.Contracts.Assessment.TestPassedV1";
 
@@ -38,8 +39,19 @@ internal static class CertificationIssuing
     public static StartedEvent Started(Guid personId, DateTimeOffset startedAt) =>
         new(Guid.CreateVersion7(), personId, Guid.CreateVersion7(), $"Anna Berger {Guid.CreateVersion7()}", "Pta", "Employee", startedAt, NewMetadata());
 
+    /// <summary>The person starts a membership in the pharmacy, in the role (<c>Manager</c> or <c>Employee</c>), at the instant.</summary>
+    public static StartedEvent StartedIn(Guid personId, Guid pharmacyId, string role, DateTimeOffset startedAt) =>
+        new(Guid.CreateVersion7(), personId, pharmacyId, $"Anna Berger {Guid.CreateVersion7()}", "Pta", role, startedAt, NewMetadata());
+
     public static EndedEvent Ended(StartedEvent started) =>
-        new(started.MembershipId, started.PersonId, started.PharmacyId, TimeProvider.System.GetUtcNow(), NewMetadata());
+        EndedAt(started, TimeProvider.System.GetUtcNow());
+
+    public static EndedEvent EndedAt(StartedEvent started, DateTimeOffset endedAt) =>
+        new(started.MembershipId, started.PersonId, started.PharmacyId, endedAt, NewMetadata());
+
+    /// <summary>Organisation changes the membership's role at the version; the first change is version 2.</summary>
+    public static ChangedEvent Changed(StartedEvent started, string role, int version) =>
+        new(started.MembershipId, started.PersonId, started.PharmacyId, started.DisplayName, started.JobFunction, role, version, NewMetadata());
 
     public static PublishedEvent Published(int validityMonths = 12) =>
         new(
@@ -95,6 +107,8 @@ internal static class CertificationIssuing
     public sealed record StartedEvent(Guid MembershipId, Guid PersonId, Guid PharmacyId, string DisplayName, string JobFunction, string Role, DateTimeOffset StartedAt, EventMetadata Metadata);
 
     public sealed record EndedEvent(Guid MembershipId, Guid PersonId, Guid PharmacyId, DateTimeOffset EndedAt, EventMetadata Metadata);
+
+    public sealed record ChangedEvent(Guid MembershipId, Guid PersonId, Guid PharmacyId, string DisplayName, string JobFunction, string Role, int Version, EventMetadata Metadata);
 
     public sealed record SentChapter(Guid ChapterId, int Position, string Title, string Kind, int? VideoDurationSeconds, string? Text, string? File);
 

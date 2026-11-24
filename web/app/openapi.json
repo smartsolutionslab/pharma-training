@@ -531,6 +531,82 @@
         }
       }
     },
+    "/certification/pharmacies/{id}/certificates/export": {
+      "get": {
+        "tags": [
+          "CertificateExportEndpoint"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stream"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/certification/me/certificates": {
       "get": {
         "tags": [
@@ -5984,6 +6060,10 @@
           }
         }
       },
+      "Stream": {
+        "type": "string",
+        "format": "binary"
+      },
       "Unit": {
         "type": "object"
       }
@@ -5998,6 +6078,9 @@
     },
     {
       "name": "CertificateDocumentEndpoints"
+    },
+    {
+      "name": "CertificateExportEndpoint"
     },
     {
       "name": "MyCertificatesEndpoints"

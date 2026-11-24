@@ -7,8 +7,8 @@ using Microsoft.EntityFrameworkCore;
 namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Infrastructure;
 
 /// <summary>
-/// The memberships and their endings. The module's unit of work saves what is added; nothing is ever updated, so two
-/// deliveries of one event race only on its primary key.
+/// The memberships, their endings and their changes. The module's unit of work saves what is added; nothing is ever
+/// updated, a change being a row of its own, so two deliveries of one event race only on its primary key.
 /// </summary>
 public sealed class MembershipStore(CertificationDbContext context) : IMembershipStore
 {
@@ -21,6 +21,43 @@ public sealed class MembershipStore(CertificationDbContext context) : IMembershi
         context.Set<MembershipEnding>().AnyAsync(ending => ending.Id == membership, cancellationToken);
 
     public void Add(MembershipEnding ending) => context.Add(ending);
+
+    public Task<bool> HasChangeAsync(MembershipId membership, MembershipVersion version, CancellationToken cancellationToken) =>
+        context.Set<MembershipChange>().AnyAsync(change => change.Membership == membership && change.Version == version, cancellationToken);
+
+    public void Add(MembershipChange change) => context.Add(change);
+
+    public async Task<IReadOnlyList<MembershipRole>> ActiveRolesAsync(PersonId person, PharmacyId pharmacy, CancellationToken cancellationToken)
+    {
+        var active = context.Set<Membership>()
+            .AsNoTracking()
+            .Where(membership => membership.Person == person && membership.Pharmacy == pharmacy)
+            .Where(membership => !context.Set<MembershipEnding>().Any(ending => ending.Id == membership.Id));
+        var found = await active.ToListAsync(cancellationToken);
+        var changes = await context.Set<MembershipChange>()
+            .AsNoTracking()
+            .Where(change => active.Any(membership => membership.Id == change.Membership))
+            .ToListAsync(cancellationToken);
+        return [.. found.Select(membership => membership.CurrentRole([.. changes.Where(change => change.Membership == membership.Id)]))];
+    }
+
+    public async Task<IReadOnlyList<MembershipPeriod>> PeriodsInPharmacyAsync(PharmacyId pharmacy, CancellationToken cancellationToken)
+    {
+        var found = await context.Set<Membership>()
+            .AsNoTracking()
+            .Where(membership => membership.Pharmacy == pharmacy)
+            .Select(membership => new
+            {
+                membership.Person,
+                membership.StartedAt,
+                EndedAt = context.Set<MembershipEnding>()
+                    .Where(ending => ending.Id == membership.Id)
+                    .Select(ending => ending.EndedAt)
+                    .FirstOrDefault(),
+            })
+            .ToListAsync(cancellationToken);
+        return [.. found.Select(membership => MembershipPeriod.Of(membership.Person, membership.StartedAt, membership.EndedAt))];
+    }
 
     public async Task<Option<HolderName>> FindHolderNameAsync(PersonId person, CancellationToken cancellationToken) =>
         await context.Set<Membership>()

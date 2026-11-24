@@ -5,9 +5,10 @@ using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Memberships;
 namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Consumers;
 
 /// <summary>
-/// Stores a membership Organisation started, once, with the name a certificate's holder is given. A membership starts
+/// Stores a membership Organisation started, once, with the name a certificate's holder is given and the role it
+/// started in. A membership starts
 /// once, so a membership already stored means its event was handled, whatever the event's identifier or payload: a
-/// second delivery changes nothing, and the first one wins. The job function and the role are not kept, so not checked.
+/// second delivery changes nothing, and the first one wins. The job function is not kept, so not checked.
 /// It deduplicates on the membership id, not on <c>Metadata.EventIdentifier</c>: for a fact only ever inserted that is stronger, since it also absorbs a re-publish under a new identifier.
 /// </summary>
 public sealed class MembershipStartedV1Consumer(IMembershipStore memberships, ICertificationUnitOfWork unitOfWork)
@@ -20,6 +21,7 @@ public sealed class MembershipStartedV1Consumer(IMembershipStore memberships, IC
         Ensure.That(message.PersonId, nameof(message.PersonId)).IsNotEmpty();
         Ensure.That(message.PharmacyId, nameof(message.PharmacyId)).IsNotEmpty();
         ConsumerGuards.IsText(message.DisplayName, nameof(message.DisplayName), HolderName.MaxLength);
+        OrganisationRoles.Guard(message.Role, nameof(message.Role));
 
         var membership = MembershipId.From(message.MembershipId);
         if (await memberships.ExistsAsync(membership, cancellationToken))
@@ -32,6 +34,7 @@ public sealed class MembershipStartedV1Consumer(IMembershipStore memberships, IC
             PersonId.From(message.PersonId),
             PharmacyId.From(message.PharmacyId),
             HolderName.From(message.DisplayName),
+            OrganisationRoles.ToRole(message.Role),
             Timestamp.From(message.StartedAt)));
         await unitOfWork.CommitAsync(cancellationToken);
     }
