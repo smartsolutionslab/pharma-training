@@ -163,7 +163,7 @@ Regeln:
 | `PharmacyRegistered` | Organisation | Compliance, Certification | PharmacyId, Name |
 | `MembershipStarted` | Organisation | Compliance, Certification, Learning | MembershipId, PersonId, PharmacyId, DisplayName, JobFunction, Role |
 | `MembershipEnded` | Organisation | Compliance, Learning | MembershipId, PersonId, PharmacyId, EndedAt |
-| `MembershipChanged` | Organisation | Compliance, Learning | MembershipId, PersonId, PharmacyId, DisplayName, JobFunction, Role, Version |
+| `MembershipChanged` | Organisation | Compliance, Learning, Certification | MembershipId, PersonId, PharmacyId, DisplayName, JobFunction, Role, Version |
 | `CourseAssigned` | Compliance | (keiner in MVP 1, später Benachrichtigung) | AssignmentId, PersonId, PharmacyId, CourseId, DueDate |
 | `AssignmentCompleted` | Compliance | (keiner in MVP 1) | AssignmentId, CertificateId, CompletedAt, Late |
 | `LearningSessionStarted` | Learning | Compliance | SessionId, PersonId, CourseId, CourseVersionId |
@@ -279,6 +279,8 @@ Inhalt: `CertificateId`, `PersonId`, `HolderName`, `CourseTitle` und `CourseVers
 
 QR-Prüfung (`GET /certification/verify/{code}`, öffentlich, Z2): zeigt nur Name, Schulung, Ausstellungs- und Gültig-bis-Datum sowie gültig/abgelaufen. Unbekannte, falsch geformte Codes und Ids bekommen dieselbe Antwort (404, `certification.certificate-not-verifiable`). Begrenzt auf 30 pro Minute und 500 pro Tag je Client-Adresse (ADR 0029).
 
+Export (`GET /certification/pharmacies/{id}/certificates/export?from=&to=`, Z3, #52): nur für Mitglieder, deren aktuelle Rolle in der Apotheke den Export erlaubt (Leitung; sonst 404 `certification.pharmacy-not-found` für Nicht-Mitglieder, 403 `certification.capability-missing`). Exportiert wird jede Bestätigung, deren Inhaber zum Zeitpunkt der Ausstellung Mitglied dieser Apotheke war (Beginn eingeschlossen, Ende ausgeschlossen, auch ehemalige Mitglieder) und deren Ausstellungstag in Deutschland in `from`..`to` liegt (beide eingeschlossen, höchstens fünf Jahre, sonst 400 `certification.invalid-export-period`; höchstens 2000 Bestätigungen, sonst 400 `certification.export-too-large`). Der Dienst schreibt das ZIP direkt in die Antwort und speichert es nicht: `index.csv` (UTF-8 mit BOM, `;`, CRLF; Spalten Bestätigungs-Id, Name, Schulung, Version, Ausgestellt am, Gültig bis, Ergebnis (%), Prüfcode, PDF; Schutz gegen Formeln) und `pdf/{id}.pdf` je gespeichertem PDF; ein noch nicht erzeugtes PDF steht in der CSV als `noch nicht erstellt` (ADR 0032).
+
 ## Endpunkte und Read Models (MVP 1)
 
 Alle Pfade beginnen mit dem Modulnamen; der Edge leitet danach weiter. Kein Service ruft einen anderen synchron auf: Was ein Bildschirm braucht, liegt als lokale Kopie im Service, der ihn bedient.
@@ -321,7 +323,7 @@ Lokale Kopien, die daraus folgen:
 
 - **Compliance** hält Namen der Mitglieder (`MembershipStarted`) und Titel der Schulungen (`CourseVersionPublished`) für Matrix und Dashboard. Der Status kommt aus der Zuweisung selbst; Learning wird nicht abgefragt.
 - **Compliance** hält außerdem gestartete Sitzungen (`LearningSessionStarted`) und ausgestellte Bestätigungen (`CertificateIssued`), ohne Namen; daraus leitet es die Version der laufenden Sitzung ab, die das Dashboard fortsetzt (ADR 0028).
-- **Certification** hält Mitgliedschaften mit Beginn und Ende, damit der Export nur Bestätigungen aus der Beschäftigungszeit bei dieser Apotheke enthält.
+- **Certification** hält Mitgliedschaften mit Beginn, Ende und aktueller Rolle (Rolle beim Beginn, dann die Änderung mit der höchsten Version, nur die Rolle), damit der Export nur Bestätigungen aus der Beschäftigungszeit bei dieser Apotheke enthält.
 - **Learning** und **Assessment** halten Kapitelstruktur bzw. Testdefinition der Version.
 - **Learning** hält Mitgliedschaften ohne Namen, Rolle und Tätigkeit (Beginn, Änderungen, Ende), um nur aktive Mitglieder lernen zu lassen; nach dem Ende bleibt die eigene Sitzung lesbar.
 
