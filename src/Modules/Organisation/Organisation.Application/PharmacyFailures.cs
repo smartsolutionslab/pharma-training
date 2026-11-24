@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.Net;
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.InvitationRecipients;
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.InvitationSenders;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application;
@@ -57,6 +59,8 @@ public static class PharmacyFailures
             InvitationExpired => ApiError.From(error, HttpStatusCode.Gone),
             InvitationRenewedTooSoon tooSoon => ApiError.RetryLater(tooSoon, tooSoon.RetryAt.Value),
             TooManyInvitationsToday tooMany => ApiError.RetryLater(tooMany, tooMany.RetryAt.Value),
+            RecipientMailedRecently recently => ApiError.RetryLater(recently, recently.RetryAt.Value),
+            TooManyInvitationsSentToday tooManySent => ApiError.RetryLater(tooManySent, tooManySent.RetryAt.Value),
             _ => throw new UnreachableException(
                 $"{error.Code} is not returned by an Organisation use case yet; map it where it is first returned."),
         };
