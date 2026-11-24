@@ -15,6 +15,8 @@ public class QuestionMappingsTests
 
     public static TheoryData<ReviewState> Reviews => Every<ReviewState>();
 
+    public static TheoryData<QuestionOrigin> Origins => Every<QuestionOrigin>();
+
     [Fact]
     public void An_approved_question_carries_its_content_its_provenance_its_approver_and_the_time()
     {
@@ -89,6 +91,31 @@ public class QuestionMappingsTests
         dto.Options.Select(option => (option.Text, option.Correct)).ShouldBe([("Rezepturtisch", true), ("Waage", true), ("Schaufenster", false)]);
     }
 
+    /// <summary>How each question came into its version (#245), so the page can count the ones an AI draft replaces.</summary>
+    [Fact]
+    public void A_question_carries_how_it_came_into_its_version()
+    {
+        var version = DraftWithQuestion(out var chapter, out _);
+        version.ApplyAiTestDraft([MultipleChoice(chapter)], QuestionId.New, AnswerOptionId.New).IsSuccess.ShouldBeTrue();
+
+        var dto = version.ToDto();
+
+        dto.Questions.Select(question => question.Origin).ShouldBe([EditorialQuestionOrigin.HandWritten, EditorialQuestionOrigin.AiDraft]);
+    }
+
+    [Fact]
+    public void A_copied_question_says_so()
+    {
+        var next = Published().DraftNext(CourseVersionId.New(), Author, ChapterId.New, QuestionId.New, AnswerOptionId.New).Value;
+
+        next.Questions.ShouldHaveSingleItem().ToDto(1).Origin.ShouldBe(EditorialQuestionOrigin.Copied);
+    }
+
+    [Theory]
+    [MemberData(nameof(Origins))]
+    public void An_origin_travels_under_its_own_name_to_the_dto(QuestionOrigin origin) =>
+        origin.ToDto().ToString().ShouldBe(origin.ToString());
+
     [Fact]
     public void An_answer_option_carries_its_id_its_text_and_whether_it_is_correct()
     {
@@ -154,12 +181,13 @@ public class QuestionMappingsTests
     }
 
     [Fact]
-    public void An_undefined_type_provenance_or_review_is_a_bug()
+    public void An_undefined_type_provenance_review_or_origin_is_a_bug()
     {
         Should.Throw<UnreachableException>(() => ((QuestionType)99).ToDto());
         Should.Throw<UnreachableException>(() => default(EditorialQuestionType).ToDomain());
         Should.Throw<UnreachableException>(() => ((Provenance)99).ToDto());
         Should.Throw<UnreachableException>(() => ((ReviewState)99).ToDto());
+        Should.Throw<UnreachableException>(() => ((QuestionOrigin)99).ToDto());
     }
 
     private static TheoryData<TEnum> Every<TEnum>()

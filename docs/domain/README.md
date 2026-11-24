@@ -163,7 +163,7 @@ Regeln:
 | `PharmacyRegistered` | Organisation | Compliance, Certification | PharmacyId, Name |
 | `MembershipStarted` | Organisation | Compliance, Certification, Learning | MembershipId, PersonId, PharmacyId, DisplayName, JobFunction, Role |
 | `MembershipEnded` | Organisation | Compliance, Learning | MembershipId, PersonId, PharmacyId, EndedAt |
-| `MembershipChanged` | Organisation | Compliance, Learning | MembershipId, PersonId, PharmacyId, DisplayName, JobFunction, Role, Version |
+| `MembershipChanged` | Organisation | Compliance, Learning, Certification | MembershipId, PersonId, PharmacyId, DisplayName, JobFunction, Role, Version |
 | `CourseAssigned` | Compliance | (keiner in MVP 1, später Benachrichtigung) | AssignmentId, PersonId, PharmacyId, CourseId, DueDate |
 | `AssignmentCompleted` | Compliance | (keiner in MVP 1) | AssignmentId, CertificateId, CompletedAt, Late |
 | `LearningSessionStarted` | Learning | Compliance | SessionId, PersonId, CourseId, CourseVersionId |
@@ -259,11 +259,13 @@ Das Aggregat ist die **Version**, nicht die Schulung: Jede Änderung nach der Ve
 
 Status: `Draft` → `InReview` → `Published` → `Superseded` bzw. `Retired`.
 
+Jede Frage vermerkt ihren Ursprung in der Version (`QuestionOrigin`, #245): `AiDraft` (aus einem KI-Entwurf), `Copied` (beim Anlegen der nächsten Version aus der veröffentlichten kopiert) oder `HandWritten` (von Hand angelegt). Eine Änderung durch die Redaktion lässt den Ursprung unverändert, wie die Herkunft (`Provenance`), die eine Kopie behält. Außerdem vermerkt jede Frage, ob die Redaktion sie geändert hat (`EditHistory`: `Untouched`, `Edited`) und ob sie je freigegeben wurde (`ApprovalHistory`: `NeverApproved`, `ApprovedOnce`; Entscheidung des Owners vom 2026-11-24). Anders als der Prüfstand (`ReviewState`) nimmt weder eine Änderung noch eine geänderte Testvorgabe (#199) die einmal erteilte Freigabe aus diesem Vermerk zurück. Eine Kopie behält beide Vermerke, wie Herkunft und Freigabe.
+
 | Command | Invarianten |
 | --- | --- |
 | `AddChapter` / `ReorderChapters` / `EditChapter` | Nur im Entwurf; Kapitel ist Text (Markdown), PDF oder Video (Blob + Dauer) |
 | `SetTestBlueprint` | Anzahl Fragen (Standard 10), Bestehensgrenze (Standard 80 %), Gültigkeit in Monaten; nur im Entwurf; eine Änderung einer der drei Vorgaben setzt die Freigabe aller Fragen zurück, auch kopierter; dieselben Werte ändern nichts |
-| `ApplyAiTestDraft` | Ersetzt nur ungeprüfte Fragen; jede Frage trägt Herkunft `AiDrafted` |
+| `ApplyAiTestDraft` | Ersetzt nur KI-entworfene Fragen, die ungeprüft, nie von der Redaktion geändert und nie freigegeben sind (#245, Entscheidungen des Owners vom 2026-11-23 und 2026-11-24); freigegebene, kopierte und von Hand geschriebene Fragen bleiben, auch ungeprüft, ebenso KI-entworfene, die die Redaktion geändert oder einmal freigegeben hat, auch nachdem eine geänderte Testvorgabe die Freigabe zurückgesetzt hat; sie brauchen nur eine neue Freigabe; der Entwurf fragt nach der Vorgabe abzüglich der bleibenden Fragen; jede entworfene Frage trägt Herkunft `AiDrafted` und Ursprung `AiDraft` |
 | `EditQuestion` / `ApproveQuestion` | Freigabe vermerkt Redakteur und Zeitpunkt |
 | `SubmitForReview` | Mindestens ein Kapitel; Test vollständig laut Vorgaben |
 | `Publish` | Alle Fragen freigegeben; jede Frage einem Kapitel zugeordnet; Single Choice genau eine richtige Option, Multiple Choice mindestens eine; bei Vier-Augen-Einstellung freigebende ≠ einreichende Person |
@@ -278,6 +280,8 @@ Entsteht aus `TestPassed`; pro bestandenem Versuch genau eine Bestätigung (Atte
 Inhalt: `CertificateId`, `PersonId`, `HolderName`, `CourseTitle` und `CourseVersionNumber` (die Versionsnummer der Redaktion, ab 1) als Momentaufnahme beim Ausstellen, `CourseVersionId`, `Score`, `IssuedAt`, `ValidUntil` (Ausstellung + Gültigkeit der Version), `VerificationCode` (zufällig, nicht die Id, für den QR-Code). Das PDF wird im selben Commit wie die Ausstellung angefordert (`CertificateDocumentRequestedV1`, bleibt im Certification-Host), einmal aus der Momentaufnahme erzeugt, unter `certificates/{id}.pdf` im eigenen Container nur angelegt, nie überschrieben, und danach nie neu erzeugt (#50).
 
 QR-Prüfung (`GET /certification/verify/{code}`, öffentlich, Z2): zeigt nur Name, Schulung, Ausstellungs- und Gültig-bis-Datum sowie gültig/abgelaufen. Unbekannte, falsch geformte Codes und Ids bekommen dieselbe Antwort (404, `certification.certificate-not-verifiable`). Begrenzt auf 30 pro Minute und 500 pro Tag je Client-Adresse (ADR 0029).
+
+Export (`GET /certification/pharmacies/{id}/certificates/export?from=&to=`, Z3, #52): nur für Mitglieder, deren aktuelle Rolle in der Apotheke den Export erlaubt (Leitung; sonst 404 `certification.pharmacy-not-found` für Nicht-Mitglieder, 403 `certification.capability-missing`). Exportiert wird jede Bestätigung, deren Inhaber zum Zeitpunkt der Ausstellung Mitglied dieser Apotheke war (Beginn eingeschlossen, Ende ausgeschlossen, auch ehemalige Mitglieder) und deren Ausstellungstag in Deutschland in `from`..`to` liegt (beide eingeschlossen, höchstens fünf Jahre, sonst 400 `certification.invalid-export-period`; höchstens 2000 Bestätigungen, sonst 400 `certification.export-too-large`). Der Dienst schreibt das ZIP direkt in die Antwort und speichert es nicht: `index.csv` (UTF-8 mit BOM, `;`, CRLF; Spalten Bestätigungs-Id, Name, Schulung, Version, Ausgestellt am, Gültig bis, Ergebnis (%), Prüfcode, PDF; Schutz gegen Formeln) und `pdf/{id}.pdf` je gespeichertem PDF; ein noch nicht erzeugtes PDF steht in der CSV als `noch nicht erstellt` (ADR 0032).
 
 ## Endpunkte und Read Models (MVP 1)
 
@@ -306,7 +310,7 @@ Alle Pfade beginnen mit dem Modulnamen; der Edge leitet danach weiter. Kein Serv
 | compliance | `GET /compliance/pharmacies/{id}/members?jobFunction=` | Leitung | Aktive Mitglieder für den Zuweisungsassistenten, nach Name, filterbar nach Tätigkeit |
 | compliance | `GET …/assignments/{aid}` | Leitung | Zuweisung mit Historie (wer, was, wann) |
 | compliance | `PATCH …/assignments/{aid}`, `DELETE …/assignments/{aid}` | Leitung | Frist ändern, zurückziehen |
-| compliance | `GET /compliance/pharmacies/{id}/matrix?jobFunction=` | Leitung | Matrix Mitarbeiter × Schulung mit Status und Quote (C3); Zeilen = aktive Mitglieder, seitenweise; Spalten = Schulungen mit mindestens einer nicht stornierten Zuweisung in der Apotheke; Quote = konforme unter allen Zellen (je Person und Schulung die neueste nicht stornierte Zuweisung): offen, in Bearbeitung oder gesperrt ist konform, überfällig nicht, abgeschlossen (auch verspätet) bis einschließlich „gültig bis“ = deutscher Abschlusstag + Gültigkeitsmonate der neuesten Version; für alle Zeilen des Filters, je Schulung und gesamt; ohne Zelle keine Quote |
+| compliance | `GET /compliance/pharmacies/{id}/matrix?jobFunction=` | Leitung | Matrix Mitarbeiter × Schulung mit Status und Quote (C3); Zeilen = aktive Mitglieder, seitenweise; Spalten = Schulungen mit mindestens einer nicht stornierten Zuweisung in der Apotheke; Quote = konforme unter allen Zellen (je Person und Schulung die neueste nicht stornierte Zuweisung): offen, in Bearbeitung oder gesperrt ist konform, überfällig nicht, abgeschlossen (auch verspätet) bis einschließlich „gültig bis“ = deutscher Abschlusstag + Gültigkeitsmonate der Version, für die das Zertifikat der Zuweisung ausgestellt wurde (Compliance' Kopie aus `CertificateIssued`), ohne diese Kopie oder wenn Compliance die Version nicht kennt der neuesten Version (#287); für alle Zeilen des Filters, je Schulung und gesamt; ohne Zelle keine Quote |
 | compliance | `GET /compliance/me/assignments?pharmacyId=` | Mitglied | Mein Dashboard: aktive Zuweisungen in der gewählten Apotheke, Überfällige zuerst, mit Startversion (C4) |
 | learning | `POST /learning/sessions` | Mitglied | Starten oder fortsetzen (idempotent) |
 | learning | `GET /learning/sessions/{id}`, `POST …/{id}/progress` | Mitglied | Fortschritt lesen und melden (L1, L2) |
@@ -321,7 +325,7 @@ Lokale Kopien, die daraus folgen:
 
 - **Compliance** hält Namen der Mitglieder (`MembershipStarted`) und Titel der Schulungen (`CourseVersionPublished`) für Matrix und Dashboard. Der Status kommt aus der Zuweisung selbst; Learning wird nicht abgefragt.
 - **Compliance** hält außerdem gestartete Sitzungen (`LearningSessionStarted`) und ausgestellte Bestätigungen (`CertificateIssued`), ohne Namen; daraus leitet es die Version der laufenden Sitzung ab, die das Dashboard fortsetzt (ADR 0028).
-- **Certification** hält Mitgliedschaften mit Beginn und Ende, damit der Export nur Bestätigungen aus der Beschäftigungszeit bei dieser Apotheke enthält.
+- **Certification** hält Mitgliedschaften mit Beginn, Ende und aktueller Rolle (Rolle beim Beginn, dann die Änderung mit der höchsten Version, nur die Rolle), damit der Export nur Bestätigungen aus der Beschäftigungszeit bei dieser Apotheke enthält.
 - **Learning** und **Assessment** halten Kapitelstruktur bzw. Testdefinition der Version.
 - **Learning** hält Mitgliedschaften ohne Namen, Rolle und Tätigkeit (Beginn, Änderungen, Ende), um nur aktive Mitglieder lernen zu lassen; nach dem Ende bleibt die eigene Sitzung lesbar.
 

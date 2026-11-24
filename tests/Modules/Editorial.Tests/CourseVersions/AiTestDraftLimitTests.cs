@@ -5,8 +5,8 @@ using static SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVers
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersions;
 
 /// <summary>
-/// An AI test draft keeps the approved questions and replaces the rest; the approved ones and the draft together hold at
-/// most <see cref="QuestionCount.Maximum"/> questions. A draft beyond it is refused as a rule of the version, never
+/// An AI test draft keeps the approved questions, and the copied and hand-written ones, and replaces the unreviewed
+/// AI-drafted ones (#245); the kept ones and the draft together hold at most <see cref="QuestionCount.Maximum"/> questions. A draft beyond it is refused as a rule of the version, never
 /// thrown, and leaves the questions as they were.
 /// </summary>
 public class AiTestDraftLimitTests
@@ -49,11 +49,11 @@ public class AiTestDraftLimitTests
         version.Questions.Count(question => question.Review == ReviewState.Approved).ShouldBe(1);
     }
 
-    /// <summary>A draft with one chapter, one approved question and one unreviewed question about it.</summary>
+    /// <summary>A draft with one chapter, one approved question and one unreviewed AI-drafted question about it, which a draft replaces.</summary>
     private static CourseVersion WithApprovedAndUnreviewed(out ChapterId chapter)
     {
         var version = DraftWithApprovedQuestion(out chapter, out _);
-        version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).IsSuccess.ShouldBeTrue();
+        version.ApplyAiTestDraft([SingleChoice(chapter)], QuestionId.New, AnswerOptionId.New).IsSuccess.ShouldBeTrue();
         return version;
     }
 

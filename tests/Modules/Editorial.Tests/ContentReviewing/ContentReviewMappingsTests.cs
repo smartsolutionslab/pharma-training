@@ -32,11 +32,12 @@ public class ContentReviewMappingsTests
         Should.Throw<System.Diagnostics.UnreachableException>(() => ((ContentHintKind)99).ToDto());
 
     [Fact]
-    public void A_review_maps_to_its_reviewed_chapter_ids_and_hints()
+    public void A_review_maps_to_its_reviewed_chapter_ids_hints_and_left_out_and_truncated_chapter_ids()
     {
         var first = ChapterId.New();
         var second = ChapterId.New();
-        var review = new ContentReview([first, second], [new ContentHint(first, ContentHintKind.Gap, "Schritt 3 fehlt."), new ContentHint(second, ContentHintKind.Readability, "Der Satz ist zu lang.")]);
+        var video = ChapterId.New();
+        var review = new ContentReview([first, second], [new ContentHint(first, ContentHintKind.Gap, "Schritt 3 fehlt."), new ContentHint(second, ContentHintKind.Readability, "Der Satz ist zu lang.")], [video], [second]);
 
         var dto = review.ToDto();
 
@@ -46,6 +47,8 @@ public class ContentReviewMappingsTests
             new EditorialContentHintDto(first.Value, EditorialContentHintKind.Gap, "Schritt 3 fehlt."),
             new EditorialContentHintDto(second.Value, EditorialContentHintKind.Readability, "Der Satz ist zu lang."),
         ]);
+        dto.LeftOutChapterIds.ShouldBe([video.Value]);
+        dto.TruncatedChapterIds.ShouldBe([second.Value]);
     }
 
     [Fact]

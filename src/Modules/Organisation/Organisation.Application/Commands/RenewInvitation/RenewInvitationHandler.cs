@@ -39,6 +39,7 @@ public sealed class RenewInvitationHandler(
         // instance shares, so a clock days apart cannot lift or lock the limits (docs/adr/0004).
         var now = await clock.NowAsync(cancellationToken);
         InvitationMailClock.WarnWhenAhead(logger, pharmacy, now);
+        InvitationMailClock.WarnWhenRequestedAhead(logger, pharmacy, command.Membership, now, limits.RenewCooldown);
         var changed = pharmacy.RenewInvitation(command.Membership, now, limits);
         if (changed.IsFailure)
         {
@@ -60,9 +61,10 @@ public sealed class RenewInvitationHandler(
             await unitOfWork.PublishAsync(requested.ToIntegrationEvent());
         }
 
-        if (!await unitOfWork.TryCommitAsync(cancellationToken))
+        var saved = await unitOfWork.TryCommitAsync(cancellationToken);
+        if (saved.IsFailure)
         {
-            return Failure(PharmacyFailures.Changed(command.Pharmacy.Value));
+            return Failure(PharmacyFailures.LostRace(saved.Error, command.Pharmacy.Value));
         }
 
         return Success(Unit.Value);

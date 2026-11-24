@@ -683,6 +683,17 @@ const retryable = [
       ),
     state: 'failed',
   },
+  // PostgreSQL ended the acceptance as a deadlock with another save: nothing was saved, worth trying again.
+  {
+    answer: 'a 409 concurrent-save',
+    refusal: async () =>
+      problem(
+        409,
+        'organisation.concurrent-save',
+        'Another change to the pharmacy was saved at the same moment; try again.',
+      ),
+    state: 'failed',
+  },
   // The unique index refused a membership saved at the same moment: a lost race, like pharmacy-changed.
   {
     answer: "the unique index's 409 already-exists",

@@ -173,5 +173,5 @@ public class InvitationMailedTests
 
     private Timestamp Now() => Timestamp.From(time.GetUtcNow());
 
-    private InvitationMailRequestedV1Consumer Consumer() => new(store, store, mails, Links(), time, logger);
+    private InvitationMailRequestedV1Consumer Consumer() => BothClocks.Consumer(store, mails, Links(), time, logger);
 }

@@ -23,6 +23,7 @@
   <Project Path="tests/BuildingBlocks/RateLimits.Tests/RateLimits.Tests.csproj" />
   <Project Path="tests/BuildingBlocks/Persistence.Tests/Persistence.Tests.csproj" />
   <Project Path="tests/BuildingBlocks/Messaging.Tests/Messaging.Tests.csproj" />
+  <Project Path="tests/BuildingBlocks/EventStore.Tests/EventStore.Tests.csproj" />
   <Project Path="tests/Integration.Tests/Integration.Tests.csproj" />
   <Project Path="src/Edge/Edge.csproj" />
   <Project Path="tests/Edge.Tests/Edge.Tests.csproj" />

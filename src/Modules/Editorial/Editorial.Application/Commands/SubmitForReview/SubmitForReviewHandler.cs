@@ -21,9 +21,10 @@ public sealed class SubmitForReviewHandler(ICourseVersionStore versions, IEditor
             return Failure(CourseVersionFailures.From(submitted.Error));
         }
 
-        if (!await unitOfWork.TryCommitAsync(cancellationToken))
+        var saved = await unitOfWork.TryCommitAsync(cancellationToken);
+        if (saved.IsFailure)
         {
-            return Failure(CourseVersionFailures.Changed(command.Version.Value));
+            return Failure(CourseVersionFailures.LostRace(saved.Error, command.Version.Value));
         }
 
         return Success(Unit.Value);

@@ -1,3 +1,4 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using System.Buffers.Text;
 using System.Net;
 using System.Security.Cryptography;
@@ -59,7 +60,7 @@ public class LostRaceTests
         pharmacy.IssueInvitationLink(invitation, token, TestPharmacies.RegisteredAt).IsSuccess.ShouldBeTrue();
         pharmacy.ClearDomainEvents();
 
-        var accepted = await new AcceptInvitationHandler(store, store, new FakeTimeProvider(TestPharmacies.RegisteredAt.Value))
+        var accepted = await BothClocks.Accept(store, new FakeTimeProvider(TestPharmacies.RegisteredAt.Value))
             .HandleAsync(
                 new AcceptInvitation(token, PersonId.From(Guid.CreateVersion7()), DisplayName.From("Bert Klein"), AccountEmail.From(email, verified: true)),
                 TestContext.Current.CancellationToken);
@@ -81,7 +82,7 @@ public class LostRaceTests
         var unitOfWork = new InMemoryPharmacyStore();
         IOrganisationUnitOfWork organisation = unitOfWork;
 
-        (await organisation.TryCommitAsync(TestContext.Current.CancellationToken)).ShouldBeTrue();
+        (await organisation.TryCommitAsync(TestContext.Current.CancellationToken)).IsSuccess.ShouldBeTrue();
 
         unitOfWork.Commits.ShouldBe(1);
     }

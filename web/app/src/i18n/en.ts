@@ -84,7 +84,7 @@ export const en: MessageSchema = {
       },
     },
     certification: {
-      title: 'Certificates',
+      title: 'My certificates',
       entries: {
         verify: { title: 'Verify a certificate' },
       },
@@ -133,6 +133,24 @@ export const en: MessageSchema = {
       loadFailed: 'The certificate could not be verified.',
     },
     retry: 'Try again',
+    mine: {
+      columns: {
+        course: 'Course',
+        issuedOn: 'Issued on',
+        validUntil: 'Valid until',
+        validity: 'Status',
+        document: 'PDF',
+      },
+      documentReady: 'Ready',
+      documentPending: 'Being prepared',
+      open: 'Open PDF',
+      openFor: 'Open PDF for {course}',
+      documentNotReady: 'The certificate for {course} is still being prepared. Please try again in a moment.',
+      documentFailed: 'The PDF for {course} could not be opened.',
+      empty: 'You have no certificates yet.',
+      toCourses: 'Go to my courses',
+      loadFailed: 'Your certificates could not be loaded.',
+    },
   },
   compliance: {
     matrix: {
@@ -211,6 +229,8 @@ export const en: MessageSchema = {
       submit: 'Assign',
       retry: 'Try again',
       changed: 'The assignments have changed in the meantime. Check the details and assign again.',
+      concurrentSave:
+        'Another change to the assignments was saved at the same moment; nothing was assigned. Please assign again.',
       failed: 'The course could not be assigned. Please try again.',
       course: {
         title: 'Choose a course',
@@ -444,6 +464,18 @@ export const en: MessageSchema = {
         Published: 'No published versions.',
       },
     },
+    returns: {
+      title: 'Returns',
+      columns: {
+        returnedAt: 'Returned on',
+        returnedBy: 'Returned by',
+        reason: 'Reason',
+      },
+      empty: 'This version has never been returned to draft.',
+      loadFailed: 'The returns of this version could not be loaded.',
+      byYou: 'You',
+      byAnotherEditor: 'Another person in the editorial team',
+    },
     course: {
       new: 'New course',
       form: {
@@ -598,9 +630,10 @@ export const en: MessageSchema = {
       },
       draft: {
         explain:
-          'The AI drafts the missing questions from the text chapters. You approve each question before it counts.',
+          'The AI drafts the missing questions from the text chapters and the text of the PDF chapters; it does not watch videos. You approve each question before it counts.',
         start: 'Draft with AI',
-        noTextChapters: 'The AI drafts from text chapters only. Add a text chapter first.',
+        noTextChapters:
+          'The AI drafts only from chapters with text: text chapters and PDF chapters whose text can be read. Add such a chapter first.',
         nothingToDraft: 'The approved questions already meet the blueprint; there is nothing to draft.',
         confirm: {
           title: 'Draft with AI?',
@@ -608,12 +641,19 @@ export const en: MessageSchema = {
             'The AI drafts one question. Approved questions stay. | The AI drafts {count} questions. Approved questions stay.',
           replaces:
             'One unreviewed question will be replaced, even if it was written by hand. | {count} unreviewed questions will be replaced, including those written by hand.',
-          leftOut: 'The AI does not read PDF and video chapters; write their questions by hand.',
+          leftOut:
+            'The AI does not read video chapters or PDF chapters without readable text; write their questions by hand.',
           submit: 'Draft',
         },
         running: 'The AI is drafting the test. This can take a few minutes; please keep the page open.',
         done: 'The AI drafted one question. Please review it. | The AI drafted {count} questions. Please review them.',
         leftOut: 'The AI drafted no questions for these chapters; write them by hand:',
+        truncated:
+          'The AI read only the beginning of these PDF chapters; write questions about their later pages by hand:',
+        leftOutSummary:
+          'The AI drafted no questions for one chapter; see the note. | The AI drafted no questions for {count} chapters; see the note.',
+        truncatedSummary:
+          'The AI read only the beginning of one PDF chapter; see the note. | The AI read only the beginning of {count} PDF chapters; see the note.',
         dismiss: 'Dismiss the note',
         errors: {
           tooManyRequests: 'You have asked for too many AI drafts in a short time. Try again later.',
@@ -702,6 +742,8 @@ export const en: MessageSchema = {
         reasonRequired: 'Please give a reason.',
         reasonTooLong: 'The reason can be at most {max} characters long.',
         reasonInvalid: 'The reason contains control or format characters that are not allowed.',
+        reasonRefused:
+          'The reason must be 1 to {max} characters long without leading or trailing spaces, and may contain no control or format characters other than line breaks and tabs.',
       },
       errors: {
         notADraft: 'Only a draft can be submitted.',
@@ -717,6 +759,23 @@ export const en: MessageSchema = {
     },
   },
   learning: {
+    myCourses: {
+      intro: 'Your courses in {pharmacy}: overdue first, then by due date.',
+      list: { title: 'Assigned courses' },
+      due: 'Due {date}',
+      dueOverdue: 'Was due {date}',
+      start: 'Start',
+      continue: 'Continue',
+      startCourse: 'Start: {title}',
+      continueCourse: 'Continue: {title}',
+      locked: 'The test is locked. Work through the content again to unlock it.',
+      notStartable: 'This course cannot be started at the moment: its version has been retired.',
+      empty: 'No course is currently assigned to you in {pharmacy}.',
+      pharmacyNotFound: 'You are no longer a member of this pharmacy.',
+      identityIncomplete: 'Your account gives no name or valid email address. Complete your profile.',
+      loadFailed: 'Your courses could not be loaded.',
+      retry: 'Try again',
+    },
     player: {
       loadFailed: 'The course could not be loaded.',
       notFound: 'This course does not exist.',
@@ -935,12 +994,17 @@ export const en: MessageSchema = {
       'sample-not-found': 'This sample does not exist.',
     },
     certification: {
+      'capability-missing': 'Your role in this pharmacy does not allow this.',
       'certificate-not-found': 'This certificate does not exist, or it is not yours.',
       'certificate-not-verifiable':
         'There is no certificate for this code. Check that you opened the complete link from the QR code.',
       'document-not-ready': "The certificate's PDF is being created. Try again in a moment.",
+      'export-too-large': 'An export holds at most 2000 certificates. Choose a shorter period.',
       'identity-incomplete': 'Your sign-in names no person. Please sign in again.',
+      'invalid-export-period':
+        'Choose a start and an end date; the end may not be before the start and at most five years after it.',
       'invalid-sample-name': "A sample's name has 1 to {max} characters and must not be blank.",
+      'pharmacy-not-found': 'You are not a member of this pharmacy, or it does not exist.',
       'sample-not-found': 'This sample does not exist.',
       'verification-limit-reached': 'Too many checks are being requested right now. Try again in a minute.',
     },
@@ -949,6 +1013,8 @@ export const en: MessageSchema = {
       'assignment-not-active': 'The assignment is no longer open.',
       'assignment-not-found': 'This assignment no longer exists in this pharmacy.',
       'assignments-changed': 'The assignments were changed in the meantime. Check their current state and try again.',
+      'concurrent-save':
+        'Another change to the assignments was saved at the same moment; nothing was saved. Try again.',
       'capability-missing': 'Your role in this pharmacy does not allow this.',
       'certificate-predates-assignment': 'A certificate from before the assignment does not fulfil it.',
       'course-missing': 'Choose a course.',
@@ -978,6 +1044,7 @@ export const en: MessageSchema = {
         "The content does not match the chapter's kind: a text chapter has text, a PDF chapter a PDF file, a video chapter a video with its duration.",
       'chapter-not-found': 'This chapter no longer exists in the version.',
       'course-version-changed': 'The version has changed in the meantime. Reload it and repeat the change.',
+      'concurrent-save': 'Another change to the version was saved at the same moment; nothing was saved. Try again.',
       'course-version-not-found': 'This version no longer exists.',
       'file-in-use': 'This file already belongs to another chapter of the version.',
       'four-eyes': 'Four-eyes approval does not let whoever submitted the version publish it. Ask another editor.',
@@ -1006,18 +1073,21 @@ export const en: MessageSchema = {
       'next-version-exists':
         'A newer version of this course already exists. Continue that one instead of creating another.',
       'no-chapters': 'The version needs at least one chapter.',
-      'no-text-chapters': 'The AI drafts only from text chapters. Add a text chapter first.',
-      'no-text-chapters-to-review': 'The version has no text chapter for the AI to review.',
+      'no-text-chapters':
+        'The AI drafts only from chapters with text: text chapters and PDF chapters whose text can be read. Add such a chapter first.',
+      'no-text-chapters-to-review': 'The version has no chapter with text for the AI to review.',
       'not-a-draft': 'Only a draft can be edited.',
       'not-in-review': 'The version is no longer in review.',
       'not-published': 'The version is not published.',
       'nothing-to-draft': 'The approved questions already meet the blueprint; there is nothing to draft.',
       'order-does-not-match': 'The order must contain every chapter exactly once. Reload the version.',
+      'pdf-readers-busy': 'Too many PDFs are being read right now. Try again in a few seconds.',
       'publisher-approved-questions':
         'Four-eyes approval does not let whoever approved questions of this version publish it. Ask another editor.',
       'question-already-approved': 'This question is already approved. Edit it to approve it again.',
       'question-not-approved': 'Every question must be approved before publishing.',
       'question-not-found': 'This question no longer exists in the version.',
+      'republish-running': 'A republish is already running. Wait until it has finished.',
       'reviewer-name-missing': 'Your account gives no name that can be shown. Complete your profile and sign in again.',
       'sample-not-found': 'This sample does not exist.',
       'single-choice-one-correct': 'A single-choice question has exactly one correct answer.',
@@ -1025,7 +1095,7 @@ export const en: MessageSchema = {
       'too-few-options': 'A question needs at least {min} answer options.',
       'too-many-questions': 'A test has at most {max} questions.',
       'too-much-content-to-draft':
-        'The text chapters are too long for an AI draft. Shorten them or write the questions by hand.',
+        'The text chapters together are too long for an AI draft; PDF chapters are cut to fit, text chapters are not. Shorten the text chapters or write the questions by hand.',
       'too-much-content-to-review': 'The text chapters are too long for one AI review.',
       'upload-not-accepted': 'The file is neither a PDF nor an MP4 video.',
       'upload-not-found': 'The file has not been uploaded yet. Upload it, then save again.',
@@ -1074,6 +1144,7 @@ export const en: MessageSchema = {
       'no-open-invitation': 'This invitation is no longer open: it was accepted or revoked.',
       'person-already-member': 'You are already a member of this pharmacy.',
       'pharmacy-changed': 'The pharmacy was changed at the same time. Check its current state and try again.',
+      'concurrent-save': 'Another change to the pharmacy was saved at the same moment; nothing was saved. Try again.',
       'pharmacy-not-found': 'You are no longer a member of this pharmacy.',
       'recipient-mailed-recently':
         'An invitation was only just sent to this address. You can invite it again after a short wait.',

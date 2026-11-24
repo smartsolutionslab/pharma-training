@@ -1,3 +1,4 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.Contracts;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Assignments;
@@ -17,6 +18,8 @@ internal sealed class InMemoryAssignmentStore : IAssignmentStore, IComplianceUni
     private readonly List<Assignment> added = [];
     private readonly List<IntegrationEvent> queued = [];
     private bool loseNextCommit;
+
+    private LostRace how = new VersionMovedOn();
 
     public List<Assignment> Stored { get; } = [];
 
@@ -117,21 +120,28 @@ internal sealed class InMemoryAssignmentStore : IAssignmentStore, IComplianceUni
         return Task.CompletedTask;
     }
 
-    /// <summary>The next <see cref="TryCommitAsync"/> answers <see langword="false"/> and stores and sends nothing.</summary>
-    public void LoseNextCommit() => loseNextCommit = true;
+    /// <summary>
+    /// The next <see cref="TryCommitAsync"/> loses a race, as a version that moved on unless <paramref name="how"/>
+    /// says otherwise, and stores and sends nothing.
+    /// </summary>
+    public void LoseNextCommit(LostRace? how = null)
+    {
+        loseNextCommit = true;
+        this.how = how ?? new VersionMovedOn();
+    }
 
-    public async Task<bool> TryCommitAsync(CancellationToken cancellationToken)
+    public async Task<Result<Unit, LostRace>> TryCommitAsync(CancellationToken cancellationToken)
     {
         if (loseNextCommit)
         {
             loseNextCommit = false;
             added.Clear();
             queued.Clear();
-            return false;
+            return Failure(how);
         }
 
         await CommitAsync(cancellationToken);
-        return true;
+        return Success(Unit.Value);
     }
 
     private Option<Assignment> InPharmacy(PharmacyId pharmacy, AssignmentId id)

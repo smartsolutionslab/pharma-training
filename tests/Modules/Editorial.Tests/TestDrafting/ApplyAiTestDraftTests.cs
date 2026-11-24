@@ -1,3 +1,4 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using System.Net;
 using Microsoft.Extensions.AI;
 using NSubstitute.ExceptionExtensions;
@@ -23,7 +24,7 @@ public class ApplyAiTestDraftTests
     private readonly InMemoryCourseVersionStore store = new();
 
     [Fact]
-    public async Task Applying_a_draft_keeps_the_approved_questions_and_replaces_the_unreviewed_ones()
+    public async Task Applying_a_draft_keeps_the_approved_and_hand_written_questions_and_replaces_the_unreviewed_ai_drafted_ones()
     {
         var version = TestDraftVersions.WithTextChapters(4, "Händehygiene", "Flächen");
         var chapter = TestDraftVersions.TextChapterIds(version)[0];
@@ -34,7 +35,7 @@ public class ApplyAiTestDraftTests
         var handWritten = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
         version.Questions.Select(question => question.Id).ShouldBe([approved, earlierAi, handWritten]);
         store.Stored.Add(version);
-        using var model = new FakeChatClient(Sound(1, 2, 1));
+        using var model = new FakeChatClient(Sound(1, 2));
 
         var result = await HandleAsync(model, version.Id);
 
@@ -44,13 +45,37 @@ public class ApplyAiTestDraftTests
         kept.Id.ShouldBe(approved);
         kept.Review.ShouldBe(ReviewState.Approved);
         kept.ReviewedBy.ShouldBe(Author);
-        var drafted = version.Questions.Skip(1).ToList();
-        drafted.Count.ShouldBe(3);
-        drafted.ShouldAllBe(question => question.Provenance == Provenance.AiDrafted && question.Review == ReviewState.Unreviewed);
+        version.Questions[1].Id.ShouldBe(handWritten);
+        version.Questions[1].Origin.ShouldBe(QuestionOrigin.HandWritten);
+        var drafted = version.Questions.Skip(2).ToList();
+        drafted.Count.ShouldBe(2);
+        drafted.ShouldAllBe(question => question.Provenance == Provenance.AiDrafted && question.Origin == QuestionOrigin.AiDraft && question.Review == ReviewState.Unreviewed);
         version.Questions.ShouldNotContain(question => question.Id == earlierAi);
-        version.Questions.ShouldNotContain(question => question.Id == handWritten);
         result.Value.DraftedQuestionIds.ShouldBe([.. drafted.Select(question => question.Id.Value)]);
         result.Value.LeftOutChapterIds.ShouldBeEmpty();
+        store.Commits.ShouldBe(1);
+    }
+
+    /// <summary>The issue's case (#245): changing a setting resets every approval, and the draft that follows keeps every copied and hand-written question.</summary>
+    [Fact]
+    public async Task After_a_settings_change_a_draft_keeps_every_copied_and_hand_written_question_and_asks_only_for_the_rest()
+    {
+        var next = Published().DraftNext(CourseVersionId.New(), Author, ChapterId.New, QuestionId.New, AnswerOptionId.New).Value;
+        var chapter = next.Chapters.ShouldHaveSingleItem().Id;
+        var copied = next.Questions.ShouldHaveSingleItem().Id;
+        var handWritten = next.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
+        next.SetBlueprint(new TestBlueprint(QuestionCount.From(4), ScorePercent.From(90), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
+        next.Questions.ShouldAllBe(question => question.Review == ReviewState.Unreviewed);
+        store.Stored.Add(next);
+        using var model = new FakeChatClient(Sound(1, 1));
+
+        var result = await HandleAsync(model, next.Id);
+
+        result.IsSuccess.ShouldBeTrue();
+        var user = model.Requests.ShouldHaveSingleItem().Where(message => message.Role == ChatRole.User).ShouldHaveSingleItem().Text;
+        user.ShouldContain("Draft exactly 2 questions.");
+        next.Questions.Select(question => question.Id).ShouldBe([copied, handWritten, .. result.Value.DraftedQuestionIds.Select(QuestionId.From)]);
+        next.Questions.Select(question => question.Origin).ShouldBe([QuestionOrigin.Copied, QuestionOrigin.HandWritten, QuestionOrigin.AiDraft, QuestionOrigin.AiDraft]);
         store.Commits.ShouldBe(1);
     }
 
@@ -192,7 +217,7 @@ public class ApplyAiTestDraftTests
         var version = TestDraftVersions.WithTextChapters(2, "Händehygiene", "Flächen");
         store.Stored.Add(version);
         var lostRace = Substitute.For<IEditorialUnitOfWork>();
-        lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(false);
+        lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(Failure(LostRaces.VersionMovedOn()));
         using var model = new FakeChatClient(Sound(1, 2));
 
         var result = await new ApplyAiTestDraftHandler(store, lostRace, model)

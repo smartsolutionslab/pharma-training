@@ -41,6 +41,26 @@ public class ReviewContentTests
             new EditorialContentHintDto(chapters[0].Value, EditorialContentHintKind.Readability, "Der Satz ist zu lang."),
             new EditorialContentHintDto(chapters[1].Value, EditorialContentHintKind.Contradiction, "„täglich“ widerspricht Kapitel „Händehygiene“."),
         ]);
+        result.Value.LeftOutChapterIds.ShouldBe([version.Chapters[2].Id.Value]);
+        result.Value.TruncatedChapterIds.ShouldBeEmpty();
+        model.Requests.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task A_version_of_pdfs_and_a_video_is_reviewed_on_its_pdfs_text_and_names_what_it_left_out_or_cut()
+    {
+        var store = new InMemoryCourseVersionStore();
+        var version = TestDrafting.TestDraftVersions.WithChapters(3, "PVRN", out var ids);
+        store.Stored.Add(version);
+        using var model = new FakeChatClient(Answer(Hint(2, "Gap", "Seite 2 fehlt.")));
+
+        var result = await new ReviewContentHandler(store, model).HandleAsync(new ReviewContent(version.Id.Value), TestContext.Current.CancellationToken);
+
+        result.IsSuccess.ShouldBeTrue(result.IsFailure ? result.Error.Code : string.Empty);
+        result.Value.ReviewedChapterIds.ShouldBe([ids[0].Value, ids[2].Value]);
+        result.Value.Hints.ShouldBe([new EditorialContentHintDto(ids[2].Value, EditorialContentHintKind.Gap, "Seite 2 fehlt.")]);
+        result.Value.LeftOutChapterIds.ShouldBe([ids[1].Value, ids[3].Value]);
+        result.Value.TruncatedChapterIds.ShouldBe([ids[2].Value]);
         model.Requests.ShouldHaveSingleItem();
     }
 

@@ -13,7 +13,8 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Command
 /// solutions, for Assessment only) through the unit of work, so a refused or lost publish sends nothing (ADR 0002).
 /// When the version has PDF or video chapters, it also signs a fifteen-minute inline read URL on each file and releases
 /// them in the same save (<c>ChapterFilesReleasedV1</c>), for Learning to copy into its own container (#41, ADR 0002); a
-/// refused publish signs nothing.
+/// refused publish signs nothing. It signs before the first publish, which opens the outbox's transaction, so no
+/// signing runs while the version's rows are held.
 /// </summary>
 public sealed class PublishCourseVersionHandler(ICourseVersionStore versions, IEditorialUnitOfWork unitOfWork, IBlobUrls urls, ReviewSettings review, TimeProvider time)
     : ICommandHandler<PublishCourseVersion, Result<Unit, ApiError>>
@@ -42,18 +43,19 @@ public sealed class PublishCourseVersionHandler(ICourseVersionStore versions, IE
             predecessor.Supersede();
         }
 
+        // Before the first publish, which opens the outbox's transaction: signing may ask the storage service for a key.
+        var readUrls = await urls.SignReadUrlsAsync(version, cancellationToken);
         await unitOfWork.PublishAsync(version.ToCourseVersionPublishedV1());
         await unitOfWork.PublishAsync(version.ToTestDefinitionPublishedV1());
-
-        var readUrls = await urls.SignReadUrlsAsync(version, cancellationToken);
         if (readUrls.Count > 0)
         {
             await unitOfWork.PublishAsync(version.ToChapterFilesReleasedV1(readUrls));
         }
 
-        if (!await unitOfWork.TryCommitAsync(cancellationToken))
+        var saved = await unitOfWork.TryCommitAsync(cancellationToken);
+        if (saved.IsFailure)
         {
-            return Failure(CourseVersionFailures.Changed(command.Version.Value));
+            return Failure(CourseVersionFailures.LostRace(saved.Error, command.Version.Value));
         }
 
         return Success(Unit.Value);

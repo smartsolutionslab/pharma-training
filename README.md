@@ -69,6 +69,8 @@ Four eyes (a version is published by an editor other than the one who submitted 
 
 Run `POST /editorial/course-versions/republish` once, as an editor (`editorial.edit`), after a service that consumes `CourseVersionPublishedV1`, `TestDefinitionPublishedV1`, `ChapterFilesReleasedV1` or `CourseVersionRetiredV1` is deployed for the first time: its queue is bound only from its first start, and the broker dropped what Editorial announced before. It sends again the events of every version that was published or retired, the files of its PDF and video chapters with read URLs signed when it runs (so a chapter Learning never copied, or whose first release expired, is copied then), and answers how many of each went out (`courseVersions`, `testDefinitions`, `fileReleases`, `retirements`). Every subscriber receives them again, not only the new one, and drops what it already has by the version id (Learning's files by the name it derives from the version and the chapter), so it is safe to repeat, and a run cut off part-way is simply run again ([ADR 0019](docs/adr/0019-editorials-course-version-events-may-be-republished.md)).
 
+One run goes at a time: a second answers `409` with `editorial.republish-running` while the first is running. A request that timed out means "run again": while the first run is still going, the rerun answers `409` and you wait and try again; otherwise it sends everything once more, and the subscribers drop the duplicates.
+
 ### Local users
 
 Keycloak imports these from `src/AppHost/realms/realm.json`, development only. Each one's password is its username.
@@ -77,6 +79,7 @@ Keycloak imports these from `src/AppHost/realms/realm.json`, development only. E
 - `visitor`: no role.
 - `editor`: the realm role `editor`, the platform's editors (the Redaktion), which `editorial.edit` requires.
 - `owner`, `employee-a`, `employee-b`: no realm role; their pharmacy roles (owner, employee) come from the Organisation module, not from Keycloak.
+- `employee-c`: no realm role, like `employee-b`; the MVP 1 end-to-end test (`web/app/e2e/mvp1-register-to-certificate.spec.ts`, #55) invites her, and no other test does, since an address is mailed an invitation at most every 10 minutes (#265).
 - `former-employee`: no realm role; the integration tests make her a member of a pharmacy in Learning and end it, so she is always a former member there (#194).
 
 The development realm allows self-registration: Keycloak's login page has a Register link, and an account created there (or through the admin API) must verify its address before it can sign in. Keycloak mails the verification link to Mailpit (http://localhost:8025). The imported users are not asked to verify, `unverified` (whose address Keycloak has not verified) included. The published realm (#114) keeps registration closed (`registrationAllowed: false`) until #158 (limits on invitation mail) is merged, brute-force detection and bot protection on the registration form are on, and account enumeration on register has been considered ([ADR 0014](docs/adr/0014-the-invitation-links-token-crosses-the-sign-in-in-session-storage.md)).

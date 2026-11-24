@@ -28,5 +28,5 @@
 - The PDF is rendered from the snapshot alone, so a later title, name or validity change never alters it, and it is never rendered again. Changing its layout changes only PDFs rendered afterwards.
 - Rendering runs in the Certification host and holds one PDF (about 60 KB, the fonts subset) in memory; PDFsharp's font resolver is process-wide, and only Certification's host loads PDFsharp.
 - Staying on PDFsharp 6.2.4 means no upstream fixes under MIT. If a security fix is ever needed, the fallback is replacing the library, a new decision. PDFsharp 6.2.4 brings `System.Security.Cryptography.Pkcs` 8.0.1 transitively; the project's restore audits it like any other package.
-- Blobs are never deleted (retention and DSGVO deletion are #115); the export ZIP (Z3) reads the same blobs by `DocumentLocation`.
+- Blobs are never deleted (retention and DSGVO deletion are #115); the export ZIP (Z3) reads the same blobs by `DocumentLocation`, streamed through the host as ADR 0032 decides.
 - `fabric upgrade` may conflict on `src/AppHost/AppHost.cs`, `src/AppHost/Wiring/ServiceHostProjects.cs`, `.github/dependabot.yml` and `Directory.Packages.props`; keep this decision's changes.

@@ -31,6 +31,7 @@ export type AssignOutcome =
   | { kind: 'courseGone' }
   | { kind: 'notAvailable'; message: ErrorMessage }
   | { kind: 'changed' }
+  | { kind: 'concurrentSave' }
   | { kind: 'failed' };
 
 function isDueDateCode(code: string): code is DueDateCode {
@@ -70,6 +71,8 @@ export function useAssignCourse() {
       case 'compliance.assignments-changed':
       case 'already-exists':
         return { kind: 'changed' };
+      case 'compliance.concurrent-save':
+        return { kind: 'concurrentSave' };
       default:
         return { kind: 'failed' };
     }

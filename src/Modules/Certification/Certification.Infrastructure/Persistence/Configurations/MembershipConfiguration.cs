@@ -7,6 +7,8 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Infrastructure.
 
 public sealed class MembershipConfiguration : IEntityTypeConfiguration<Membership>
 {
+    private const int EnumLength = 16;
+
     public void Configure(EntityTypeBuilder<Membership> builder)
     {
         Ensure.That(builder).IsNotNull();
@@ -19,9 +21,12 @@ public sealed class MembershipConfiguration : IEntityTypeConfiguration<Membershi
         builder.Property(membership => membership.Pharmacy).HasColumnName("pharmacy_id").IsRequired();
         // As long as Organisation allows a display name to be.
         builder.Property(membership => membership.HolderName).HasColumnName("holder_name").HasMaxLength(HolderName.MaxLength).IsRequired();
+        builder.Property(membership => membership.Role).HasColumnName("role").HasConversion<string>().HasMaxLength(EnumLength).IsRequired();
         builder.Property(membership => membership.StartedAt).HasColumnName("started_at").IsRequired();
 
         // Backs finding the name of a person's latest membership.
         builder.HasIndex(membership => membership.Person).HasDatabaseName("ix_memberships_person_id");
+        // Backs reading every membership of a pharmacy for an export.
+        builder.HasIndex(membership => membership.Pharmacy).HasDatabaseName("ix_memberships_pharmacy_id");
     }
 }

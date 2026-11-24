@@ -110,6 +110,41 @@ public class ComplianceMatrixTests(AspireFixture aspire)
         (matrix.Assignments, matrix.CompliantAssignments, matrix.OverdueAssignments, matrix.ComplianceRate).ShouldBe((2, 1, 0, 0.5));
     }
 
+    /// <summary>
+    /// #287: a completion stays valid for the months of the version its certificate was issued for (Compliance's copy of
+    /// CertificateIssued); without a copy, the latest version's months apply.
+    /// </summary>
+    [Fact]
+    public async Task A_completion_is_valid_for_the_version_it_was_certified_for_and_without_a_copy_for_the_latest()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var setting = await PharmacyAsync(cancellationToken);
+        var courseId = Guid.CreateVersion7();
+        var title = $"Hygiene {Guid.CreateVersion7()}";
+        var first = Guid.CreateVersion7();
+        SentChapter[] chapters = [new SentChapter(Guid.CreateVersion7(), 1, "Grundlagen", "Text", null, "# Grundlagen", null)];
+        await DeliverAsync(PublishedType, new PublishedEvent(courseId, first, 1, title, 24, chapters, NewMetadata()), cancellationToken);
+        await DeliverAsync(PublishedType, new PublishedEvent(courseId, Guid.CreateVersion7(), 2, title, 6, chapters, NewMetadata()), cancellationToken);
+        using var manager = await aspire.CreateHostClientAsync("developer");
+        var now = TimeProvider.System.GetUtcNow();
+        var inAMonth = DayInGermany(now).AddDays(30);
+        var completedAt = now.AddMonths(-12);
+        var completedOn = DayInGermany(completedAt);
+        var certified = await AssignAsync(manager, setting.Pharmacy, courseId, setting.EmployeeA.PersonId, inAMonth, cancellationToken);
+        var certificate = Guid.CreateVersion7();
+        await SetAsync(certified, "status = 'Completed', completed_at = @at, certificate_id = @certificate", cancellationToken, ("at", completedAt), ("certificate", certificate));
+        await CertifiedAsync(certificate, setting.EmployeeA.PersonId, courseId, first, completedAt, cancellationToken);
+        var uncopied = await AssignAsync(manager, setting.Pharmacy, courseId, setting.EmployeeB.PersonId, inAMonth, cancellationToken);
+        await SetAsync(uncopied, "status = 'Completed', completed_at = @at, certificate_id = @certificate", cancellationToken, ("at", completedAt), ("certificate", Guid.CreateVersion7()));
+
+        using var response = await manager.GetAsync(MatrixUri(setting.Pharmacy), cancellationToken);
+
+        var matrix = await MatrixOfAsync(response, cancellationToken);
+        RowOf(matrix, setting.EmployeeA.PersonId).Cells.ShouldHaveSingleItem().ValidUntil.ShouldBe(completedOn.AddMonths(24));
+        RowOf(matrix, setting.EmployeeB.PersonId).Cells.ShouldHaveSingleItem().ValidUntil.ShouldBe(completedOn.AddMonths(6));
+        (matrix.Assignments, matrix.CompliantAssignments, matrix.OverdueAssignments, matrix.ComplianceRate).ShouldBe((2, 1, 0, 0.5));
+    }
+
     [Fact]
     public async Task Only_courses_assigned_in_this_pharmacy_appear_and_one_only_cancelled_here_is_no_column()
     {
@@ -355,6 +390,21 @@ public class ComplianceMatrixTests(AspireFixture aspire)
             command.Parameters.AddWithValue(name, value);
         }
 
+        (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1);
+    }
+
+    /// <summary>Compliance's copy of a certificate, as its CertificateIssued consumer keeps it.</summary>
+    private async Task CertifiedAsync(Guid certificate, Guid learner, Guid course, Guid version, DateTimeOffset issuedAt, CancellationToken cancellationToken)
+    {
+        await using var connection = await ComplianceDatabase.OpenAsync(aspire, cancellationToken);
+        await using var command = new NpgsqlCommand(
+            "insert into compliance.issued_certificates (id, learner_id, course_id, course_version_id, issued_at) values (@id, @learner, @course, @version, @at)",
+            connection);
+        command.Parameters.AddWithValue("id", certificate);
+        command.Parameters.AddWithValue("learner", learner);
+        command.Parameters.AddWithValue("course", course);
+        command.Parameters.AddWithValue("version", version);
+        command.Parameters.AddWithValue("at", issuedAt);
         (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1);
     }
 

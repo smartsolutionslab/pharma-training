@@ -453,6 +453,43 @@ public class BlobStorageTests(AspireFixture aspire)
         again.ShouldBe(BlobCopyOutcome.AlreadyThere, "a retry after the source expired finds the copy it already made");
     }
 
+    /// <summary>
+    /// A release that arrives again after its read URL expired (a retry, a republish read late), or with a source the
+    /// storage service would refuse, finds the copy Learning already made: it neither throws nor writes the blob again.
+    /// </summary>
+    [Theory]
+    [InlineData("expired")]
+    [InlineData("tampered")]
+    public async Task A_copy_to_a_name_already_there_with_an_unusable_source_changes_nothing(string unusable)
+    {
+        var now = TimeProvider.System.GetUtcNow();
+        var editorial = await UrlsAsync("editorial", now);
+        var expired = await UrlsAsync("editorial", now.AddMinutes(-16));
+        var copies = await CopiesAsync("learning");
+        var learning = await StoredBlobsAsync("learning");
+        var source = NewName();
+        var target = NewName();
+        var content = RandomNumberGenerator.GetBytes(64);
+
+        using var put = await PutAsync((await editorial.CreateUploadUrlAsync(source, FiveMinutes, TestContext.Current.CancellationToken)).Url, content, "application/pdf");
+        var read = await editorial.CreateReadUrlAsync(source, FifteenMinutes, InlinePdf, TestContext.Current.CancellationToken);
+        var first = await copies.CopyFromAsync(read, target, TestContext.Current.CancellationToken);
+        var before = await learning.FindAsync(target, TestContext.Current.CancellationToken);
+        var unusableSource = unusable == "expired"
+            ? await expired.CreateReadUrlAsync(source, FifteenMinutes, InlinePdf, TestContext.Current.CancellationToken)
+            : read with { Url = new Uri(read.Url.AbsoluteUri.Replace("sig=", "sig=AAAA", StringComparison.Ordinal)) };
+        var again = await copies.CopyFromAsync(unusableSource, target, TestContext.Current.CancellationToken);
+        var after = await learning.FindAsync(target, TestContext.Current.CancellationToken);
+
+        put.StatusCode.ShouldBe(HttpStatusCode.Created);
+        first.ShouldBe(BlobCopyOutcome.Copied);
+        again.ShouldBe(BlobCopyOutcome.AlreadyThere);
+        before.HasValue.ShouldBeTrue("the first copy lies in Learning's container");
+        after.HasValue.ShouldBeTrue("the copy is still there");
+        after.Value.ETag.ShouldBe(before.Value.ETag, "a blob already there is not written again");
+        (await learning.ReadStartAsync(after.Value, content.Length, TestContext.Current.CancellationToken)).ToArray().ShouldBe(content);
+    }
+
     [Fact]
     public async Task A_write_creates_the_blob_in_the_own_container_with_its_content_type()
     {

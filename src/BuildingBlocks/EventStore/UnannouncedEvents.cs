@@ -12,7 +12,8 @@ namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.EventStore;
 public static class UnannouncedEvents
 {
     /// <summary>
-    /// The query a module's sweep runs, with the parameters <c>@from</c>, <c>@until</c> (timestamptz) and <c>@limit</c>.
+    /// The query a module's sweep runs, with the parameters <c>@from</c>, <c>@until</c> (timestamptz), <c>@after</c> (the
+    /// sequence of the last event the pass has read, <see cref="UnannouncedEvent.BeforeFirst"/> for the first page) and <c>@limit</c>.
     /// The type is written into the query, not passed, so the planner can match a partial index on it.
     /// </summary>
     public static string Query(string schema, string storedType)
@@ -21,9 +22,9 @@ public static class UnannouncedEvents
         Ensure.That(storedType).IsNotNullOrWhiteSpace().Satisfies(IsIdentifier, "Marten's stored type name is a lower-case SQL identifier.");
 
         return $"""
-            select e.id, e.stream_id, e.version, e.timestamp
+            select e.id, e.stream_id, e.version, e.timestamp, e.seq_id
             from {schema}.mt_events e
-            where e.type = '{storedType}' and e.timestamp >= @from and e.timestamp <= @until
+            where e.type = '{storedType}' and e.timestamp >= @from and e.timestamp <= @until and e.seq_id > @after
               and not exists (select 1 from {schema}.announced_events a
                               where a.stream_id = e.stream_id and a.stream_version = e.version)
             order by e.seq_id
@@ -31,13 +32,17 @@ public static class UnannouncedEvents
             """;
     }
 
-    /// <summary>Those stored from <paramref name="storedFrom"/> to <paramref name="storedUntil"/>, oldest first, at most <paramref name="limit"/>.</summary>
+    /// <summary>
+    /// Those stored from <paramref name="storedFrom"/> to <paramref name="storedUntil"/> and after the event at
+    /// <paramref name="after"/> in Marten's sequence, oldest first, at most <paramref name="limit"/>.
+    /// </summary>
     public static async Task<IReadOnlyList<UnannouncedEvent>> FindAsync(
         IDocumentStore store,
         string schema,
         string storedType,
         DateTimeOffset storedFrom,
         DateTimeOffset storedUntil,
+        long after,
         int limit,
         CancellationToken cancellationToken)
     {
@@ -48,12 +53,13 @@ public static class UnannouncedEvents
         await using var command = new NpgsqlCommand(Query(schema, storedType), connection);
         command.Parameters.AddWithValue("from", storedFrom.ToUniversalTime());
         command.Parameters.AddWithValue("until", storedUntil.ToUniversalTime());
+        command.Parameters.AddWithValue("after", after);
         command.Parameters.AddWithValue("limit", limit);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         List<UnannouncedEvent> found = [];
         while (await reader.ReadAsync(cancellationToken))
         {
-            found.Add(new UnannouncedEvent(reader.GetGuid(0), reader.GetGuid(1), reader.GetInt64(2), reader.GetFieldValue<DateTimeOffset>(3)));
+            found.Add(new UnannouncedEvent(reader.GetGuid(0), reader.GetGuid(1), reader.GetInt64(2), reader.GetFieldValue<DateTimeOffset>(3), reader.GetInt64(4)));
         }
 
         return found;

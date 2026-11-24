@@ -37,7 +37,8 @@ public sealed class DraftNextVersionHandler(ICourseVersionStore versions, IEdito
         }
 
         versions.Add(next);
-        if (!await unitOfWork.TryCommitAsync(cancellationToken))
+        var saved = await unitOfWork.TryCommitAsync(cancellationToken);
+        if (saved.IsFailure)
         {
             // The commit lost (a deadlock or a serialization failure). If another editor drafted this number meanwhile,
             // say so; a unique violation never reaches here, it answers 409 already-exists.
@@ -47,7 +48,7 @@ public sealed class DraftNextVersionHandler(ICourseVersionStore versions, IEdito
                 return Failure(CourseVersionFailures.NextVersionExists());
             }
 
-            return Failure(CourseVersionFailures.Changed(command.Version.Value));
+            return Failure(CourseVersionFailures.LostRace(saved.Error, command.Version.Value));
         }
 
         return Success(next.Id.Value);

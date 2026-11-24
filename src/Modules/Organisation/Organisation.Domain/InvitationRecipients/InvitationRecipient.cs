@@ -36,13 +36,36 @@ public sealed class InvitationRecipient : AggregateRoot<InvitationRecipientId>
         Ensure.That(now).IsNotNull();
         Ensure.That(cooldown).IsNotNull();
 
-        var retryAt = LastMailedAt.Plus(cooldown.Value);
-        if (now < retryAt && LastMailedAt < now.Plus(cooldown.Value))
+        // The ceiling is checked before anything is added to the stored instant, so one near the end of the calendar is
+        // distrusted instead of overflowing.
+        if (LastMailedAt < now.Plus(cooldown.Value))
         {
-            return Failure(InvitationRecipientErrors.MailedRecently(Id, retryAt));
+            var retryAt = LastMailedAt.Plus(cooldown.Value);
+            if (now < retryAt)
+            {
+                return Failure(InvitationRecipientErrors.MailedRecently(Id, retryAt, now));
+            }
         }
 
         LastMailedAt = now;
         return Success(Unit.Value);
+    }
+
+    /// <summary>
+    /// The stored instant when it lies a cooldown or more beyond <paramref name="now"/>; none otherwise. With every
+    /// instance on the database's clock only a hand-edited row, or a database clock that moved back (a failover or a
+    /// restore), stores one: it is not trusted and is replaced by <paramref name="now"/>, and the caller reports it.
+    /// </summary>
+    public Option<Timestamp> MailedBeyond(Timestamp now, RecipientCooldown cooldown)
+    {
+        Ensure.That(now).IsNotNull();
+        Ensure.That(cooldown).IsNotNull();
+
+        if (LastMailedAt >= now.Plus(cooldown.Value))
+        {
+            return Option<Timestamp>.Some(LastMailedAt);
+        }
+
+        return Option<Timestamp>.None;
     }
 }

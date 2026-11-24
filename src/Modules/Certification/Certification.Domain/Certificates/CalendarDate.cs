@@ -20,6 +20,9 @@ public sealed record CalendarDate : IValueObject<DateOnly>, IComparable<Calendar
     /// <summary>The day the interval later; a day the shorter month lacks becomes its last day.</summary>
     public CalendarDate Plus(RecurrenceInterval interval) => new(Value.AddMonths(interval.Value));
 
+    /// <summary>The day after this one.</summary>
+    public CalendarDate NextDay() => new(Value.AddDays(1));
+
     public int CompareTo(CalendarDate? other) => other is null ? 1 : Value.CompareTo(other.Value);
 
     public override string ToString() => Value.ToString("O", System.Globalization.CultureInfo.InvariantCulture);

@@ -193,6 +193,76 @@ public class BrokerPublisherIntegrityTests(AspireFixture aspire)
         (await MembersAsync(poisoned.MembershipId, cancellationToken)).ShouldBe(0, $"Compliance stored the membership {poisoned.MembershipId} whose type has a NUL.");
     }
 
+    /// <summary>
+    /// #338: besides the type, a publisher chooses the AMQP <c>app_id</c>, <c>correlation_id</c> and <c>reply_to</c>, and
+    /// headers Wolverine reads into the envelope (<c>source</c>, <c>tenant-id</c>, <c>saga-id</c>) or keeps. A NUL in any of
+    /// them must not reach a text column of the inbox or the dead letters, where PostgreSQL refuses it (22021) and the
+    /// listener stops: the event is handled or dead-lettered, and the next one is handled.
+    /// </summary>
+    [Theory]
+    [InlineData("app_id")]
+    [InlineData("correlation_id")]
+    [InlineData("reply_to")]
+    [InlineData("header:source")]
+    [InlineData("header:tenant-id")]
+    [InlineData("header:saga-id")]
+    [InlineData("header:x-note")]
+    public async Task An_event_with_a_nul_in_a_field_its_publisher_chose_is_settled_and_the_next_event_is_still_handled(string field) =>
+        await NulInPublisherFieldAsync(field, MembershipStarted);
+
+    /// <summary>
+    /// The same NUL on an event that is dead-lettered (its type is no module's event): the dead letter's row holds what
+    /// Wolverine read from the message (<c>source</c> among it), so it is where a NUL would reach a text column.
+    /// </summary>
+    [Theory]
+    [InlineData("app_id")]
+    [InlineData("correlation_id")]
+    [InlineData("reply_to")]
+    [InlineData("header:source")]
+    [InlineData("header:tenant-id")]
+    [InlineData("header:saga-id")]
+    [InlineData("header:x-note")]
+    public async Task A_refused_event_with_a_nul_in_a_field_its_publisher_chose_is_dead_lettered_and_the_next_event_is_still_handled(string field) =>
+        await NulInPublisherFieldAsync(field, Forged);
+
+    private async Task NulInPublisherFieldAsync(string field, string type)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var poisoned = MembershipStartedEvent();
+        var poisonedId = Guid.CreateVersion7();
+        var next = MembershipStartedEvent();
+        var nextId = Guid.CreateVersion7();
+        var organisation = await BrokerUsers.ConnectionStringOfAsync(aspire, Organisation, cancellationToken);
+        var user = BrokerUsers.UserOf(organisation);
+        var properties = Properties(type, poisonedId, user);
+        var value = $"pharma\0{field}";
+        switch (field)
+        {
+            case "app_id":
+                properties.AppId = value;
+                break;
+            case "correlation_id":
+                properties.CorrelationId = value;
+                break;
+            case "reply_to":
+                properties.ReplyTo = value;
+                break;
+            default:
+                properties.Headers = new Dictionary<string, object?> { [field["header:".Length..]] = System.Text.Encoding.UTF8.GetBytes(value) };
+                break;
+        }
+
+        await PublishAsync(organisation, MembershipStarted, properties, poisoned, cancellationToken);
+        await PublishAsync(organisation, MembershipStarted, MembershipStarted, next, nextId, user, cancellationToken);
+
+        var nextOutcome = await OutcomeAsync(nextId, cancellationToken);
+        var poisonedOutcome = await OutcomeAsync(poisonedId, cancellationToken);
+        nextOutcome.ShouldBe(
+            Outcome.Handled,
+            $"Compliance's inbox holds the valid membership {nextId}, published after one with a NUL in {field} ({poisonedId}, {poisonedOutcome}), as {nextOutcome}: the listener stopped consuming.");
+        poisonedOutcome.ShouldNotBe(Outcome.Pending, $"The membership {poisonedId} with a NUL in {field} was neither handled nor dead-lettered.");
+    }
+
     [Fact]
     public async Task An_event_its_own_modules_user_publishes_is_handled()
     {
@@ -261,6 +331,15 @@ public class BrokerPublisherIntegrityTests(AspireFixture aspire)
         await using var connection = await BrokerUsers.ConnectAsync(connectionString, cancellationToken);
         await using var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
         await channel.BasicPublishAsync(exchange, string.Empty, mandatory: false, Properties(type, messageId, userId), JsonSerializer.SerializeToUtf8Bytes(message, JsonSerializerOptions.Web), cancellationToken);
+    }
+
+    /// <summary>Publishes to the exchange with exactly these properties, through a connection with the given credentials.</summary>
+    private async Task PublishAsync<T>(string connectionString, string exchange, BasicProperties properties, T message, CancellationToken cancellationToken)
+    {
+        await ExchangeExistsAsync(exchange, cancellationToken);
+        await using var connection = await BrokerUsers.ConnectAsync(connectionString, cancellationToken);
+        await using var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
+        await channel.BasicPublishAsync(exchange, string.Empty, mandatory: false, properties, JsonSerializer.SerializeToUtf8Bytes(message, JsonSerializerOptions.Web), cancellationToken);
     }
 
     /// <summary>The exchange, which Compliance's Wolverine declares at startup, exists, so nothing is published into nowhere.</summary>

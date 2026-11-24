@@ -165,9 +165,9 @@ public class TestDrafterDraftTests
         var chapter = TestDraftVersions.TextChapterIds(version)[0];
         var approved = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
         var otherApproved = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
-        var unreviewed = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
         version.ApproveQuestion(approved, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
         version.ApproveQuestion(otherApproved, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
+        var unreviewed = version.ApplyAiTestDraft([SingleChoice(chapter)], QuestionId.New, AnswerOptionId.New).Value.ShouldHaveSingleItem();
         using var model = new FakeChatClient(DraftAnswers.Sound(1, 1, 2));
 
         var drafted = (await TestDrafter.DraftAsync(model, version, TestContext.Current.CancellationToken)).Value;

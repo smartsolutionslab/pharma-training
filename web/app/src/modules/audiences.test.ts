@@ -7,7 +7,7 @@ test("every module's route declares the audience its page is for", () => {
   expect(Object.fromEntries(moduleRoutes.map((route) => [route.path, route.audience]))).toEqual({
     assessment: 'employee',
     catalog: 'manager',
-    certification: 'employee',
+    certification: 'signed-in',
     compliance: 'manager',
     editorial: 'editor',
     learning: 'employee',
@@ -37,7 +37,7 @@ test("every module's title is in the catalogs, in German and in English", () => 
   expect(titles).toEqual({
     assessment: 'Tests',
     catalog: 'Schulungskatalog',
-    certification: 'Teilnahmebestätigungen',
+    certification: 'Meine Teilnahmebestätigungen',
     compliance: 'Team-Matrix',
     editorial: 'Redaktion',
     learning: 'Meine Schulungen',
@@ -46,7 +46,7 @@ test("every module's title is in the catalogs, in German and in English", () => 
   expect(english).toEqual({
     assessment: 'Tests',
     catalog: 'Course catalogue',
-    certification: 'Certificates',
+    certification: 'My certificates',
     compliance: 'Team matrix',
     editorial: 'Editorial',
     learning: 'My courses',

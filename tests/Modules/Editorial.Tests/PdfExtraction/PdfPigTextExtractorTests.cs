@@ -228,6 +228,15 @@ public sealed class PdfPigTextExtractorTests
         logger.Collector.Count.ShouldBe(0, "a cancellation is no unreadable file");
     }
 
+    [Fact]
+    public void Running_out_of_memory_propagates_and_is_not_recorded_as_no_text()
+    {
+        using var pdf = new OutOfMemoryPdf();
+
+        Should.Throw<OutOfMemoryException>(() => new PdfPigTextExtractor(logger).Extract(pdf.Memory, TestContext.Current.CancellationToken));
+        logger.Collector.Count.ShouldBe(0, "running out of memory is no unreadable file");
+    }
+
     private static bool IsWellFormed(string text)
     {
         for (var index = 0; index < text.Length; index++)

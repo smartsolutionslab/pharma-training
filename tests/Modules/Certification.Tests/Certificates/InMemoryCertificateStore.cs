@@ -45,6 +45,32 @@ internal sealed class InMemoryCertificateStore : ICertificateStore, ICertificati
         return Task.FromResult(Option<Certificate>.Some(found));
     }
 
+    /// <summary>The holders' certificates issued from <paramref name="issuedFrom"/> on and before <paramref name="issuedBefore"/>, oldest first, then by id, as the store in Infrastructure reads them.</summary>
+    public Task<IReadOnlyList<Certificate>> IssuedToAsync(IReadOnlyCollection<PersonId> holders, Timestamp issuedFrom, Timestamp issuedBefore, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<Certificate> issued = Stored
+            .Where(certificate => holders.Contains(certificate.Holder) && issuedFrom <= certificate.IssuedAt && certificate.IssuedAt < issuedBefore)
+            .OrderBy(certificate => certificate.IssuedAt.Value)
+            .ThenBy(certificate => certificate.Id.Value)
+            .ToList();
+        return Task.FromResult(issued);
+    }
+
+    /// <summary>
+    /// A page of the holder's stored certificates, newest first (issued later, then the larger id), and how many the
+    /// holder has in all, as the database orders, skips and counts them.
+    /// </summary>
+    public Task<(IReadOnlyList<Certificate> Items, int TotalCount)> ListForHolderAsync(PersonId holder, Page page, PageSize pageSize, CancellationToken cancellationToken)
+    {
+        var holders = Stored
+            .Where(certificate => certificate.Holder == holder)
+            .OrderByDescending(certificate => certificate.IssuedAt)
+            .ThenByDescending(certificate => certificate.Id.Value.ToString("N"), StringComparer.Ordinal)
+            .ToList();
+        IReadOnlyList<Certificate> items = [.. holders.Skip(page.Skip(pageSize)).Take(pageSize.Value)];
+        return Task.FromResult((items, holders.Count));
+    }
+
     public void Add(Certificate certificate) => added.Add(certificate);
 
     public Task PublishAsync(IntegrationEvent integrationEvent)

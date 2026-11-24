@@ -8,7 +8,7 @@ import type {
   OrganisationJobFunction,
   OrganisationMembershipRole,
 } from '@/api/generated';
-import type { CellStatus } from '@/modules/compliance/cellStatus';
+import type { AssignmentStatus } from '@/components/status/assignmentStatus';
 
 // The German catalog, which defines the keys (MessageSchema). German follows docs/domain/README.md's glossary and
 // addresses the user as "Sie". vue-i18n reads @ { } | $ as syntax: write a literal one as {'@'}.
@@ -95,7 +95,7 @@ export const de = {
       },
     },
     certification: {
-      title: 'Teilnahmebestätigungen',
+      title: 'Meine Teilnahmebestätigungen',
       entries: {
         verify: { title: 'Bestätigung prüfen' },
       },
@@ -144,6 +144,25 @@ export const de = {
       loadFailed: 'Die Bestätigung konnte nicht geprüft werden.',
     },
     retry: 'Erneut versuchen',
+    mine: {
+      columns: {
+        course: 'Schulung',
+        issuedOn: 'Ausgestellt am',
+        validUntil: 'Gültig bis',
+        validity: 'Status',
+        document: 'PDF',
+      },
+      documentReady: 'Bereit',
+      documentPending: 'Wird erstellt',
+      open: 'PDF öffnen',
+      openFor: 'PDF öffnen für {course}',
+      documentNotReady:
+        'Die Teilnahmebestätigung für {course} wird noch erstellt. Versuchen Sie es gleich noch einmal.',
+      documentFailed: 'Das PDF für {course} konnte nicht geöffnet werden.',
+      empty: 'Sie haben noch keine Teilnahmebestätigung.',
+      toCourses: 'Zu meinen Schulungen',
+      loadFailed: 'Ihre Teilnahmebestätigungen konnten nicht geladen werden.',
+    },
   },
   compliance: {
     matrix: {
@@ -207,7 +226,7 @@ export const de = {
       Completed: 'Abgeschlossen',
       CompletedLate: 'Verspätet abgeschlossen',
       Expired: 'Abgelaufen',
-    } satisfies Record<CellStatus, string>,
+    } satisfies Record<AssignmentStatus, string>,
     assign: {
       notAllowed: 'Sie dürfen in dieser Apotheke keine Schulungen zuweisen.',
       steps: {
@@ -222,6 +241,8 @@ export const de = {
       submit: 'Zuweisen',
       retry: 'Erneut versuchen',
       changed: 'Die Zuweisungen wurden inzwischen geändert. Prüfen Sie die Angaben und weisen Sie erneut zu.',
+      concurrentSave:
+        'Gleichzeitig wurde eine andere Änderung an den Zuweisungen gespeichert; es wurde nichts zugewiesen. Weisen Sie erneut zu.',
       failed: 'Die Schulung konnte nicht zugewiesen werden. Versuchen Sie es erneut.',
       course: {
         title: 'Schulung wählen',
@@ -455,6 +476,18 @@ export const de = {
         Published: 'Keine veröffentlichten Versionen.',
       },
     },
+    returns: {
+      title: 'Rückgaben',
+      columns: {
+        returnedAt: 'Zurückgegeben am',
+        returnedBy: 'Zurückgegeben von',
+        reason: 'Grund',
+      },
+      empty: 'Diese Version wurde noch nie zur Überarbeitung zurückgegeben.',
+      loadFailed: 'Die Rückgaben dieser Version konnten nicht geladen werden.',
+      byYou: 'Ihnen',
+      byAnotherEditor: 'einer anderen Person aus der Redaktion',
+    },
     course: {
       new: 'Neue Schulung',
       form: {
@@ -612,9 +645,11 @@ export const de = {
         },
       },
       draft: {
-        explain: 'Die KI entwirft die fehlenden Fragen aus den Textkapiteln. Sie prüfen jede Frage, bevor sie gilt.',
+        explain:
+          'Die KI entwirft die fehlenden Fragen aus den Textkapiteln und dem Text der PDF-Kapitel; Videos sieht sie sich nicht an. Sie prüfen jede Frage, bevor sie gilt.',
         start: 'KI-Entwurf erstellen',
-        noTextChapters: 'Die KI entwirft nur aus Textkapiteln. Legen Sie zuerst ein Textkapitel an.',
+        noTextChapters:
+          'Die KI entwirft nur aus Kapiteln mit Text: aus Textkapiteln und aus PDF-Kapiteln, deren Text sich lesen lässt. Legen Sie zuerst ein solches Kapitel an.',
         nothingToDraft: 'Die geprüften Fragen erfüllen die Vorgaben bereits; es gibt nichts zu entwerfen.',
         confirm: {
           title: 'KI-Entwurf erstellen?',
@@ -622,12 +657,19 @@ export const de = {
             'Die KI entwirft eine Frage. Geprüfte Fragen bleiben erhalten. | Die KI entwirft {count} Fragen. Geprüfte Fragen bleiben erhalten.',
           replaces:
             'Eine ungeprüfte Frage wird ersetzt, auch wenn sie von Hand geschrieben ist. | {count} ungeprüfte Fragen werden ersetzt, auch von Hand geschriebene.',
-          leftOut: 'PDF- und Videokapitel liest die KI nicht; Fragen dazu schreiben Sie von Hand.',
+          leftOut:
+            'Videokapitel und PDF-Kapitel ohne lesbaren Text liest die KI nicht; Fragen dazu schreiben Sie von Hand.',
           submit: 'Entwurf erstellen',
         },
         running: 'Die KI entwirft den Test. Das kann einige Minuten dauern; bitte lassen Sie die Seite geöffnet.',
         done: 'Die KI hat eine Frage entworfen. Bitte prüfen Sie sie. | Die KI hat {count} Fragen entworfen. Bitte prüfen Sie sie.',
         leftOut: 'Zu diesen Kapiteln hat die KI keine Fragen entworfen; schreiben Sie sie von Hand:',
+        truncated:
+          'Von diesen PDF-Kapiteln hat die KI nur den Anfang gelesen; Fragen zu den späteren Seiten schreiben Sie von Hand:',
+        leftOutSummary:
+          'Zu einem Kapitel hat die KI keine Fragen entworfen; siehe den Hinweis. | Zu {count} Kapiteln hat die KI keine Fragen entworfen; siehe den Hinweis.',
+        truncatedSummary:
+          'Von einem PDF-Kapitel hat die KI nur den Anfang gelesen; siehe den Hinweis. | Von {count} PDF-Kapiteln hat die KI nur den Anfang gelesen; siehe den Hinweis.',
         dismiss: 'Hinweis schließen',
         errors: {
           tooManyRequests: 'Sie haben in kurzer Zeit zu viele KI-Entwürfe angefordert. Versuchen Sie es später erneut.',
@@ -717,6 +759,8 @@ export const de = {
         reasonRequired: 'Geben Sie einen Grund an.',
         reasonTooLong: 'Der Grund darf höchstens {max} Zeichen lang sein.',
         reasonInvalid: 'Der Grund enthält unzulässige Steuer- oder Formatzeichen.',
+        reasonRefused:
+          'Der Grund muss ohne Leerraum am Anfang und Ende 1 bis {max} Zeichen lang sein und darf außer Zeilenumbrüchen und Tabulatoren keine Steuer- oder Formatzeichen enthalten.',
       },
       errors: {
         notADraft: 'Nur ein Entwurf kann eingereicht werden.',
@@ -733,6 +777,23 @@ export const de = {
     },
   },
   learning: {
+    myCourses: {
+      intro: 'Ihre Schulungen in {pharmacy}: Überfällige zuerst, dann nach Fälligkeit.',
+      list: { title: 'Zugewiesene Schulungen' },
+      due: 'Fällig am {date}',
+      dueOverdue: 'War fällig am {date}',
+      start: 'Starten',
+      continue: 'Fortsetzen',
+      startCourse: 'Starten: {title}',
+      continueCourse: 'Fortsetzen: {title}',
+      locked: 'Der Test ist gesperrt. Arbeiten Sie die Inhalte erneut durch, um ihn wieder freizuschalten.',
+      notStartable: 'Diese Schulung kann derzeit nicht gestartet werden: ihre Version ist zurückgezogen.',
+      empty: 'Ihnen ist in {pharmacy} derzeit keine Schulung zugewiesen.',
+      pharmacyNotFound: 'Sie sind nicht mehr Mitglied dieser Apotheke.',
+      identityIncomplete: 'Ihr Konto nennt keinen Namen oder keine gültige E-Mail-Adresse. Ergänzen Sie Ihr Profil.',
+      loadFailed: 'Ihre Schulungen konnten nicht geladen werden.',
+      retry: 'Erneut versuchen',
+    },
     player: {
       loadFailed: 'Die Schulung konnte nicht geladen werden.',
       notFound: 'Diese Schulung gibt es nicht.',
@@ -958,13 +1019,19 @@ export const de = {
       'sample-not-found': 'Dieses Beispiel gibt es nicht.',
     },
     certification: {
+      'capability-missing': 'Ihre Rolle in dieser Apotheke erlaubt das nicht.',
       'certificate-not-found': 'Diese Teilnahmebestätigung gibt es nicht, oder sie gehört nicht Ihnen.',
       'certificate-not-verifiable':
         'Zu diesem Code gibt es keine Teilnahmebestätigung. Prüfen Sie, ob Sie den vollständigen Link aus dem QR-Code geöffnet haben.',
       'document-not-ready':
         'Das PDF der Teilnahmebestätigung wird gerade erstellt. Versuchen Sie es gleich noch einmal.',
+      'export-too-large':
+        'Ein Export enthält höchstens 2000 Teilnahmebestätigungen. Wählen Sie einen kürzeren Zeitraum.',
       'identity-incomplete': 'Ihre Anmeldung nennt keine Person. Melden Sie sich erneut an.',
+      'invalid-export-period':
+        'Wählen Sie Beginn und Ende; das Ende darf nicht vor dem Beginn und höchstens fünf Jahre danach liegen.',
       'invalid-sample-name': 'Der Name eines Beispiels hat 1 bis {max} Zeichen und darf nicht leer sein.',
+      'pharmacy-not-found': 'Sie sind nicht Mitglied dieser Apotheke, oder es gibt sie nicht.',
       'sample-not-found': 'Dieses Beispiel gibt es nicht.',
       'verification-limit-reached':
         'Gerade werden zu viele Prüfungen angefragt. Versuchen Sie es in einer Minute erneut.',
@@ -975,6 +1042,8 @@ export const de = {
       'assignment-not-found': 'Diese Zuweisung gibt es in dieser Apotheke nicht mehr.',
       'assignments-changed':
         'Die Zuweisungen wurden inzwischen geändert. Prüfen Sie den aktuellen Stand und versuchen Sie es erneut.',
+      'concurrent-save':
+        'Gleichzeitig wurde eine andere Änderung an den Zuweisungen gespeichert; es wurde nichts gespeichert. Versuchen Sie es erneut.',
       'capability-missing': 'Ihre Rolle in dieser Apotheke erlaubt das nicht.',
       'certificate-predates-assignment': 'Eine Teilnahmebestätigung von vor der Zuweisung erfüllt sie nicht.',
       'course-missing': 'Wählen Sie eine Schulung.',
@@ -1006,6 +1075,8 @@ export const de = {
       'chapter-not-found': 'Dieses Kapitel gibt es in der Version nicht mehr.',
       'course-version-changed':
         'Die Version wurde inzwischen geändert. Laden Sie sie neu und wiederholen Sie die Änderung.',
+      'concurrent-save':
+        'Gleichzeitig wurde eine andere Änderung an der Version gespeichert; es wurde nichts gespeichert. Versuchen Sie es erneut.',
       'course-version-not-found': 'Diese Version gibt es nicht mehr.',
       'file-in-use': 'Diese Datei gehört schon zu einem anderen Kapitel der Version.',
       'four-eyes':
@@ -1034,18 +1105,21 @@ export const de = {
       'next-version-exists':
         'Von dieser Schulung gibt es schon eine neuere Version. Bearbeiten Sie diese, statt eine weitere anzulegen.',
       'no-chapters': 'Die Version braucht mindestens ein Kapitel.',
-      'no-text-chapters': 'Die KI entwirft nur aus Textkapiteln. Legen Sie zuerst ein Textkapitel an.',
-      'no-text-chapters-to-review': 'Die Version hat kein Textkapitel, das die KI prüfen könnte.',
+      'no-text-chapters':
+        'Die KI entwirft nur aus Kapiteln mit Text: aus Textkapiteln und aus PDF-Kapiteln, deren Text sich lesen lässt. Legen Sie zuerst ein solches Kapitel an.',
+      'no-text-chapters-to-review': 'Die Version hat kein Kapitel mit Text, das die KI prüfen könnte.',
       'not-a-draft': 'Nur ein Entwurf kann bearbeitet werden.',
       'not-in-review': 'Die Version ist nicht mehr in Prüfung.',
       'not-published': 'Die Version ist nicht veröffentlicht.',
       'nothing-to-draft': 'Die geprüften Fragen erfüllen die Vorgaben bereits; es gibt nichts zu entwerfen.',
       'order-does-not-match': 'Die Reihenfolge muss jedes Kapitel genau einmal enthalten. Laden Sie die Version neu.',
+      'pdf-readers-busy': 'Gerade werden zu viele PDFs gelesen. Versuchen Sie es in ein paar Sekunden erneut.',
       'publisher-approved-questions':
         'Mit Vier-Augen-Freigabe darf nicht veröffentlichen, wer Fragen dieser Version freigegeben hat. Bitten Sie eine andere Person aus der Redaktion.',
       'question-already-approved': 'Diese Frage ist bereits freigegeben. Ändern Sie sie, um sie erneut freizugeben.',
       'question-not-approved': 'Jede Frage muss vor der Veröffentlichung freigegeben sein.',
       'question-not-found': 'Diese Frage gibt es in der Version nicht mehr.',
+      'republish-running': 'Eine Neuveröffentlichung läuft bereits. Bitte warten Sie, bis sie abgeschlossen ist.',
       'reviewer-name-missing':
         'Ihr Konto nennt keinen anzeigbaren Namen. Ergänzen Sie Ihr Profil und melden Sie sich erneut an.',
       'sample-not-found': 'Dieses Beispiel gibt es nicht.',
@@ -1054,7 +1128,7 @@ export const de = {
       'too-few-options': 'Eine Frage braucht mindestens {min} Antwortoptionen.',
       'too-many-questions': 'Ein Test hat höchstens {max} Fragen.',
       'too-much-content-to-draft':
-        'Die Textkapitel sind zu lang für einen KI-Entwurf. Kürzen Sie sie oder schreiben Sie die Fragen von Hand.',
+        'Die Textkapitel sind zusammen zu lang für einen KI-Entwurf; PDF-Kapitel werden dafür gekürzt, Textkapitel nicht. Kürzen Sie die Textkapitel oder schreiben Sie die Fragen von Hand.',
       'too-much-content-to-review': 'Die Textkapitel sind zu lang für eine KI-Prüfung in einem Durchgang.',
       'upload-not-accepted': 'Die Datei ist weder ein PDF noch ein MP4-Video.',
       'upload-not-found': 'Die Datei ist noch nicht hochgeladen. Laden Sie sie hoch und speichern Sie dann erneut.',
@@ -1106,6 +1180,8 @@ export const de = {
       'person-already-member': 'Sie sind bereits Mitglied dieser Apotheke.',
       'pharmacy-changed':
         'Die Apotheke wurde gerade gleichzeitig geändert. Prüfen Sie den aktuellen Stand und versuchen Sie es erneut.',
+      'concurrent-save':
+        'Gleichzeitig wurde eine andere Änderung an der Apotheke gespeichert; es wurde nichts gespeichert. Versuchen Sie es erneut.',
       'pharmacy-not-found': 'Sie sind nicht mehr Mitglied dieser Apotheke.',
       'recipient-mailed-recently':
         'An diese Adresse wurde gerade erst eine Einladung gesendet. Sie können sie nach einer kurzen Wartezeit erneut einladen.',
