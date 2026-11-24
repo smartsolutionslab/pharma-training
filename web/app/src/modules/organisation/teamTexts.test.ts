@@ -207,7 +207,7 @@ const texts: Text[] = [
   ],
 
   [
-    'organisation.team.errors.inPharmacy',
+    'organisation.team.inPharmacy',
     { ...pharmacy, reason: '<reason>' },
     'In Apotheke am Markt: <reason>',
     'In Apotheke am Markt: <reason>',

@@ -261,12 +261,13 @@ describe('in a draft', () => {
     expect(changes()).toEqual([]);
   });
 
-  // A module's refusal is reported in the host's words, chosen by its code (ApiError.serverMessage).
+  // A module's refusal is reported by its code, in the catalog's words (#147, ADR 0007), never in the host's.
   test.each([
-    [409, 'editorial.not-a-draft', 'Die Version ist kein Entwurf mehr und kann nicht geändert werden.'],
+    [409, 'editorial.not-a-draft', 'Nur ein Entwurf kann bearbeitet werden.'],
     [400, 'editorial.invalid-validity', 'Die Gültigkeit liegt zwischen 1 und 60 Monaten.'],
-  ])('a refusal keeps the form open and reports the host’s message, %i %s', async (status, code, detail) => {
-    saving = async () => refusal(status, code, detail);
+    [400, 'editorial.invalid-question-count', 'Ein Test hat 1 bis 50 Fragen.'],
+  ])('a refusal keeps the form open and reports the catalog text for its code, %i %s', async (status, code, text) => {
+    saving = async () => refusal(status, code, 'SERVER WORDS');
     const user = userEvent.setup();
     await renderPage();
     await openForm(user);
@@ -274,7 +275,8 @@ describe('in a draft', () => {
     await enter(user, '20', '75', '24');
     await user.click(screen.getByRole('button', { name: t('editorial.test.blueprint.submit') }));
 
-    await waitFor(() => expect(notify.failure).toHaveBeenCalledWith(detail));
+    await waitFor(() => expect(notify.failure).toHaveBeenCalledWith(text));
+    expect(String(notify.failure.mock.calls)).not.toContain('SERVER WORDS');
     expect(notify.success).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: t('editorial.test.blueprint.submit') })).toBeInTheDocument();
     expect(field.questions()).toHaveValue(20);
@@ -284,8 +286,49 @@ describe('in a draft', () => {
     await waitFor(() => expect(reads().length).toBeGreaterThan(1));
   });
 
-  test("a failure without the host's words reports the catalog's", async () => {
-    saving = async () => new Response('', { status: 500 });
+  test('a refusal with a code is reported in English when the page speaks English', async () => {
+    saving = async () => refusal(400, 'editorial.invalid-question-count', 'SERVER WORDS');
+    const user = userEvent.setup();
+    await renderPage();
+    setLanguage('en-GB', { remember: false });
+    await screen.findByRole('heading', { level: 2, name: 'Test blueprint' });
+    await openForm(user);
+
+    await enter(user, '20', '75', '24');
+    await user.click(screen.getByRole('button', { name: t('editorial.test.blueprint.submit') }));
+
+    await waitFor(() => expect(notify.failure).toHaveBeenCalledWith('A test has 1 to 50 questions.'));
+    expect(String(notify.failure.mock.calls)).not.toContain('SERVER WORDS');
+  });
+
+  test("a module code the catalog does not know is reported in the host's words", async () => {
+    saving = async () => refusal(400, 'editorial.zzz-unknown', 'SERVER WORDS');
+    const user = userEvent.setup();
+    await renderPage();
+    await openForm(user);
+
+    await user.click(screen.getByRole('button', { name: t('editorial.test.blueprint.submit') }));
+
+    await waitFor(() => expect(notify.failure).toHaveBeenCalledWith('SERVER WORDS'));
+  });
+
+  test('a save that never reached the host reports the catalog text of the action', async () => {
+    saving = async () => {
+      throw new TypeError('Failed to fetch');
+    };
+    const user = userEvent.setup();
+    await renderPage();
+    await openForm(user);
+
+    await user.click(screen.getByRole('button', { name: t('editorial.test.blueprint.submit') }));
+
+    await waitFor(() =>
+      expect(notify.failure).toHaveBeenCalledWith('Die Testvorgaben konnten nicht gespeichert werden.'),
+    );
+  });
+
+  test.each([500, 502, 503])("a %i without a code reports the action's catalog text", async (status) => {
+    saving = async () => new Response('', { status });
     const user = userEvent.setup();
     await renderPage();
     await openForm(user);

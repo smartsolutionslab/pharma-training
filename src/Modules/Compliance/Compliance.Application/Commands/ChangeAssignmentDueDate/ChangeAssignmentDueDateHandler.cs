@@ -40,8 +40,10 @@ public sealed class ChangeAssignmentDueDateHandler(
             return Failure(AssignmentFailures.AssignmentNotFound(command.Assignment.Value));
         }
 
-        // Nobody manages their own assignment: another manager of the pharmacy moves or withdraws it.
-        if (found.Value.Learner == command.By)
+        // A manager does not manage their own assignment while another manager of the pharmacy can; a sole manager does,
+        // and the history shows it as a self-change (#284).
+        if (found.Value.Learner == command.By
+            && await ComplianceAccess.AnotherHoldsAsync(members, command.By, command.Pharmacy, Capability.AssignCourses, cancellationToken))
         {
             return Failure(AssignmentFailures.OwnAssignment());
         }

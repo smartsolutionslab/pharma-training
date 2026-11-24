@@ -98,13 +98,14 @@ public class CancelAssignmentTests
     }
 
     /// <summary>
-    /// Nobody manages their own assignment (orchestrator's default on #269, the owner may overrule it): another manager of
-    /// the pharmacy must move or withdraw it.
+    /// A manager does not manage their own assignment while another manager of the pharmacy can (orchestrator's default on
+    /// #269 and #284, the owner may overrule it).
     /// </summary>
     [Fact]
-    public async Task A_manager_may_not_withdraw_their_own_assignment()
+    public async Task A_manager_may_not_withdraw_their_own_assignment_while_another_manager_can()
     {
         await SeedAsync();
+        await ComplianceMembers.StartAsync(members, Bea, Pharmacy, MembershipRole.Manager);
         var own = Own();
 
         var result = await CancelAsync(own.Id);
@@ -114,6 +115,21 @@ public class CancelAssignmentTests
         own.Status.ShouldBe(AssignmentStatus.Open);
         own.History.ShouldBeEmpty();
         assignments.Commits.ShouldBe(0);
+    }
+
+    /// <summary>A pharmacy's only manager changes their own assignment themselves; the history marks it as a self-change (#284).</summary>
+    [Fact]
+    public async Task A_sole_manager_withdraws_their_own_assignment()
+    {
+        await SeedAsync();
+        var own = Own();
+
+        var result = await CancelAsync(own.Id);
+
+        result.IsSuccess.ShouldBeTrue();
+        own.Status.ShouldBe(AssignmentStatus.Cancelled);
+        own.History.ShouldHaveSingleItem().ChangedBy.ShouldBe(Manager);
+        assignments.Commits.ShouldBe(1);
     }
 
     [Fact]

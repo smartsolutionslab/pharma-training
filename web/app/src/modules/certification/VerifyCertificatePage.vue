@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n';
 import { useRoute } from 'vue-router';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { messageText } from '@/i18n/errorText';
 import { calendarDate } from '@/i18n/formats';
 import CertificateValidity from './CertificateValidity.vue';
 import { useCertificateVerification } from './useCertificateVerification';
@@ -27,7 +28,7 @@ const alert = computed(() => {
   if (outcome === undefined || outcome.kind !== 'alert') {
     return undefined;
   }
-  return 'key' in outcome ? t(outcome.key) : outcome.message;
+  return messageText(outcome.message);
 });
 
 const day = (value: string) => d(calendarDate(value), 'date');
