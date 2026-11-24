@@ -45,6 +45,21 @@ public partial class KeycloakAdminOtpTests(KeycloakAdminContainer keycloak) : IC
     }
 
     [Fact]
+    public async Task Enrolment_ends_the_sessions_the_administrator_signed_in_to_with_the_password_alone()
+    {
+        var (user, password) = await AdministratorAsync();
+        var earlier = await keycloak.ExecAsync(
+            $"./kcadm.sh config credentials --config /tmp/{user}.config --server http://localhost:8080 --realm master --user {user}",
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["KC_CLI_PASSWORD"] = password });
+        earlier.ExitCode.ShouldBe(0, earlier.ToString());
+
+        await EnrollAsync(user);
+
+        var reused = await keycloak.ExecAsync($"./kcadm.sh get realms/master --config /tmp/{user}.config --fields realm");
+        reused.ExitCode.ShouldNotBe(0, $"A session signed in with the password alone outlived the enrolment:\n{reused}");
+    }
+
+    [Fact]
     public async Task A_wrong_code_at_sign_in_is_refused_and_leaves_kcadms_session_as_it_was()
     {
         var (user, password) = await AdministratorAsync();
