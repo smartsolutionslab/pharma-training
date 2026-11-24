@@ -87,6 +87,24 @@ public class RepublishRunTests
     }
 
     [Fact]
+    public async Task A_run_whose_commit_fails_still_logs_the_editor_and_what_it_committed_before()
+    {
+        store.Stored.Add(Published("Hygiene 2027"));
+        store.Stored.Add(Published("Lagerung 2027"));
+        var failing = Substitute.For<IEditorialUnitOfWork>();
+        failing.CommitOneOfSeveralAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask, Task.FromException(new InvalidOperationException("The broker is gone.")));
+
+        await Should.ThrowAsync<InvalidOperationException>(() => RepublishAsync(failing));
+
+        var line = logger.Collector.GetSnapshot().ShouldHaveSingleItem();
+        line.Level.ShouldBe(LogLevel.Warning);
+        line.Message.ShouldContain(Author.Value.ToString());
+        line.Message.ShouldContain("CourseVersions = 1");
+        line.Message.ShouldContain("TestDefinitions = 1");
+    }
+
+    [Fact]
     public async Task A_refused_run_logs_the_editor()
     {
         await using var other = runLock.HoldAsAnotherRun();
