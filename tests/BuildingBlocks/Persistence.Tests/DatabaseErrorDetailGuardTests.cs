@@ -59,9 +59,23 @@ public class DatabaseErrorDetailGuardTests
     [Fact]
     public void The_guard_is_registered_once_however_many_modules_add_it()
     {
-        var services = new ServiceCollection().AddDatabaseErrorDetailGuard().AddDatabaseErrorDetailGuard();
+        var configuration = new ConfigurationBuilder().Build();
+        var services = new ServiceCollection().AddDatabaseErrorDetailGuard(configuration).AddDatabaseErrorDetailGuard(configuration);
 
-        services.Count(service => service.ImplementationType == typeof(DatabaseErrorDetailGuard)).ShouldBe(1);
+        services.Count(service => service.ServiceType == typeof(IHostedService)).ShouldBe(1);
+    }
+
+    /// <summary>
+    /// A module's own test builds its registrations on logging alone and validates every one (<c>ValidateOnBuild</c>);
+    /// the guard asks for nothing a container needs to build it, only for the environment once the host starts.
+    /// </summary>
+    [Fact]
+    public void A_container_with_logging_alone_validates_the_guard()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection([new("ConnectionStrings:database", "Host=db")]).Build();
+        var services = new ServiceCollection().AddLogging().AddDatabaseErrorDetailGuard(configuration);
+
+        Should.NotThrow(() => services.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true }).Dispose());
     }
 
     [Fact]
@@ -86,9 +100,8 @@ public class DatabaseErrorDetailGuardTests
             .AddInMemoryCollection(connectionString is null ? [] : [new("ConnectionStrings:database", connectionString)])
             .Build();
         return new ServiceCollection()
-            .AddSingleton<IConfiguration>(configuration)
             .AddSingleton<IHostEnvironment>(Environment(environment))
-            .AddDatabaseErrorDetailGuard()
+            .AddDatabaseErrorDetailGuard(configuration)
             .BuildServiceProvider();
     }
 
