@@ -18,6 +18,7 @@ public static class QuestionMappings
             question.Type.ToDto(),
             options,
             question.Provenance.ToDto(),
+            question.Origin.ToDto(),
             question.Review.ToDto(),
             question.ReviewedBy?.Value,
             question.ReviewedAt?.Value,

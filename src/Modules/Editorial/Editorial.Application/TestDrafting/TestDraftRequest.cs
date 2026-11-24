@@ -5,12 +5,13 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.TestDra
 /// <summary>
 /// What the AI test draft asks the model for, worked out from the version before the model is called (ADR 0008): its
 /// chapters with text (a text chapter's Markdown, a PDF's extracted text), numbered together from one in the version's
-/// order, and the blueprint's count less the approved questions, split evenly over them with the remainder on the first
-/// ones. Video chapters and PDF chapters without text are left out, and the PDF chapters drafted from text cut at a
-/// limit are named, each in the version's order, so the editor knows. Text chapters are sent whole; too many of them
-/// are refused. The PDFs share what the titles and text chapters leave of <see cref="MaxCharacters"/>: a PDF shorter
-/// than its even share is sent whole, the longer ones are cut to an even share of the rest and named as cut, and a PDF
-/// nothing is left for is left out, so long PDFs never cost the version its draft (#157).
+/// order, and the blueprint's count less the questions the draft keeps (every one but the AI-drafted ones that are
+/// untouched, never approved and unreviewed, #245), split evenly over them with the remainder on the first ones. Video
+/// chapters and PDF chapters without text are left out, and the PDF chapters drafted from text cut at a limit are named,
+/// each in the version's order, so the editor knows. Text chapters are sent whole; too many of them are refused. The PDFs
+/// share what the titles and text chapters leave of <see cref="MaxCharacters"/>: a PDF shorter than its even share is
+/// sent whole, the longer ones are cut to an even share of the rest and named as cut, and a PDF nothing is left for is
+/// left out, so long PDFs never cost the version its draft (#157).
 /// </summary>
 public sealed record TestDraftRequest(
     IReadOnlyList<TestDraftChapter> Chapters,
@@ -58,8 +59,10 @@ public sealed record TestDraftRequest(
             return Failure(CourseVersionFailures.NoTextChapters());
         }
 
-        var approved = version.Questions.Count(question => question.Review == ReviewState.Approved);
-        var requested = version.Blueprint.Questions.Value - approved;
+        // Every question the draft keeps counts: approved ones, copied or hand-written ones even while unreviewed, and AI-drafted
+        // ones an editor edited or approved once (#245).
+        var kept = version.Questions.Count(question => !question.IsReplacedByAiDraft());
+        var requested = version.Blueprint.Questions.Value - kept;
         if (requested <= 0)
         {
             return Failure(CourseVersionFailures.NothingToDraft());

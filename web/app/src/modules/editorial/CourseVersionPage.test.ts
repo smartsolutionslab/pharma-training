@@ -71,6 +71,7 @@ function question(id: string, chapterId: string, review: 'Approved' | 'Unreviewe
       { id: `${id}-2`, text: '5 Sekunden', correct: false },
     ],
     provenance: 'Human',
+    origin: 'HandWritten',
     review,
     reviewedBy: null,
     reviewedAt: null,
