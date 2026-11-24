@@ -10,7 +10,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application.Querie
 /// courses, so its memberships and assignments are resolved in memory: each cell's state is the assignment's own
 /// <see cref="Assignment.StateOn"/> on today's German day, a domain rule no SQL projection repeats.
 /// </summary>
-public sealed class GetComplianceMatrixHandler(IMemberStore members, IAssignmentStore assignments, ICourseVersionStore courses, TimeProvider time)
+public sealed class GetComplianceMatrixHandler(IMemberStore members, IAssignmentStore assignments, ICourseVersionStore courses, ILearnerProgressStore progress, TimeProvider time)
     : IQueryHandler<GetComplianceMatrix, Result<ComplianceMatrixDto, ApiError>>
 {
     public async Task<Result<ComplianceMatrixDto, ApiError>> HandleAsync(GetComplianceMatrix query, CancellationToken cancellationToken)
@@ -39,7 +39,16 @@ public sealed class GetComplianceMatrixHandler(IMemberStore members, IAssignment
         var inPharmacy = await assignments.InPharmacyAsync(query.Pharmacy, cancellationToken);
         var published = await courses.FindCoursesAsync([.. inPharmacy.Select(assignment => assignment.Course).Distinct()], cancellationToken);
 
-        var matrix = ComplianceMatrix.Of(rows, inPharmacy, published, today);
+        List<CertificateId> completedBy =
+        [
+            .. inPharmacy
+                .Where(assignment => assignment.Status == AssignmentStatus.Completed)
+                .Select(assignment => assignment.Certificate)
+                .OfType<CertificateId>()
+                .Distinct(),
+        ];
+        var certificates = await progress.FindCertificatesAsync(completedBy, cancellationToken);
+        var matrix = ComplianceMatrix.Of(rows, inPharmacy, published, certificates, today);
         return Success(matrix.ToDto(query.Page, query.PageSize));
     }
 }
