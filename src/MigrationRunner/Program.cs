@@ -16,8 +16,11 @@ var module = builder.Configuration["Migrations:Module"]
 // resolves unqualified names in pg_catalog alone: defence in depth, should a role ever hold CREATE on the database and plant
 // code on the administrator's search_path that these sessions would run with the administrator's rights (CVE-2018-1058,
 // AdministratorSession). What they make names the module's schema explicitly.
-var administrator = AdministratorSession.Pinned(builder.Configuration.GetConnectionString("database")
-    ?? throw new InvalidOperationException("Connection string 'database' is missing; the AppHost gives the administrator's for the module's database."));
+var database = builder.Configuration.GetConnectionString("database")
+    ?? throw new InvalidOperationException("Connection string 'database' is missing; the AppHost gives the administrator's for the module's database.");
+// The runner never starts its host, so it checks here what a service's host checks as it starts (DatabaseErrorDetailGuard).
+DatabaseErrorDetail.RefuseOutsideDevelopment(database, builder.Environment);
+var administrator = AdministratorSession.Pinned(database);
 builder.Configuration.AddInMemoryCollection([new("ConnectionStrings:database", administrator)]);
 var application = builder.Configuration.GetConnectionString("application");
 var infrastructure = Assembly.LoadFrom(Path.Combine(AppContext.BaseDirectory, $"SmartSolutionsLab.PharmaTraining.Modules.{Namespace(module)}.Infrastructure.dll"));
