@@ -3,6 +3,9 @@ import type { EditorialChapterDto, EditorialChapterRequest } from '@/api/generat
 import type { MessageKey } from '@/i18n';
 import { type FileKind, fileLimits, fileProblem, fileProblemKey } from './chapterFile';
 
+/** The longest chapter title (ChapterTitle). */
+export const chapterTitleMaxLength = 150;
+
 /** The most a text chapter holds (MarkdownText). */
 export const maxTextLength = 200_000;
 
@@ -15,7 +18,7 @@ const chapterFields = z.object({
     .string()
     .trim()
     .min(1, { error: 'editorial.chapterForm.titleRequired' satisfies MessageKey })
-    .max(150, { error: 'editorial.chapterForm.titleTooLong' satisfies MessageKey })
+    .max(chapterTitleMaxLength, { error: 'editorial.chapterForm.titleTooLong' satisfies MessageKey })
     .refine(hasNoNul, { error: 'editorial.chapterForm.titleHasNul' satisfies MessageKey }),
   kind: z.enum(['Text', 'Pdf', 'Video']),
   text: z.string(),
@@ -32,7 +35,7 @@ const isVideo = (values: ChapterFields) => values.kind === 'Video';
 
 /** A duration as minutes:seconds (12:05, minutes not capped at 59), from 0:01 to 240:00 (VideoDuration). */
 const durationFormat = /^(\d{1,3}):([0-5]\d)$/;
-const maxDurationSeconds = 14_400;
+export const maxDurationSeconds = 14_400;
 
 /** The seconds a duration typed as minutes:seconds stands for, or undefined when it is none or out of range. */
 export function durationSeconds(typed: string): number | undefined {

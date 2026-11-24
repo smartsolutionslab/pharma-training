@@ -23,15 +23,16 @@ const texts: Text[] = [
     'Sie dürfen den Schulungsstand des Teams in dieser Apotheke nicht sehen.',
     "You may not view the team's training status in this pharmacy.",
   ],
+  // pharmacy-not-found and identity-incomplete fold into the catalog's errors.compliance.* (#147).
   [
-    'compliance.matrix.pharmacyNotFound',
+    'errors.compliance.pharmacy-not-found',
     {},
     undefined,
     'Sie sind nicht mehr Mitglied dieser Apotheke.',
     'You are no longer a member of this pharmacy.',
   ],
   [
-    'compliance.matrix.identityIncomplete',
+    'errors.compliance.identity-incomplete',
     {},
     undefined,
     'Ihr Konto nennt keinen Namen oder keine gültige E-Mail-Adresse. Ergänzen Sie Ihr Profil.',

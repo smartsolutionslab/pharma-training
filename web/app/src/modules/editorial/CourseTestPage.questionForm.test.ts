@@ -446,10 +446,12 @@ describe('editing a question', () => {
   test.each([
     [
       'a 409 of the module',
-      () => refusal(409, 'editorial.not-a-draft', 'Die Version ist kein Entwurf mehr und kann nicht geändert werden.'),
-      () => 'Die Version ist kein Entwurf mehr und kann nicht geändert werden.',
+      () => refusal(409, 'editorial.not-a-draft', 'SERVER WORDS'),
+      () => 'Nur ein Entwurf kann bearbeitet werden.',
     ],
     ['a 500', () => new Response('', { status: 500 }), () => t('editorial.test.questions.saveFailed')],
+    ['a 502 of the edge', () => new Response('', { status: 502 }), () => t('editorial.test.questions.saveFailed')],
+    ['an unknown module code', () => refusal(409, 'editorial.zzz-unknown', 'SERVER WORDS'), () => 'SERVER WORDS'],
   ])(
     'a question the host refuses with %s is reported, the dialog stays open with what was entered, and the version is read again',
     async (_answer, answer, reported) => {
@@ -563,8 +565,8 @@ describe('deleting a question', () => {
   test.each([
     [
       'a 409 of the module',
-      () => refusal(409, 'editorial.not-a-draft', 'Die Version ist kein Entwurf mehr und kann nicht geändert werden.'),
-      () => 'Die Version ist kein Entwurf mehr und kann nicht geändert werden.',
+      () => refusal(409, 'editorial.not-a-draft', 'SERVER WORDS'),
+      () => 'Nur ein Entwurf kann bearbeitet werden.',
     ],
     ['a 500', () => new Response('', { status: 500 }), () => t('editorial.test.questions.removeFailed')],
   ])(

@@ -4,7 +4,8 @@ import { setLanguage, t } from '@/i18n';
 import { draftFailure } from './testDraftErrors';
 
 // What the page says when an AI draft is refused or fails (#25, S8): the text is chosen by the problem's code where the
-// host sends one, by the status otherwise, never the host's words, and in the language the page speaks. The 503
+// host sends one (the page's own key where its words depend on the draft, else the catalog's errors.<code>, #147), by
+// the status otherwise, never the host's words, and in the language the page speaks. The 503
 // (model-not-configured, raised before any handler) and the 502 (ai-draft-malformed) are told apart from an edge's 503
 // or 502 by the problem's code at any status (ApiError.failureCode, baseApi.test.ts); an edge's says the draft failed.
 // A draft that never got an answer the page can read (a network failure, a body that is not JSON) may have been
@@ -18,16 +19,16 @@ const answers: [string, () => unknown, Parameters<typeof t>[0], string, string][
   [
     '503 model-not-configured',
     () => new ApiError(503, problem(503, 'model-not-configured')),
-    'editorial.test.draft.errors.modelNotConfigured',
-    'Für KI-Entwürfe ist kein Sprachmodell eingerichtet. Wenden Sie sich an den Betrieb der Plattform.',
-    "No language model is set up for AI drafts. Contact the platform's operators.",
+    'errors.model-not-configured',
+    'Es ist kein Sprachmodell eingerichtet; KI-Funktionen stehen nicht zur Verfügung. Wenden Sie sich an den Betrieb der Plattform.',
+    "No language model is set up, so AI features are not available. Contact the platform's operators.",
   ],
   [
     '429 editorial.model-limit-reached',
     () => new ApiError(429, problem(429, 'editorial.model-limit-reached')),
-    'editorial.test.draft.errors.limitReached',
-    'Sie haben Ihr Limit für KI-Entwürfe erreicht. Versuchen Sie es später erneut.',
-    'You have reached your limit for AI drafts. Try again later.',
+    'errors.editorial.model-limit-reached',
+    'Sie haben Ihr Limit für KI-Anfragen erreicht. Versuchen Sie es später erneut.',
+    'You have reached your limit for AI requests. Try again later.',
   ],
   [
     "429 without a code (an edge's)",
@@ -46,7 +47,7 @@ const answers: [string, () => unknown, Parameters<typeof t>[0], string, string][
   [
     '502 ai-draft-malformed',
     () => new ApiError(502, problem(502, 'editorial.ai-draft-malformed')),
-    'editorial.test.draft.errors.malformed',
+    'errors.editorial.ai-draft-malformed',
     'Die Antwort der KI war unbrauchbar; es wurde nichts geändert. Versuchen Sie es erneut.',
     "The AI's answer could not be used; nothing was changed. Try again.",
   ],
@@ -67,7 +68,7 @@ const answers: [string, () => unknown, Parameters<typeof t>[0], string, string][
   [
     '422 too-much-content-to-draft',
     () => new ApiError(422, problem(422, 'editorial.too-much-content-to-draft')),
-    'editorial.test.draft.errors.tooMuchContent',
+    'errors.editorial.too-much-content-to-draft',
     'Die Textkapitel sind zu lang für einen KI-Entwurf. Kürzen Sie sie oder schreiben Sie die Fragen von Hand.',
     'The text chapters are too long for an AI draft. Shorten them or write the questions by hand.',
   ],
@@ -84,6 +85,20 @@ const answers: [string, () => unknown, Parameters<typeof t>[0], string, string][
     'editorial.test.draft.errors.notADraft',
     'Diese Version ist kein Entwurf mehr; ihr Test kann nicht neu entworfen werden.',
     'This version is no longer a draft; its test cannot be drafted again.',
+  ],
+  [
+    '403 identity-incomplete, a code the page has no words of its own for',
+    () => new ApiError(403, problem(403, 'editorial.identity-incomplete')),
+    'errors.editorial.identity-incomplete',
+    'Ihre Anmeldung nennt keine Person. Melden Sie sich erneut an.',
+    'Your sign-in names no person. Please sign in again.',
+  ],
+  [
+    '400 invalid-argument of the host',
+    () => new ApiError(400, problem(400, 'invalid-argument')),
+    'errors.invalid-argument',
+    'Eine Angabe ist ungültig. Prüfen Sie Ihre Eingaben und versuchen Sie es erneut.',
+    'A value is not valid. Check your entries and try again.',
   ],
   [
     '504 from the edge',
