@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Testing;
@@ -151,8 +152,40 @@ public class ReannounceTestPassesTests
             .Where(record => record.Level == LogLevel.Warning && record.Message.Contains(unreadable.Passed.Examination.Value.ToString(), StringComparison.OrdinalIgnoreCase))
             .ShouldHaveSingleItem();
         skipped.Message.ShouldContain("2", Case.Sensitive);
+        skipped.GetStructuredStateValue("Count").ShouldBe("1");
         skipped.Message.ShouldNotContain(unreadable.Passed.Learner.Value.ToString(), Case.Insensitive);
+        skipped.GetStructuredStateValue("FirstFailureType").ShouldBe(nameof(JsonException));
         skipped.Exception.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task A_pass_logs_one_warning_for_all_the_test_passes_it_could_not_read_naming_the_first_and_last()
+    {
+        // #360: a warning per unreadable event would log up to MostEventsPerPass warnings a pass on every replica.
+        var first = Stored(streamVersion: 1, storedAt: Now.AddHours(-7));
+        var middle = Stored(streamVersion: 5, storedAt: Now.AddHours(-6));
+        var last = Stored(streamVersion: 8, storedAt: Now.AddHours(-5));
+        var readable = Stored(streamVersion: 3, storedAt: Now.AddHours(-4));
+        unannounced.Stored.AddRange([first, middle, readable, last]);
+        unannounced.Unreadable.UnionWith([first, middle, last]);
+
+        var passed = await PassAsync(Settings());
+
+        passed.IsSuccess.ShouldBeTrue();
+        announced.Added.ShouldHaveSingleItem().StreamVersion.ShouldBe(3);
+        var warnings = logger.Collector.GetSnapshot().Where(record => record.Level >= LogLevel.Warning).ToList();
+        warnings.Count.ShouldBe(2);
+        warnings.ShouldNotContain(record => record.Message.Contains(middle.Passed.Examination.Value.ToString(), StringComparison.OrdinalIgnoreCase));
+        var skipped = warnings.Where(record => record.GetStructuredStateValue("Count") != null).ShouldHaveSingleItem();
+        skipped.Level.ShouldBe(LogLevel.Warning);
+        skipped.GetStructuredStateValue("Count").ShouldBe("3");
+        skipped.GetStructuredStateValue("FirstStreamId").ShouldBe(first.Passed.Examination.Value.ToString());
+        skipped.GetStructuredStateValue("FirstStreamVersion").ShouldBe("1");
+        skipped.GetStructuredStateValue("LastStreamId").ShouldBe(last.Passed.Examination.Value.ToString());
+        skipped.GetStructuredStateValue("LastStreamVersion").ShouldBe("8");
+        skipped.GetStructuredStateValue("FirstFailureType").ShouldBe(nameof(JsonException));
+        skipped.Exception.ShouldBeNull();
+        skipped.Message.ShouldNotContain(first.Passed.Learner.Value.ToString(), Case.Insensitive);
     }
 
     [Fact]
@@ -208,7 +241,7 @@ public class ReannounceTestPassesTests
     [Fact]
     public async Task A_pass_at_the_largest_batch_reads_at_most_its_most_events_of_unreadable_test_passes()
     {
-        // #351: ten pages of the largest batch would load and warn of ten thousand events a pass on every replica.
+        // #351: ten pages of the largest batch would load ten thousand events a pass on every replica; #360: they log one warning.
         List<StoredTestPass> unreadable = [.. Enumerable.Range(1, AnnouncementSweepSettings.MostEventsPerPass + 1).Select(version => Stored(streamVersion: version, storedAt: Now.AddDays(-6)))];
         unannounced.Stored.AddRange(unreadable);
         unannounced.Unreadable.UnionWith(unreadable);
@@ -217,7 +250,9 @@ public class ReannounceTestPassesTests
 
         passed.IsSuccess.ShouldBeTrue();
         unannounced.Asked.Sum(question => question.Limit).ShouldBe(AnnouncementSweepSettings.MostEventsPerPass);
-        logger.Collector.GetSnapshot().Count(record => record.Level == LogLevel.Warning).ShouldBe(AnnouncementSweepSettings.MostEventsPerPass);
+        var skipped = logger.Collector.GetSnapshot().Where(record => record.Level == LogLevel.Warning).ShouldHaveSingleItem();
+        skipped.GetStructuredStateValue("Count").ShouldBe(AnnouncementSweepSettings.MostEventsPerPass.ToString(CultureInfo.InvariantCulture));
+        skipped.GetStructuredStateValue("LastStreamVersion").ShouldBe(AnnouncementSweepSettings.MostEventsPerPass.ToString(CultureInfo.InvariantCulture));
         unitOfWork.Commits.ShouldBe(0);
     }
 
@@ -236,6 +271,24 @@ public class ReannounceTestPassesTests
         unitOfWork.Published.ShouldBeEmpty();
         unitOfWork.Commits.ShouldBe(0);
         logger.Collector.GetSnapshot().ShouldNotContain(record => record.Level == LogLevel.Warning);
+    }
+
+    [Fact]
+    public async Task A_database_that_fails_after_the_pass_skipped_an_unreadable_test_pass_still_logs_the_one_warning()
+    {
+        var unreadable = Stored(streamVersion: 4, storedAt: Now.AddHours(-6));
+        var unreachable = Stored(streamVersion: 5, storedAt: Now.AddHours(-5));
+        unannounced.Stored.AddRange([unreadable, unreachable]);
+        unannounced.Unreadable.Add(unreadable);
+        unannounced.Unreachable.Add(unreachable);
+
+        await Should.ThrowAsync<DatabaseUnavailable>(() => PassAsync(Settings()));
+
+        var skipped = logger.Collector.GetSnapshot().Where(record => record.Level == LogLevel.Warning).ShouldHaveSingleItem();
+        skipped.GetStructuredStateValue("Count").ShouldBe("1");
+        skipped.GetStructuredStateValue("FirstStreamVersion").ShouldBe("4");
+        skipped.GetStructuredStateValue("FirstFailureType").ShouldBe(nameof(JsonException));
+        skipped.Exception.ShouldBeNull();
     }
 
     private static StoredTestPass Stored(long streamVersion, DateTimeOffset storedAt)

@@ -98,6 +98,7 @@ const home = () => t('shell.home');
 const organisation = () => t('modules.organisation.title');
 const learning = () => t('modules.learning.title');
 const editorial = () => t('modules.editorial.title');
+const certification = () => t('modules.certification.title');
 const reportsTitle = () => t('modules.reports.title');
 const newReport = () => t('modules.reports.pages.new.title');
 const reviewReports = () => t('modules.reports.pages.review.title');
@@ -203,8 +204,13 @@ test('the sidebar lists the start page and every module the user may see, from t
 // the tests' new report are for every signed-in user, the tests' review for editors, whatever their module's audience.
 const forEveryone = ['modules.organisation.pages.register.title', 'modules.reports.pages.new.title'];
 const forEditors = [...forEveryone, 'modules.reports.pages.review.title'];
-// Assigning a course (#37) is for a member who may manage the pharmacy, listed with its module, before registering.
-const forManagers = ['modules.compliance.pages.assign.title', ...forEveryone];
+// Exporting the certificates (#297) and assigning a course (#37) are for a member who may manage the pharmacy, each
+// listed with its module, before registering.
+const forManagers = [
+  'modules.certification.pages.export.title',
+  'modules.compliance.pages.assign.title',
+  ...forEveryone,
+];
 
 const audiences = [
   {
@@ -240,7 +246,7 @@ const audiences = [
     who: 'an editor of no pharmacy',
     roles: ['editor'],
     memberships: [],
-    pages: ['shell.home', 'modules.editorial.title'],
+    pages: ['shell.home', 'modules.certification.title', 'modules.editorial.title'],
     below: forEditors,
   },
   {
@@ -257,7 +263,14 @@ const audiences = [
     ],
     below: forEditors,
   },
-  { who: 'a user of no pharmacy and no role', roles: [], memberships: [], pages: ['shell.home'], below: forEveryone },
+  // Certification's page (#296) is every signed-in user's: a certificate is the person's, whatever their pharmacy.
+  {
+    who: 'a user of no pharmacy and no role',
+    roles: [],
+    memberships: [],
+    pages: ['shell.home', 'modules.certification.title'],
+    below: forEveryone,
+  },
 ];
 
 test.each(audiences)('the sidebar shows $who the pages for them', async ({ roles, memberships, pages }) => {
@@ -287,12 +300,35 @@ test.each(audiences)(
   },
 );
 
+// The certificate export (#297) is a manager's page below the certification module, whose page is the employee's own
+// list: the palette lists it for a membership that may assign courses, and for nobody else.
+test('the command palette lists "Nachweise exportieren" for a manager only', async () => {
+  const listsExport = async (memberships: MyPharmacyDto[]) => {
+    const user = userEvent.setup();
+    answer(memberships);
+    await renderAt('/', { roles: [] });
+    await user.keyboard('{Control>}k{/Control}');
+    const dialog = await screen.findByRole('dialog', { name: palette() });
+    const options = within(dialog)
+      .getAllByRole('option')
+      .map((option) => option.textContent.trim());
+    cleanup();
+    return options.includes('Nachweise exportieren');
+  };
+
+  expect({
+    manager: await listsExport([markt]),
+    employee: await listsExport([dom]),
+    'no pharmacy': await listsExport([]),
+  }).toEqual({ manager: true, employee: false, 'no pharmacy': false });
+});
+
 test('the start page is there for a user with no pharmacy and no role', async () => {
   answer([]);
 
   await renderAt('/', { roles: [] });
 
-  expect(sidebarLinks()).toEqual([home()]);
+  expect(sidebarLinks()).toEqual([home(), certification()]);
   expect(screen.getByRole('heading', { name: t('app.name'), level: 1 })).toBeInTheDocument();
 });
 
@@ -357,7 +393,7 @@ test('an editor of no pharmacy reaches the editorial page', async () => {
 
   expect(await screen.findByRole('heading', { name: editorial(), level: 1 })).toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: t('shell.gate.notAvailable') })).not.toBeInTheDocument();
-  expect(sidebarLinks()).toEqual([home(), editorial()]);
+  expect(sidebarLinks()).toEqual([home(), certification(), editorial()]);
 });
 
 test("switching from a pharmacy the user manages to one they work in closes the manager's page", async () => {
@@ -516,8 +552,9 @@ test.each([
   ).toEqual([
     home(),
     ...moduleRoutes.map((module) => t(module.titleKey)),
-    // renderAt's user also manages a pharmacy, so assigning a course (#37) is theirs too, listed with its module.
-    ...titles(['modules.compliance.pages.assign.title', ...forEditors]),
+    // renderAt's user also manages a pharmacy, so exporting the certificates (#297) and assigning a course (#37) are
+    // theirs too, each listed with its module.
+    ...titles(['modules.certification.pages.export.title', 'modules.compliance.pages.assign.title', ...forEditors]),
   ]);
 
   await user.keyboard('{Escape}');
@@ -573,7 +610,7 @@ test('a page for every signed-in user is there for a user of no pharmacy and no 
 
   expect(await screen.findByRole('heading', { name: newReport(), level: 1 })).toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: t('shell.gate.notAvailable') })).not.toBeInTheDocument();
-  expect(sidebarLinks()).toEqual([home()]);
+  expect(sidebarLinks()).toEqual([home(), certification()]);
 });
 
 test('the page to register a pharmacy is there for a user of no pharmacy and no role', async () => {
@@ -705,7 +742,7 @@ test('the sidebar and the breadcrumbs name the pages in German by default', asyn
     'Startseite',
     'Tests',
     'Schulungskatalog',
-    'Teilnahmebestätigungen',
+    'Meine Teilnahmebestätigungen',
     'Team-Matrix',
     'Redaktion',
     'Meine Schulungen',
@@ -732,7 +769,7 @@ test('switching the language renames the pages in the sidebar, the breadcrumbs a
       'Home',
       'Tests',
       'Course catalogue',
-      'Certificates',
+      'My certificates',
       'Team matrix',
       'Editorial',
       'My courses',
@@ -856,7 +893,7 @@ test("a course version's page is there for an editor and listed neither in the s
 
   expect(await screen.findByRole('heading', { name: courseVersion(), level: 1 })).toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: t('shell.gate.notAvailable') })).not.toBeInTheDocument();
-  expect(sidebarLinks()).toEqual([home(), editorial()]);
+  expect(sidebarLinks()).toEqual([home(), certification(), editorial()]);
   const navigation = within(screen.getByRole('navigation', { name: t('shell.navigation.label') }));
   for (const link of navigation.getAllByRole('link')) {
     expect(link.getAttribute('href')).not.toMatch(/^\/editorial\/versions/);
@@ -867,7 +904,9 @@ test("a course version's page is there for an editor and listed neither in the s
   const options = within(dialog)
     .getAllByRole('option')
     .map((option) => option.textContent.trim());
-  expect(options).toEqual(titles(['shell.home', 'modules.editorial.title', ...forEditors]));
+  expect(options).toEqual(
+    titles(['shell.home', 'modules.certification.title', 'modules.editorial.title', ...forEditors]),
+  );
   expect(options).not.toContain(courseVersion());
   expect(options).not.toContain(reportEntry());
 });

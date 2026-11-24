@@ -51,32 +51,26 @@ public static partial class InvitationMailCounting
             }
         }
 
-        var storedSender = await senders.LoadAsync(by, cancellationToken);
-        if (storedSender.HasValue)
+        // The sender's row is created when missing and held until the commit, so a sender's concurrent mails, their very
+        // first two included, count one after the other on one row (#369). A refusal commits nothing, so a row created
+        // for it is discarded with the unit of work.
+        var sender = await senders.LoadForMailAsync(by, now, cancellationToken);
+        var ahead = sender.MailDayBeyondTomorrow(now);
+        if (ahead.HasValue)
         {
-            var sender = storedSender.Value;
-            var ahead = sender.MailDayBeyondTomorrow(now);
-            if (ahead.HasValue)
-            {
-                LogSenderDayAhead(logger, sender.Id.Value, ahead.Value.Value, UtcDay.Of(now).Value);
-            }
-
-            var sent = sender.RequestMail(now, limits.MailsPerSenderPerDay);
-            if (sent.IsFailure)
-            {
-                return Failure(PharmacyFailures.From(sent.Error));
-            }
+            LogSenderDayAhead(logger, sender.Id.Value, ahead.Value.Value, UtcDay.Of(now).Value);
         }
 
-        // New rows are added only once both rules have passed, so a refusal leaves nothing to be saved.
+        var sent = sender.RequestMail(now, limits.MailsPerSenderPerDay);
+        if (sent.IsFailure)
+        {
+            return Failure(PharmacyFailures.From(sent.Error));
+        }
+
+        // A new recipient is added only once both rules have passed, so a refusal leaves nothing to be saved.
         if (!storedRecipient.HasValue)
         {
             recipients.Add(InvitationRecipient.FirstMailed(to, now));
-        }
-
-        if (!storedSender.HasValue)
-        {
-            senders.Add(InvitationSender.FirstMailed(by, now));
         }
 
         return Success(Unit.Value);

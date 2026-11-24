@@ -95,9 +95,12 @@ export const de = {
       },
     },
     certification: {
-      title: 'Teilnahmebestätigungen',
+      title: 'Meine Teilnahmebestätigungen',
       entries: {
         verify: { title: 'Bestätigung prüfen' },
+      },
+      pages: {
+        export: { title: 'Nachweise exportieren' },
       },
     },
     compliance: {
@@ -144,6 +147,40 @@ export const de = {
       loadFailed: 'Die Bestätigung konnte nicht geprüft werden.',
     },
     retry: 'Erneut versuchen',
+    export: {
+      intro:
+        'Laden Sie die Teilnahmebestätigungen der Mitglieder von {pharmacy} als ZIP herunter: die PDFs und eine CSV-Übersicht. Enthalten sind nur Bestätigungen, die während der Mitgliedschaft in dieser Apotheke ausgestellt wurden; ein PDF, das noch erstellt wird, steht nur in der Übersicht.',
+      from: 'Ausgestellt ab',
+      to: 'Ausgestellt bis',
+      period: {
+        invalid: 'Geben Sie ein gültiges Datum ein.',
+        order: 'Das Ende darf nicht vor dem Beginn liegen.',
+        tooLong: 'Ein Export umfasst höchstens fünf Jahre.',
+      },
+      submit: 'ZIP herunterladen',
+      preparing: 'Wird erstellt…',
+      done: 'Der Export wurde heruntergeladen.',
+      failed: 'Der Export konnte nicht erstellt werden. Versuchen Sie es erneut.',
+    },
+    mine: {
+      columns: {
+        course: 'Schulung',
+        issuedOn: 'Ausgestellt am',
+        validUntil: 'Gültig bis',
+        validity: 'Status',
+        document: 'PDF',
+      },
+      documentReady: 'Bereit',
+      documentPending: 'Wird erstellt',
+      open: 'PDF öffnen',
+      openFor: 'PDF öffnen für {course}',
+      documentNotReady:
+        'Die Teilnahmebestätigung für {course} wird noch erstellt. Versuchen Sie es gleich noch einmal.',
+      documentFailed: 'Das PDF für {course} konnte nicht geöffnet werden.',
+      empty: 'Sie haben noch keine Teilnahmebestätigung.',
+      toCourses: 'Zu meinen Schulungen',
+      loadFailed: 'Ihre Teilnahmebestätigungen konnten nicht geladen werden.',
+    },
   },
   compliance: {
     matrix: {
@@ -717,7 +754,7 @@ export const de = {
         submitted: 'Die Version ist zur Prüfung eingereicht.',
         notSubmitted: 'Die Version muss noch zur Prüfung eingereicht werden.',
         fourEyes:
-          'Sie haben diese Version eingereicht. Mit Vier-Augen-Freigabe muss eine andere Person sie veröffentlichen.',
+          'Sie haben diese Version eingereicht oder ihre Testvorgaben zuletzt geändert. Mit Vier-Augen-Freigabe muss eine andere Person sie veröffentlichen.',
         publisherApproved:
           'Sie haben Fragen dieser Version freigegeben. Mit Vier-Augen-Freigabe muss eine andere Person sie veröffentlichen.',
       },
@@ -1061,7 +1098,7 @@ export const de = {
       'course-version-not-found': 'Diese Version gibt es nicht mehr.',
       'file-in-use': 'Diese Datei gehört schon zu einem anderen Kapitel der Version.',
       'four-eyes':
-        'Mit Vier-Augen-Freigabe darf nicht veröffentlichen, wer die Version eingereicht hat. Bitten Sie eine andere Person aus der Redaktion.',
+        'Mit Vier-Augen-Freigabe darf nicht veröffentlichen, wer die Version eingereicht oder ihre Testvorgaben zuletzt geändert hat. Bitten Sie eine andere Person aus der Redaktion.',
       'identity-incomplete': 'Ihre Anmeldung nennt keine Person. Melden Sie sich erneut an.',
       'invalid-answer-options': 'Eine Frage hat höchstens {max} Antwortoptionen, und keine davon darf fehlen.',
       'invalid-answer-text': 'Eine Antwortoption hat 1 bis {max} Zeichen und darf nicht leer sein.',
@@ -1088,7 +1125,7 @@ export const de = {
       'no-chapters': 'Die Version braucht mindestens ein Kapitel.',
       'no-text-chapters':
         'Die KI entwirft nur aus Kapiteln mit Text: aus Textkapiteln und aus PDF-Kapiteln, deren Text sich lesen lässt. Legen Sie zuerst ein solches Kapitel an.',
-      'no-text-chapters-to-review': 'Die Version hat kein Textkapitel, das die KI prüfen könnte.',
+      'no-text-chapters-to-review': 'Die Version hat kein Kapitel mit Text, das die KI prüfen könnte.',
       'not-a-draft': 'Nur ein Entwurf kann bearbeitet werden.',
       'not-in-review': 'Die Version ist nicht mehr in Prüfung.',
       'not-published': 'Die Version ist nicht veröffentlicht.',

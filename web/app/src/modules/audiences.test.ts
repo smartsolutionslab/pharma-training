@@ -7,7 +7,7 @@ test("every module's route declares the audience its page is for", () => {
   expect(Object.fromEntries(moduleRoutes.map((route) => [route.path, route.audience]))).toEqual({
     assessment: 'employee',
     catalog: 'manager',
-    certification: 'employee',
+    certification: 'signed-in',
     compliance: 'manager',
     editorial: 'editor',
     learning: 'employee',
@@ -37,7 +37,7 @@ test("every module's title is in the catalogs, in German and in English", () => 
   expect(titles).toEqual({
     assessment: 'Tests',
     catalog: 'Schulungskatalog',
-    certification: 'Teilnahmebestätigungen',
+    certification: 'Meine Teilnahmebestätigungen',
     compliance: 'Team-Matrix',
     editorial: 'Redaktion',
     learning: 'Meine Schulungen',
@@ -46,7 +46,7 @@ test("every module's title is in the catalogs, in German and in English", () => 
   expect(english).toEqual({
     assessment: 'Tests',
     catalog: 'Course catalogue',
-    certification: 'Certificates',
+    certification: 'My certificates',
     compliance: 'Team matrix',
     editorial: 'Editorial',
     learning: 'My courses',
@@ -55,7 +55,7 @@ test("every module's title is in the catalogs, in German and in English", () => 
 });
 
 // A page below a module (its routes.ts's pages) declares its own audience: registering a pharmacy needs no pharmacy,
-// assigning a course (#37) a pharmacy the user may manage.
+// assigning a course (#37) and exporting the certificates (#297) a pharmacy the user may manage.
 test('every page below a module declares the audience it is for, and its title by key', () => {
   expect(
     moduleRoutes.flatMap((route) =>
@@ -66,6 +66,11 @@ test('every page below a module declares the audience it is for, and its title b
       })),
     ),
   ).toEqual([
+    {
+      address: '/certification/export',
+      titleKey: 'modules.certification.pages.export.title',
+      audience: 'manager',
+    },
     {
       address: '/compliance/assign',
       titleKey: 'modules.compliance.pages.assign.title',

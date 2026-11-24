@@ -81,6 +81,18 @@ public class AnnouncementSweepSettingsTests
         refused.Message.ShouldContain($"{Section}:GracePeriod", Case.Sensitive);
     }
 
+    /// <summary>
+    /// A pass reads at most <see cref="AnnouncementSweepSettings.MostEventsPerPass"/> events whatever its batch (#351), so
+    /// the largest batch must fit in it: were it larger, a pass at that batch could never announce a whole batch.
+    /// </summary>
+    [Fact]
+    public void The_largest_batch_fits_in_the_events_one_pass_reads()
+    {
+        var mostBatchSize = AnnouncementSweepSettings.MostBatchSize;
+
+        mostBatchSize.ShouldBeLessThanOrEqualTo(AnnouncementSweepSettings.MostEventsPerPass);
+    }
+
     [Fact]
     public void The_section_is_the_modules_own()
     {

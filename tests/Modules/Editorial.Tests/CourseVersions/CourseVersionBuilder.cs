@@ -30,7 +30,7 @@ internal static class CourseVersionBuilder
     public static CourseVersion ReadyToSubmit(out ChapterId chapter, string title = "Hygiene 2027")
     {
         var version = DraftWithChapter(out chapter, title);
-        version.SetBlueprint(new TestBlueprint(QuestionCount.From(1), ScorePercent.From(80), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(new TestBlueprint(QuestionCount.From(1), ScorePercent.From(80), RecurrenceInterval.Yearly), Author).IsSuccess.ShouldBeTrue();
         var question = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
         version.ApproveQuestion(question, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
         return version;
@@ -55,7 +55,7 @@ internal static class CourseVersionBuilder
     public static CourseVersion InReviewWithASecondApprover(PersonId approver, bool approvedWhileInReview = true)
     {
         var version = DraftWithChapter(out var chapter);
-        version.SetBlueprint(new TestBlueprint(QuestionCount.From(2), ScorePercent.From(80), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(new TestBlueprint(QuestionCount.From(2), ScorePercent.From(80), RecurrenceInterval.Yearly), Author).IsSuccess.ShouldBeTrue();
         var first = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
         var second = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
         version.ApproveQuestion(first, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();

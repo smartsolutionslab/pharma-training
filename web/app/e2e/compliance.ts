@@ -223,6 +223,14 @@ export function germanDate(day: string) {
   return `${date ?? ''}.${month ?? ''}.${year ?? ''}`;
 }
 
+/** A day (yyyy-mm-dd) as the app writes it in full in German, as the assignment wizard's review does: 24. Dezember 2026. */
+export function germanLongDate(day: string) {
+  const [year, month, date] = day.split('-').map(Number);
+  return new Intl.DateTimeFormat('de-DE', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(
+    new Date(Date.UTC(year ?? 0, (month ?? 1) - 1, date ?? 1)),
+  );
+}
+
 /** One of the developer's active assignments in a pharmacy, as Compliance answers GET /compliance/me/assignments. */
 export type MyAssignment = {
   assignmentId: string;

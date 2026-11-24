@@ -42,7 +42,8 @@ public class EditorialRepublishFilesTests(AspireFixture aspire)
         var cancellationToken = TestContext.Current.CancellationToken;
         var bytes = PdfBytes();
         using var editor = await aspire.CreateHostClientAsync("editor");
-        var (versionId, chapterId) = await PublishedWithPdfChapterAsync(editor, bytes, cancellationToken);
+        using var publisher = await aspire.CreateHostClientAsync(Publisher);
+        var (versionId, chapterId) = await PublishedWithPdfChapterAsync(editor, publisher, bytes, cancellationToken);
 
         await using var connection = await Broker.ConnectAsync(aspire, cancellationToken);
         await Broker.WaitForExchangeAsync(connection, ChapterFilesReleasedExchange, cancellationToken);
@@ -83,7 +84,8 @@ public class EditorialRepublishFilesTests(AspireFixture aspire)
         using var editor = await aspire.CreateHostClientAsync("editor");
         using var learner = await aspire.CreateHostClientAsync("employee-a");
         await MemberAsync(aspire, SubjectOf(learner), cancellationToken);
-        var (versionId, chapterId) = await PublishedWithPdfChapterAsync(editor, bytes, cancellationToken);
+        using var publisher = await aspire.CreateHostClientAsync(Publisher);
+        var (versionId, chapterId) = await PublishedWithPdfChapterAsync(editor, publisher, bytes, cancellationToken);
         (await WaitUntilAsync(() => StartAsync(learner, versionId, cancellationToken), HttpStatusCode.Created, $"POST {Sessions} for version {versionId}", cancellationToken)).Dispose();
         (await WaitUntilAsync(() => learner.GetAsync(Media(chapterId), cancellationToken), HttpStatusCode.OK, $"GET {Media(chapterId)}", cancellationToken)).Dispose();
 

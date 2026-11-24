@@ -2,14 +2,16 @@ using System.Net;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.ContentReviewing;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 using static SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.ContentReviewing.ContentReviewVersions;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.TestDrafting;
 using static SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersions.CourseVersionBuilder;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.ContentReviewing;
 
 /// <summary>
-/// What the AI content review sends, worked out from the version before the model is called: its text chapters only,
-/// numbered from one in the version's order, whatever state the version is in. A version without a text chapter, or
-/// with more text than <see cref="ContentReviewRequest.MaxCharacters"/>, is refused.
+/// What the AI content review sends, worked out from the version before the model is called: its text chapters and the
+/// stored text of its PDF chapters, numbered together from one in the version's order, whatever state the version is in;
+/// videos and PDFs without text are left out and named (#302). A version without a chapter with text, or whose titles and
+/// text chapters are more than <see cref="ContentReviewRequest.MaxCharacters"/>, is refused; PDFs share what is left.
 /// </summary>
 public class ContentReviewRequestTests
 {
@@ -46,7 +48,7 @@ public class ContentReviewRequestTests
     }
 
     [Fact]
-    public void Pdf_and_video_chapters_are_left_out_and_do_not_shift_the_numbers_of_later_text_chapters()
+    public void Pdf_chapters_without_text_and_video_chapters_are_left_out_and_do_not_shift_the_numbers_of_later_chapters()
     {
         var version = Draft();
         var text = ChapterId.New();
@@ -60,6 +62,191 @@ public class ContentReviewRequestTests
 
         request.Chapters.Select(chapter => chapter.Id).ShouldBe([text, otherText]);
         request.Chapters.Select(chapter => chapter.Number).ShouldBe([1, 2]);
+        request.LeftOutChapters.Count.ShouldBe(2);
+    }
+
+    [Fact]
+    public void Text_and_pdf_chapters_with_text_are_numbered_together_in_the_versions_order()
+    {
+        var version = TestDraftVersions.WithChapters(6, "TPVNTR", out var ids);
+
+        var request = ContentReviewRequest.For(version).Value;
+
+        request.Chapters.Select(chapter => chapter.Number).ShouldBe([1, 2, 3, 4]);
+        request.Chapters.Select(chapter => chapter.Id).ShouldBe([ids[0], ids[1], ids[4], ids[5]]);
+        request.Chapters.Select(chapter => chapter.Source).ShouldBe([ContentReviewSource.Text, ContentReviewSource.Pdf, ContentReviewSource.Text, ContentReviewSource.Pdf]);
+        request.Chapters.Select(chapter => chapter.Text).ShouldBe([TestDraftVersions.TextOf('T', 1), TestDraftVersions.TextOf('P', 2), TestDraftVersions.TextOf('T', 5), TestDraftVersions.TextOf('R', 6)]);
+        request.Chapters[1].Title.ShouldBe(ChapterTitle.From("PDF-Kapitel 2"));
+        request.LeftOutChapters.ShouldBe([ids[2], ids[3]]);
+        request.TruncatedChapters.ShouldBe([ids[5]]);
+    }
+
+    [Fact]
+    public void A_version_of_pdf_chapters_with_text_only_is_reviewed()
+    {
+        var version = TestDraftVersions.WithChapters(5, "PP", out var ids);
+
+        var result = ContentReviewRequest.For(version);
+
+        result.IsSuccess.ShouldBeTrue(result.IsFailure ? result.Error.Code : string.Empty);
+        result.Value.Chapters.Select(chapter => chapter.Id).ShouldBe(ids);
+        result.Value.Chapters.ShouldAllBe(chapter => chapter.Source == ContentReviewSource.Pdf);
+        result.Value.LeftOutChapters.ShouldBeEmpty();
+        result.Value.TruncatedChapters.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Videos_pdfs_without_text_and_pdfs_recorded_before_extraction_are_left_out_in_the_versions_order()
+    {
+        var version = TestDraftVersions.WithChapters(3, "LTVNPL", out var ids);
+
+        var request = ContentReviewRequest.For(version).Value;
+
+        request.Chapters.Select(chapter => chapter.Id).ShouldBe([ids[1], ids[4]]);
+        request.LeftOutChapters.ShouldBe([ids[0], ids[2], ids[3], ids[5]]);
+        request.TruncatedChapters.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Pdf_chapters_whose_extraction_was_cut_are_reviewed_and_named_as_truncated_in_the_versions_order()
+    {
+        var version = TestDraftVersions.WithChapters(4, "RTPR", out var ids);
+
+        var request = ContentReviewRequest.For(version).Value;
+
+        request.Chapters.Select(chapter => chapter.Id).ShouldBe(ids);
+        request.TruncatedChapters.ShouldBe([ids[0], ids[3]]);
+        request.LeftOutChapters.ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData("NV")]
+    [InlineData("L")]
+    [InlineData("NLV")]
+    public void A_version_whose_pdfs_have_no_text_is_refused_with_no_text_chapters_to_review(string layout)
+    {
+        var version = TestDraftVersions.WithChapters(3, layout, out _);
+
+        var result = ContentReviewRequest.For(version);
+
+        result.IsFailure.ShouldBeTrue();
+        result.Error.Code.ShouldBe("editorial.no-text-chapters-to-review");
+        result.Error.Status.ShouldBe(HttpStatusCode.Conflict);
+    }
+
+    [Fact]
+    public void A_pdf_whose_text_would_pass_the_limit_is_cut_to_what_is_left_and_named_as_truncated()
+    {
+        // A text chapter "A" of the longest Markdown and a PDF chapter "B" whose text is one character longer than what
+        // the limit leaves it: the titles and the text chapter are sent whole, and the PDF gives way.
+        var version = Draft();
+        version.AddChapter(TextChapter(ChapterId.New(), "A", new string('a', MarkdownText.MaxLength))).IsSuccess.ShouldBeTrue();
+        var left = ContentReviewRequest.MaxCharacters - MarkdownText.MaxLength - 2;
+        var pdf = ChapterId.New();
+        version.AddChapter(TestDraftVersions.PdfWithText(pdf, "B", new string('b', left + 1))).IsSuccess.ShouldBeTrue();
+
+        var request = ContentReviewRequest.For(version).Value;
+
+        request.Chapters.Single(chapter => chapter.Id == pdf).Text.Length.ShouldBe(left);
+        Characters(request).ShouldBe(ContentReviewRequest.MaxCharacters);
+        request.TruncatedChapters.ShouldBe([pdf]);
+        request.LeftOutChapters.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void A_pdf_that_fits_what_is_left_is_sent_whole_and_not_named()
+    {
+        var version = Draft();
+        version.AddChapter(TextChapter(ChapterId.New(), "A", new string('a', MarkdownText.MaxLength))).IsSuccess.ShouldBeTrue();
+        var left = ContentReviewRequest.MaxCharacters - MarkdownText.MaxLength - 2;
+        var pdf = ChapterId.New();
+        version.AddChapter(TestDraftVersions.PdfWithText(pdf, "B", new string('b', left))).IsSuccess.ShouldBeTrue();
+
+        var request = ContentReviewRequest.For(version).Value;
+
+        request.Chapters.Single(chapter => chapter.Id == pdf).Text.Length.ShouldBe(left);
+        request.TruncatedChapters.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Long_pdfs_share_the_limit_a_short_one_is_sent_whole_and_the_version_is_reviewed()
+    {
+        // The issue's case: a version made of PDFs is reviewed on all of them, never refused for their length.
+        var version = Draft();
+        var longFirst = ChapterId.New();
+        var shortOne = ChapterId.New();
+        var longSecond = ChapterId.New();
+        version.AddChapter(TestDraftVersions.PdfWithText(longFirst, "A", new string('a', MarkdownText.MaxLength))).IsSuccess.ShouldBeTrue();
+        version.AddChapter(TestDraftVersions.PdfWithText(shortOne, "B", new string('b', 1_000))).IsSuccess.ShouldBeTrue();
+        version.AddChapter(TestDraftVersions.PdfWithText(longSecond, "C", new string('c', MarkdownText.MaxLength))).IsSuccess.ShouldBeTrue();
+
+        var request = ContentReviewRequest.For(version).Value;
+
+        var lengths = request.Chapters.Select(chapter => chapter.Text.Length).ToList();
+        lengths[1].ShouldBe(1_000);
+        Math.Abs(lengths[0] - lengths[2]).ShouldBeLessThanOrEqualTo(1, "the long PDFs share what is left evenly");
+        Characters(request).ShouldBe(ContentReviewRequest.MaxCharacters);
+        request.TruncatedChapters.ShouldBe([longFirst, longSecond]);
+    }
+
+    [Fact]
+    public void A_cut_never_splits_a_surrogate_pair()
+    {
+        var version = Draft();
+        version.AddChapter(TextChapter(ChapterId.New(), "A", new string('a', MarkdownText.MaxLength))).IsSuccess.ShouldBeTrue();
+        version.AddChapter(TextChapter(ChapterId.New(), "B", new string('b', 100))).IsSuccess.ShouldBeTrue();
+        var left = ContentReviewRequest.MaxCharacters - MarkdownText.MaxLength - 100 - 3;
+        var pdf = ChapterId.New();
+        version.AddChapter(TestDraftVersions.PdfWithText(pdf, "C", new string('c', left - 1) + "\U0001F600" + "cc")).IsSuccess.ShouldBeTrue();
+
+        var request = ContentReviewRequest.For(version).Value;
+
+        request.Chapters.Single(chapter => chapter.Id == pdf).Text.ShouldBe(new string('c', left - 1));
+        request.TruncatedChapters.ShouldBe([pdf]);
+    }
+
+    [Theory]
+    [InlineData("C")]
+    [InlineData("Merkblatt")]
+    public void A_pdf_the_text_chapters_leave_no_room_for_is_left_out_and_named(string pdfTitle)
+    {
+        // The text chapters take the limit to its last character but one. A PDF's title is part of its own share, never
+        // of the text chapters' part, so a long PDF title cannot turn a version reviewable before #302 into a 422.
+        var version = Draft();
+        version.AddChapter(TextChapter(ChapterId.New(), "A", new string('a', MarkdownText.MaxLength))).IsSuccess.ShouldBeTrue();
+        version.AddChapter(TextChapter(ChapterId.New(), "B", new string('b', ContentReviewRequest.MaxCharacters - MarkdownText.MaxLength - 3))).IsSuccess.ShouldBeTrue();
+        var pdf = ChapterId.New();
+        version.AddChapter(TestDraftVersions.PdfWithText(pdf, pdfTitle, new string('c', 1_000))).IsSuccess.ShouldBeTrue();
+
+        var result = ContentReviewRequest.For(version);
+
+        result.IsSuccess.ShouldBeTrue(result.IsFailure ? result.Error.Code : string.Empty);
+        var request = result.Value;
+
+        request.Chapters.ShouldNotContain(chapter => chapter.Id == pdf);
+        request.LeftOutChapters.ShouldBe([pdf]);
+        request.TruncatedChapters.ShouldBeEmpty();
+        Characters(request).ShouldBeLessThanOrEqualTo(ContentReviewRequest.MaxCharacters);
+    }
+
+    [Fact]
+    public void A_pdf_cut_to_whitespace_only_is_left_out_and_named()
+    {
+        // The text chapters leave three characters: one for the PDF's title "C", two for its text, which starts with
+        // two line breaks. A blank text is no content to review, so the PDF is left out like one without text.
+        var version = Draft();
+        version.AddChapter(TextChapter(ChapterId.New(), "A", new string('a', MarkdownText.MaxLength))).IsSuccess.ShouldBeTrue();
+        version.AddChapter(TextChapter(ChapterId.New(), "B", new string('b', ContentReviewRequest.MaxCharacters - MarkdownText.MaxLength - 5))).IsSuccess.ShouldBeTrue();
+        var pdf = ChapterId.New();
+        version.AddChapter(TestDraftVersions.PdfWithText(pdf, "C", "\n\nApotheke am Markt · Arbeitsanweisung")).IsSuccess.ShouldBeTrue();
+
+        var result = ContentReviewRequest.For(version);
+
+        result.IsSuccess.ShouldBeTrue(result.IsFailure ? result.Error.Code : string.Empty);
+        result.Value.Chapters.ShouldNotContain(chapter => chapter.Id == pdf);
+        result.Value.Chapters.ShouldAllBe(chapter => !string.IsNullOrWhiteSpace(chapter.Text));
+        result.Value.LeftOutChapters.ShouldBe([pdf]);
+        result.Value.TruncatedChapters.ShouldBeEmpty();
     }
 
     [Fact]
@@ -74,7 +261,8 @@ public class ContentReviewRequestTests
         chapter.Number.ShouldBe(1);
         chapter.Id.ShouldBe(id);
         chapter.Title.ShouldBe(ChapterTitle.From("Händehygiene"));
-        chapter.Text.ShouldBe(MarkdownText.From("Hände vor und nach der Rezeptur desinfizieren."));
+        chapter.Source.ShouldBe(ContentReviewSource.Text);
+        chapter.Text.ShouldBe("Hände vor und nach der Rezeptur desinfizieren.");
     }
 
     [Theory]
@@ -93,7 +281,7 @@ public class ContentReviewRequestTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void A_version_without_a_text_chapter_is_refused_with_no_text_chapters_to_review(bool withFileChapters)
+    public void A_version_without_a_chapter_with_text_is_refused_with_no_text_chapters_to_review(bool withFileChapters)
     {
         var version = Draft();
         if (withFileChapters)
@@ -135,4 +323,28 @@ public class ContentReviewRequestTests
             result.Value.Chapters.Count.ShouldBe(2);
         }
     }
+
+    [Fact]
+    public void A_pdf_left_out_for_a_blank_cut_spends_nothing_and_the_pdfs_after_it_share_its_characters()
+    {
+        // Two PDFs of one length each, so "A" is shared out first: its text is blank for longer than its half of the
+        // limit, so its cut is blank and it is left out. It costs nothing, so "B" has the whole limit and is sent whole,
+        // not cut to the half that "A" did not use (#358's review).
+        var version = Draft();
+        var blank = ChapterId.New();
+        var whole = ChapterId.New();
+        version.AddChapter(TestDraftVersions.PdfWithText(blank, "A", new string(' ', PdfText.MaxLength - 1) + "a")).IsSuccess.ShouldBeTrue();
+        version.AddChapter(TestDraftVersions.PdfWithText(whole, "B", new string('b', PdfText.MaxLength))).IsSuccess.ShouldBeTrue();
+
+        var result = ContentReviewRequest.For(version);
+
+        result.IsSuccess.ShouldBeTrue(result.IsFailure ? result.Error.Code : string.Empty);
+        result.Value.Chapters.ShouldHaveSingleItem().Id.ShouldBe(whole);
+        result.Value.Chapters[0].Text.Length.ShouldBe(PdfText.MaxLength, "the blank PDF's share is left to the PDF after it");
+        result.Value.LeftOutChapters.ShouldBe([blank]);
+        result.Value.TruncatedChapters.ShouldBeEmpty();
+    }
+
+    private static long Characters(ContentReviewRequest request) =>
+        request.Chapters.Sum(chapter => (long)chapter.Title.Value.Length + chapter.Text.Length);
 }

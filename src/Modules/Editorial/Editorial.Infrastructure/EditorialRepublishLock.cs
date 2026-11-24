@@ -1,4 +1,4 @@
-using System.Data.Common;
+using System.Data;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -33,6 +33,11 @@ public sealed partial class EditorialRepublishLock(EditorialDbContext context, I
     /// </summary>
     public const long Key = 0x5265_7075_626C_6973;
 
+    /// <summary>
+    /// Takes the lock on a session of the run's own. It must be the scope's first use of the context's connection: it
+    /// points the context at an unpooled connection string, which cannot change while the connection is open, and a
+    /// connection the scope opened before would be a pooled session the lock could not end with the run.
+    /// </summary>
     public async Task<Option<IAsyncDisposable>> TryTakeAsync(CancellationToken cancellationToken)
     {
         var pooled = context.Database.GetConnectionString()
@@ -68,11 +73,18 @@ public sealed partial class EditorialRepublishLock(EditorialDbContext context, I
         }
     }
 
-    /// <summary>Ends the run's own session, and everything it holds, and points the context back at the pool.</summary>
+    /// <summary>
+    /// Ends the run's own session, and everything it holds, and points the context back at the pool. A run that opened
+    /// the connection once more and left it open keeps it open after this close, and a connection string cannot change
+    /// while it is: the context then stays on its own session, which disposing the scope, and with it the context, ends.
+    /// </summary>
     private static async Task CloseAsync(EditorialDbContext context, string pooled)
     {
         await context.Database.CloseConnectionAsync();
-        context.Database.SetConnectionString(pooled);
+        if (context.Database.GetDbConnection().State == ConnectionState.Closed)
+        {
+            context.Database.SetConnectionString(pooled);
+        }
     }
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "The republish's lock could not be released on its session; closing the session releases it.")]
@@ -81,8 +93,9 @@ public sealed partial class EditorialRepublishLock(EditorialDbContext context, I
     /// <summary>
     /// The lock while the run holds it; disposing it unlocks and closes the run's session. A commit that failed can
     /// leave its transaction open and aborted, where the unlock would fail, so that transaction is rolled back first: its
-    /// save failed anyway. A rollback or unlock that fails all the same is logged as a warning, never thrown out of the
-    /// run's dispose: closing the session, which always follows, releases the lock.
+    /// save failed anyway. A rollback or unlock that fails all the same, a database error, a timeout or anything else but
+    /// running out of memory, is logged as a warning, never thrown out of the run's dispose: closing the session, which
+    /// always follows, releases the lock (or, on a connection the run left open, disposing the scope does).
     /// </summary>
     private sealed class Held(EditorialDbContext context, string pooled, ILogger logger) : IAsyncDisposable
     {
@@ -99,8 +112,10 @@ public sealed partial class EditorialRepublishLock(EditorialDbContext context, I
                     .SqlQuery<bool>($"SELECT pg_advisory_unlock({Key}) AS \"Value\"")
                     .SingleAsync(CancellationToken.None);
             }
-            catch (Exception exception) when (exception is DbException or InvalidOperationException)
+            catch (Exception exception) when (exception is not OutOfMemoryException)
             {
+                // Whatever the rollback or the unlock throws, a database error, a timeout or a broken connection, the
+                // close below releases the lock; only running out of memory is not the run's dispose's to swallow.
                 ReleaseFailed(logger, exception);
             }
             finally

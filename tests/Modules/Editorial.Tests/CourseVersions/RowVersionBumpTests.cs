@@ -108,7 +108,7 @@ public sealed class RowVersionBumpTests : IDisposable
     {
         var version = DraftWithApprovedQuestion(out var chapter, out var question);
         context.Attach(version);
-        version.EditQuestion(question, MultipleChoice(chapter), AnswerOptionId.New).IsSuccess.ShouldBeTrue();
+        version.EditQuestion(question, MultipleChoice(chapter), Author, AnswerOptionId.New).IsSuccess.ShouldBeTrue();
 
         await BumpAsync();
 

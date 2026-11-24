@@ -51,7 +51,7 @@ public class ReapprovalTests
     public void An_approved_question_that_an_edit_sent_back_to_review_is_approved_again()
     {
         var version = DraftWithApprovedQuestion(out var chapter, out var id);
-        version.EditQuestion(id, MultipleChoice(chapter), AnswerOptionId.New).IsSuccess.ShouldBeTrue();
+        version.EditQuestion(id, MultipleChoice(chapter), Author, AnswerOptionId.New).IsSuccess.ShouldBeTrue();
 
         var approved = version.ApproveQuestion(id, Reviewer, ReviewersName, Later);
 

@@ -3,6 +3,7 @@ using System.Net;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.SetTestBlueprint;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions.Events;
 using static SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersions.CourseVersionBuilder;
 using static SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersions.QuestionDrafts;
 
@@ -137,9 +138,25 @@ public class SetTestBlueprintTests
         set.Error.Status.ShouldBe(HttpStatusCode.Conflict);
     }
 
+    /// <summary>The reset names the editor the command carries, who need not be the one who approved (#246).</summary>
+    [Fact]
+    public async Task The_reset_names_the_commands_editor()
+    {
+        var version = DraftWithApprovedQuestion(out _, out _);
+        store.Stored.Add(version);
+
+        var set = await new SetTestBlueprintHandler(store, unitOfWork)
+            .HandleAsync(new SetTestBlueprint(version.Id, Blueprint(10, 81, 12), Reviewer), TestContext.Current.CancellationToken);
+
+        set.IsSuccess.ShouldBeTrue();
+        version.DomainEvents.OfType<QuestionApprovalsReset>().ShouldHaveSingleItem()
+            .ShouldBe(new QuestionApprovalsReset(version.Id, Reviewer, ApprovalResetReason.TestSettingsChanged));
+        await unitOfWork.Received(1).TryCommitAsync(Arg.Any<CancellationToken>());
+    }
+
     private static TestBlueprint Blueprint(int questions, int passingScore, int validityMonths) =>
         new(QuestionCount.From(questions), ScorePercent.From(passingScore), RecurrenceInterval.From(validityMonths));
 
     private Task<Result<Unit, ApiError>> SetAsync(CourseVersionId version, TestBlueprint blueprint) =>
-        new SetTestBlueprintHandler(store, unitOfWork).HandleAsync(new SetTestBlueprint(version, blueprint), TestContext.Current.CancellationToken);
+        new SetTestBlueprintHandler(store, unitOfWork).HandleAsync(new SetTestBlueprint(version, blueprint, Author), TestContext.Current.CancellationToken);
 }

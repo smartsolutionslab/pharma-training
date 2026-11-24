@@ -103,10 +103,11 @@ test('the realm role manager alone shows no page for managers', () => {
   expect(paths(visibleTo(['manager']).value)).toEqual(inOrder(['assessment', 'certification', 'learning']));
 });
 
-test('an editor without a pharmacy sees the editorial pages only', () => {
+// Certification's page (#296) is every signed-in user's: a certificate is the person's, whatever their pharmacy.
+test('an editor without a pharmacy sees the editorial pages and their certificates only', () => {
   answer([]);
 
-  expect(paths(visibleTo(['editor']).value)).toEqual(['editorial']);
+  expect(paths(visibleTo(['editor']).value)).toEqual(inOrder(['certification', 'editorial']));
 });
 
 test('an editor who is a member of a pharmacy sees both', () => {
@@ -115,15 +116,15 @@ test('an editor who is a member of a pharmacy sees both', () => {
   expect(paths(visibleTo(['editor']).value)).toEqual(inOrder(['assessment', 'certification', 'editorial', 'learning']));
 });
 
-test('while the memberships load no pharmacy page is visible, the editorial ones are', () => {
-  expect(paths(visibleTo([]).value)).toEqual([]);
-  expect(paths(visibleTo(['editor']).value)).toEqual(['editorial']);
+test('while the memberships load no pharmacy page is visible, the editorial ones and the certificates are', () => {
+  expect(paths(visibleTo([]).value)).toEqual(['certification']);
+  expect(paths(visibleTo(['editor']).value)).toEqual(inOrder(['certification', 'editorial']));
 });
 
-test('with several memberships and none chosen no pharmacy page is visible', () => {
+test('with several memberships and none chosen no pharmacy page is visible, the certificates are', () => {
   answer([manager, employee]);
 
-  expect(paths(visibleTo([]).value)).toEqual([]);
+  expect(paths(visibleTo([]).value)).toEqual(['certification']);
 });
 
 test('the visible pages follow the chosen pharmacy', () => {
@@ -155,4 +156,23 @@ test('the pages below the modules are named by their title keys', () => {
   expect(pagesVisibleTo([]).value).toEqual([
     { to: '/organisation/register', titleKey: 'modules.organisation.pages.register.title' },
   ]);
+});
+
+// The certificate export (#297) is a page below the certification module for managers, though its module is for
+// employees: the palette lists it by itself.
+test('the certificate export is a page for a manager only', () => {
+  const holdsExport = (memberships: MyPharmacyDto[]) => {
+    answer(memberships);
+    const pages = pagesVisibleTo([]).value;
+    cleanup();
+    return pages.some(
+      (page) => page.to === '/certification/export' && page.titleKey === 'modules.certification.pages.export.title',
+    );
+  };
+
+  expect({
+    manager: holdsExport([manager]),
+    employee: holdsExport([employee]),
+    'no pharmacy': holdsExport([]),
+  }).toEqual({ manager: true, employee: false, 'no pharmacy': false });
 });

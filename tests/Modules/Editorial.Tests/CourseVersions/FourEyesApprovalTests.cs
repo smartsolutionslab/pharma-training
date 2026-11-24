@@ -46,9 +46,9 @@ public class FourEyesApprovalTests
     public void With_four_eyes_on_an_editor_whose_approval_an_edit_took_away_publishes()
     {
         var version = DraftWithQuestion(out var chapter, out var id);
-        version.SetBlueprint(new TestBlueprint(QuestionCount.From(1), ScorePercent.From(80), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(new TestBlueprint(QuestionCount.From(1), ScorePercent.From(80), RecurrenceInterval.Yearly), Author).IsSuccess.ShouldBeTrue();
         version.ApproveQuestion(id, Approver, ApproversName, Now).IsSuccess.ShouldBeTrue();
-        version.EditQuestion(id, MultipleChoice(chapter), AnswerOptionId.New).IsSuccess.ShouldBeTrue();
+        version.EditQuestion(id, MultipleChoice(chapter), Author, AnswerOptionId.New).IsSuccess.ShouldBeTrue();
         version.ApproveQuestion(id, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
         version.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
 
@@ -64,7 +64,7 @@ public class FourEyesApprovalTests
     {
         var next = NextOf(PublishedApprovedBy(Approver));
         var copied = next.Questions.ShouldHaveSingleItem();
-        next.EditQuestion(copied.Id, MultipleChoice(copied.Chapter), AnswerOptionId.New).IsSuccess.ShouldBeTrue();
+        next.EditQuestion(copied.Id, MultipleChoice(copied.Chapter), Author, AnswerOptionId.New).IsSuccess.ShouldBeTrue();
         next.ApproveQuestion(copied.Id, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
         next.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
 
@@ -79,7 +79,7 @@ public class FourEyesApprovalTests
     {
         var next = NextOf(PublishedApprovedBy(Approver));
         var copied = next.Questions.ShouldHaveSingleItem();
-        next.SetBlueprint(new TestBlueprint(QuestionCount.From(1), ScorePercent.From(81), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
+        next.SetBlueprint(new TestBlueprint(QuestionCount.From(1), ScorePercent.From(81), RecurrenceInterval.Yearly), Author).IsSuccess.ShouldBeTrue();
         next.ApproveQuestion(copied.Id, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
         next.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
 
@@ -93,7 +93,7 @@ public class FourEyesApprovalTests
     private static CourseVersion PublishedApprovedBy(PersonId approver)
     {
         var version = DraftWithQuestion(out _, out var id);
-        version.SetBlueprint(new TestBlueprint(QuestionCount.From(1), ScorePercent.From(80), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(new TestBlueprint(QuestionCount.From(1), ScorePercent.From(80), RecurrenceInterval.Yearly), Author).IsSuccess.ShouldBeTrue();
         version.ApproveQuestion(id, approver, ApproversName, Now).IsSuccess.ShouldBeTrue();
         version.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
         version.Publish(Reviewer, ReviewPolicy.FourEyes, Now).IsSuccess.ShouldBeTrue();
