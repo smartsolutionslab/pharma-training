@@ -203,8 +203,13 @@ test('the sidebar lists the start page and every module the user may see, from t
 // the tests' new report are for every signed-in user, the tests' review for editors, whatever their module's audience.
 const forEveryone = ['modules.organisation.pages.register.title', 'modules.reports.pages.new.title'];
 const forEditors = [...forEveryone, 'modules.reports.pages.review.title'];
-// Assigning a course (#37) is for a member who may manage the pharmacy, listed with its module, before registering.
-const forManagers = ['modules.compliance.pages.assign.title', ...forEveryone];
+// Exporting the certificates (#297) and assigning a course (#37) are for a member who may manage the pharmacy, each
+// listed with its module, before registering.
+const forManagers = [
+  'modules.certification.pages.export.title',
+  'modules.compliance.pages.assign.title',
+  ...forEveryone,
+];
 
 const audiences = [
   {
@@ -286,6 +291,29 @@ test.each(audiences)(
     ).toEqual(titles([...pages, ...below]));
   },
 );
+
+// The certificate export (#297) is a manager's page below the certification module, whose page is the employee's own
+// list: the palette lists it for a membership that may assign courses, and for nobody else.
+test('the command palette lists "Nachweise exportieren" for a manager only', async () => {
+  const listsExport = async (memberships: MyPharmacyDto[]) => {
+    const user = userEvent.setup();
+    answer(memberships);
+    await renderAt('/', { roles: [] });
+    await user.keyboard('{Control>}k{/Control}');
+    const dialog = await screen.findByRole('dialog', { name: palette() });
+    const options = within(dialog)
+      .getAllByRole('option')
+      .map((option) => option.textContent.trim());
+    cleanup();
+    return options.includes('Nachweise exportieren');
+  };
+
+  expect({
+    manager: await listsExport([markt]),
+    employee: await listsExport([dom]),
+    'no pharmacy': await listsExport([]),
+  }).toEqual({ manager: true, employee: false, 'no pharmacy': false });
+});
 
 test('the start page is there for a user with no pharmacy and no role', async () => {
   answer([]);
@@ -516,8 +544,9 @@ test.each([
   ).toEqual([
     home(),
     ...moduleRoutes.map((module) => t(module.titleKey)),
-    // renderAt's user also manages a pharmacy, so assigning a course (#37) is theirs too, listed with its module.
-    ...titles(['modules.compliance.pages.assign.title', ...forEditors]),
+    // renderAt's user also manages a pharmacy, so exporting the certificates (#297) and assigning a course (#37) are
+    // theirs too, each listed with its module.
+    ...titles(['modules.certification.pages.export.title', 'modules.compliance.pages.assign.title', ...forEditors]),
   ]);
 
   await user.keyboard('{Escape}');
