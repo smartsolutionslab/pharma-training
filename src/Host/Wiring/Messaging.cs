@@ -1,4 +1,5 @@
 using System.Reflection;
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Modules;
 using SmartSolutionsLab.PharmaTraining.Contracts;
 using SmartSolutionsLab.PharmaTraining.Host.Messaging;
@@ -78,6 +79,10 @@ public static class Messaging
             // dead-lettered rather than discarded, so an operator sees it.
             options.UnknownMessageBehavior = UnknownMessageBehavior.DeadLetterQueue;
             options.OnException<ForgedPublisherException>().MoveToErrorQueue();
+            // A failure that says retrying cannot succeed (an exception implementing IPermanentMessageFailure) is
+            // dead-lettered on its first attempt. Wolverine takes the first rule that matches, so this one comes before the
+            // retries below (docs/adr/0004).
+            options.OnException(failure => failure is IPermanentMessageFailure).MoveToErrorQueue();
             // A consumer that throws is tried again, the wait doubling from 1 second, before its message is dead-lettered
             // (seven attempts, about a minute; see docs/adr). The retry is scheduled in the durable inbox, so the
             // listener delivers other messages meanwhile. Each attempt is cancelled after Wolverine's default of 60 seconds,
