@@ -62,12 +62,15 @@ async function choose(page: Page, pharmacy: string) {
   const region = page.getByRole('region', { name: 'Apotheke', exact: true });
   const switcher = region.getByRole('button', { name: /^Apotheke( wählen$|: )/ });
   const name = region.getByText(pharmacy, { exact: true });
-  const chosen = region.getByRole('button', { name: `Apotheke: ${pharmacy}` });
+  const chosen = region.getByRole('button', { name: `Apotheke: ${pharmacy}`, exact: true });
   const only = region.getByRole('paragraph').filter({ has: page.getByText(pharmacy, { exact: true }) });
-  const another = switcher.filter({ hasNotText: pharmacy });
+  // Any switcher but this pharmacy's, by its whole name: a name that holds this one ("… Nord") is another.
+  const escaped = pharmacy.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const another = region.getByRole('button', { name: new RegExp(`^Apotheke( wählen|: (?!${escaped}$).+)$`) });
   // A settled state before deciding: the pharmacy is current (chosen on the switcher, or the only one), or the switcher
-  // shows another (or none). While the list loads, or a list read before the pharmacy was added names only another,
-  // neither shows, and the wait goes on; either one stays until the test chooses.
+  // shows another (or none). While the list loads, neither shows and the wait goes on; either one stays until the test
+  // chooses. A list read before the pharmacy was added shows another, and its menu lacks this pharmacy: the callers
+  // open a page that reads the memberships afresh first.
   await expect(chosen.or(only).or(another)).toBeVisible();
   if (await another.isVisible()) {
     await switcher.click();
@@ -163,7 +166,11 @@ test('MVP 1: an owner registers and invites, an editor publishes, the employee p
   const learner = await browserOf(browser);
   const visitor = await browserOf(browser);
   // The day she passes, in Germany, worked out once: the certificate is dated then, and valid until 12 months on.
+  // The day the host counts as the day of passing lies between these two, read on the test's clock around the submit;
+  // the dates the app shows are then checked against the issue date it shows, as the host takes both from passedAt.
+  let submittedOn = '';
   let passedOn = '';
+  let issuedOn = '';
 
   try {
     await test.step('the owner registers a pharmacy', async () => {
@@ -301,6 +308,7 @@ test('MVP 1: an owner registers and invites, an editor publishes, the employee p
     await test.step('the employee passes the test on the second attempt', async () => {
       await learner.page.getByRole('link', { name: 'Nächsten Versuch beginnen' }).click();
       await startAndChoose(learner.page, 2, '30 Sekunden');
+      submittedOn = todayInGermany();
       await submit(learner.page);
       await expect(learner.page.getByText('Versuch 2', { exact: true })).toBeVisible();
       await expect(learner.page.getByText('Bestanden', { exact: true })).toBeVisible();
@@ -358,8 +366,14 @@ test('MVP 1: an owner registers and invites, an editor publishes, the employee p
       await expect(main.getByRole('heading', { level: 2, name: 'Gültig' })).toBeVisible();
       await expect(main.getByText(employee, { exact: true })).toBeVisible();
       await expect(main.getByText(title, { exact: true })).toBeVisible();
-      await expect(main.getByText(germanDate(passedOn), { exact: true })).toBeVisible();
-      await expect(main.getByText(germanDate(addMonths(passedOn, 12)), { exact: true })).toBeVisible();
+      // The issue date as the page shows it: the day the host counted, before or after a midnight in Germany during the
+      // submit. Every valid-until is twelve months from it.
+      const shownIssueDate = (
+        await main.locator('dt', { hasText: 'Ausgestellt am' }).locator('+ dd').textContent()
+      )?.trim();
+      expect([germanDate(submittedOn), germanDate(passedOn)]).toContain(shownIssueDate);
+      issuedOn = shownIssueDate === germanDate(passedOn) ? passedOn : submittedOn;
+      await expect(main.getByText(germanDate(addMonths(issuedOn, 12)), { exact: true })).toBeVisible();
     });
 
     await test.step('the owner sees the course as completed in the team matrix', async () => {
@@ -378,7 +392,7 @@ test('MVP 1: an owner registers and invites, an editor publishes, the employee p
         await page.reload();
         await expect(cell).toContainText('Abgeschlossen', { timeout: 3_000 });
       }).toPass({ timeout: 30_000 });
-      await expect(cell).toContainText(`gültig bis ${germanDate(addMonths(passedOn, 12))}`);
+      await expect(cell).toContainText(`gültig bis ${germanDate(addMonths(issuedOn, 12))}`);
       const rate = page.getByRole('region', { name: 'Compliance-Quote' });
       await expect(rate.getByText(/^100\s%$/)).toBeVisible();
       await expect(rate.getByText('Fristgerecht: 1 von 1', { exact: true })).toBeVisible();

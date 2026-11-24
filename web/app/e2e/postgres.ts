@@ -39,6 +39,10 @@ function postgresContainer(database: string) {
 
 /** Runs SQL against the module's database and returns psql's unaligned, tuples-only answer. */
 export function sqlIn(database: 'certification' | 'compliance', sql: string) {
+  // The name goes into the container's shell command: only the modules' own names, whatever the type says.
+  if (!['certification', 'compliance'].includes(database)) {
+    throw new Error(`No e2e helper reads the database ${String(database)}.`);
+  }
   return execFileSync(
     'docker',
     [
