@@ -202,6 +202,20 @@ public class DeployEnvironmentsCheckTests
         ["bypass_actors"] = new JsonArray(new JsonObject { ["actor_id"] = 5, ["actor_type"] = "RepositoryRole", ["bypass_mode"] = "always" }),
     };
 
+    [Fact]
+    public async Task An_environment_gh_cannot_read_is_reported_as_unreadable_not_as_missing()
+    {
+        var staging = Restricted("staging", reviewers: false);
+        staging.Unreadable = true;
+
+        var run = await CheckAsync(staging, Restricted("production", reviewers: true));
+
+        run.ExitCode.ShouldNotBe(0, run.ToString());
+        run.Output.ShouldContain("staging");
+        run.Output.ShouldContain("HTTP 403");
+        run.Output.ShouldNotContain("no such environment");
+    }
+
     private static DeployEnvironment Restricted(string name, bool reviewers)
     {
         var rules = new JsonArray();
@@ -256,7 +270,7 @@ public class DeployEnvironmentsCheckTests
             {
                 var path = Path.Combine(answers.FullName, "repos", Repository, "environments", environment.Name);
                 Directory.CreateDirectory(path);
-                await File.WriteAllTextAsync(path + ".json", environment.Environment.ToJsonString());
+                await File.WriteAllTextAsync(path + ".json", environment.Unreadable ? "forbidden" : environment.Environment.ToJsonString());
                 await File.WriteAllTextAsync(Path.Combine(path, "deployment-branch-policies.json"), environment.Policies.ToJsonString());
             }
 
@@ -277,6 +291,7 @@ public class DeployEnvironmentsCheckTests
                 [ "$1" = api ] || { echo "stub gh: only 'gh api <path>' is answered, not: $*" >&2; exit 2; }
                 file="$GH_STUB_ANSWERS/${2#/}.json"
                 [ -f "$file" ] || { echo 'gh: Not Found (HTTP 404)' >&2; exit 1; }
+                [ "$(cat "$file")" != forbidden ] || { echo 'gh: Resource not accessible by personal access token (HTTP 403)' >&2; exit 1; }
                 cat "$file"
                 """);
             if (!OperatingSystem.IsWindows())
@@ -315,5 +330,8 @@ public class DeployEnvironmentsCheckTests
         public JsonObject Environment { get; } = environment;
 
         public JsonObject Policies { get; set; } = policies;
+
+        /// <summary>Whether <c>gh api</c> refuses to read the environment (HTTP 403), as for a token without access.</summary>
+        public bool Unreadable { get; set; }
     }
 }

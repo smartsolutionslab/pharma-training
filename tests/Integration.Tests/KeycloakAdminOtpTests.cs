@@ -73,6 +73,43 @@ public partial class KeycloakAdminOtpTests(KeycloakAdminContainer keycloak) : IC
         (await keycloak.ExecAsync("sha256sum ~/.keycloak/kcadm.config")).Output.ShouldBe(before.Output, "A refused sign-in should leave kcadm's session as it was.");
     }
 
+    /// <summary>
+    /// The review of #319: master's access token lasts 60 seconds, less than an operator may take to scan the key and type
+    /// the code, so enrolment saves with a token refreshed from kcadm.sh's session, not the one it started with. Here the
+    /// token lasts 5 seconds and the operator takes 8.
+    /// </summary>
+    [Fact]
+    public async Task Enrolment_saves_after_the_sessions_access_token_has_expired()
+    {
+        var (user, _) = await AdministratorAsync();
+        (await keycloak.ExecAsync("./kcadm.sh update realms/master -s accessTokenLifespan=5")).ExitCode.ShouldBe(0);
+        try
+        {
+            (await keycloak.SignInAsAdministratorAsync()).ExitCode.ShouldBe(0);
+            string? key = null;
+
+            var enroll = await keycloak.ConverseAsync($"./kcadm-otp.sh enroll {user}", line =>
+            {
+                key = KeyIn(line);
+                if (key is null)
+                {
+                    return null;
+                }
+
+                Thread.Sleep(TimeSpan.FromSeconds(8));
+                return Totp.Code(key) + "\n";
+            });
+
+            enroll.ExitCode.ShouldBe(0, $"Enrolment failed once the access token it started with had expired:\n{enroll}");
+            (await CredentialTypesAsync(user)).ShouldContain("otp");
+        }
+        finally
+        {
+            (await keycloak.SignInAsAdministratorAsync()).ExitCode.ShouldBe(0);
+            (await keycloak.ExecAsync("./kcadm.sh update realms/master -s accessTokenLifespan=60")).ExitCode.ShouldBe(0);
+        }
+    }
+
     [Fact]
     public async Task A_wrong_code_at_enrolment_saves_nothing()
     {
