@@ -34,4 +34,6 @@ internal sealed class InMemorySampleStore : ISampleStore, IEditorialUnitOfWork
         added.Clear();
         return Task.CompletedTask;
     }
+
+    public Task CommitOneOfSeveralAsync(CancellationToken cancellationToken) => CommitAsync(cancellationToken);
 }

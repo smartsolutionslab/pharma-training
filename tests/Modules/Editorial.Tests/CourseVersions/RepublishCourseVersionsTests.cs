@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 using SmartSolutionsLab.PharmaTraining.Contracts;
 using SmartSolutionsLab.PharmaTraining.Contracts.Editorial;
@@ -251,7 +252,8 @@ public class RepublishCourseVersionsTests
     }
 
     private Task<Result<EditorialRepublishedEventsDto, ApiError>> RepublishAsync() =>
-        new RepublishCourseVersionsHandler(store, store).HandleAsync(new RepublishCourseVersions(), TestContext.Current.CancellationToken);
+        new RepublishCourseVersionsHandler(store, store, new InMemoryRepublishLock(), NullLogger<RepublishCourseVersionsHandler>.Instance)
+            .HandleAsync(new RepublishCourseVersions(Author), TestContext.Current.CancellationToken);
 
     /// <summary>A new course's first version, published through the handler by the reviewer.</summary>
     private async Task<CourseVersion> PublishedAsync(string title)
