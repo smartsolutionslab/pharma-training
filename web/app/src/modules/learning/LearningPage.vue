@@ -8,9 +8,10 @@ import { ApiError } from '@/api/baseApi';
 import { getGetOrganisationPharmaciesMineQueryKey } from '@/api/generated';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
+import { messageText } from '@/i18n/errorText';
 import { useCurrentPharmacy } from '@/shell/useCurrentPharmacy';
 import MyCoursesList from './MyCoursesList.vue';
-import { myCoursesFailure } from './myCoursesErrors';
+import { myCoursesFailure, myCoursesRetryable } from './myCoursesErrors';
 import { parseMyCoursesQuery, toLocationQuery } from './myCoursesQuery';
 import { titleKey } from './titleKey';
 import { useMyCourses } from './useMyCourses';
@@ -50,18 +51,9 @@ const { assignments, items, paging } = useMyCourses(current, page);
 const { data, error, isPending, isFetching } = assignments;
 
 const failure = computed(() => (error.value === null ? undefined : myCoursesFailure(error.value)));
-const failureText = computed(() => {
-  const shown = failure.value;
-  if (shown === undefined) {
-    return undefined;
-  }
-  return 'key' in shown ? t(shown.key) : shown.message;
-});
-/** Only a failure, not a refusal, is worth reading again. */
-const canRetry = computed(() => {
-  const shown = failure.value;
-  return shown !== undefined && 'key' in shown && shown.key === 'learning.myCourses.loadFailed';
-});
+const failureText = computed(() => (failure.value === undefined ? undefined : messageText(failure.value)));
+/** Any failure is worth reading again but a refusal a second read cannot turn round (myCoursesRetryable). */
+const canRetry = computed(() => error.value !== null && myCoursesRetryable(error.value));
 /** The list shows unless a refusal takes its place; a background refetch that failed keeps the courses it had. */
 const showsList = computed(() => failure.value === undefined || data.value !== undefined);
 
