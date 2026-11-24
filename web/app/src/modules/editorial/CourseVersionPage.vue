@@ -15,6 +15,7 @@ import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from '@
 import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { t as translate } from '@/i18n';
+import { errorText } from '@/i18n/errorText';
 import { notify } from '@/lib/notify';
 import ChapterForm from './ChapterForm.vue';
 import ChapterList from './ChapterList.vue';
@@ -115,7 +116,7 @@ async function save(request: EditorialChapterRequest) {
   const chapter = form.value?.chapter;
   const result = chapter === undefined ? await add(request) : await replace(chapter.id, request);
   if (!result.ok) {
-    notify.failure(result.serverMessage ?? translate('editorial.chapters.saveFailed', { title: request.title }));
+    notify.failure(errorText(result.error, 'editorial.chapters.saveFailed', { values: { title: request.title } }));
     return false;
   }
   notify.success(translate('editorial.chapters.saved', { title: request.title }));
@@ -151,7 +152,7 @@ async function draftNextVersion() {
     return;
   }
   draftingNext.value = false;
-  notify.failure(result.serverMessage ?? translate('editorial.version.newVersionFailed'));
+  notify.failure(errorText(result.error, 'editorial.version.newVersionFailed'));
   await nextTick();
   (document.getElementById(newVersionId) ?? document.getElementById(headingId))?.focus();
 }
@@ -321,7 +322,7 @@ async function confirmRemove(chapter: EditorialChapterDto) {
   if (result.ok) {
     notify.success(translate('editorial.chapters.removed', { title: chapter.title }));
   } else {
-    notify.failure(result.serverMessage ?? translate('editorial.chapters.removeFailed', { title: chapter.title }));
+    notify.failure(errorText(result.error, 'editorial.chapters.removeFailed', { values: { title: chapter.title } }));
   }
 }
 </script>
