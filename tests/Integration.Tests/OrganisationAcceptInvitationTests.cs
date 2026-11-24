@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Aspire.Hosting.Testing;
 using Npgsql;
@@ -152,6 +153,7 @@ public partial class OrganisationAcceptInvitationTests(AspireFixture aspire)
         var expected = ErrorCodeCatalog.MessageOf("organisation.invitation-not-found");
         Title(againBody).ShouldBe(expected);
         Title(unknownBody).ShouldBe(expected);
+        WithoutTraceId(againBody).ShouldBe(WithoutTraceId(unknownBody), "a used link answers otherwise than an unknown one");
         againBody.ShouldNotContain(pharmacy.ToString(), Case.Insensitive);
     }
 
@@ -448,6 +450,14 @@ public partial class OrganisationAcceptInvitationTests(AspireFixture aspire)
     private static Uri RenewUri(Guid pharmacy, Guid membership) => new($"/organisation/pharmacies/{pharmacy}/invitations/{membership}/renew", UriKind.Relative);
 
     private static Uri PharmacyUri(Guid pharmacy) => new($"/organisation/pharmacies/{pharmacy}", UriKind.Relative);
+
+    /// <summary>The problem as sent, without its <c>traceId</c>, which differs on every request.</summary>
+    private static string WithoutTraceId(string body)
+    {
+        var problem = JsonNode.Parse(body).ShouldBeOfType<JsonObject>();
+        problem.Remove("traceId");
+        return problem.ToJsonString();
+    }
 
     private static string? Title(string body)
     {
