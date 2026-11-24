@@ -975,6 +975,55 @@
         }
       }
     },
+    "/compliance/me/assignments": {
+      "get": {
+        "tags": [
+          "MyAssignmentEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "pharmacyId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "maximum": 21474837,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedResultOfComplianceMyAssignmentDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/compliance/samples": {
       "post": {
         "tags": [
@@ -3874,6 +3923,48 @@
           }
         }
       },
+      "ComplianceMyAssignmentDto": {
+        "required": [
+          "assignmentId",
+          "courseId",
+          "courseTitle",
+          "state",
+          "dueDate",
+          "startCourseVersionId",
+          "continuesSession"
+        ],
+        "type": "object",
+        "properties": {
+          "assignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "courseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "courseTitle": {
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ComplianceAssignmentState"
+          },
+          "dueDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "startCourseVersionId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "continuesSession": {
+            "type": "boolean"
+          }
+        }
+      },
       "ComplianceRefusedLearnerDto": {
         "required": [
           "personId",
@@ -5133,6 +5224,47 @@
           }
         }
       },
+      "PagedResultOfComplianceMyAssignmentDto": {
+        "required": [
+          "items",
+          "totalCount",
+          "page",
+          "pageSize"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComplianceMyAssignmentDto"
+            }
+          },
+          "totalCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "page": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "pageSize": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "PagedResultOfComplianceSampleDto": {
         "required": [
           "items",
@@ -5725,6 +5857,9 @@
     },
     {
       "name": "MemberEndpoints"
+    },
+    {
+      "name": "MyAssignmentEndpoints"
     },
     {
       "name": "LearningMediaEndpoints"

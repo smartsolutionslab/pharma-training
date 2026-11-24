@@ -215,6 +215,11 @@
     "message": "Only another manager of the pharmacy can change or withdraw your own assignment."
   },
   {
+    "code": "compliance.pharmacy-missing",
+    "status": 400,
+    "message": "The pharmacy is missing."
+  },
+  {
     "code": "compliance.pharmacy-not-found",
     "status": 404,
     "message": "There is no pharmacy of yours with this id."

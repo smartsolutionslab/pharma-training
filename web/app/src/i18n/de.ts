@@ -992,6 +992,7 @@ export const de = {
       'learner-not-a-member': 'Eine gewählte Person ist kein Mitglied dieser Apotheke mehr.',
       'no-learners': 'Wählen Sie mindestens eine Person.',
       'own-assignment': 'Ihre eigene Zuweisung kann nur ein anderer Apothekenleiter ändern oder zurückziehen.',
+      'pharmacy-missing': 'Wählen Sie eine Apotheke.',
       'pharmacy-not-found': 'Sie sind nicht mehr Mitglied dieser Apotheke.',
       'sample-not-found': 'Dieses Beispiel gibt es nicht.',
       'too-many-learners': 'Weisen Sie höchstens {max} Personen auf einmal zu.',

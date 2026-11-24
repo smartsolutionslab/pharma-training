@@ -966,6 +966,7 @@ export const en: MessageSchema = {
       'learner-not-a-member': 'A chosen person is no longer a member of this pharmacy.',
       'no-learners': 'Choose at least one person.',
       'own-assignment': 'Only another pharmacy manager can change or withdraw your own assignment.',
+      'pharmacy-missing': 'Choose a pharmacy.',
       'pharmacy-not-found': 'You are no longer a member of this pharmacy.',
       'sample-not-found': 'This sample does not exist.',
       'too-many-learners': 'Assign at most {max} people at a time.',
