@@ -3559,7 +3559,8 @@
           "kind",
           "text",
           "file",
-          "durationSeconds"
+          "durationSeconds",
+          "pdfText"
         ],
         "type": "object",
         "properties": {
@@ -3601,6 +3602,16 @@
               "string"
             ],
             "format": "int32"
+          },
+          "pdfText": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EditorialPdfText"
+              }
+            ]
           }
         }
       },
@@ -3865,6 +3876,13 @@
           }
         }
       },
+      "EditorialPdfText": {
+        "enum": [
+          "Complete",
+          "Truncated",
+          "NoText"
+        ]
+      },
       "EditorialQuestionDto": {
         "required": [
           "id",
@@ -4077,7 +4095,8 @@
       "EditorialTestDraftDto": {
         "required": [
           "draftedQuestionIds",
-          "leftOutChapterIds"
+          "leftOutChapterIds",
+          "truncatedChapterIds"
         ],
         "type": "object",
         "properties": {
@@ -4089,6 +4108,13 @@
             }
           },
           "leftOutChapterIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "truncatedChapterIds": {
             "type": "array",
             "items": {
               "type": "string",

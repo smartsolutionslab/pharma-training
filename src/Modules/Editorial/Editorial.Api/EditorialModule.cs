@@ -20,6 +20,9 @@ public sealed class EditorialModule : IModule
         // Reads a recorded PDF's page text; it holds no state. Convention registers only the stores taking the DbContext.
         services.AddSingleton<IPdfTextExtractor, PdfPigTextExtractor>();
 
+        // A chapter's PdfText is nullable; its enum's values in the OpenAPI document are not.
+        EditorialPdfTextSchema.Describe(services);
+
         // The per-editor limits on the endpoints that call the model, read once here like the line above (docs/adr/0020).
         foreach (var limit in EditorialModelLimits.From(configuration))
         {
