@@ -13,6 +13,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { EditorialQuestionDto, EditorialQuestionRequest } from '@/api/generated';
 import { type MessageKey, t as translate } from '@/i18n';
+import { errorText } from '@/i18n/errorText';
 import { notify } from '@/lib/notify';
 import QuestionCard from './QuestionCard.vue';
 import QuestionForm from './QuestionForm.vue';
@@ -72,7 +73,7 @@ async function save(request: EditorialQuestionRequest) {
   const question = form.value?.question;
   const result = question === undefined ? await add(request) : await replace(question.id, request);
   if (!result.ok) {
-    notify.failure(result.serverMessage ?? translate('editorial.test.questions.saveFailed'));
+    notify.failure(errorText(result.error, 'editorial.test.questions.saveFailed'));
     return false;
   }
   notify.success(translate('editorial.test.questions.saved'));
@@ -182,7 +183,7 @@ async function approveQuestion(question: EditorialQuestionDto) {
   if (result.ok) {
     notify.success(translate('editorial.test.questions.approved', { position }));
   } else {
-    notify.failure(result.serverMessage ?? translate('editorial.test.questions.approveFailed', { position }));
+    notify.failure(errorText(result.error, 'editorial.test.questions.approveFailed', { values: { position } }));
   }
 }
 
@@ -200,7 +201,7 @@ async function confirmRemove(question: EditorialQuestionDto) {
   if (result.ok) {
     notify.success(translate('editorial.test.questions.removed'));
   } else {
-    notify.failure(result.serverMessage ?? translate('editorial.test.questions.removeFailed'));
+    notify.failure(errorText(result.error, 'editorial.test.questions.removeFailed'));
   }
 }
 </script>
