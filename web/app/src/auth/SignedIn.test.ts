@@ -304,10 +304,13 @@ test("nothing shows before the router's first navigation has settled", async () 
   const firstNavigation = new Promise<void>((resolve) => {
     settle = resolve;
   });
-  const router = createAppRouter(createMemoryHistory());
+  // The history starts at the address: installing the router starts its first navigation from the history, and a
+  // push made before that would be replaced by a navigation to the history's own location.
+  const history = createMemoryHistory();
+  history.replace(verifyAddress);
+  const router = createAppRouter(history);
   const guard = vi.fn(() => firstNavigation);
   router.beforeEach(guard);
-  void router.push(verifyAddress);
   const fake = client();
   const auth = renderSignedInAt(fake, router);
   await vi.waitFor(() => expect(guard).toHaveBeenCalledOnce());
