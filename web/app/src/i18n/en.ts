@@ -717,6 +717,23 @@ export const en: MessageSchema = {
     },
   },
   learning: {
+    myCourses: {
+      intro: 'Your courses in {pharmacy}: overdue first, then by due date.',
+      list: { title: 'Assigned courses' },
+      due: 'Due {date}',
+      dueOverdue: 'Was due {date}',
+      start: 'Start',
+      continue: 'Continue',
+      startCourse: 'Start: {title}',
+      continueCourse: 'Continue: {title}',
+      locked: 'The test is locked. Work through the content again to unlock it.',
+      notStartable: 'This course cannot be started at the moment: its version has been retired.',
+      empty: 'No course is currently assigned to you in {pharmacy}.',
+      pharmacyNotFound: 'You are no longer a member of this pharmacy.',
+      identityIncomplete: 'Your account gives no name or valid email address. Complete your profile.',
+      loadFailed: 'Your courses could not be loaded.',
+      retry: 'Try again',
+    },
     player: {
       loadFailed: 'The course could not be loaded.',
       notFound: 'This course does not exist.',

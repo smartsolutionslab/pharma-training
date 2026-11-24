@@ -3,6 +3,7 @@ using SmartSolutionsLab.PharmaTraining.BuildingBlocks.EventStore;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Modules;
 using JasperFx;
 using Marten;
+using Npgsql;
 using Microsoft.Extensions.Configuration;
 
 namespace Microsoft.Extensions.DependencyInjection;
@@ -43,8 +44,9 @@ public static class EventStoreRegistration
     }
 
     /// <summary>
-    /// Creates or updates the tables of one module's event store, in its service's own database: streams, events and the
-    /// projections' read models. Nothing when the module has no event store.
+    /// Creates or updates the tables of one module's event store, in its service's own database: streams, events, the
+    /// projections' read models and the partial indexes its announcement sweep reads through (#277). Nothing when the
+    /// module has no event store.
     /// </summary>
     public static async Task ApplyEventStoreSchemasAsync(this IServiceProvider services, Assembly infrastructure)
     {
@@ -59,5 +61,20 @@ public static class EventStoreRegistration
         var connectionString = ModuleEventStore.ConnectionString(services.GetRequiredService<IConfiguration>());
         using var store = DocumentStore.For(options => module.Configure(options, connectionString, AutoCreate.CreateOrUpdate));
         await store.Storage.ApplyAllConfiguredChangesToDatabaseAsync();
+
+        // After Marten's changes, which make mt_events on a fresh database: Marten writes objects of its own after a
+        // module's, so an index of the module's on its event table cannot be one of them.
+        if (module.SweptEventIndexes.Count == 0)
+        {
+            return;
+        }
+
+        await using var connection = store.Storage.Database.CreateConnection();
+        await connection.OpenAsync();
+        foreach (var index in module.SweptEventIndexes)
+        {
+            await using var command = new NpgsqlCommand(index.CreateStatement, connection);
+            await command.ExecuteNonQueryAsync();
+        }
     }
 }

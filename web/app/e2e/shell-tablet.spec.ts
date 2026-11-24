@@ -70,7 +70,7 @@ test('on a tablet the user chooses a pharmacy, switches to another, and it stays
   await navigation.getByRole('link', { name: 'Meine Schulungen' }).click();
   await expect(page).toHaveURL(/\/learning$/);
   // The page itself, not the gate: an employee of Apotheke am Dom may learn.
-  await expect(page.getByRole('heading', { name: 'Beispiele' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Meine Schulungen' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Nicht verfügbar' })).toBeHidden();
   expect(await scrollsSideways(page)).toBe(false);
 });

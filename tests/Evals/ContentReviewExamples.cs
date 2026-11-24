@@ -99,7 +99,7 @@ public static class ContentReviewExamples
                 Succeed(version.AddChapter(Chapter.OfText(ChapterId.New(), ChapterTitle.From(Texts[index].Title), MarkdownText.From(Texts[index].Text))));
                 if (index == 0 && Pdf is { } pdf)
                 {
-                    Succeed(version.AddChapter(Chapter.OfPdf(ChapterId.New(), ChapterTitle.From(pdf.Title), BlobReference.From(pdf.Blob))));
+                    Succeed(version.AddChapter(Chapter.OfPdf(ChapterId.New(), ChapterTitle.From(pdf.Title), BlobReference.From(pdf.Blob), PdfTextExtraction.NoText, null)));
                 }
             }
 

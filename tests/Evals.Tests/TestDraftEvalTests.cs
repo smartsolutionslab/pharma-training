@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.AI;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.TestDrafting;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 using SmartSolutionsLab.PharmaTraining.Tests.Fakes;
 
 namespace SmartSolutionsLab.PharmaTraining.Evals.Tests;
@@ -166,7 +167,7 @@ public sealed partial class TestDraftEvalTests : IDisposable
             requested.Add(int.Parse(RequestedPattern().Match(user).Groups[1].Value, CultureInfo.InvariantCulture));
         }
 
-        requested.ShouldBe([6, 10, 5, 4, 7]);
+        requested.ShouldBe([6, 10, 5, 4, 7, 8, 5]);
     }
 
     [Fact]
@@ -194,9 +195,99 @@ public sealed partial class TestDraftEvalTests : IDisposable
         Should.NotThrow(() => JsonDocument.Parse(transcript).Dispose());
     }
 
+    [Fact]
+    public void Every_draft_example_builds_a_version_the_drafter_accepts()
+    {
+        foreach (var example in DraftUseCase().Examples)
+        {
+            var request = TestDraftRequest.For(TestDraftExamples.Version(example));
+
+            request.IsSuccess.ShouldBeTrue(request.IsFailure ? $"{example.Input}: {request.Error.Code}" : example.Input);
+        }
+    }
+
+    [Fact]
+    public async Task The_zytostatika_example_sends_text_and_pdf_chapters_split_evenly_and_leaves_out_its_video()
+    {
+        var example = Example("Lagerung von Zytostatika");
+        var version = TestDraftExamples.Version(example);
+        using var model = new FakeChatClient("{}");
+
+        await DraftUseCase().Answer(model, example, TestContext.Current.CancellationToken);
+
+        var messages = model.Requests.ShouldHaveSingleItem();
+        Chapters(messages).Select(chapter => chapter["source"]!.GetValue<string>()).ShouldBe(["text", "pdf", "text", "pdf"]);
+        var user = messages.Single(message => message.Role == ChatRole.User).Text;
+        user.ShouldContain("chapter 1: 2", Case.Insensitive);
+        user.ShouldContain("chapter 2: 2", Case.Insensitive);
+        user.ShouldContain("chapter 3: 2", Case.Insensitive);
+        user.ShouldContain("chapter 4: 2", Case.Insensitive);
+        var request = TestDraftRequest.For(version).Value;
+        var video = version.Chapters.Where(chapter => chapter.Kind == ChapterKind.Video).ShouldHaveSingleItem();
+        request.LeftOutChapters.ShouldBe([video.Id]);
+    }
+
+    [Fact]
+    public async Task The_ethanol_example_sends_pdf_chapters_only()
+    {
+        var example = Example("Betriebsanweisung Ethanol (PDF)");
+        using var model = new FakeChatClient("{}");
+
+        await DraftUseCase().Answer(model, example, TestContext.Current.CancellationToken);
+
+        var chapters = Chapters(model.Requests.ShouldHaveSingleItem()).ToList();
+        chapters.Count.ShouldBe(2);
+        chapters.ShouldAllBe(chapter => chapter["source"]!.GetValue<string>() == "pdf");
+        TestDraftRequest.For(TestDraftExamples.Version(example)).Value.LeftOutChapters.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void The_hazardous_substances_example_keeps_a_pdf_without_text_that_is_left_out()
+    {
+        var version = TestDraftExamples.Version(Example("Gefahrstoffe in der Rezeptur"));
+
+        var scan = version.Chapters.Where(chapter => chapter.Kind == ChapterKind.Pdf).ShouldHaveSingleItem();
+        scan.Extraction.ShouldBe(PdfTextExtraction.NoText);
+        TestDraftRequest.For(version).Value.LeftOutChapters.ShouldBe([scan.Id]);
+    }
+
+    [Fact]
+    public void The_pdf_examples_grounding_context_holds_the_pdf_texts_numbered_among_the_chapters_sent()
+    {
+        foreach (var title in new[] { "Lagerung von Zytostatika", "Betriebsanweisung Ethanol (PDF)" })
+        {
+            var example = Example(title);
+            var request = TestDraftRequest.For(TestDraftExamples.Version(example)).Value;
+            var groundingContext = example.GroundingContext.ShouldNotBeNull(title);
+
+            var pdfs = request.Chapters.Where(chapter => chapter.Source == TestDraftSource.Pdf).ToList();
+            pdfs.ShouldNotBeEmpty(title);
+            foreach (var chapter in request.Chapters)
+            {
+                groundingContext.ShouldContain(string.Create(CultureInfo.InvariantCulture, $"Kapitel {chapter.Number}: {chapter.Title.Value}\n\n{chapter.Text}"), Case.Sensitive, title);
+            }
+        }
+    }
+
+    [Fact]
+    public void The_pdf_texts_of_the_examples_read_as_pdfpig_yields_them()
+    {
+        var request = TestDraftRequest.For(TestDraftExamples.Version(Example("Lagerung von Zytostatika"))).Value;
+
+        foreach (var pdf in request.Chapters.Where(chapter => chapter.Source == TestDraftSource.Pdf))
+        {
+            Regex.Count(pdf.Text, Regex.Escape("Apotheke am Markt · Arbeitsanweisung")).ShouldBeGreaterThan(1, "a header repeated on every page");
+            pdf.Text.ShouldContain("\nSeite 1\n\n", Case.Sensitive, "a page number, then the pages joined by a blank line");
+            pdf.Text.ShouldMatch("[a-zäöü]-\n[a-zäöü]", "a word hyphenated across a line break");
+        }
+    }
+
     public void Dispose() => results.Delete(recursive: true);
 
     private static EvalUseCase DraftUseCase() => UseCases.All.Single(useCase => useCase.Name == UseCaseName);
+
+    private static EvalExample Example(string course) =>
+        DraftUseCase().Examples.Single(example => example.Input.Contains($"\"{course}\"", StringComparison.Ordinal));
 
     private static double? Score(EvalScores scores, string metric) =>
         scores.All.Where(score => score.UseCase == UseCaseName && score.Metric == metric).ShouldHaveSingleItem(metric).Value;

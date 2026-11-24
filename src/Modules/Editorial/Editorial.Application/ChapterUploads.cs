@@ -114,9 +114,10 @@ public static class ChapterUploads
     /// was put directly, not created by a server-side copy, which an upload URL also allows, with no content disposition
     /// or encoding of the uploader's, and whose own leading bytes
     /// are the kind's: a PDF starts with <c>%PDF-</c>, an MP4 has <c>ftyp</c> at bytes 4 to 7 and an MP4 major brand at
-    /// bytes 8 to 11. The declared content type is the uploader's word; the bytes are the file's.
+    /// bytes 8 to 11. The declared content type is the uploader's word; the bytes are the file's. Answers the blob the
+    /// lookup found, whose ETag a later read of the whole file carries.
     /// </summary>
-    public static async Task<Result<Unit, ApiError>> AcceptAsync(IStoredBlobs blobs, BlobReference file, CourseVersionId version, ChapterKind kind, CancellationToken cancellationToken)
+    public static async Task<Result<StoredBlob, ApiError>> AcceptAsync(IStoredBlobs blobs, BlobReference file, CourseVersionId version, ChapterKind kind, CancellationToken cancellationToken)
     {
         Ensure.That(blobs).IsNotNull();
 
@@ -144,7 +145,7 @@ public static class ChapterUploads
             return Failure(CourseVersionFailures.UploadNotAccepted());
         }
 
-        return Success(Unit.Value);
+        return Success(stored.Value);
     }
 
     private static bool IsWhatTheKindTakes(StoredBlob blob, ChapterKind kind)
