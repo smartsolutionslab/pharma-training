@@ -2,7 +2,7 @@ import { type APIRequestContext, type Browser, expect, type Page, test } from '@
 import { addMonths } from '@/lib/addMonths';
 import { pdfText, qrLinkIn } from './certificatePdf';
 import { issuedCertificate, type IssuedCertificate } from './certificationDatabase';
-import { accessToken, courseTitle, daysAhead, germanDate, pharmacyName } from './compliance';
+import { accessToken, courseTitle, daysAhead, germanDate, germanLongDate, pharmacyName } from './compliance';
 import { acceptOn, invitationLink, mailText, recordAcceptances, signInAs } from './invitations';
 
 // MVP 1 end to end (#55, X1), against the AppHost with no route mocked, in three browsers of their own: the realm's
@@ -260,7 +260,7 @@ test('MVP 1: an owner registers and invites, an editor publishes, the employee p
       await next.click();
 
       const review = page.getByRole('region', { name: 'Zuweisung prüfen' });
-      await expect(review.getByRole('definition')).toHaveText([title, employee, germanDate(dueDate), 'Keine']);
+      await expect(review.getByRole('definition')).toHaveText([title, employee, germanLongDate(dueDate), 'Keine']);
       await review.getByRole('button', { name: 'Zuweisen', exact: true }).click();
       await expect(
         page
