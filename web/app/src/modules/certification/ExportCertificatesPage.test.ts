@@ -5,7 +5,7 @@ import { createPinia, type Pinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { createMemoryHistory } from 'vue-router';
 import type { MyPharmacyDto } from '@/api/generated';
-import { t } from '@/i18n';
+import { setLanguage, t } from '@/i18n';
 import { createAppRouter } from '@/router';
 import { useSelectedPharmacyStore } from '@/stores/selectedPharmacy';
 import ExportCertificatesPage from './ExportCertificatesPage.vue';
@@ -106,6 +106,7 @@ beforeEach(() => {
   });
 });
 afterEach(() => {
+  setLanguage('de-DE', { remember: false });
   vi.useRealTimers();
   vi.restoreAllMocks();
   host.mockReset();
@@ -226,14 +227,54 @@ describe('exporting', () => {
     expect(revokeObjectURL).toHaveBeenCalledTimes(1);
   });
 
-  test('says "Der Export wurde heruntergeladen."', async () => {
+  // The review of #371: the page cannot know the browser saved the file, only that the download has started.
+  test('says "Der Download wurde gestartet."', async () => {
     const user = userEvent.setup();
     await renderPage();
 
     await user.click(submitButton());
 
-    await waitFor(() => expect(notify.success).toHaveBeenCalledWith('Der Export wurde heruntergeladen.'));
+    await waitFor(() => expect(notify.success).toHaveBeenCalledWith('Der Download wurde gestartet.'));
     expect(notify.failure).not.toHaveBeenCalled();
+  });
+
+  test('switched to English, says "The download has started."', async () => {
+    const user = userEvent.setup();
+    await renderPage();
+    setLanguage('en-GB', { remember: false });
+
+    await user.click(await screen.findByRole('button', { name: t('certification.export.submit') }));
+
+    await waitFor(() => expect(notify.success).toHaveBeenCalledWith('The download has started.'));
+    expect(notify.failure).not.toHaveBeenCalled();
+  });
+
+  // The review of #371: leaving the page while the ZIP is on its way cancels it. The request's signal is aborted, and
+  // an answer that arrives all the same saves no file and says nothing.
+  test('leaving the page while the export runs aborts its request, and its answer saves nothing', async () => {
+    const user = userEvent.setup();
+    let answer: (response: Response) => void = () => undefined;
+    state.export = () => new Promise<Response>((resolve) => (answer = resolve));
+    const { unmount } = await renderPage();
+
+    await user.click(submitButton());
+    await screen.findByRole('button', { name: 'Wird erstellt…' });
+    expect(exportsOf(host)).toHaveLength(1);
+
+    unmount();
+    const zip = archive('teilnahmebestaetigungen_vom_host.zip');
+    answer(zip);
+    // Its bytes are read in a microtask of the answer; vi.waitFor checks again in a later task, after the ones that
+    // would save the file.
+    await vi.waitFor(() => expect(zip.blob).toHaveBeenCalled());
+
+    const signal = host.mock.calls.find(([input]) => String(input).includes('/certificates/export'))?.[1]?.signal;
+    expect.soft(signal).toBeInstanceOf(AbortSignal);
+    expect.soft(signal?.aborted).toBe(true);
+    expect.soft(createObjectURL).not.toHaveBeenCalled();
+    expect.soft(saved).toEqual([]);
+    expect.soft(notify.success).not.toHaveBeenCalled();
+    expect.soft(notify.failure).not.toHaveBeenCalled();
   });
 
   test("saves an answer without a disposition under the host's own pattern for the range", async () => {
@@ -327,6 +368,44 @@ describe('a range the host would refuse', () => {
     expect(saved).toEqual([]);
   });
 
+  // The review of #371: a refused submit takes the focus to the first field in error, where the error is read out.
+  test('with to before from moves the focus to "Bis"', async () => {
+    const user = userEvent.setup();
+    await renderPage();
+    await waitFor(() => expect(fromField()).toHaveValue('2025-11-25'));
+
+    await fireEvent.update(toField(), '2025-11-24');
+    await user.click(submitButton());
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Das Ende darf nicht vor dem Beginn liegen.');
+    await waitFor(() => expect(toField()).toHaveFocus());
+  });
+
+  test('of six years moves the focus to "Bis"', async () => {
+    const user = userEvent.setup();
+    await renderPage();
+    await waitFor(() => expect(fromField()).toHaveValue('2025-11-25'));
+
+    await fireEvent.update(fromField(), '2020-11-24');
+    await user.click(submitButton());
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Ein Export umfasst höchstens fünf Jahre.');
+    await waitFor(() => expect(toField()).toHaveFocus());
+  });
+
+  test('with an empty "Von" moves the focus to "Von", the first field in error', async () => {
+    const user = userEvent.setup();
+    await renderPage();
+    await waitFor(() => expect(fromField()).toHaveValue('2025-11-25'));
+
+    await fireEvent.update(fromField(), '');
+    await fireEvent.update(toField(), '');
+    await user.click(submitButton());
+
+    await waitFor(() => expect(screen.getAllByRole('alert')).toHaveLength(2));
+    await waitFor(() => expect(fromField()).toHaveFocus());
+  });
+
   test('of six years shows "Ein Export umfasst höchstens fünf Jahre." at to and sends nothing', async () => {
     const user = userEvent.setup();
     await renderPage();
@@ -389,6 +468,23 @@ describe('a refusal', () => {
     expect(toField()).toHaveAttribute('aria-invalid', 'true');
     expect(screen.getAllByRole('alert')).toHaveLength(1);
     expect(saved).toEqual([]);
+  });
+
+  // The review of #371: the host's refusal of the period takes the focus to "Bis", where its text is read out.
+  test('of the period moves the focus to "Bis" once its text shows', async () => {
+    const user = userEvent.setup();
+    state.export = async () =>
+      refusal(
+        400,
+        'certification.invalid-export-period',
+        'An export needs from and to, with to not before from and at most five years after it.',
+      );
+    await renderPage();
+
+    await user.click(submitButton());
+
+    await waitFor(() => expect(toField()).toHaveAttribute('aria-invalid', 'true'));
+    await waitFor(() => expect(toField()).toHaveFocus());
   });
 
   test.each([
@@ -455,7 +551,7 @@ describe('a refusal', () => {
     state.export = async () => archive('teilnahmebestaetigungen_vom_host.zip');
     await user.click(submitButton());
     await waitFor(() => expect(exportsOf(host)).toHaveLength(2));
-    await waitFor(() => expect(notify.success).toHaveBeenCalledWith('Der Export wurde heruntergeladen.'));
+    await waitFor(() => expect(notify.success).toHaveBeenCalledWith('Der Download wurde gestartet.'));
   });
 
   // The review of #297: the host's period refusal at to is the chosen pharmacy's too; another pharmacy clears it.

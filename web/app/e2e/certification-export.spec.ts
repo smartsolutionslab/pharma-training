@@ -128,7 +128,7 @@ test('a manager exports a range that holds a certificate and gets its row in ind
   ]);
   expect(entries.has(`pdf/${certificate}.pdf`)).toBe(false);
 
-  await expect(page.getByText('Der Export wurde heruntergeladen.')).toBeVisible();
+  await expect(page.getByText('Der Download wurde gestartet.')).toBeVisible();
 });
 
 test('an end before the start shows the error at Bis, and nothing is asked of the host', async ({ page }) => {

@@ -12,7 +12,7 @@ const clock = () => new Date('2026-11-24T10:00:00Z');
 
 /** The messages the schema gives, by the field they are about. */
 function refusals(from: string, to: string): Record<string, string[]> {
-  const result = exportSchema(clock).safeParse({ from, to });
+  const result = exportSchema().safeParse({ from, to });
   if (result.success) {
     return {};
   }
