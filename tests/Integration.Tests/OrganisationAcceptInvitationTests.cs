@@ -229,6 +229,8 @@ public partial class OrganisationAcceptInvitationTests(AspireFixture aspire)
         var pharmacy = await RegisterAsync(owner, cancellationToken);
         var token = Token();
         var membership = await database.InsertInvitationAsync(pharmacy, "employee-a@example.com", HashOf(token), "Invited", cancellationToken);
+        // The other renewal of this class may have mailed employee-a within the address's cooldown (#265).
+        await database.ForgetRecipientMailAsync("employee-a@example.com", cancellationToken);
         using (var renewed = await owner.PostAsync(RenewUri(pharmacy, membership), content: null, cancellationToken))
         {
             await ShouldAnswerAsync(renewed, HttpStatusCode.OK, cancellationToken);
@@ -370,6 +372,8 @@ public partial class OrganisationAcceptInvitationTests(AspireFixture aspire)
         var (pharmacy, membership, token) = await InvitedAsync("employee-a", cancellationToken);
         using var owner = await aspire.CreateHostClientAsync("owner");
         using var employee = await aspire.CreateHostClientAsync("employee-a");
+        // The other renewal of this class may have mailed employee-a within the address's cooldown (#265).
+        await database.ForgetRecipientMailAsync("employee-a@example.com", cancellationToken);
 
         var (firstResponse, secondResponse) = await FirstThenSecondAsync(
             pharmacy,

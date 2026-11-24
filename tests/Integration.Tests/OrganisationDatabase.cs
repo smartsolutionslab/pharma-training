@@ -183,6 +183,18 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1, $"The address {address} was never mailed an invitation.");
     }
 
+    /// <summary>
+    /// Forgets that the address was ever mailed an invitation (#265), so a test that mails it again is not refused by
+    /// its cooldown because another test of the class mailed it first. Nothing to forget is fine.
+    /// </summary>
+    public async Task ForgetRecipientMailAsync(string address, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("DELETE FROM organisation.invitation_recipients WHERE id = @id", connection);
+        command.Parameters.AddWithValue("id", RecipientIdOf(address));
+        (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBeLessThanOrEqualTo(1);
+    }
+
     /// <summary>The instant the address was last mailed an invitation (#265), or null while it has no recipient row.</summary>
     public async Task<DateTimeOffset?> RecipientLastMailedAtAsync(string address, CancellationToken cancellationToken)
     {
