@@ -11,6 +11,10 @@ using Microsoft.EntityFrameworkCore;
 var builder = Host.CreateApplicationBuilder(args);
 builder.AddServiceDefaults();
 
+// The runner never starts its host, so it checks here, before either mode connects, what a service's host checks as it
+// starts (DatabaseErrorDetailGuard): neither connection string it reads may set Include Error Detail outside Development.
+DatabaseErrorDetail.RefuseOutsideDevelopment(builder.Configuration, builder.Environment);
+
 // Published, Keycloak's init container names no module but the schema its role owns (Migrations:OwnedSchema): it ensures
 // that role and schema alone, and nothing below runs (MigrationRun). A run naming neither fails here.
 using (var loggers = LoggerFactory.Create(logging => logging.AddConfiguration(builder.Configuration.GetSection("Logging")).AddSimpleConsole()))
@@ -32,8 +36,6 @@ var indexLockTimeout = IndexLockTimeout.From(builder.Configuration);
 // AdministratorSession). What they make names the module's schema explicitly.
 var database = builder.Configuration.GetConnectionString("database")
     ?? throw new InvalidOperationException("Connection string 'database' is missing; the AppHost gives the administrator's for the module's database.");
-// The runner never starts its host, so it checks here what a service's host checks as it starts (DatabaseErrorDetailGuard).
-DatabaseErrorDetail.RefuseOutsideDevelopment(database, builder.Environment);
 var administrator = AdministratorSession.Pinned(database);
 builder.Configuration.AddInMemoryCollection([new("ConnectionStrings:database", administrator)]);
 var application = builder.Configuration.GetConnectionString("application");

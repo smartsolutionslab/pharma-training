@@ -79,6 +79,11 @@ public sealed partial class AspireFixture : IAsyncLifetime
             editorial.WithEnvironment($"Editorial__ModelLimits__{setting}", EditorialModelLimit.ToString(CultureInfo.InvariantCulture));
         }
 
+        // The run uses four eyes (docs/adr/0007, #246), so its refusals and another editor's publish are shown end to end
+        // without a second application run: every test publishes as editor-c (EditorialWorkflow.Publisher), who neither
+        // submits nor approves. The default, four eyes off, is the unit tests' of the domain, the handler and EditorialSettings.
+        editorial.WithEnvironment("Editorial__FourEyes", "true");
+
         // The run sets the per-address verification limit (docs/adr/0029) to CertificationVerificationLimit a minute, so
         // CertificationVerificationTests reaches it in a few dozen calls, and the day far above it, so the minute alone
         // refuses. Every local caller reaches Certification from one address, the edge's, so every call of the run shares

@@ -31,6 +31,19 @@ public class InvitationSenderTests
     }
 
     [Fact]
+    public void A_sender_not_yet_mailed_has_none_counted_on_its_utc_day_and_its_first_mail_counts_one()
+    {
+        var sender = InvitationSender.NotYetMailed(Sina, At(Start));
+
+        sender.Id.ShouldBe(Sina);
+        sender.MailDay.ShouldBe(UtcDay.Of(At(Start)));
+        sender.MailsThatDay.ShouldBe(InvitationMailCount.Zero);
+        sender.RequestMail(At(Start), CapOfThree).IsSuccess.ShouldBeTrue("the first mail of a new sender was refused");
+        sender.MailsThatDay.ShouldBe(InvitationMailCount.From(1));
+        sender.DomainEvents.ShouldBeEmpty();
+    }
+
+    [Fact]
     public void A_sender_at_the_daily_cap_is_refused_until_the_next_utc_day()
     {
         var sender = InvitationSender.FirstMailed(Sina, At(Start));

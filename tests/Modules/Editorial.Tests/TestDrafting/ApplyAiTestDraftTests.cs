@@ -64,7 +64,7 @@ public class ApplyAiTestDraftTests
         var chapter = next.Chapters.ShouldHaveSingleItem().Id;
         var copied = next.Questions.ShouldHaveSingleItem().Id;
         var handWritten = next.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
-        next.SetBlueprint(new TestBlueprint(QuestionCount.From(4), ScorePercent.From(90), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
+        next.SetBlueprint(new TestBlueprint(QuestionCount.From(4), ScorePercent.From(90), RecurrenceInterval.Yearly), Author).IsSuccess.ShouldBeTrue();
         next.Questions.ShouldAllBe(question => question.Review == ReviewState.Unreviewed);
         store.Stored.Add(next);
         using var model = new FakeChatClient(Sound(1, 1));
