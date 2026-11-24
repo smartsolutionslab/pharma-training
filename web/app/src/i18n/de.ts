@@ -834,8 +834,21 @@ export const de = {
     'model-not-configured':
       'Es ist kein Sprachmodell eingerichtet; KI-Funktionen stehen nicht zur Verfügung. Wenden Sie sich an den Betrieb der Plattform.',
     assessment: {
+      'examination-changed':
+        'Ihr Test wurde inzwischen geändert; es wurde nichts gespeichert. Versuchen Sie es erneut.',
+      'examination-not-found': 'Diesen Test gibt es für Sie nicht.',
+      'examination-not-unlocked':
+        'Der Test ist gerade nicht freigeschaltet. Laden Sie die Seite neu, um Ihren aktuellen Stand zu sehen.',
+      'identity-incomplete': 'Ihre Anmeldung nennt keine Person. Melden Sie sich erneut an.',
       'invalid-sample-name': 'Der Name eines Beispiels hat 1 bis {max} Zeichen und darf nicht leer sein.',
+      'no-open-attempt': 'Gerade läuft kein Testversuch. Laden Sie die Seite neu, um Ihren aktuellen Stand zu sehen.',
+      'option-not-in-question':
+        'Diese Antwortoption gehört nicht zur Frage. Laden Sie die Seite neu und wählen Sie erneut.',
+      'question-not-in-attempt': 'Diese Frage gehört nicht zu Ihrem aktuellen Testversuch. Laden Sie die Seite neu.',
       'sample-not-found': 'Dieses Beispiel gibt es nicht.',
+      'single-choice-takes-one-option': 'Bei dieser Frage wählen Sie genau eine Antwortoption.',
+      'test-definition-missing':
+        'Der Test dieser Schulungsversion ist noch nicht bereit. Versuchen Sie es später erneut.',
     },
     catalog: {
       'course-version-not-found': 'Diese Schulungsversion gibt es nicht.',
@@ -954,6 +967,8 @@ export const de = {
       'session-not-found': 'Diesen Lerndurchlauf gibt es nicht.',
     },
     organisation: {
+      'accept-limit-reached':
+        'Sie haben zu oft versucht, Einladungen anzunehmen. Versuchen Sie es in einigen Minuten erneut.',
       'already-member-or-invited': 'Diese Adresse ist schon Mitglied oder eingeladen.',
       'capability-missing': 'Ihre Rolle in dieser Apotheke erlaubt das nicht.',
       'email-not-verified':
@@ -972,6 +987,8 @@ export const de = {
       'invitation-for-another-address': 'Die Einladung gilt für eine andere E-Mail-Adresse als die Ihres Kontos.',
       'invitation-not-found':
         'Der Einladungslink gilt nicht mehr: Er wurde schon benutzt, zurückgezogen oder durch einen neueren ersetzt.',
+      'invitation-renewed-too-soon':
+        'Diese Einladung wurde gerade erst gesendet. Sie können sie in einigen Minuten erneut senden.',
       'last-manager': 'Der letzte Apothekenleiter kann nicht ausgetragen oder zum Mitarbeiter gemacht werden.',
       'no-active-membership': 'Diese Mitgliedschaft ist nicht mehr aktiv.',
       'no-open-invitation': 'Diese Einladung ist nicht mehr offen: Sie wurde angenommen oder zurückgezogen.',
@@ -980,6 +997,8 @@ export const de = {
         'Die Apotheke wurde gerade gleichzeitig geändert. Prüfen Sie den aktuellen Stand und versuchen Sie es erneut.',
       'pharmacy-not-found': 'Sie sind nicht mehr Mitglied dieser Apotheke.',
       'sample-not-found': 'Dieses Beispiel gibt es nicht.',
+      'too-many-invitations-today':
+        'Ihre Apotheke hat die Höchstzahl an Einladungs-E-Mails für heute erreicht. Versuchen Sie es morgen erneut.',
     },
   },
 };

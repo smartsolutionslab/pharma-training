@@ -816,8 +816,17 @@ export const en: MessageSchema = {
     'model-not-configured':
       "No language model is set up, so AI features are not available. Contact the platform's operators.",
     assessment: {
+      'examination-changed': 'Your test has changed in the meantime; nothing was saved. Try again.',
+      'examination-not-found': 'This test does not exist for you.',
+      'examination-not-unlocked': 'The test is not unlocked at the moment. Reload the page to see where you stand.',
+      'identity-incomplete': 'Your sign-in names no person. Please sign in again.',
       'invalid-sample-name': "A sample's name has 1 to {max} characters and must not be blank.",
+      'no-open-attempt': 'No test attempt is running at the moment. Reload the page to see where you stand.',
+      'option-not-in-question': 'This answer option does not belong to the question. Reload the page and choose again.',
+      'question-not-in-attempt': 'This question does not belong to your current test attempt. Reload the page.',
       'sample-not-found': 'This sample does not exist.',
+      'single-choice-takes-one-option': 'This question takes exactly one answer option: choose one.',
+      'test-definition-missing': 'The test of this course version is not ready yet. Try again later.',
     },
     catalog: {
       'course-version-not-found': 'This course version does not exist.',
@@ -932,6 +941,7 @@ export const en: MessageSchema = {
       'session-not-found': 'This learning session does not exist.',
     },
     organisation: {
+      'accept-limit-reached': 'You have tried to accept invitations too often. Try again in a few minutes.',
       'already-member-or-invited': 'This address is already a member or invited.',
       'capability-missing': 'Your role in this pharmacy does not allow this.',
       'email-not-verified':
@@ -950,6 +960,7 @@ export const en: MessageSchema = {
       'invitation-for-another-address': "The invitation is for an email address other than your account's.",
       'invitation-not-found':
         'The invitation link is no longer valid: it was used, revoked or replaced by a newer one.',
+      'invitation-renewed-too-soon': 'This invitation was only just sent. You can send it again in a few minutes.',
       'last-manager': 'The last pharmacy manager cannot be removed or made an employee.',
       'no-active-membership': 'This membership is no longer active.',
       'no-open-invitation': 'This invitation is no longer open: it was accepted or revoked.',
@@ -957,6 +968,8 @@ export const en: MessageSchema = {
       'pharmacy-changed': 'The pharmacy was changed at the same time. Check its current state and try again.',
       'pharmacy-not-found': 'You are no longer a member of this pharmacy.',
       'sample-not-found': 'This sample does not exist.',
+      'too-many-invitations-today':
+        'Your pharmacy has reached the maximum number of invitation emails for today. Try again tomorrow.',
     },
   },
 };
