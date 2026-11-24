@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Award } from '@lucide/vue';
-import { computed, h, ref } from 'vue';
+import { computed, h, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import type { HeldCertificateDto } from '@/api/generated';
@@ -53,7 +53,19 @@ const none: HeldCertificateDto[] = [];
 const route = useRoute();
 const router = useRouter();
 const shownPage = computed(() => parseCertificatesPage(route.query));
-const { certificates: rows, page, isPending, error } = useMyCertificates(shownPage);
+const { certificates: rows, page, isPending, isFetching, error } = useMyCertificates(shownPage);
+
+// Once settled, a page past the last one is replaced by the last, or by the first with nothing to show. Replaced, not
+// pushed: Back leaves the page instead of returning to an address that shows nothing.
+watch([page, isFetching], ([shown, fetching]) => {
+  if (shown === undefined || fetching || shown.items.length > 0) {
+    return;
+  }
+  const last = Math.max(1, Math.ceil(Number(shown.totalCount) / Number(shown.pageSize)));
+  if (shownPage.value > last) {
+    void router.replace({ query: { page: String(last) } });
+  }
+});
 const { t } = useI18n();
 
 const failure = computed(() => (error.value ? certificatesFailure(error.value) : undefined));
