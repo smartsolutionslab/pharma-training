@@ -107,7 +107,8 @@ public final class KcadmOtp {
             }
 
             if (matches(secret, code.strip())) {
-                save(token, id, secret);
+                // The token enrolment started with may have expired while the operator scanned the key.
+                save(sessionToken(), id, secret);
                 System.out.println("Saved. " + user + " now signs in with ./kcadm-otp.sh login " + user + "; the password alone no longer does.");
                 return;
             }
@@ -125,14 +126,7 @@ public final class KcadmOtp {
             throw new Refusal("No password or code was entered; kcadm.sh's session is as it was.");
         }
 
-        var form = Map.of("grant_type", "password", "client_id", CLIENT, "username", user, "password", password, "otp", code.strip());
-        var request = HttpRequest.newBuilder(URI.create(SERVER + "/realms/" + REALM + "/protocol/openid-connect/token"))
-            .header("Content-Type", "application/x-www-form-urlencoded")
-            .POST(HttpRequest.BodyPublishers.ofString(form.entrySet().stream()
-                .map(entry -> encode(entry.getKey()) + "=" + encode(entry.getValue()))
-                .collect(Collectors.joining("&"))))
-            .build();
-        var response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
+        var response = token(Map.of("grant_type", "password", "client_id", CLIENT, "username", user, "password", password, "otp", code.strip()));
         var answer = JSON.readTree(response.body());
         if (response.statusCode() != 200) {
             throw new Refusal("Keycloak refused the sign-in (" + answer.path("error_description").asText(answer.path("error").asText("HTTP " + response.statusCode()))
@@ -153,19 +147,41 @@ public final class KcadmOtp {
         System.out.println("Signed in as " + user + "; ./kcadm.sh works as " + user + " until the session ends.");
     }
 
-    /** The access token of kcadm.sh's current session with master, which must not have expired. */
-    private static String sessionToken() throws IOException, Refusal {
+    /**
+     * A fresh access token for kcadm.sh's current session with master, from its refresh token: master's access tokens last
+     * 60 seconds, less than an operator may take between starting enrolment and typing the code (the review of #319), so
+     * each use asks for a new one. The session itself is left as it is.
+     */
+    private static String sessionToken() throws Exception {
         var signIn = "Sign in to kcadm.sh as an administrator first: ./kcadm.sh config credentials --server " + SERVER + " --realm " + REALM + " --user <administrator>";
         if (!Files.exists(CONFIG)) {
             throw new Refusal(signIn);
         }
 
         var session = JSON.readTree(CONFIG.toFile()).path("endpoints").path(SERVER).path(REALM);
-        if (session.path("token").asText().isEmpty() || session.path("expiresAt").asLong() < System.currentTimeMillis() + 5_000) {
-            throw new Refusal(signIn + " (kcadm.sh's session has ended or is not with master on " + SERVER + ").");
+        var refreshToken = session.path("refreshToken").asText();
+        if (refreshToken.isEmpty() || !session.path("clientId").asText(CLIENT).equals(CLIENT)) {
+            throw new Refusal(signIn + " (kcadm.sh has no session with master's " + CLIENT + " on " + SERVER + ").");
         }
 
-        return session.path("token").asText();
+        var response = token(Map.of("grant_type", "refresh_token", "client_id", CLIENT, "refresh_token", refreshToken));
+        var answer = JSON.readTree(response.body());
+        if (response.statusCode() != 200) {
+            throw new Refusal(signIn + " (kcadm.sh's session has ended: " + answer.path("error_description").asText(answer.path("error").asText("HTTP " + response.statusCode())) + ").");
+        }
+
+        return answer.path("access_token").asText();
+    }
+
+    /** Asks master's token endpoint with the form given. */
+    private static HttpResponse<String> token(Map<String, String> form) throws IOException, InterruptedException {
+        var request = HttpRequest.newBuilder(URI.create(SERVER + "/realms/" + REALM + "/protocol/openid-connect/token"))
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .POST(HttpRequest.BodyPublishers.ofString(form.entrySet().stream()
+                .map(entry -> encode(entry.getKey()) + "=" + encode(entry.getValue()))
+                .collect(Collectors.joining("&"))))
+            .build();
+        return HTTP.send(request, HttpResponse.BodyHandlers.ofString());
     }
 
     private static String userId(String token, String user) throws Exception {
