@@ -103,10 +103,11 @@ test('the realm role manager alone shows no page for managers', () => {
   expect(paths(visibleTo(['manager']).value)).toEqual(inOrder(['assessment', 'certification', 'learning']));
 });
 
-test('an editor without a pharmacy sees the editorial pages only', () => {
+// Certification's page (#296) is every signed-in user's: a certificate is the person's, whatever their pharmacy.
+test('an editor without a pharmacy sees the editorial pages and their certificates only', () => {
   answer([]);
 
-  expect(paths(visibleTo(['editor']).value)).toEqual(['editorial']);
+  expect(paths(visibleTo(['editor']).value)).toEqual(inOrder(['certification', 'editorial']));
 });
 
 test('an editor who is a member of a pharmacy sees both', () => {
@@ -115,15 +116,15 @@ test('an editor who is a member of a pharmacy sees both', () => {
   expect(paths(visibleTo(['editor']).value)).toEqual(inOrder(['assessment', 'certification', 'editorial', 'learning']));
 });
 
-test('while the memberships load no pharmacy page is visible, the editorial ones are', () => {
-  expect(paths(visibleTo([]).value)).toEqual([]);
-  expect(paths(visibleTo(['editor']).value)).toEqual(['editorial']);
+test('while the memberships load no pharmacy page is visible, the editorial ones and the certificates are', () => {
+  expect(paths(visibleTo([]).value)).toEqual(['certification']);
+  expect(paths(visibleTo(['editor']).value)).toEqual(inOrder(['certification', 'editorial']));
 });
 
-test('with several memberships and none chosen no pharmacy page is visible', () => {
+test('with several memberships and none chosen no pharmacy page is visible, the certificates are', () => {
   answer([manager, employee]);
 
-  expect(paths(visibleTo([]).value)).toEqual([]);
+  expect(paths(visibleTo([]).value)).toEqual(['certification']);
 });
 
 test('the visible pages follow the chosen pharmacy', () => {
