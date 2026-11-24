@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Tests of the building blocks' event store (src/BuildingBlocks/EventStore) that need no database: the lock timeout
+       the MigrationRunner builds a swept event index with. -->
+  <PropertyGroup>
+    <RootNamespace>SmartSolutionsLab.PharmaTraining.BuildingBlocks.EventStore.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../../src/BuildingBlocks/BuildingBlocks.csproj" />
+  </ItemGroup>
+
+</Project>

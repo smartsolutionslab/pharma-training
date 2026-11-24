@@ -7,7 +7,7 @@ using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.ContentReviewing;
 
 /// <summary>
-/// Reviews a course version's text chapters with the model (ADR 0009). The model is asked for JSON of
+/// Reviews the chapters with text of a course version with the model (ADR 0009). The model is asked for JSON of
 /// <see cref="ContentReviewAnswer"/>'s schema; its answer is untrusted input, read and checked here, and never returned
 /// unless every check passes. Nothing is saved. Exceptions from the model's client are not caught: a broken provider is
 /// no expected failure.
@@ -30,7 +30,7 @@ public static class ContentReviewer
 
     /// <summary>
     /// The most output tokens a gpt-5 deployment accepts for one call; a larger <see cref="ChatOptions.MaxOutputTokens"/>
-    /// is refused with a 400, so the cap stops here, for versions of 21 text chapters and more.
+    /// is refused with a 400, so the cap stops here, for versions of 21 chapters with text and more.
     /// </summary>
     private const int OutputTokenCeiling = 128_000;
 

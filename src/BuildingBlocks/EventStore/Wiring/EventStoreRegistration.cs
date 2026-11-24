@@ -47,13 +47,14 @@ public static partial class EventStoreRegistration
 
     /// <summary>
     /// Creates or updates the tables of one module's event store, in its service's own database: streams, events, the
-    /// projections' read models and the partial indexes its announcement sweep reads through (#277). Nothing when the
-    /// module has no event store.
+    /// projections' read models and the partial indexes its announcement sweep reads through (#277), whose lock waits
+    /// <paramref name="lockTimeout"/> bounds (#359). Nothing when the module has no event store.
     /// </summary>
-    public static async Task ApplyEventStoreSchemasAsync(this IServiceProvider services, Assembly infrastructure)
+    public static async Task ApplyEventStoreSchemasAsync(this IServiceProvider services, Assembly infrastructure, IndexLockTimeout lockTimeout)
     {
         Ensure.That(services).IsNotNull();
         Ensure.That(infrastructure).IsNotNull();
+        Ensure.That(lockTimeout).IsNotNull();
 
         if (ModuleEventStore.Of(infrastructure) is not { } module)
         {
@@ -73,13 +74,14 @@ public static partial class EventStoreRegistration
 
         // Concurrently (#337), so on a large event table the appends of replicas still running are not held up for the
         // build: outside a transaction, and without a command timeout, since the build takes as long as the table needs.
-        // Its lock waits are bounded, though (#351): a session left idle in a transaction would otherwise hold it for good.
+        // Its lock waits are bounded, though (#351), by the runner's setting (#359): a session left idle in a transaction
+        // would otherwise hold it for good.
         var logger = services.GetService<ILoggerFactory>()?.CreateLogger(typeof(SweptEventIndex).FullName!) ?? NullLogger.Instance;
         await using var connection = store.Storage.Database.CreateConnection();
         await connection.OpenAsync();
-        await using (var lockTimeout = new NpgsqlCommand(SweptEventIndex.LockTimeoutStatement, connection))
+        await using (var boundLockWaits = new NpgsqlCommand(lockTimeout.Statement, connection))
         {
-            await lockTimeout.ExecuteNonQueryAsync();
+            await boundLockWaits.ExecuteNonQueryAsync();
         }
 
         foreach (var index in module.SweptEventIndexes)
@@ -93,7 +95,7 @@ public static partial class EventStoreRegistration
                 }
             }
 
-            LogBuilding(logger, index.Name, index.Schema, SweptEventIndex.LockTimeout);
+            LogBuilding(logger, index.Name, index.Schema, lockTimeout.Value);
             await using (var isInvalid = new NpgsqlCommand(index.IsInvalidQuery, connection))
             {
                 if (await isInvalid.ExecuteScalarAsync() is true)

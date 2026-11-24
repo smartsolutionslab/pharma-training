@@ -1,38 +1,8 @@
-import type { MyPharmacyDto } from '@/api/generated';
-import {
-  type Audience,
-  type ModuleDetail,
-  type ModuleEntry,
-  type ModulePage,
-  type ModuleRoute,
-  moduleRoutes,
-} from '@/modules';
+import { type ModuleDetail, type ModuleEntry, type ModulePage, type ModuleRoute, moduleRoutes } from '@/modules';
 
-/** What decides who sees a page: the membership in the chosen pharmacy, if any, and the realm role editor. */
-export interface Reach {
-  current: MyPharmacyDto | undefined;
-  isEditor: boolean;
-}
-
-/**
- * Whether a page for this audience is the user's: an employee's needs a chosen pharmacy, a manager's a membership that
- * may manage members or assign courses (its capabilities, not its role's name), an editor's the realm role editor, and
- * a signed-in user's nothing more.
- */
-export function canReach(audience: Audience, { current, isEditor }: Reach): boolean {
-  switch (audience) {
-    case 'employee':
-      return current !== undefined;
-    case 'manager':
-      return current !== undefined && (current.canManageMembers || current.canAssignCourses);
-    case 'editor':
-      return isEditor;
-    case 'signed-in':
-      return true;
-    case 'public':
-      return true;
-  }
-}
+// Who may reach which audience is canReach's, in a file of its own that reads no module's routes: a module's page asks
+// it too, and the routes import the pages.
+export { canReach, type Reach } from './canReach';
 
 /** Whether an address is a public page's, which anyone opens, signed in or not: SignedIn and App.vue ask it. */
 export function isPublicAddress(path: string): boolean {
