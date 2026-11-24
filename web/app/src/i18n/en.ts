@@ -54,6 +54,7 @@ export const en: MessageSchema = {
     signInFailed: 'Sign-in failed: {message}',
     signingIn: 'Signing in…',
     signingOut: 'Signing out…',
+    configurationUnavailable: 'The application cannot be loaded right now. Please try again later.',
   },
   theme: {
     label: 'Theme',
@@ -82,7 +83,12 @@ export const en: MessageSchema = {
         result: { title: 'Result' },
       },
     },
-    certification: { title: 'Certificates' },
+    certification: {
+      title: 'Certificates',
+      entries: {
+        verify: { title: 'Verify a certificate' },
+      },
+    },
     compliance: {
       title: 'Team matrix',
       pages: {
@@ -106,6 +112,27 @@ export const en: MessageSchema = {
         test: { title: 'Test' },
       },
     },
+  },
+  certification: {
+    validity: {
+      Valid: 'Valid',
+      Expired: 'Expired',
+    },
+    verify: {
+      validText: 'This certificate is genuine and valid until {date}.',
+      expiredText: 'This certificate is genuine, but was valid only until {date}.',
+      holder: 'Name',
+      course: 'Course',
+      issuedOn: 'Issued on',
+      validUntil: 'Valid until',
+      notVerifiable: {
+        title: 'Cannot be verified',
+        text: 'There is no certificate for this link. Check that you opened the complete link from the QR code.',
+      },
+      limitReached: 'Too many checks are being requested right now. Please try again in a minute.',
+      loadFailed: 'The certificate could not be verified.',
+    },
+    retry: 'Try again',
   },
   compliance: {
     matrix: {
@@ -410,6 +437,7 @@ export const en: MessageSchema = {
         invalidJobFunction: 'The job function is missing or unknown.',
         invalidMembershipRole: 'The role is missing or unknown.',
         identityIncomplete: 'Your account gives no name or valid email address. Complete your profile.',
+        inPharmacy: 'In {pharmacy}: {reason}',
         invitationRenewedTooSoon: 'This invitation was only just sent. You can send it again in a few minutes.',
         tooManyInvitationsToday:
           'Your pharmacy has reached the maximum number of invitation emails for today. Try again later.',

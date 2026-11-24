@@ -31,6 +31,11 @@ updates:
       - dependency-name: Microsoft.CodeAnalysis.CSharp
         update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
 
+      # PDFsharp stays at 6.2.4, its last MIT release: 6.5.0+ is AGPL-3.0-only (nuget.org); any bump needs a licence
+      # check (#50, docs/adr/0030).
+      - dependency-name: PDFsharp
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -51,3 +56,13 @@ updates:
       npm-minor-and-patch:
         update-types: [minor, patch]
 
+  # The base image of the web app's build (web/Dockerfile), which the edge's image carries.
+  - package-ecosystem: docker
+    directory: /web
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore(deps)
+    groups:
+      docker-web-minor-and-patch:
+        update-types: [minor, patch]

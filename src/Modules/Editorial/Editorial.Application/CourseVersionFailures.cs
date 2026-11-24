@@ -53,8 +53,8 @@ public static class CourseVersionFailures
     /// <summary>A save that lost a race: another change to the same version was saved since this one loaded it.</summary>
     public static ApiError Changed(Guid id) => new CourseVersionChanged(id);
 
-    /// <summary>The version's successor, numbered <paramref name="number"/>, already exists as <paramref name="existing"/>.</summary>
-    public static ApiError NextVersionExists(Guid version, Guid existing, int number) => new NextVersionExists(version, existing, number);
+    /// <summary>The version's successor already exists.</summary>
+    public static ApiError NextVersionExists() => new NextVersionExists();
 
     public static ApiError UnknownChapter(Guid version, Guid chapter) => new UnknownChapter(version, chapter);
 

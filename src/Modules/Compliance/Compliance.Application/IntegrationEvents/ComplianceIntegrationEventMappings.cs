@@ -27,4 +27,12 @@ public static class ComplianceIntegrationEventMappings
             completed.CompletedAt.Value,
             completed.DueDate.IsMissedBy(completed.CompletedAt));
     }
+
+    /// <summary>Compliance's own request for the follow-up of the completed assignment; it carries the id only.</summary>
+    public static AssignmentFollowUpRequestedV1 ToFollowUpRequest(this AssignmentCompleted completed)
+    {
+        Ensure.That(completed).IsNotNull();
+
+        return new AssignmentFollowUpRequestedV1(completed.Assignment.Value);
+    }
 }

@@ -1,2 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <!-- The certificate's PDF (#50, docs/adr/0030). PDFsharp is pinned to its last MIT release, 6.2.4; see Directory.Packages.props. -->
+    <PackageReference Include="PDFsharp" />
+    <PackageReference Include="Net.Codecrete.QrCodeGenerator" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Inter, static TrueType, SIL OFL 1.1 (Documents/Fonts/OFL.txt): the host has no system fonts, so the PDF's faces travel in the assembly. -->
+    <EmbeddedResource Include="Documents/Fonts/*.ttf" LogicalName="Certification.Fonts.%(Filename)%(Extension)" />
+  </ItemGroup>
+
 </Project>

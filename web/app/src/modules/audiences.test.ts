@@ -141,8 +141,8 @@ test('every detail below a module declares its audience and its title by key', (
 });
 
 // An entry page (its routes.ts's entries) is a page a link from outside the app opens, at an address of its own outside
-// its module's: the invitation mail's link. It is for every signed-in user, with or without a pharmacy, and is named by
-// its title in the breadcrumbs, in both languages.
+// its module's: the invitation mail's link, for every signed-in user, with or without a pharmacy, and a certificate's
+// QR code (#54), for anyone, signed in or not. Each is named by its title in the breadcrumbs, in both languages.
 test('every entry page declares its absolute address, the audience it is for, and its title by key', () => {
   expect(
     moduleRoutes.flatMap((route) =>
@@ -155,6 +155,12 @@ test('every entry page declares its absolute address, the audience it is for, an
     ),
   ).toEqual([
     {
+      module: 'certification',
+      address: '/verify/:code',
+      titleKey: 'modules.certification.entries.verify.title',
+      audience: 'public',
+    },
+    {
       module: 'organisation',
       address: '/invitations/accept',
       titleKey: 'modules.organisation.entries.acceptInvitation.title',
@@ -165,9 +171,9 @@ test('every entry page declares its absolute address, the audience it is for, an
 
 test("every entry page's title is in the catalogs, in German and in English", () => {
   const keys = moduleRoutes.flatMap((route) => (route.entries ?? []).map((entry) => entry.titleKey));
-  expect(keys.map((key) => t(key))).toEqual(['Einladung annehmen']);
+  expect(keys.map((key) => t(key))).toEqual(['Bestätigung prüfen', 'Einladung annehmen']);
   setLanguage('en-GB', { remember: false });
-  expect(keys.map((key) => t(key))).toEqual(['Accept an invitation']);
+  expect(keys.map((key) => t(key))).toEqual(['Verify a certificate', 'Accept an invitation']);
 });
 
 // An entry page is at an address of its own, outside every module's: under a module's address the audience gate and
@@ -178,4 +184,12 @@ test("no entry page's address starts with a module's own path", () => {
 
   expect(entries.length).toBeGreaterThan(0);
   expect(entries.filter((path) => modulePaths.has(path.split('/')[1] ?? ''))).toEqual([]);
+});
+
+// Only an entry page may be for the public (#54): a module's page and the pages below it are the app's, behind the
+// sign-in and inside the shell.
+test('no module, no page below a module and no detail page is for the public', () => {
+  const pages = moduleRoutes.flatMap((route) => [route, ...(route.pages ?? []), ...(route.details ?? [])]);
+
+  expect(pages.filter((page) => page.audience === 'public').map((page) => page.path)).toEqual([]);
 });

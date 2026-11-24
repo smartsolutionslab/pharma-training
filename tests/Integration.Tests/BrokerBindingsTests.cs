@@ -17,6 +17,7 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// and consumes travels on the host's local queue only, so the broker has no exchange or binding for it, and nobody
 /// with broker credentials can hand the host one; an event another service publishes is still bound to its consumer's queue.
 /// </summary>
+[Collection(InvitationSenders.Name)]
 public partial class BrokerBindingsTests(AspireFixture aspire)
 {
     private const string OrganisationQueue = "organisation";
@@ -72,6 +73,32 @@ public partial class BrokerBindingsTests(AspireFixture aspire)
             .Select(binding => $"{binding.Source} -> {binding.DestinationType} {binding.Destination}")
             .ShouldBeEmpty("the broker routes InvitationMailRequestedV1, which Organisation's host publishes and consumes locally, to a queue");
         exchanges.Select(exchange => exchange.Name).ShouldNotContain(InvitationMailRequested, "the broker holds an exchange for InvitationMailRequestedV1");
+    }
+
+    /// <summary>
+    /// Compliance's follow-up request of a recurring assignment (#31) is its own work item, published and consumed by the
+    /// Compliance service: like the mail request, it travels on the host's local queue only (docs/adr/0026).
+    /// </summary>
+    [Fact]
+    public async Task The_broker_has_no_exchange_or_binding_for_the_follow_up_request()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var management = await ManagementClientAsync(cancellationToken);
+        await WaitForBindingAsync(management, MembershipStarted, "compliance", cancellationToken);
+
+        // A sender's exchange is declared on its first publish, so Compliance must have requested a follow-up first.
+        var followUps = new ComplianceFollowUps(aspire);
+        var recurring = await followUps.AssignYearlyAsync(cancellationToken);
+        await followUps.IssueAsync(recurring, cancellationToken);
+        await followUps.WaitForFollowUpAsync(recurring.Assignment, cancellationToken);
+
+        var bindings = await BindingsAsync(management, cancellationToken);
+        var exchanges = await management.GetFromJsonAsync<List<Exchange>>(new Uri("/api/exchanges/%2F", UriKind.Relative), cancellationToken) ?? [];
+
+        bindings.Where(binding => binding.Source == ComplianceFollowUps.FollowUpRequestedType)
+            .Select(binding => $"{binding.Source} -> {binding.DestinationType} {binding.Destination}")
+            .ShouldBeEmpty("the broker routes AssignmentFollowUpRequestedV1, which Compliance's host publishes and consumes locally, to a queue");
+        exchanges.Select(exchange => exchange.Name).ShouldNotContain(ComplianceFollowUps.FollowUpRequestedType, "the broker holds an exchange for AssignmentFollowUpRequestedV1");
     }
 
     /// <summary>

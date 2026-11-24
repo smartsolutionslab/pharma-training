@@ -14,5 +14,28 @@ public sealed class CertificateStore(CertificationDbContext context) : ICertific
     public Task<bool> ExistsForAttemptAsync(AttemptId attempt, CancellationToken cancellationToken) =>
         context.Set<Certificate>().AnyAsync(certificate => certificate.Attempt == attempt, cancellationToken);
 
+    public async Task<Option<Certificate>> LoadAsync(CertificateId id, CancellationToken cancellationToken) =>
+        await context.Set<Certificate>().SingleOrDefaultAsync(certificate => certificate.Id == id, cancellationToken) is { } certificate
+            ? Option<Certificate>.Some(certificate)
+            : Option<Certificate>.None;
+
+    public async Task<Option<Certificate>> FindAsync(CertificateId id, CancellationToken cancellationToken) =>
+        await context.Set<Certificate>().AsNoTracking().SingleOrDefaultAsync(certificate => certificate.Id == id, cancellationToken) is { } certificate
+            ? Option<Certificate>.Some(certificate)
+            : Option<Certificate>.None;
+
+    public async Task<Option<Certificate>> FindByVerificationCodeAsync(VerificationCode code, CancellationToken cancellationToken)
+    {
+        var certificate = await context.Set<Certificate>()
+            .AsNoTracking()
+            .SingleOrDefaultAsync(candidate => candidate.VerificationCode == code, cancellationToken);
+        if (certificate is null)
+        {
+            return Option<Certificate>.None;
+        }
+
+        return Option<Certificate>.Some(certificate);
+    }
+
     public void Add(Certificate certificate) => context.Add(certificate);
 }

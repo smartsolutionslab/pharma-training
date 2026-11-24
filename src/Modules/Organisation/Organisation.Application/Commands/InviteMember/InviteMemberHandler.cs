@@ -9,9 +9,19 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Comm
 /// <summary>
 /// Invites the address and, in the same commit, requests its mail (InvitationMailRequestedV1) on the host's durable
 /// local queue; the consumer issues the link and mails it, so nothing after the commit depends on the request. Beyond
-/// the pharmacy's daily cap of invitation mails it answers 429 with the instant it may invite again.
+/// the pharmacy's daily cap of invitation mails, within the address's cooldown (whichever pharmacy mailed it) or beyond
+/// the sender's daily cap across their pharmacies it answers 429 with the instant it may invite again, in that order,
+/// and commits nothing.
 /// </summary>
-public sealed class InviteMemberHandler(IPharmacyStore pharmacies, IOrganisationUnitOfWork unitOfWork, IDatabaseClock clock, InvitationMailLimits limits, ILogger<InviteMemberHandler> logger)
+public sealed class InviteMemberHandler(
+    IPharmacyStore pharmacies,
+    IInvitationRecipientStore recipients,
+    IInvitationSenderStore senders,
+    IOrganisationUnitOfWork unitOfWork,
+    IDatabaseClock clock,
+    InvitationMailLimits limits,
+    RecipientAndSenderMailLimits recipientAndSenderLimits,
+    ILogger<InviteMemberHandler> logger)
     : ICommandHandler<InviteMember, Result<Guid, ApiError>>
 {
     public async Task<Result<Guid, ApiError>> HandleAsync(InviteMember command, CancellationToken cancellationToken)
@@ -45,6 +55,13 @@ public sealed class InviteMemberHandler(IPharmacyStore pharmacies, IOrganisation
         if (invited.IsFailure)
         {
             return Failure(PharmacyFailures.From(invited.Error));
+        }
+
+        // Counted on the address and the sender in the same commit as the pharmacy (docs/adr/0004).
+        var counted = await InvitationMailCounting.CountAsync(recipients, senders, recipientAndSenderLimits, logger, command.Email, command.By, now, cancellationToken);
+        if (counted.IsFailure)
+        {
+            return Failure(counted.Error);
         }
 
         foreach (var requested in pharmacy.DomainEvents.OfType<MemberInvited>())

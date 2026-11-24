@@ -388,7 +388,7 @@ public class CourseVersionCoverageTests
     }
 
     [Fact]
-    public void A_test_short_of_its_blueprint_names_how_many_questions_it_needs()
+    public void A_test_short_of_its_blueprint_is_refused_as_incomplete()
     {
         var version = DraftWithChapter(out _);
 
@@ -397,7 +397,7 @@ public class CourseVersionCoverageTests
         var incomplete = submitted.Error.Value.ShouldBeOfType<TestIncomplete>();
         incomplete.ShouldBe(new TestIncomplete(version.Id, QuestionCount.Default, QuestionCount.From(0)));
         incomplete.Code.ShouldBe("editorial.test-incomplete");
-        incomplete.Message.ShouldBe("Der Test braucht 10 Fragen.");
+        incomplete.Message.ShouldBe("The test does not have the number of questions its blueprint asks for.");
     }
 
     [Fact]

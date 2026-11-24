@@ -5,21 +5,22 @@ using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Courses;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Tests.Courses;
 
-/// <summary>Certification's copy of a published course version: its course, title and validity; stored once.</summary>
+/// <summary>Certification's copy of a published course version: its course, number, title and validity; stored once.</summary>
 public class CourseVersionPublishedV1ConsumerTests
 {
     [Fact]
-    public async Task A_published_version_is_stored_with_its_course_title_and_validity_once_the_unit_of_work_commits()
+    public async Task A_published_version_is_stored_with_its_course_number_title_and_validity_once_the_unit_of_work_commits()
     {
         var store = new InMemoryCourseVersionStore();
         var courseId = Guid.CreateVersion7();
         var courseVersionId = Guid.CreateVersion7();
 
-        await new CourseVersionPublishedV1Consumer(store, store).HandleAsync(CourseVersionEvents.Published(courseId, courseVersionId, "Kühlkette in der Apotheke", 24), TestContext.Current.CancellationToken);
+        await new CourseVersionPublishedV1Consumer(store, store).HandleAsync(CourseVersionEvents.Published(courseId, courseVersionId, 3, "Kühlkette in der Apotheke", 24), TestContext.Current.CancellationToken);
 
         var version = store.Versions.ShouldHaveSingleItem();
         version.Id.ShouldBe(CourseVersionId.From(courseVersionId));
         version.Course.ShouldBe(CourseId.From(courseId));
+        version.Number.ShouldBe(CourseVersionNumber.From(3));
         version.Title.ShouldBe(CourseTitle.From("Kühlkette in der Apotheke"));
         version.Validity.ShouldBe(RecurrenceInterval.From(24));
         store.Commits.ShouldBe(1);
@@ -33,9 +34,10 @@ public class CourseVersionPublishedV1ConsumerTests
         var first = CourseVersionEvents.Published(Guid.CreateVersion7(), Guid.CreateVersion7(), "Erste Fassung");
 
         await consumer.HandleAsync(first, TestContext.Current.CancellationToken);
-        await consumer.HandleAsync(CourseVersionEvents.Published(first.CourseId, first.CourseVersionId, "Zweite Fassung", 36), TestContext.Current.CancellationToken);
+        await consumer.HandleAsync(CourseVersionEvents.Published(first.CourseId, first.CourseVersionId, 2, "Zweite Fassung", 36), TestContext.Current.CancellationToken);
 
         var version = store.Versions.ShouldHaveSingleItem();
+        version.Number.ShouldBe(CourseVersionNumber.From(1));
         version.Title.ShouldBe(CourseTitle.From("Erste Fassung"));
         version.Validity.ShouldBe(RecurrenceInterval.From(12));
         store.Commits.ShouldBe(1);
@@ -105,6 +107,16 @@ public class CourseVersionPublishedV1ConsumerTests
         var store = new InMemoryCourseVersionStore();
 
         await RefusedAsync(store, CourseVersionEvents.Published(Guid.CreateVersion7(), Guid.CreateVersion7(), "Hygiene", months), nameof(CourseVersionPublishedV1.ValidityMonths));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public async Task A_version_number_below_one_is_refused_by_its_name_and_nothing_stored(int number)
+    {
+        var store = new InMemoryCourseVersionStore();
+
+        await RefusedAsync(store, CourseVersionEvents.Published(Guid.CreateVersion7(), Guid.CreateVersion7(), number, "Hygiene", 12), nameof(CourseVersionPublishedV1.VersionNumber));
     }
 
     [Fact]

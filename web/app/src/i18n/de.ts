@@ -65,6 +65,7 @@ export const de = {
     signInFailed: 'Anmeldung fehlgeschlagen: {message}',
     signingIn: 'Anmeldung läuft…',
     signingOut: 'Abmeldung läuft…',
+    configurationUnavailable: 'Die Anwendung kann gerade nicht geladen werden. Bitte versuchen Sie es später erneut.',
   },
   theme: {
     label: 'Farbschema',
@@ -93,7 +94,12 @@ export const de = {
         result: { title: 'Ergebnis' },
       },
     },
-    certification: { title: 'Teilnahmebestätigungen' },
+    certification: {
+      title: 'Teilnahmebestätigungen',
+      entries: {
+        verify: { title: 'Bestätigung prüfen' },
+      },
+    },
     compliance: {
       title: 'Team-Matrix',
       pages: {
@@ -117,6 +123,27 @@ export const de = {
         test: { title: 'Test' },
       },
     },
+  },
+  certification: {
+    validity: {
+      Valid: 'Gültig',
+      Expired: 'Abgelaufen',
+    },
+    verify: {
+      validText: 'Diese Teilnahmebestätigung ist echt und gültig bis {date}.',
+      expiredText: 'Diese Teilnahmebestätigung ist echt, war aber nur bis {date} gültig.',
+      holder: 'Name',
+      course: 'Schulung',
+      issuedOn: 'Ausgestellt am',
+      validUntil: 'Gültig bis',
+      notVerifiable: {
+        title: 'Nicht prüfbar',
+        text: 'Zu diesem Link gibt es keine Teilnahmebestätigung. Prüfen Sie, ob Sie den vollständigen Link aus dem QR-Code geöffnet haben.',
+      },
+      limitReached: 'Gerade werden zu viele Prüfungen angefragt. Bitte versuchen Sie es in einer Minute erneut.',
+      loadFailed: 'Die Bestätigung konnte nicht geprüft werden.',
+    },
+    retry: 'Erneut versuchen',
   },
   compliance: {
     matrix: {
@@ -422,6 +449,7 @@ export const de = {
         invalidJobFunction: 'Die Tätigkeit fehlt oder ist unbekannt.',
         invalidMembershipRole: 'Die Rolle fehlt oder ist unbekannt.',
         identityIncomplete: 'Ihr Konto nennt keinen Namen oder keine gültige E-Mail-Adresse. Ergänzen Sie Ihr Profil.',
+        inPharmacy: 'In {pharmacy}: {reason}',
         invitationRenewedTooSoon:
           'Diese Einladung wurde gerade erst gesendet. Sie können sie in einigen Minuten erneut senden.',
         tooManyInvitationsToday:
