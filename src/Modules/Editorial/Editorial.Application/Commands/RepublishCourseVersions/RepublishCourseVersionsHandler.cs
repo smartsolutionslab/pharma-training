@@ -1,6 +1,8 @@
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.DTOs;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.IntegrationEvents;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
+using Microsoft.Extensions.Logging;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.RepublishCourseVersions;
 
@@ -16,17 +18,35 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Command
 /// deduplicate on the version id. Nothing tracked changes, so the commit cannot lose a race; a commit that fails throws,
 /// what was committed before it stays sent, and a rerun is safe.
 /// <para>
+/// One run at a time: the run holds <see cref="IRepublishLock"/> from before its first load to its end, and a run asked
+/// for meanwhile answers <c>editorial.republish-running</c> having sent nothing. Each version is committed with
+/// <see cref="IEditorialUnitOfWork.CommitOneOfSeveralAsync"/>, so its events go out with its own commit. Every run logs
+/// one line naming the editor: what it sent, or that it was refused.
+/// </para>
+/// <para>
 /// The answer counts what was sent. That is a deliberate exception to CQRS-logical's "a command returns at most an
 /// identifier": only the command knows what it sent.
 /// </para>
 /// </summary>
-public sealed class RepublishCourseVersionsHandler(ICourseVersionStore versions, IEditorialUnitOfWork unitOfWork)
+public sealed partial class RepublishCourseVersionsHandler(
+    ICourseVersionStore versions,
+    IEditorialUnitOfWork unitOfWork,
+    IRepublishLock runLock,
+    ILogger<RepublishCourseVersionsHandler> logger)
     : ICommandHandler<RepublishCourseVersions, Result<EditorialRepublishedEventsDto, ApiError>>
 {
     public async Task<Result<EditorialRepublishedEventsDto, ApiError>> HandleAsync(RepublishCourseVersions command, CancellationToken cancellationToken)
     {
         Ensure.That(command).IsNotNull();
 
+        var taken = await runLock.TryTakeAsync(cancellationToken);
+        if (!taken.HasValue)
+        {
+            Refused(logger, command.Editor.Value);
+            return Failure(CourseVersionFailures.RepublishRunning());
+        }
+
+        await using var held = taken.Value;
         var announced = await versions.ListAnnouncedAsync(cancellationToken);
         var courseVersions = 0;
         var testDefinitions = 0;
@@ -54,9 +74,22 @@ public sealed class RepublishCourseVersionsHandler(ICourseVersionStore versions,
                 retirements++;
             }
 
-            await unitOfWork.CommitAsync(cancellationToken);
+            await unitOfWork.CommitOneOfSeveralAsync(cancellationToken);
         }
 
-        return Success(new RepublishedEvents(courseVersions, testDefinitions, retirements).ToDto());
+        return Success(Logged(command.Editor, new RepublishedEvents(courseVersions, testDefinitions, retirements)).ToDto());
     }
+
+    /// <summary>The run's log line: the editor and every count of what was sent, as the record prints them.</summary>
+    private RepublishedEvents Logged(PersonId editor, RepublishedEvents sent)
+    {
+        Republished(logger, editor.Value, sent);
+        return sent;
+    }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Editor {Editor} republished Editorial's course-version events: {Sent}.")]
+    private static partial void Republished(ILogger logger, Guid editor, RepublishedEvents sent);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Editor {Editor} asked for a republish while another run was running; refused, nothing sent.")]
+    private static partial void Refused(ILogger logger, Guid editor);
 }
