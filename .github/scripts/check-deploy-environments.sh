@@ -18,6 +18,8 @@ fi
 repository="$1"
 expected="branch:main tag:deploy/*"
 problems=0
+errors=$(mktemp)
+trap 'rm -f "$errors"' EXIT
 
 problem() {
   echo "$1: $2"
@@ -25,8 +27,12 @@ problem() {
 }
 
 for environment in staging production; do
-  if ! settings=$(gh api "repos/$repository/environments/$environment" 2>/dev/null); then
-    problem "$environment" "no such environment; create it (Settings, Environments) as the README's \"Before the first deploy\" says."
+  if ! settings=$(gh api "repos/$repository/environments/$environment" 2>"$errors"); then
+    if grep -q 'HTTP 404' "$errors"; then
+      problem "$environment" "no such environment; create it (Settings, Environments) as the README's \"Before the first deploy\" says."
+    else
+      problem "$environment" "could not be read ($(tr '\n' ' ' <"$errors")); sign gh in as someone who may read the repository's environments."
+    fi
     continue
   fi
 
