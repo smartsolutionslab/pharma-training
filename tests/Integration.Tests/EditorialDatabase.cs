@@ -80,6 +80,31 @@ internal static class EditorialDatabase
     }
 
     /// <summary>
+    /// Holds the republish's advisory lock (ADR 0019) on a session of the test's own, as another run would, so a republish
+    /// asked for meanwhile is refused as running. The key is Editorial's <c>EditorialRepublishLock.Key</c>, the ASCII of
+    /// "Republis"; the module's Infrastructure is not referenced. Disposing the connection ends the session and the lock.
+    /// Every request that republishes is refused while it is held, so only a test in <see cref="EditorialDrafts"/> may
+    /// take it.
+    /// </summary>
+    public static async Task<NpgsqlConnection> HoldRepublishLockAsync(string connectionString, CancellationToken cancellationToken)
+    {
+        var connection = new NpgsqlConnection(connectionString);
+        try
+        {
+            await connection.OpenAsync(cancellationToken);
+            await using var locked = new NpgsqlCommand("SELECT pg_try_advisory_lock(@key)", connection);
+            locked.Parameters.AddWithValue("key", 0x5265_7075_626C_6973L);
+            (await locked.ExecuteScalarAsync(cancellationToken)).ShouldBe(true, "no republish may run while the test takes its lock");
+            return connection;
+        }
+        catch
+        {
+            await connection.DisposeAsync();
+            throw;
+        }
+    }
+
+    /// <summary>
     /// Opens a transaction that locks the answer options' table against writes (SHARE): a request that adds or changes
     /// options waits there, after everything it writes before them, until the transaction ends. Reads go on. It holds
     /// every version's options, so only a test in <see cref="EditorialDrafts"/> may take it. Disposing the gate closes
