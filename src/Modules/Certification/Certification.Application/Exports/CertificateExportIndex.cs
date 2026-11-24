@@ -7,8 +7,9 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Exp
 /// <summary>
 /// The export's <c>index.csv</c> (#52, docs/adr/0031): UTF-8 with a byte order mark, <c>;</c> between fields and CRLF
 /// after each row, so Excel with a German locale opens it as it is; a header row, then one row per certificate in the
-/// order given. A field starting like a formula gets a leading <c>'</c>, and one holding the separator, a quote or a line
-/// break is then quoted with its quotes doubled (RFC 4180).
+/// order given. A name or course title, text people typed, starting like a formula gets a leading <c>'</c>; the fields
+/// the module makes itself (ids, numbers, dates, the verification code, which may start with <c>-</c>) stay verbatim.
+/// A field holding the separator, a quote or a line break is then quoted with its quotes doubled (RFC 4180).
 /// </summary>
 public static class CertificateExportIndex
 {
@@ -59,8 +60,8 @@ public static class CertificateExportIndex
     private static string[] RowOf(Certificate certificate) =>
     [
         certificate.Id.Value.ToString("D", CultureInfo.InvariantCulture),
-        certificate.HolderName.Value,
-        certificate.CourseTitle.Value,
+        Defused(certificate.HolderName.Value),
+        Defused(certificate.CourseTitle.Value),
         certificate.CourseVersionNumber.Value.ToString(CultureInfo.InvariantCulture),
         certificate.IssuedAt.DayInGermany().ToString(),
         certificate.ValidUntil.ToString(),
@@ -71,18 +72,21 @@ public static class CertificateExportIndex
 
     private static void AppendRow(StringBuilder text, string[] fields)
     {
-        text.AppendJoin(Separator, fields.Select(FieldOf));
+        text.AppendJoin(Separator, fields.Select(Quoted));
         text.Append(LineEnd);
     }
 
-    private static string FieldOf(string value)
+    /// <summary>Text people typed, with a leading <c>'</c> when it starts like a formula, so a spreadsheet shows it as text.</summary>
+    private static string Defused(string value) =>
+        value.Length > 0 && value[0] is '=' or '+' or '-' or '@' or '\t' or '\r' ? $"'{value}" : value;
+
+    private static string Quoted(string value)
     {
-        var defused = value.Length > 0 && value[0] is '=' or '+' or '-' or '@' or '\t' or '\r' ? $"'{value}" : value;
-        if (defused.AsSpan().IndexOfAny(";\"\r\n") < 0)
+        if (value.AsSpan().IndexOfAny(";\"\r\n") < 0)
         {
-            return defused;
+            return value;
         }
 
-        return $"\"{defused.Replace("\"", "\"\"", StringComparison.Ordinal)}\"";
+        return $"\"{value.Replace("\"", "\"\"", StringComparison.Ordinal)}\"";
     }
 }
