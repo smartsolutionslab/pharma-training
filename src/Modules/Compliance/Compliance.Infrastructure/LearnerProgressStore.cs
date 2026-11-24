@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Infrastructure;
 
 /// <summary>
-/// The session starts and certificates Compliance keeps (docs/adr/0024). The module's unit of work saves what is added;
+/// The session starts and certificates Compliance keeps (docs/adr/0028). The module's unit of work saves what is added;
 /// nothing is ever updated, so two deliveries of one event race only on its primary key.
 /// </summary>
 public sealed class LearnerProgressStore(ComplianceDbContext context) : ILearnerProgressStore

@@ -6,7 +6,7 @@ using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Progress;
 namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Tests.Progress;
 
 /// <summary>
-/// Which of a learner's sessions of a course is running (ADR 0024): the latest start after the latest certificate of the
+/// Which of a learner's sessions of a course is running (ADR 0028): the latest start after the latest certificate of the
 /// course, of any version, or the latest start at all without a certificate; a start at the certificate's instant is
 /// finished, and of two starts at one instant the greater session id runs. Only the instants decide, never the order the
 /// copies arrived in.

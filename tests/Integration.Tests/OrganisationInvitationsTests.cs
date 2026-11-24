@@ -103,6 +103,8 @@ public partial class OrganisationInvitationsTests(AspireFixture aspire)
         var address = Invitee();
         var (membership, _) = await InviteAsync(owner, pharmacy, address, cancellationToken);
         var before = await database.TokenHashesAsync(membership, cancellationToken);
+        // Renew waits 10 minutes after the invitation's mail was requested; the invite was a moment ago (docs/adr/0004).
+        await database.MoveInvitationRequestBackAsync(membership, TimeSpan.FromMinutes(10), cancellationToken);
 
         using var renewed = await owner.PostAsync(RenewUri(pharmacy, membership), content: null, cancellationToken);
 
@@ -354,6 +356,8 @@ public partial class OrganisationInvitationsTests(AspireFixture aspire)
         using var owner = await aspire.CreateHostClientAsync("owner");
         var pharmacy = await RegisterAsync(owner, cancellationToken);
         var (membership, _) = await InviteAsync(owner, pharmacy, Invitee(), cancellationToken);
+        // Renew waits 10 minutes after the invitation's mail was requested; the invite was a moment ago (docs/adr/0004).
+        await database.MoveInvitationRequestBackAsync(membership, TimeSpan.FromMinutes(10), cancellationToken);
 
         HttpResponseMessage[] responses;
         await using (var gate = await database.LockPharmacyAsync(pharmacy, cancellationToken))
@@ -409,6 +413,8 @@ public partial class OrganisationInvitationsTests(AspireFixture aspire)
         var address = Invitee();
         var (membership, _) = await InviteAsync(owner, pharmacy, address, cancellationToken);
         var first = TokenIn((await mailpit.MessagesToAsync(address, 1, cancellationToken)).ShouldHaveSingleItem());
+        // Renew waits 10 minutes after the invitation's mail was requested; the invite was a moment ago (docs/adr/0004).
+        await database.MoveInvitationRequestBackAsync(membership, TimeSpan.FromMinutes(10), cancellationToken);
 
         using var renewed = await owner.PostAsync(RenewUri(pharmacy, membership), content: null, cancellationToken);
 

@@ -9,7 +9,7 @@ using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Tests.Assignments;
 namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Tests.Progress;
 
 /// <summary>
-/// Compliance keeps a copy of every session start and every certificate it receives (ADR 0024), whether or not the person
+/// Compliance keeps a copy of every session start and every certificate it receives (ADR 0028), whether or not the person
 /// has an active assignment of the course, once per session or certificate id, so the dashboard can tell which session
 /// is running. A copy is saved with the consumer's one commit, which the assignment store counts as the unit of work.
 /// </summary>

@@ -1,4 +1,4 @@
-# 0024: Compliance knows the running session from starts and certificates
+# 0028: Compliance knows the running session from starts and certificates
 
 **Status:** Accepted (#35). It applies the decision "Matrix und Startversion": the learner's dashboard opens a running session on its own version, and otherwise the course's current version.
 
@@ -27,4 +27,4 @@
 - **Not covered.** Learning has no event for an abandoned session, so an unfinished session is simply superseded by a newer start.
 - The tables hold no names; the erasure of #115 needs nothing new for them.
 - The rows only grow, a few per learner and course; reads are by `(learner_id, course_id)`.
-- `0023` is held by an open branch. If `0024` is taken by the time #35 merges, this file and every reference to it (the domain README, `LearnerProgress`, `CourseStart`, the copies' docs, the consumers' docs) are renumbered.
+- Numbering: written as `0024`, renumbered to `0028` because main had taken `0024` and `0025` and open branches held `0026` and `0027` when #35 merged main.

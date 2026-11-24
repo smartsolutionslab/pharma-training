@@ -22,13 +22,18 @@ public sealed class TestAttempt
 
     public ScorePercent? Score { get; private set; }
 
-    internal IReadOnlyDictionary<QuestionVersionId, IReadOnlyList<AnswerOptionId>> Answers => answers;
+    /// <summary>The learner's last answer to each question answered so far.</summary>
+    public IReadOnlyDictionary<QuestionVersionId, IReadOnlyList<AnswerOptionId>> Answers => answers;
+
+    /// <summary>The chapters of the questions this attempt got wrong, once submitted; none before.</summary>
+    public IReadOnlyList<ChapterId> FailedChapters { get; private set; } = [];
 
     internal void Answer(QuestionVersionId question, IReadOnlyList<AnswerOptionId> chosen) => answers[question] = chosen;
 
-    internal void Close(ScorePercent score, AttemptOutcome outcome)
+    internal void Close(ScorePercent score, AttemptOutcome outcome, IReadOnlyList<ChapterId> failedChapters)
     {
         Score = score;
         Outcome = outcome;
+        FailedChapters = failedChapters;
     }
 }

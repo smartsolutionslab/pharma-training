@@ -8,7 +8,7 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// <summary>
 /// The learner's dashboard through the edge, <c>GET /compliance/me/assignments?pharmacyId=</c> (#35): the caller's own
 /// open and in-progress assignments in the selected pharmacy, overdue first, each with the course version to open, the
-/// running session's to continue, else the current one to begin (ADR 0024). Any member of the pharmacy is served; anyone
+/// running session's to continue, else the current one to begin (ADR 0028). Any member of the pharmacy is served; anyone
 /// else is told it does not exist (docs/adr/0003). Each test has a pharmacy and courses of its own, where developer is the
 /// manager "Mara Manager", employee-a the Pta "Anna Arndt" and employee-b the Pka "Berta Braun"; assignments are made
 /// through the edge, and Learning's and Certification's events are delivered to Compliance as their services send them,

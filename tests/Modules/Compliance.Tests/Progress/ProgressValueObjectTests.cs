@@ -2,7 +2,7 @@ using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Progress;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Tests.Progress;
 
-/// <summary>A learning session's identity as Learning minted it: never the empty Guid (ADR 0024).</summary>
+/// <summary>A learning session's identity as Learning minted it: never the empty Guid (ADR 0028).</summary>
 public class ProgressValueObjectTests
 {
     [Fact]

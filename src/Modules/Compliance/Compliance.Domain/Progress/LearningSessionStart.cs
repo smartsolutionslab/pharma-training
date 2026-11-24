@@ -7,7 +7,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Progress;
 
 /// <summary>
 /// Compliance's copy of a session Learning started: whose, of which course and version, and when. Learning owns it;
-/// Compliance stores it once, as it first arrived, and never changes it (docs/adr/0024).
+/// Compliance stores it once, as it first arrived, and never changes it (docs/adr/0028).
 /// </summary>
 public sealed class LearningSessionStart : Entity<LearningSessionId>
 {

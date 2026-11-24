@@ -38,7 +38,7 @@ public class GetMyPharmacyTests
     {
         var store = new InMemoryPharmacyStore();
         var pharmacy = Register();
-        pharmacy.Invite(MembershipId.New(), AnnaMail, JobFunction.Pta, MembershipRole.Employee, Now)
+        pharmacy.Invite(MembershipId.New(), AnnaMail, JobFunction.Pta, MembershipRole.Employee, Now, InvitationMailLimits.Default)
             .IsSuccess.ShouldBeTrue();
         store.Stored.Add(pharmacy);
         var handler = new GetMyPharmacyHandler(store);

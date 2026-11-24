@@ -5,7 +5,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Progress;
 
 /// <summary>
 /// A learner's session starts and certificates of one course, as Compliance holds them, and which session is running
-/// (docs/adr/0024): the latest start after the latest certificate of the course, of any version, or the latest start at
+/// (docs/adr/0028): the latest start after the latest certificate of the course, of any version, or the latest start at
 /// all without a certificate. A start at the certificate's instant is finished; of two starts at one instant the greater
 /// session id runs. Only the instants decide, never the order the copies arrived in.
 /// </summary>

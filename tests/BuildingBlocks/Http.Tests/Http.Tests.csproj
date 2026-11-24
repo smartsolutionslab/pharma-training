@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Tests of the building blocks' HTTP answers (src/BuildingBlocks/Http): a Result's problem details and the Retry-After of a refusal to retry later. -->
+  <PropertyGroup>
+    <RootNamespace>SmartSolutionsLab.PharmaTraining.BuildingBlocks.Http.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../../src/BuildingBlocks/BuildingBlocks.csproj" />
+  </ItemGroup>
+
+</Project>

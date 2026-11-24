@@ -6,7 +6,7 @@ using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Progress;
 namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Tests.Progress;
 
 /// <summary>
-/// The course version a learner opens for an assignment (decision "Matrix und Startversion", ADR 0024): a running
+/// The course version a learner opens for an assignment (decision "Matrix und Startversion", ADR 0028): a running
 /// session's own version to resume, whatever became of it since; else the course's current version to begin; else none,
 /// when the latest version is retired.
 /// </summary>

@@ -13,6 +13,19 @@ public class ValueObjectTests
     public void Every_identity_refuses_the_empty_guid(string identity) =>
         Should.Throw<GuardException>(FromEmpty(identity));
 
+    [Fact]
+    public void An_exhaustion_notice_is_never_empty() =>
+        Should.Throw<GuardException>(() => ExhaustionNotice.From(Guid.Empty));
+
+    [Fact]
+    public void An_exhaustion_notice_keeps_the_identifier_it_was_made_from()
+    {
+        var identifier = Guid.CreateVersion7();
+
+        ExhaustionNotice.From(identifier).Value.ShouldBe(identifier);
+        ExhaustionNotice.From(identifier).ShouldBe(ExhaustionNotice.From(identifier));
+    }
+
     [Theory]
     [InlineData(-1)]
     [InlineData(101)]

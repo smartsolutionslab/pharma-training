@@ -11,6 +11,9 @@ public interface ITestDefinitionCopies
 {
     Task<bool> ExistsAsync(CourseVersionId version, CancellationToken cancellationToken);
 
+    /// <summary>The version's copy as stored, its questions and each question's options in position order; none until it has arrived.</summary>
+    Task<Option<TestDefinitionCopy>> FindAsync(CourseVersionId version, CancellationToken cancellationToken);
+
     /// <summary>Adds the copy; committing the module's unit of work stores it.</summary>
     void Add(TestDefinitionCopy definition);
 }

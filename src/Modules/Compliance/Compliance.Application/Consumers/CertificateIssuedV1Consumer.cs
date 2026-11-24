@@ -19,7 +19,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application.Consum
 /// (docs/adr/0002-lost-updates-answer-409-through-the-use-case.md) and throws, nothing of it is saved or sent, and the
 /// retry finds nothing active.
 /// It also keeps a copy of the certificate, whether or not it completes anything, from which the dashboard tells that a
-/// session of the course is finished (docs/adr/0024); that copy is deduplicated on the certificate id and saved in the
+/// session of the course is finished (docs/adr/0028); that copy is deduplicated on the certificate id and saved in the
 /// same commit, and two deliveries at once race only on its primary key: the loser throws and its retry finds the copy.
 /// </summary>
 public sealed class CertificateIssuedV1Consumer(IAssignmentStore assignments, ILearnerProgressStore progress, IComplianceUnitOfWork unitOfWork)

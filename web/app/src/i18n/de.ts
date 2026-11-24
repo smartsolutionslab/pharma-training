@@ -416,6 +416,10 @@ export const de = {
         invalidJobFunction: 'Die Tätigkeit fehlt oder ist unbekannt.',
         invalidMembershipRole: 'Die Rolle fehlt oder ist unbekannt.',
         identityIncomplete: 'Ihr Konto nennt keinen Namen oder keine gültige E-Mail-Adresse. Ergänzen Sie Ihr Profil.',
+        invitationRenewedTooSoon:
+          'Diese Einladung wurde gerade erst gesendet. Sie können sie in einigen Minuten erneut senden.',
+        tooManyInvitationsToday:
+          'Ihre Apotheke hat die Höchstzahl an Einladungs-E-Mails für heute erreicht. Versuchen Sie es später erneut.',
       },
     },
   },

@@ -7,7 +7,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Progress;
 
 /// <summary>
 /// Compliance's copy of a certificate Certification issued: whose, of which course and version, and when. Certification
-/// owns it; Compliance stores it once, as it first arrived, and never changes it (docs/adr/0024).
+/// owns it; Compliance stores it once, as it first arrived, and never changes it (docs/adr/0028).
 /// </summary>
 public sealed class IssuedCertificate : Entity<CertificateId>
 {

@@ -9,6 +9,11 @@ const germanDay: Intl.DateTimeFormatOptions = { ...date, timeZone: 'Europe/Berli
 
 const integer: Intl.NumberFormatOptions = { maximumFractionDigits: 0 };
 const percent: Intl.NumberFormatOptions = { style: 'percent', maximumFractionDigits: 0 };
+const percentTenths: Intl.NumberFormatOptions = {
+  style: 'percent',
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+};
 const megabytes: Intl.NumberFormatOptions = { style: 'unit', unit: 'megabyte', maximumFractionDigits: 0 };
 
 /**
@@ -20,10 +25,13 @@ export const datetimeFormats = {
   'en-GB': { date, dateTime, long, germanDay },
 } satisfies Record<Language, Record<string, Intl.DateTimeFormatOptions>>;
 
-/** n(value, 'integer') gives 1.312 and 1,312; n(share, 'percent') gives 80 % and 80%; n(size, 'megabytes') 2.048 MB and 2,048 MB. */
+/**
+ * n(value, 'integer') gives 1.312 and 1,312; n(share, 'percent') gives 80 % and 80%, 'percentTenths' 99,5 % and 99.5%;
+ * n(size, 'megabytes') 2.048 MB and 2,048 MB.
+ */
 export const numberFormats = {
-  'de-DE': { integer, percent, megabytes },
-  'en-GB': { integer, percent, megabytes },
+  'de-DE': { integer, percent, percentTenths, megabytes },
+  'en-GB': { integer, percent, percentTenths, megabytes },
 } satisfies Record<Language, Record<string, Intl.NumberFormatOptions>>;
 
 const calendarDateFormat = /^(\d{4})-(\d{2})-(\d{2})$/;

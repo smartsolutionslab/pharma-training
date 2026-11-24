@@ -10,7 +10,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application.Querie
 /// Lists the learner's active assignments in the pharmacy after checking that they are a member there (docs/adr/0003,
 /// docs/adr/0015). A learner has a handful of them, so they are resolved, ordered and paged in memory: each state is the
 /// assignment's own <see cref="Assignment.StateOn"/> on today's German day, and the version to open follows the running
-/// session (docs/adr/0024).
+/// session (docs/adr/0028).
 /// </summary>
 public sealed class ListMyAssignmentsHandler(
     IMemberStore members,

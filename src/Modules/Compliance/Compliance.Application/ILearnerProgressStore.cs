@@ -8,7 +8,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application;
 /// <summary>
 /// Compliance's copies of Learning's session starts and Certification's certificates; implemented in its Infrastructure
 /// project. What is added is saved when the module's unit of work commits; the consumers never change what they stored
-/// (docs/adr/0024).
+/// (docs/adr/0028).
 /// </summary>
 public interface ILearnerProgressStore
 {

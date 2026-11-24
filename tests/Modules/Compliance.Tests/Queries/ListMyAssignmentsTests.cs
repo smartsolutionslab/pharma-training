@@ -17,7 +17,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Tests.Queries;
 /// The learner's dashboard (#35): the caller's own open and in-progress assignments in the selected pharmacy, overdue
 /// first, then by due date, title and assignment id, each with its state today in German time, its course's latest title
 /// and the course version to open: the running session's to continue, else the current one to begin, else none
-/// (ADR 0024). Any member of the pharmacy is served, whatever their role; anyone else is told it does not exist
+/// (ADR 0028). Any member of the pharmacy is served, whatever their role; anyone else is told it does not exist
 /// (docs/adr/0003, docs/adr/0015).
 /// </summary>
 public class ListMyAssignmentsTests
