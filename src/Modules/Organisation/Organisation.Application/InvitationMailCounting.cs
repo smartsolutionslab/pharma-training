@@ -10,7 +10,9 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application;
 /// the same commit as the pharmacy: the recipient cooldown first, then the sender's daily cap. A refusal adds nothing
 /// to the unit of work; the caller then commits nothing. A sender's stored mail day beyond tomorrow, which only a
 /// hand-edited row or a database clock that moved back (a failover or a restore) stores, is logged as a warning naming
-/// the person and both days, never the address, and today's tally starts afresh.
+/// the person and both days, never the address, and today's tally starts afresh. A recipient's stored instant a cooldown
+/// or more ahead is logged as a warning naming only the two instants, neither the address nor its recipient id (a
+/// pseudonym anyone who knows the address can recompute, #326), and the address may be mailed.
 /// </summary>
 public static partial class InvitationMailCounting
 {
@@ -35,7 +37,14 @@ public static partial class InvitationMailCounting
         var storedRecipient = await recipients.LoadAsync(InvitationRecipientId.For(to), cancellationToken);
         if (storedRecipient.HasValue)
         {
-            var mailed = storedRecipient.Value.RequestMail(now, limits.RecipientCooldown);
+            var recipient = storedRecipient.Value;
+            var mailedAhead = recipient.MailedBeyond(now, limits.RecipientCooldown);
+            if (mailedAhead.HasValue)
+            {
+                LogRecipientMailedAhead(logger, mailedAhead.Value.Value, now.Value);
+            }
+
+            var mailed = recipient.RequestMail(now, limits.RecipientCooldown);
             if (mailed.IsFailure)
             {
                 return Failure(PharmacyFailures.From(mailed.Error));
@@ -72,6 +81,9 @@ public static partial class InvitationMailCounting
 
         return Success(Unit.Value);
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "A recipient stored the invitation mail time {LastMailedAt:O}, a cooldown or more beyond now {Now:O}; it is not trusted and the address may be mailed. The row was edited by hand, or the database's clock moved back (a failover or a restore).")]
+    private static partial void LogRecipientMailedAhead(ILogger logger, DateTimeOffset lastMailedAt, DateTimeOffset now);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Sender {Person} stored the invitation mail day {StoredDay:yyyy-MM-dd}, beyond tomorrow of today {Today:yyyy-MM-dd}; it is discarded and today's tally starts afresh. The row was edited by hand, or the database's clock moved back (a failover or a restore).")]
     private static partial void LogSenderDayAhead(ILogger logger, Guid person, DateOnly storedDay, DateOnly today);

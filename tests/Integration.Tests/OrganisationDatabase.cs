@@ -213,6 +213,21 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
     }
 
     /// <summary>
+    /// Sets the instant the address was last mailed an invitation (#326) to the instant given, creating its recipient row
+    /// when the address was never mailed, as a row edited by hand or a database clock that moved back would store it.
+    /// </summary>
+    public async Task SetRecipientLastMailedAtAsync(string address, DateTimeOffset lastMailedAt, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            "INSERT INTO organisation.invitation_recipients (id, last_mailed_at) VALUES (@id, @at) ON CONFLICT (id) DO UPDATE SET last_mailed_at = EXCLUDED.last_mailed_at",
+            connection);
+        command.Parameters.AddWithValue("id", RecipientIdOf(address));
+        command.Parameters.AddWithValue("at", lastMailedAt);
+        (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1);
+    }
+
+    /// <summary>
     /// Forgets that the address was ever mailed an invitation (#265), so a test that mails it again is not refused by
     /// its cooldown because another test of the class mailed it first. Nothing to forget is fine.
     /// </summary>
