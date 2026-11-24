@@ -314,8 +314,9 @@ test('a reason of two lines keeps both, on two lines', async () => {
   // The reason is the third column, after the date and who returned it.
   const reason = cells(first)[2];
   expect(reason?.textContent).toContain('Kapitel 2 braucht eine Quelle.\nDie Tabelle in Kapitel 3 ist veraltet.');
-  // jsdom lays nothing out: the line break shows because the text keeps its newlines (Tailwind's whitespace-pre-line).
-  expect(reason?.querySelector('.whitespace-pre-line')).toHaveTextContent(/Kapitel 2 braucht eine Quelle\./);
+  // jsdom lays nothing out: the line break shows because the text keeps its whitespace (Tailwind's whitespace-pre-wrap,
+  // not pre-line, so the tabs and indents the host allows in a reason show as the reviewer wrote them).
+  expect(reason?.querySelector('.whitespace-pre-wrap')).toHaveTextContent(/Kapitel 2 braucht eine Quelle\./);
 });
 
 test('a reason holding markup shows as the text it is, and no element is made of it', async () => {
