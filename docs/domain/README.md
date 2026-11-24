@@ -277,6 +277,8 @@ Entsteht aus `TestPassed`; pro bestandenem Versuch genau eine Bestätigung (Atte
 
 Inhalt: `CertificateId`, `PersonId`, `HolderName` und `CourseTitle` als Momentaufnahme beim Ausstellen, `CourseVersionId`, `Score`, `IssuedAt`, `ValidUntil` (Ausstellung + Gültigkeit der Version), `VerificationCode` (zufällig, nicht die Id, für den QR-Code). Das PDF wird beim Ausstellen erzeugt und unverändert gespeichert.
 
+QR-Prüfung (`GET /certification/verify/{code}`, öffentlich, Z2): zeigt nur Name, Schulung, Ausstellungs- und Gültig-bis-Datum sowie gültig/abgelaufen. Unbekannte, falsch geformte Codes und Ids bekommen dieselbe Antwort (404, `certification.certificate-not-verifiable`). Begrenzt auf 30 pro Minute und 500 pro Tag je Client-Adresse (ADR 0026).
+
 ## Endpunkte und Read Models (MVP 1)
 
 Alle Pfade beginnen mit dem Modulnamen; der Edge leitet danach weiter. Kein Service ruft einen anderen synchron auf: Was ein Bildschirm braucht, liegt als lokale Kopie im Service, der ihn bedient.
