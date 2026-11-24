@@ -45,7 +45,10 @@ function archive(fileName?: string): Response {
   if (fileName !== undefined) {
     headers['Content-Disposition'] = `attachment; filename=${fileName}; filename*=UTF-8''${fileName}`;
   }
-  return new Response(zipBytes, { status: 200, headers });
+  const response = new Response(zipBytes, { status: 200, headers });
+  // A Blob of the page's realm, as a browser's fetch gives: undici's Blob is no `instanceof Blob` in jsdom.
+  vi.spyOn(response, 'blob').mockImplementation(async () => new Blob([zipBytes], { type: 'application/zip' }));
+  return response;
 }
 
 /** What the fake host answers; a test changes it before the page asks. */
@@ -117,9 +120,11 @@ async function renderPage(options: { pinia?: Pinia } = {}) {
   await router.push('/certification/export');
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   const pinia = options.pinia ?? createPinia();
-  render(ExportCertificatesPage, { global: { plugins: [router, pinia, [VueQueryPlugin, { queryClient }]] } });
+  const { unmount } = render(ExportCertificatesPage, {
+    global: { plugins: [router, pinia, [VueQueryPlugin, { queryClient }]] },
+  });
   await screen.findByRole('heading', { level: 1, name: 'Nachweise exportieren' });
-  return { router, queryClient, pinia };
+  return { router, queryClient, pinia, unmount };
 }
 
 const fromField = () => screen.getByLabelText(t('certification.export.from'));
@@ -160,20 +165,57 @@ describe('exporting', () => {
     expect(exportsOf(host)).toEqual([`${exportPath()}?from=2025-11-25&to=2026-11-24`]);
   });
 
-  test("saves the ZIP under the host's file name through a temporary link, then lets the object URL go", async () => {
+  test("saves the ZIP under the host's file name through a temporary link", async () => {
     const user = userEvent.setup();
     await renderPage();
 
     await user.click(submitButton());
 
-    await waitFor(() => expect(revokeObjectURL).toHaveBeenCalled());
+    await waitFor(() => expect(notify.success).toHaveBeenCalled());
     expect(createObjectURL).toHaveBeenCalledTimes(1);
     expect(createObjectURL.mock.calls[0]?.[0]).toBeInstanceOf(Blob);
     expect(saved).toEqual([
       { href: 'blob:export-1', download: 'teilnahmebestaetigungen_vom_host.zip', connected: true },
     ]);
-    expect(revokeObjectURL).toHaveBeenCalledWith('blob:export-1');
     expect(document.querySelector('a[download]')).toBeNull();
+  });
+
+  // The review of #297: Safari fails a blob download whose object URL is revoked in the task of the click. The URL is
+  // let go 30 seconds later, or when the page goes before that, never at the click.
+  test('lets the object URL go 30 seconds after the click, not at it', async () => {
+    await renderPage();
+    await waitFor(() => expect(fromField()).toHaveValue('2025-11-25'));
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    vi.setSystemTime(now);
+
+    await fireEvent.click(submitButton());
+    await vi.waitFor(() => expect(saved).toHaveLength(1));
+    await vi.waitFor(() => expect(notify.success).toHaveBeenCalled());
+
+    expect(revokeObjectURL).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(revokeObjectURL).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(revokeObjectURL).toHaveBeenCalledTimes(1);
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:export-1');
+  });
+
+  test('lets the object URL go when the page is left before the 30 seconds, and only once', async () => {
+    const { unmount } = await renderPage();
+    await waitFor(() => expect(fromField()).toHaveValue('2025-11-25'));
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    vi.setSystemTime(now);
+
+    await fireEvent.click(submitButton());
+    await vi.waitFor(() => expect(saved).toHaveLength(1));
+    expect(revokeObjectURL).not.toHaveBeenCalled();
+
+    unmount();
+
+    expect(revokeObjectURL).toHaveBeenCalledTimes(1);
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:export-1');
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(revokeObjectURL).toHaveBeenCalledTimes(1);
   });
 
   test('says "Der Export wurde heruntergeladen."', async () => {
@@ -197,7 +239,9 @@ describe('exporting', () => {
     expect(saved[0]?.download).toBe('teilnahmebestaetigungen_2025-11-25_2026-11-24.zip');
   });
 
-  test('sends once on a double click, the button disabled and reading "Wird erstellt…" while it is sent', async () => {
+  // The review of #297: the button keeps keyboard focus while the export runs, so it is never disabled; it is
+  // aria-disabled and aria-busy instead, and a press while busy sends nothing.
+  test('sends once on a double click, the button aria-disabled, busy and reading "Wird erstellt…" while it is sent', async () => {
     const user = userEvent.setup();
     let answer: (response: Response) => void = () => undefined;
     state.export = () => new Promise<Response>((resolve) => (answer = resolve));
@@ -206,12 +250,55 @@ describe('exporting', () => {
     await user.dblClick(submitButton());
 
     const preparing = await screen.findByRole('button', { name: 'Wird erstellt…' });
-    expect(preparing).toBeDisabled();
+    expect(preparing).not.toBeDisabled();
+    expect(preparing).toHaveAttribute('aria-disabled', 'true');
+    expect(preparing).toHaveAttribute('aria-busy', 'true');
     expect(exportsOf(host)).toHaveLength(1);
     answer(archive('teilnahmebestaetigungen_vom_host.zip'));
     await waitFor(() => expect(notify.success).toHaveBeenCalled());
     expect(exportsOf(host)).toHaveLength(1);
     expect(submitButton()).toBeEnabled();
+    expect(submitButton()).not.toHaveAttribute('aria-disabled', 'true');
+    expect(submitButton()).not.toHaveAttribute('aria-busy', 'true');
+  });
+
+  test('keeps the focus on the button pressed from the keyboard while the export runs and after it', async () => {
+    const user = userEvent.setup();
+    let answer: (response: Response) => void = () => undefined;
+    state.export = () => new Promise<Response>((resolve) => (answer = resolve));
+    await renderPage();
+    await waitFor(() => expect(fromField()).toHaveValue('2025-11-25'));
+    submitButton().focus();
+
+    await user.keyboard('{Enter}');
+
+    const preparing = await screen.findByRole('button', { name: 'Wird erstellt…' });
+    expect(preparing).toHaveFocus();
+    expect(preparing).not.toBeDisabled();
+    expect(preparing).toHaveAttribute('aria-disabled', 'true');
+    expect(preparing).toHaveAttribute('aria-busy', 'true');
+
+    await user.keyboard('{Enter}');
+    expect(exportsOf(host)).toHaveLength(1);
+    expect(preparing).toHaveFocus();
+
+    answer(archive('teilnahmebestaetigungen_vom_host.zip'));
+    await waitFor(() => expect(notify.success).toHaveBeenCalled());
+    expect(submitButton()).toHaveFocus();
+    expect(exportsOf(host)).toHaveLength(1);
+  });
+
+  test('announces "Wird erstellt…" in a status region while the export runs', async () => {
+    const user = userEvent.setup();
+    let answer: (response: Response) => void = () => undefined;
+    state.export = () => new Promise<Response>((resolve) => (answer = resolve));
+    await renderPage();
+
+    await user.click(submitButton());
+
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Wird erstellt…'));
+    answer(archive('teilnahmebestaetigungen_vom_host.zip'));
+    await waitFor(() => expect(notify.success).toHaveBeenCalled());
   });
 });
 
@@ -361,6 +448,30 @@ describe('a refusal', () => {
     await user.click(submitButton());
     await waitFor(() => expect(exportsOf(host)).toHaveLength(2));
     await waitFor(() => expect(notify.success).toHaveBeenCalledWith('Der Export wurde heruntergeladen.'));
+  });
+
+  // The review of #297: the host's period refusal at to is the chosen pharmacy's too; another pharmacy clears it.
+  test('of the period is cleared at to when another pharmacy is chosen', async () => {
+    const user = userEvent.setup();
+    state.memberships = [markt, dom];
+    state.export = async () =>
+      refusal(
+        400,
+        'certification.invalid-export-period',
+        'An export needs from and to, with to not before from and at most five years after it.',
+      );
+    const pinia = createPinia();
+    useSelectedPharmacyStore(pinia).choose(markt.id);
+    await renderPage({ pinia });
+    await waitFor(() => expect(fromField()).toHaveValue('2025-11-25'));
+
+    await user.click(submitButton());
+    await waitFor(() => expect(toField()).toHaveAttribute('aria-invalid', 'true'));
+    useSelectedPharmacyStore(pinia).choose(dom.id);
+
+    await waitFor(() => expect(toField()).not.toHaveAttribute('aria-invalid', 'true'));
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(toField()).toHaveValue('2026-11-24');
   });
 
   test('is cleared when another pharmacy is chosen, and the range stays', async () => {
