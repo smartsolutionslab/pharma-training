@@ -268,7 +268,7 @@ Jede Frage vermerkt ihren Ursprung in der Version (`QuestionOrigin`, #245): `AiD
 | `ApplyAiTestDraft` | Ersetzt nur KI-entworfene Fragen, die ungeprüft, nie von der Redaktion geändert und nie freigegeben sind (#245, Entscheidungen des Owners vom 2026-11-23 und 2026-11-24); freigegebene, kopierte und von Hand geschriebene Fragen bleiben, auch ungeprüft, ebenso KI-entworfene, die die Redaktion geändert oder einmal freigegeben hat, auch nachdem eine geänderte Testvorgabe die Freigabe zurückgesetzt hat; sie brauchen nur eine neue Freigabe; der Entwurf fragt nach der Vorgabe abzüglich der bleibenden Fragen; jede entworfene Frage trägt Herkunft `AiDrafted` und Ursprung `AiDraft` |
 | `EditQuestion` / `ApproveQuestion` | Freigabe vermerkt Redakteur und Zeitpunkt |
 | `SubmitForReview` | Mindestens ein Kapitel; Test vollständig laut Vorgaben |
-| `Publish` | Alle Fragen freigegeben; jede Frage einem Kapitel zugeordnet; Single Choice genau eine richtige Option, Multiple Choice mindestens eine; bei Vier-Augen-Einstellung freigebende ≠ einreichende Person |
+| `Publish` | Alle Fragen freigegeben; jede Frage einem Kapitel zugeordnet; Single Choice genau eine richtige Option, Multiple Choice mindestens eine; bei Vier-Augen-Einstellung freigebende ≠ einreichende Person und ≠ Person, die die Testvorgaben zuletzt geändert hat |
 | `Retire` | Nur veröffentlicht; laufende Durchläufe bleiben gültig |
 
 `Publish` führt zu den Integration Events `CourseVersionPublished` und `TestDefinitionPublished`. Der LLM-Aufruf für den Testentwurf liegt im Application-Layer; die Domäne bekommt nur die entworfenen Fragen.

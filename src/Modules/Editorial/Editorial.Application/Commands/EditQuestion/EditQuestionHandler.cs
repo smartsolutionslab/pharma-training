@@ -17,7 +17,7 @@ public sealed class EditQuestionHandler(ICourseVersionStore versions, IEditorial
         }
 
         // The version refuses a chapter it does not hold, after checking that it is a draft and holds the question.
-        var edited = found.Value.EditQuestion(command.Question, command.Draft, AnswerOptionId.New);
+        var edited = found.Value.EditQuestion(command.Question, command.Draft, command.Editor, AnswerOptionId.New);
         if (edited.IsFailure)
         {
             return Failure(CourseVersionFailures.From(edited.Error));

@@ -94,6 +94,42 @@ public class DatabaseErrorDetailGuardTests
         Should.NotThrow(() => DatabaseErrorDetail.RefuseOutsideDevelopment("Host=db;Include Error Detail=true", Environment(Environments.Development)));
     }
 
+    /// <summary>
+    /// The MigrationRunner reads two connection strings, the administrator's (<c>database</c>) and, to ensure the
+    /// module's role, the one the service logs in as (<c>application</c>); outside Development it refuses either with
+    /// error detail, in both of its modes, before it connects.
+    /// </summary>
+    [Theory]
+    [InlineData("database")]
+    [InlineData("application")]
+    public void The_migration_runner_refuses_either_of_its_connection_strings_with_error_detail_outside_development(string name)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection([new($"ConnectionStrings:{name}", "Host=db;Password=" + Password + ";Include Error Detail=true")])
+            .Build();
+
+        var refused = Should.Throw<InvalidOperationException>(
+            () => DatabaseErrorDetail.RefuseOutsideDevelopment(configuration, Environment(Environments.Production)));
+
+        refused.Message.ShouldContain($"ConnectionStrings:{name}");
+        refused.Message.ShouldContain("Include Error Detail");
+        refused.Message.ShouldNotContain(Password);
+    }
+
+    [Fact]
+    public void The_migration_runner_runs_with_neither_connection_string_setting_error_detail_or_in_development()
+    {
+        var clean = new ConfigurationBuilder()
+            .AddInMemoryCollection([new("ConnectionStrings:database", "Host=db"), new("ConnectionStrings:application", "Host=db")])
+            .Build();
+        var detailed = new ConfigurationBuilder()
+            .AddInMemoryCollection([new("ConnectionStrings:application", "Host=db;Include Error Detail=true")])
+            .Build();
+
+        Should.NotThrow(() => DatabaseErrorDetail.RefuseOutsideDevelopment(clean, Environment(Environments.Production)));
+        Should.NotThrow(() => DatabaseErrorDetail.RefuseOutsideDevelopment(detailed, Environment(Environments.Development)));
+    }
+
     private static ServiceProvider ServicesWith(string? connectionString, string environment)
     {
         var configuration = new ConfigurationBuilder()

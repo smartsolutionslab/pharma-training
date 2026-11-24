@@ -278,6 +278,15 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1, $"The person {person} has sent no invitation mail.");
     }
 
+    /// <summary>Deletes the person's invitation sender row (#265), if any, as if they had never requested a mail.</summary>
+    public async Task ForgetSenderAsync(Guid person, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("DELETE FROM organisation.invitation_senders WHERE person_id = @person", connection);
+        command.Parameters.AddWithValue("person", person);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     /// <summary>The person's stored tally of invitation mails sent on its counted day (#265).</summary>
     public async Task<int> SenderMailsThatDayAsync(Guid person, CancellationToken cancellationToken)
     {
@@ -525,6 +534,31 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         {
             var transaction = await connection.BeginTransactionAsync(cancellationToken);
             await using (var table = new NpgsqlCommand("LOCK TABLE organisation.invitation_recipients IN SHARE MODE", connection, transaction))
+            {
+                await table.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            return new PharmacyLock(connection, transaction);
+        }
+        catch
+        {
+            await connection.DisposeAsync();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Opens a transaction that holds the invitation senders' table (#369) in ACCESS EXCLUSIVE mode, so every request that
+    /// reads, inserts or locks a sender waits at its first statement on the table until the transaction ends. Disposing
+    /// the lock closes its connection.
+    /// </summary>
+    public async Task<PharmacyLock> LockInvitationSendersAsync(CancellationToken cancellationToken)
+    {
+        var connection = await OpenAsync(cancellationToken);
+        try
+        {
+            var transaction = await connection.BeginTransactionAsync(cancellationToken);
+            await using (var table = new NpgsqlCommand("LOCK TABLE organisation.invitation_senders IN ACCESS EXCLUSIVE MODE", connection, transaction))
             {
                 await table.ExecuteNonQueryAsync(cancellationToken);
             }

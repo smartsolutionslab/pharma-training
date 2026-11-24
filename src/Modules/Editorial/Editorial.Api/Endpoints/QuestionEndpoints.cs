@@ -15,7 +15,8 @@ using Microsoft.AspNetCore.Routing;
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Api.Endpoints;
 
 /// <summary>
-/// An editor adds, edits, removes and approves the questions of a draft; the approver is the caller. What the caller
+/// An editor adds, edits, removes and approves the questions of a draft; the approver, and the editor of a question
+/// whose approval an edit resets, is the caller. What the caller
 /// got wrong is refused before it becomes a value object, whose factory would throw on it; the empty Guid is no
 /// version, question or chapter.
 /// </summary>
@@ -44,11 +45,17 @@ public sealed class QuestionEndpoints : IEndpoint
             return (await dispatcher.SendAsync(new AddQuestion(CourseVersionId.From(id), drafted.Value), cancellationToken)).ToCreatedHttpResult(Location);
         }).RequireAuthorization(EditorialPolicyNames.Edit);
 
-        endpoints.MapPut("/course-versions/{id:guid}/questions/{questionId:guid}", async (Guid id, Guid questionId, EditorialQuestionRequest request, IDispatcher dispatcher, CancellationToken cancellationToken) =>
+        endpoints.MapPut("/course-versions/{id:guid}/questions/{questionId:guid}", async (Guid id, Guid questionId, EditorialQuestionRequest request, ClaimsPrincipal user, IDispatcher dispatcher, CancellationToken cancellationToken) =>
         {
             if (Unknown(id, questionId) is { HasValue: true } unknown)
             {
                 return Result<Unit, ApiError>.Failure(unknown.Value).ToHttpResult();
+            }
+
+            var editor = EditorialCaller.PersonOf(user);
+            if (!editor.HasValue)
+            {
+                return Result<Unit, ApiError>.Failure(CourseVersionFailures.IdentityIncomplete()).ToHttpResult();
             }
 
             var drafted = Drafted(id, request);
@@ -57,7 +64,7 @@ public sealed class QuestionEndpoints : IEndpoint
                 return Result<Unit, ApiError>.Failure(drafted.Error).ToHttpResult();
             }
 
-            var command = new EditQuestion(CourseVersionId.From(id), QuestionId.From(questionId), drafted.Value);
+            var command = new EditQuestion(CourseVersionId.From(id), QuestionId.From(questionId), drafted.Value, editor.Value);
             return (await dispatcher.SendAsync(command, cancellationToken)).ToHttpResult();
         }).RequireAuthorization(EditorialPolicyNames.Edit);
 

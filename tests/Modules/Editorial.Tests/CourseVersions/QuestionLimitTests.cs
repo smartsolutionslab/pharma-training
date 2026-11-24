@@ -37,7 +37,7 @@ public class QuestionLimitTests
     public void A_version_at_the_maximum_whose_blueprint_asks_for_the_maximum_is_submitted()
     {
         var version = AtTheMaximum(out _);
-        version.SetBlueprint(new TestBlueprint(QuestionCount.From(QuestionCount.Maximum), ScorePercent.From(80), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(new TestBlueprint(QuestionCount.From(QuestionCount.Maximum), ScorePercent.From(80), RecurrenceInterval.Yearly), Author).IsSuccess.ShouldBeTrue();
 
         version.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
 

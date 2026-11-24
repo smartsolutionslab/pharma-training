@@ -157,3 +157,22 @@ test('the pages below the modules are named by their title keys', () => {
     { to: '/organisation/register', titleKey: 'modules.organisation.pages.register.title' },
   ]);
 });
+
+// The certificate export (#297) is a page below the certification module for managers, though its module is for
+// employees: the palette lists it by itself.
+test('the certificate export is a page for a manager only', () => {
+  const holdsExport = (memberships: MyPharmacyDto[]) => {
+    answer(memberships);
+    const pages = pagesVisibleTo([]).value;
+    cleanup();
+    return pages.some(
+      (page) => page.to === '/certification/export' && page.titleKey === 'modules.certification.pages.export.title',
+    );
+  };
+
+  expect({
+    manager: holdsExport([manager]),
+    employee: holdsExport([employee]),
+    'no pharmacy': holdsExport([]),
+  }).toEqual({ manager: true, employee: false, 'no pharmacy': false });
+});

@@ -17,6 +17,9 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.PdfExtraction
 /// </summary>
 public sealed class BoundedPdfTextExtractorTests : IDisposable
 {
+    /// <summary>What a PdfPig message quotes from a file: a string token, the document's own text.</summary>
+    private const string DocumentContent = "Expected name as dictionary key, instead got: (Patientin Erika Mustermann, Charge 4711)";
+
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(30);
 
     private static readonly byte[] Pdf = [.. "%PDF-1.4\n"u8];
@@ -275,7 +278,7 @@ public sealed class BoundedPdfTextExtractorTests : IDisposable
     }
 
     private static Exception Failure(bool outOfMemory) =>
-        outOfMemory ? Activator.CreateInstance<OutOfMemoryException>() : new InvalidOperationException("bug");
+        outOfMemory ? Activator.CreateInstance<OutOfMemoryException>() : new InvalidOperationException(DocumentContent);
 
     private static void ShouldBeLoggedAsAbandonedFailure(FakeLogger<BoundedPdfTextExtractor> logger, Exception failure, bool outOfMemory)
     {
@@ -284,6 +287,8 @@ public sealed class BoundedPdfTextExtractorTests : IDisposable
         var naming = records.Where(record => record.Message.Contains(type, StringComparison.Ordinal)).ToList();
         naming.Count.ShouldBe(1, $"the abandoned parse's {type} must leave a trace, not be dropped");
         naming[0].Level.ShouldBe(outOfMemory ? LogLevel.Error : LogLevel.Warning);
+        naming[0].Exception.ShouldBeNull("a parser's exception message can quote the document, so only its type is logged");
+        records.ShouldNotContain(record => record.Message.Contains(DocumentContent, StringComparison.Ordinal), "the document's text is never logged");
         records.ShouldNotContain(record => record.Level == LogLevel.Information, "a parse that failed did not end normally");
     }
 

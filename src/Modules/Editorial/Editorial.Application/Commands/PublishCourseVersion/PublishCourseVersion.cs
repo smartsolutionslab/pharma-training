@@ -5,6 +5,6 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Command
 
 /// <summary>
 /// An editor publishes a version in review once every question is approved; with four eyes, not the one who
-/// submitted it. The course's published version is superseded in the same save.
+/// submitted it or last changed its test blueprint. The course's published version is superseded in the same save.
 /// </summary>
 public sealed record PublishCourseVersion(CourseVersionId Version, PersonId Editor) : ICommand<Result<Unit, ApiError>>;
