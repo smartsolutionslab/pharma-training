@@ -1,4 +1,5 @@
 using System.Globalization;
+using Microsoft.Extensions.Logging;
 using SmartSolutionsLab.PharmaTraining.Contracts.Learning;
 using SmartSolutionsLab.PharmaTraining.Modules.Assessment.Application.ReadModels;
 using SmartSolutionsLab.PharmaTraining.Modules.Assessment.Domain.Examinations;
@@ -11,13 +12,16 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Assessment.Application.Consum
 /// more. Each event is recorded by its identifier, so a redelivery returns before anything is loaded; and since only a
 /// completion that occurred after the last exhaustion unlocks, a replay of an older one grants no attempts even when its
 /// marker was never committed. The stream is saved first, then the identifier: a crash in between reruns this, which
-/// finds the stream and unlocks nothing (docs/adr/0012). It needs no test definition, so it opens before one arrives.
+/// finds the stream and unlocks nothing (docs/adr/0012). A completion that leaves an exhausted examination exhausted, since
+/// it did not occur after the exhaustion, is logged as a Warning naming ids only (#266). It needs no test definition, so it
+/// opens before one arrives.
 /// </summary>
-public sealed class ContentCompletedV1Consumer(
+public sealed partial class ContentCompletedV1Consumer(
     IAssessmentAggregateStore examinations,
     IHandledContentCompletions handled,
     IAssessmentUnitOfWork unitOfWork,
-    TimeProvider time)
+    TimeProvider time,
+    ILogger<ContentCompletedV1Consumer> logger)
 {
     public async Task HandleAsync(ContentCompletedV1 message, CancellationToken cancellationToken)
     {
@@ -63,6 +67,11 @@ public sealed class ContentCompletedV1Consumer(
             {
                 examination.Unlock(now);
             }
+            else if (examination.Status == ExaminationStatus.Exhausted)
+            {
+                // The rule compares Learning's clock with Assessment's: if skew ever strands a learner, it shows here.
+                LogCompletionPredatesExhaustion(logger, id.Value, eventIdentifier, message.SessionId);
+            }
         }
         else
         {
@@ -78,4 +87,7 @@ public sealed class ContentCompletedV1Consumer(
         });
         await unitOfWork.CommitAsync(cancellationToken);
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Completion {EventIdentifier} of session {Session} did not unlock examination {Examination}: it did not occur after the exhaustion.")]
+    private static partial void LogCompletionPredatesExhaustion(ILogger logger, Guid examination, Guid eventIdentifier, Guid session);
 }

@@ -104,7 +104,14 @@ public sealed partial class BoundedPdfTextExtractor : IPdfTextExtractor, IDispos
     [LoggerMessage(Level = LogLevel.Information, Message = "An abandoned PDF read ended after {Elapsed}.")]
     private static partial void AbandonedEnded(ILogger logger, TimeSpan elapsed);
 
-    /// <summary>Error for running out of memory, the case ADR 0008 D11 leaves unbounded; Warning for any other failure.</summary>
+    /// <summary>
+    /// Error for running out of memory, the case ADR 0008 D11 leaves unbounded; Warning for any other failure. Only the
+    /// exception's type is logged, never the exception itself: attached, its message would be logged with its stack
+    /// trace, and a parser's message can quote the document. PdfPig's do, as the token it stumbled on ("Expected name as
+    /// dictionary key, instead got: ...", "... a token with text '...'"), and a string token is the PDF's own text. A
+    /// course's PDFs are not log material, for the same reason learner data is not (#360); the type and the elapsed time
+    /// tell a failure apart, and the thread's name places it.
+    /// </summary>
     [LoggerMessage(Message = "An abandoned PDF read failed with {ExceptionType} after {Elapsed}.")]
     private static partial void AbandonedFailed(ILogger logger, LogLevel level, Type exceptionType, TimeSpan elapsed);
 

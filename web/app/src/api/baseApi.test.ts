@@ -214,3 +214,134 @@ test('an ApiError made from a body directly carries its failure code too', () =>
 
   expect(error.failureCode).toBe('model-not-configured');
 });
+
+// A binary answer (#297, ADR 0032: the certificate export streams a ZIP): a 2xx whose Content-Type is neither JSON nor
+// absent comes back as the bytes, a File when Content-Disposition names one (filename* first), else a Blob.
+const zipBytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00]);
+
+/**
+ * The ZIP as the host streams it. Its blob() answers a Blob of the page's own realm: undici's Blob, which a Response
+ * gives in a test, is no `instanceof Blob` in jsdom, and a File made from one holds "[object Blob]" instead of the bytes.
+ */
+function zip(headers: Record<string, string> = {}): Response {
+  const response = new Response(zipBytes, { status: 200, headers: { 'Content-Type': 'application/zip', ...headers } });
+  vi.spyOn(response, 'blob').mockImplementation(async () => new Blob([zipBytes], { type: 'application/zip' }));
+  return response;
+}
+
+async function answerTo(response: Response): Promise<unknown> {
+  host.mockResolvedValue(response);
+  return apiFetch<unknown>('/certification/pharmacies/p/certificates/export', { method: 'GET' });
+}
+
+async function bytesOf(blob: Blob): Promise<number[]> {
+  return [...new Uint8Array(await blob.arrayBuffer())];
+}
+
+test('a binary answer with a disposition naming a file is a File of that name, filename* first', async () => {
+  const answer = await answerTo(zip({ 'Content-Disposition': "attachment; filename=a.zip; filename*=UTF-8''b.zip" }));
+
+  expect(answer).toBeInstanceOf(File);
+  const file = answer as File;
+  expect(file.name).toBe('b.zip');
+  expect(file.type).toBe('application/zip');
+  expect(await bytesOf(file)).toEqual([...zipBytes]);
+});
+
+test('a binary answer without a disposition is a Blob, not a File, with the bytes sent', async () => {
+  const answer = await answerTo(zip());
+
+  expect(answer).toBeInstanceOf(Blob);
+  expect(answer).not.toBeInstanceOf(File);
+  expect(await bytesOf(answer as Blob)).toEqual([...zipBytes]);
+});
+
+test('a JSON answer is parsed, as before', async () => {
+  const answer = await answerTo(Response.json({ items: [1, 2], totalCount: 2 }, { status: 200 }));
+
+  expect(answer).toEqual({ items: [1, 2], totalCount: 2 });
+});
+
+test('a 404 problem is an ApiError with its code, as before', async () => {
+  const error = await refusalOf(
+    problem(404, { title: 'Die Apotheke gibt es nicht.', status: 404, code: 'certification.pharmacy-not-found' }),
+  );
+
+  expect(error.status).toBe(404);
+  expect(error.code).toBe('certification.pharmacy-not-found');
+});
+
+test('an empty 204 is undefined, as before', async () => {
+  const answer = await answerTo(new Response(null, { status: 204 }));
+
+  expect(answer).toBeUndefined();
+});
+
+// The review of #297: the bytes are not copied. The answer is response.blob() itself, wrapped in a File only to carry
+// the disposition's name; reading the body as an ArrayBuffer and building a Blob from it holds the ZIP twice.
+test('a binary answer is read with blob(), never arrayBuffer()', async () => {
+  const response = zip({ 'Content-Disposition': 'attachment; filename=teilnahmebestaetigungen.zip' });
+  const arrayBuffer = vi.spyOn(response, 'arrayBuffer');
+
+  const answer = await answerTo(response);
+
+  expect(response.blob).toHaveBeenCalledTimes(1);
+  expect(arrayBuffer).not.toHaveBeenCalled();
+  expect(answer).toBeInstanceOf(File);
+  expect((answer as File).name).toBe('teilnahmebestaetigungen.zip');
+  expect((answer as File).type).toBe('application/zip');
+  expect(await bytesOf(answer as File)).toEqual([...zipBytes]);
+});
+
+test('a binary answer without a disposition is the blob the response gave, not a copy', async () => {
+  const response = zip();
+  const blob = new Blob([zipBytes], { type: 'application/zip' });
+  vi.spyOn(response, 'blob').mockResolvedValue(blob);
+  const arrayBuffer = vi.spyOn(response, 'arrayBuffer');
+
+  const answer = await answerTo(response);
+
+  expect(answer).toBe(blob);
+  expect(arrayBuffer).not.toHaveBeenCalled();
+});
+
+// Only binary types are binary: a 2xx text/* answer (an edge's or a proxy's HTML page, a plain-text body) is no file.
+// Binary is any media type that is neither JSON (application/json, +json) nor text/* (application/zip, application/pdf,
+// application/octet-stream, ...); a text answer is read as JSON, as before, and rejects when it is none.
+test.each([
+  ['text/html', '<!doctype html><title>Anmelden</title>'],
+  ['text/html; charset=utf-8', '<html><body>Gateway</body></html>'],
+  ['text/plain', 'OK'],
+])('a 2xx %s answer is no binary file: it rejects as a JSON parse of it would', async (type, body) => {
+  host.mockResolvedValue(new Response(body, { status: 200, headers: { 'Content-Type': type } }));
+
+  const outcome: unknown = await apiFetch<unknown>('/certification/pharmacies/p/certificates/export', {
+    method: 'GET',
+  }).then(
+    (answer) => ({ resolved: answer }),
+    (caught: unknown) => ({ rejected: caught }),
+  );
+
+  expect(outcome).not.toHaveProperty('resolved');
+  expect(outcome).toHaveProperty('rejected');
+  expect((outcome as { rejected: unknown }).rejected).not.toBeInstanceOf(Blob);
+});
+
+// Content-Disposition's parameter names are whole names: filename is a parameter of its own, not the end of another
+// name or a part of a quoted value; a quoted filename unescapes its quoted-pairs (RFC 6266, RFC 9110 5.6.4).
+test.each([
+  ['a name ending in filename', 'attachment; xfilename=evil.zip'],
+  ["filename= inside another parameter's quoted value", 'attachment; foo="filename=x.zip"'],
+])('a disposition with %s names no file: the answer is a Blob, not a File', async (_case, disposition) => {
+  const answer = await answerTo(zip({ 'Content-Disposition': disposition }));
+
+  expect(answer).toBeInstanceOf(Blob);
+  expect(answer).not.toBeInstanceOf(File);
+});
+
+test('a quoted filename with an escaped quote names the file with the quote', async () => {
+  const answer = await answerTo(zip({ 'Content-Disposition': 'attachment; filename="it\\"s.zip"' }));
+
+  expect(answer).toBeInstanceOf(File);
+  expect((answer as File).name).toBe('it"s.zip');
+});

@@ -88,6 +88,9 @@ export const en: MessageSchema = {
       entries: {
         verify: { title: 'Verify a certificate' },
       },
+      pages: {
+        export: { title: 'Export records' },
+      },
     },
     compliance: {
       title: 'Team matrix',
@@ -133,6 +136,21 @@ export const en: MessageSchema = {
       loadFailed: 'The certificate could not be verified.',
     },
     retry: 'Try again',
+    export: {
+      intro:
+        "Download the certificates of {pharmacy}'s members as a ZIP: the PDFs and a CSV overview. It holds only certificates issued while the person was a member of this pharmacy; a PDF still being made is listed in the overview only.",
+      from: 'Issued from',
+      to: 'Issued until',
+      period: {
+        invalid: 'Enter a valid date.',
+        order: 'The end cannot be before the start.',
+        tooLong: 'An export covers at most five years.',
+      },
+      submit: 'Download ZIP',
+      preparing: 'Preparing…',
+      done: 'The export has been downloaded.',
+      failed: 'The export could not be created. Try again.',
+    },
     mine: {
       columns: {
         course: 'Course',
