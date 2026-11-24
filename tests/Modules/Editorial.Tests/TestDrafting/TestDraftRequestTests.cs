@@ -262,7 +262,7 @@ public class TestDraftRequestTests
         version.AddChapter(TextChapter(text, "B", new string('b', MarkdownText.MaxLength))).IsSuccess.ShouldBeTrue();
         var left = TestDraftRequest.MaxCharacters - MarkdownText.MaxLength - 2;
         version.AddChapter(TestDraftVersions.PdfWithText(pdf, "C", new string('c', left + 1))).IsSuccess.ShouldBeTrue();
-        version.SetBlueprint(Blueprint(5)).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(Blueprint(5), Author).IsSuccess.ShouldBeTrue();
         version.AddQuestion(QuestionId.New(), SingleChoice(text), AnswerOptionId.New).IsSuccess.ShouldBeTrue();
         version.ApplyAiTestDraft([SingleChoice(pdf)], QuestionId.New, AnswerOptionId.New).IsSuccess.ShouldBeTrue();
 
