@@ -598,12 +598,7 @@ export const en: MessageSchema = {
         leftOut: 'The AI drafted no questions for these chapters; write them by hand:',
         dismiss: 'Dismiss the note',
         errors: {
-          modelNotConfigured: "No language model is set up for AI drafts. Contact the platform's operators.",
           tooManyRequests: 'You have asked for too many AI drafts in a short time. Try again later.',
-          limitReached: 'You have reached your limit for AI drafts. Try again later.',
-          malformed: "The AI's answer could not be used; nothing was changed. Try again.",
-          tooMuchContent:
-            'The text chapters are too long for an AI draft. Shorten them or write the questions by hand.',
           changed: 'The version changed in the meantime; the draft was discarded. Try again.',
           notADraft: 'This version is no longer a draft; its test cannot be drafted again.',
           timedOut: 'The AI draft took too long. The questions are reloaded; check whether it was applied.',
@@ -692,19 +687,9 @@ export const en: MessageSchema = {
       },
       errors: {
         notADraft: 'Only a draft can be submitted.',
-        notInReview: 'The version is no longer in review.',
         notPublished: 'Only a published version can be retired.',
-        noChapters: 'The version needs at least one chapter.',
-        testIncomplete: 'The test does not have the number of questions its blueprint asks for.',
-        tooManyQuestions: 'The test has more questions than allowed.',
-        questionNotApproved: 'Every question must be approved before publishing.',
         questionDefect: 'A question is incomplete. Check its answer options and correct answers in the test.',
-        fourEyes: 'Four-eyes approval does not let whoever submitted the version publish it. Ask another editor.',
-        publisherApprovedQuestions:
-          'Four-eyes approval does not let whoever approved questions of this version publish it. Ask another editor.',
         changed: 'The version has changed in the meantime. You now see its current state; please try again.',
-        notFound: 'This version no longer exists.',
-        identityIncomplete: 'Your sign-in names no person. Please sign in again.',
         forbidden: 'You are not allowed to take this step.',
         submitFailed: 'The version could not be submitted. Please try again.',
         publishFailed: 'The version could not be published. Please try again.',

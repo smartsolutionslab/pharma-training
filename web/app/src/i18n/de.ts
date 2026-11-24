@@ -614,13 +614,7 @@ export const de = {
         leftOut: 'Zu diesen Kapiteln hat die KI keine Fragen entworfen; schreiben Sie sie von Hand:',
         dismiss: 'Hinweis schließen',
         errors: {
-          modelNotConfigured:
-            'Für KI-Entwürfe ist kein Sprachmodell eingerichtet. Wenden Sie sich an den Betrieb der Plattform.',
           tooManyRequests: 'Sie haben in kurzer Zeit zu viele KI-Entwürfe angefordert. Versuchen Sie es später erneut.',
-          limitReached: 'Sie haben Ihr Limit für KI-Entwürfe erreicht. Versuchen Sie es später erneut.',
-          malformed: 'Die Antwort der KI war unbrauchbar; es wurde nichts geändert. Versuchen Sie es erneut.',
-          tooMuchContent:
-            'Die Textkapitel sind zu lang für einen KI-Entwurf. Kürzen Sie sie oder schreiben Sie die Fragen von Hand.',
           changed: 'Die Version wurde inzwischen geändert; der Entwurf wurde verworfen. Versuchen Sie es erneut.',
           notADraft: 'Diese Version ist kein Entwurf mehr; ihr Test kann nicht neu entworfen werden.',
           timedOut:
@@ -710,21 +704,10 @@ export const de = {
       },
       errors: {
         notADraft: 'Nur ein Entwurf kann eingereicht werden.',
-        notInReview: 'Die Version ist nicht mehr in Prüfung.',
         notPublished: 'Nur eine veröffentlichte Version kann zurückgezogen werden.',
-        noChapters: 'Die Version braucht mindestens ein Kapitel.',
-        testIncomplete: 'Der Test hat nicht die vorgegebene Anzahl Fragen.',
-        tooManyQuestions: 'Der Test hat mehr Fragen als erlaubt.',
-        questionNotApproved: 'Jede Frage muss vor der Veröffentlichung freigegeben sein.',
         questionDefect:
           'Eine Frage ist unvollständig. Prüfen Sie im Test ihre Antwortoptionen und richtigen Antworten.',
-        fourEyes:
-          'Mit Vier-Augen-Freigabe darf nicht veröffentlichen, wer die Version eingereicht hat. Bitten Sie eine andere Person aus der Redaktion.',
-        publisherApprovedQuestions:
-          'Mit Vier-Augen-Freigabe darf nicht veröffentlichen, wer Fragen dieser Version freigegeben hat. Bitten Sie eine andere Person aus der Redaktion.',
         changed: 'Die Version wurde inzwischen geändert. Sie sehen jetzt den aktuellen Stand; versuchen Sie es erneut.',
-        notFound: 'Diese Version gibt es nicht mehr.',
-        identityIncomplete: 'Ihre Anmeldung nennt keine Person. Melden Sie sich erneut an.',
         forbidden: 'Sie dürfen diesen Schritt nicht ausführen.',
         submitFailed: 'Die Version konnte nicht eingereicht werden. Versuchen Sie es erneut.',
         publishFailed: 'Die Version konnte nicht veröffentlicht werden. Versuchen Sie es erneut.',
