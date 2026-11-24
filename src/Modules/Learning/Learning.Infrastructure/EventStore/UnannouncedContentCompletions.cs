@@ -23,13 +23,21 @@ public sealed class UnannouncedContentCompletions(IDocumentStore store) : IUnann
     public Task<IReadOnlyList<UnannouncedEvent>> FindAsync(DateTimeOffset storedFrom, DateTimeOffset storedUntil, long after, int limit, CancellationToken cancellationToken) =>
         UnannouncedEvents.FindAsync(store, Schema, SweptEventType, storedFrom, storedUntil, after, limit, cancellationToken);
 
-    public async Task<ContentCompleted> LoadAsync(UnannouncedEvent found, CancellationToken cancellationToken)
+    /// <summary>
+    /// A database failure Marten wraps once its command runs arrives as the <see cref="System.Data.Common.DbException"/>
+    /// it wraps (<see cref="MartenDatabaseFailures"/>, #337), so the sweep ends the pass on it instead of skipping the
+    /// event as unreadable.
+    /// </summary>
+    public Task<ContentCompleted> LoadAsync(UnannouncedEvent found, CancellationToken cancellationToken)
     {
         Ensure.That(found).IsNotNull();
 
-        await using var session = store.QuerySession();
-        var stored = await session.Events.LoadAsync(found.EventId, cancellationToken)
-            ?? throw new InvalidOperationException($"Learning's event store lost event {found.EventId} between finding and loading it.");
-        return (ContentCompleted)stored.Data;
+        return MartenDatabaseFailures.ReadAsync(async () =>
+        {
+            await using var session = store.QuerySession();
+            var stored = await session.Events.LoadAsync(found.EventId, cancellationToken)
+                ?? throw new InvalidOperationException($"Learning's event store lost event {found.EventId} between finding and loading it.");
+            return (ContentCompleted)stored.Data;
+        });
     }
 }
