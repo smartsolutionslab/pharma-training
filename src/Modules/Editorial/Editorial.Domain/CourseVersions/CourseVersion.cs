@@ -241,8 +241,9 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
 
     /// <summary>
     /// Replaces a draft's test settings. Replacing them sends every question of the version back to review, copied
-    /// ones included, so reviewers sign off the changed test again, and records the editor as the one who last changed
-    /// them, whom four eyes keeps from publishing. The same settings again change nothing.
+    /// ones included, so reviewers sign off the changed test again. A change that reset an approval records the editor
+    /// as the one who last changed them, whom four eyes keeps from publishing; one with no approval to reset records no
+    /// one. The same settings again change nothing.
     /// </summary>
     public Result<Unit, DomainError> SetBlueprint(TestBlueprint blueprint, PersonId editor)
     {
@@ -260,8 +261,11 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         }
 
         Blueprint = blueprint;
-        BlueprintChangedBy = editor;
-        ResetApprovals(questions, editor, ApprovalResetReason.TestSettingsChanged);
+        if (ResetApprovals(questions, editor, ApprovalResetReason.TestSettingsChanged))
+        {
+            BlueprintChangedBy = editor;
+        }
+
         return Success(Unit.Value);
     }
 
@@ -538,7 +542,8 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
     }
 
     /// <summary>Sends the given questions back to review; when one of them was approved, raises one reset naming the editor and why.</summary>
-    private void ResetApprovals(IEnumerable<Question> reviewed, PersonId editor, ApprovalResetReason reason)
+    /// <summary>Marks the questions unreviewed; answers whether an approval was among them, which raises the reset.</summary>
+    private bool ResetApprovals(IEnumerable<Question> reviewed, PersonId editor, ApprovalResetReason reason)
     {
         var approvalReset = false;
         foreach (var question in reviewed)
@@ -551,6 +556,8 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         {
             Raise(new QuestionApprovalsReset(Id, editor, reason));
         }
+
+        return approvalReset;
     }
 
     /// <summary>Whether a chapter of the version other than <paramref name="chapter"/> holds the file: one file, one chapter.</summary>
