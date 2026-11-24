@@ -307,7 +307,7 @@
   {
     "code": "editorial.next-version-exists",
     "status": 409,
-    "message": "Version 7 of this course already exists (01a20b00-aca3-7996-b5a7-154565982472); continue that one instead of drafting another from 01a20b00-aca3-7721-8ea1-94d7d47270ab."
+    "message": "Version 7 of this course already exists (01a20b05-1146-74bd-97f3-74b93a91a91b); continue that one instead of drafting another from 01a20b05-1146-75bd-89d5-704859659b28."
   },
   {
     "code": "editorial.no-chapters",
@@ -505,6 +505,11 @@
     "message": "The AI model is not configured."
   },
   {
+    "code": "organisation.accept-limit-reached",
+    "status": 429,
+    "message": "You have tried to accept invitations too often; try again later."
+  },
+  {
     "code": "organisation.already-member-or-invited",
     "status": 409,
     "message": "This address is already a member or invited."
@@ -575,6 +580,11 @@
     "message": "The invitation link is invalid or has already been used."
   },
   {
+    "code": "organisation.invitation-renewed-too-soon",
+    "status": 429,
+    "message": "The invitation was mailed a moment ago; renew it once the waiting time has passed."
+  },
+  {
     "code": "organisation.last-manager",
     "status": 409,
     "message": "The last manager of a pharmacy cannot be removed or demoted."
@@ -608,5 +618,10 @@
     "code": "organisation.sample-not-found",
     "status": 404,
     "message": "There is no such sample."
+  },
+  {
+    "code": "organisation.too-many-invitations-today",
+    "status": 429,
+    "message": "The pharmacy has sent as many invitation mails today as it may; try again later."
   }
 ]
