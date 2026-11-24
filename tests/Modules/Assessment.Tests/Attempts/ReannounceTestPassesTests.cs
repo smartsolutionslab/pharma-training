@@ -154,7 +154,8 @@ public class ReannounceTestPassesTests
         skipped.Message.ShouldContain("2", Case.Sensitive);
         skipped.GetStructuredStateValue("Count").ShouldBe("1");
         skipped.Message.ShouldNotContain(unreadable.Passed.Learner.Value.ToString(), Case.Insensitive);
-        skipped.Exception.ShouldBeOfType<JsonException>().Message.ShouldContain("version 2", Case.Sensitive);
+        skipped.GetStructuredStateValue("FirstFailureType").ShouldBe(nameof(JsonException));
+        skipped.Exception.ShouldBeNull();
     }
 
     [Fact]
@@ -175,14 +176,15 @@ public class ReannounceTestPassesTests
         var warnings = logger.Collector.GetSnapshot().Where(record => record.Level >= LogLevel.Warning).ToList();
         warnings.Count.ShouldBe(2);
         warnings.ShouldNotContain(record => record.Message.Contains(middle.Passed.Examination.Value.ToString(), StringComparison.OrdinalIgnoreCase));
-        var skipped = warnings.Where(record => record.Exception != null).ShouldHaveSingleItem();
+        var skipped = warnings.Where(record => record.GetStructuredStateValue("Count") != null).ShouldHaveSingleItem();
         skipped.Level.ShouldBe(LogLevel.Warning);
         skipped.GetStructuredStateValue("Count").ShouldBe("3");
         skipped.GetStructuredStateValue("FirstStreamId").ShouldBe(first.Passed.Examination.Value.ToString());
         skipped.GetStructuredStateValue("FirstStreamVersion").ShouldBe("1");
         skipped.GetStructuredStateValue("LastStreamId").ShouldBe(last.Passed.Examination.Value.ToString());
         skipped.GetStructuredStateValue("LastStreamVersion").ShouldBe("8");
-        skipped.Exception.ShouldBeOfType<JsonException>().Message.ShouldContain("version 1", Case.Sensitive);
+        skipped.GetStructuredStateValue("FirstFailureType").ShouldBe(nameof(JsonException));
+        skipped.Exception.ShouldBeNull();
         skipped.Message.ShouldNotContain(first.Passed.Learner.Value.ToString(), Case.Insensitive);
     }
 
@@ -285,7 +287,8 @@ public class ReannounceTestPassesTests
         var skipped = logger.Collector.GetSnapshot().Where(record => record.Level == LogLevel.Warning).ShouldHaveSingleItem();
         skipped.GetStructuredStateValue("Count").ShouldBe("1");
         skipped.GetStructuredStateValue("FirstStreamVersion").ShouldBe("4");
-        skipped.Exception.ShouldBeOfType<JsonException>();
+        skipped.GetStructuredStateValue("FirstFailureType").ShouldBe(nameof(JsonException));
+        skipped.Exception.ShouldBeNull();
     }
 
     private static StoredTestPass Stored(long streamVersion, DateTimeOffset storedAt)

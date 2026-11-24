@@ -133,7 +133,8 @@ public class ReannounceContentCompletionsTests
         skipped.Message.ShouldContain("2", Case.Sensitive);
         skipped.GetStructuredStateValue("Count").ShouldBe("1");
         skipped.Message.ShouldNotContain(unreadable.Completed.Learner.Value.ToString(), Case.Insensitive);
-        skipped.Exception.ShouldBeOfType<JsonException>().Message.ShouldContain("version 2", Case.Sensitive);
+        skipped.GetStructuredStateValue("FirstFailureType").ShouldBe(nameof(JsonException));
+        skipped.Exception.ShouldBeNull();
     }
 
     [Fact]
@@ -154,14 +155,15 @@ public class ReannounceContentCompletionsTests
         var warnings = logger.Collector.GetSnapshot().Where(record => record.Level >= LogLevel.Warning).ToList();
         warnings.Count.ShouldBe(2);
         warnings.ShouldNotContain(record => record.Message.Contains(middle.Completed.Session.Value.ToString(), StringComparison.OrdinalIgnoreCase));
-        var skipped = warnings.Where(record => record.Exception != null).ShouldHaveSingleItem();
+        var skipped = warnings.Where(record => record.GetStructuredStateValue("Count") != null).ShouldHaveSingleItem();
         skipped.Level.ShouldBe(LogLevel.Warning);
         skipped.GetStructuredStateValue("Count").ShouldBe("3");
         skipped.GetStructuredStateValue("FirstStreamId").ShouldBe(first.Completed.Session.Value.ToString());
         skipped.GetStructuredStateValue("FirstStreamVersion").ShouldBe("1");
         skipped.GetStructuredStateValue("LastStreamId").ShouldBe(last.Completed.Session.Value.ToString());
         skipped.GetStructuredStateValue("LastStreamVersion").ShouldBe("8");
-        skipped.Exception.ShouldBeOfType<JsonException>().Message.ShouldContain("version 1", Case.Sensitive);
+        skipped.GetStructuredStateValue("FirstFailureType").ShouldBe(nameof(JsonException));
+        skipped.Exception.ShouldBeNull();
         skipped.Message.ShouldNotContain(first.Completed.Learner.Value.ToString(), Case.Insensitive);
     }
 
@@ -264,7 +266,8 @@ public class ReannounceContentCompletionsTests
         var skipped = logger.Collector.GetSnapshot().Where(record => record.Level == LogLevel.Warning).ShouldHaveSingleItem();
         skipped.GetStructuredStateValue("Count").ShouldBe("1");
         skipped.GetStructuredStateValue("FirstStreamVersion").ShouldBe("4");
-        skipped.Exception.ShouldBeOfType<JsonException>();
+        skipped.GetStructuredStateValue("FirstFailureType").ShouldBe(nameof(JsonException));
+        skipped.Exception.ShouldBeNull();
     }
 
     private static StoredContentCompletion Stored(long streamVersion, DateTimeOffset storedAt)

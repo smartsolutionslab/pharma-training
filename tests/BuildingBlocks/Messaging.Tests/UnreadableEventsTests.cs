@@ -8,7 +8,8 @@ namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging.Tests;
 
 /// <summary>
 /// The events a pass of an announcement sweep could not read (#360): the pass logs one Warning for all of them, naming
-/// how many, the first and the last by stream and version, with the first failure attached, instead of one per event.
+/// how many, the first and the last by stream and version, and the first failure's type alone, never the exception: its
+/// message may quote the stored data, which is about a learner.
 /// </summary>
 public class UnreadableEventsTests
 {
@@ -28,10 +29,9 @@ public class UnreadableEventsTests
         var first = Found(streamVersion: 2, sequence: 1);
         var middle = Found(streamVersion: 5, sequence: 2);
         var last = Found(streamVersion: 9, sequence: 3);
-        var firstFailure = new JsonException("The first stored event does not match.");
         var unreadable = new UnreadableEvents(EventType);
-        unreadable.Add(first, firstFailure);
-        unreadable.Add(middle, new InvalidCastException());
+        unreadable.Add(first, new InvalidCastException("The first stored event is of another type."));
+        unreadable.Add(middle, new JsonException("The middle stored event does not match."));
         unreadable.Add(last, new JsonException("The last stored event does not match."));
         time.Advance(TimeSpan.FromSeconds(4));
 
@@ -40,7 +40,9 @@ public class UnreadableEventsTests
         var warning = logger.Collector.GetSnapshot().ShouldHaveSingleItem();
         warning.Level.ShouldBe(LogLevel.Warning);
         warning.Timestamp.ShouldBe(time.GetUtcNow());
-        warning.Exception.ShouldBeSameAs(firstFailure);
+        warning.Exception.ShouldBeNull();
+        warning.GetStructuredStateValue("FirstFailureType").ShouldBe(nameof(InvalidCastException));
+        warning.Message.ShouldNotContain("The first stored event", Case.Insensitive);
         warning.GetStructuredStateValue("EventType").ShouldBe(EventType);
         warning.GetStructuredStateValue("Count").ShouldBe("3");
         warning.GetStructuredStateValue("FirstStreamId").ShouldBe(first.StreamId.ToString());
@@ -63,7 +65,8 @@ public class UnreadableEventsTests
         unreadable.LogSummary(logger);
 
         var warning = logger.Collector.GetSnapshot().ShouldHaveSingleItem();
-        warning.Exception.ShouldBeSameAs(failure);
+        warning.Exception.ShouldBeNull();
+        warning.GetStructuredStateValue("FirstFailureType").ShouldBe(nameof(JsonException));
         warning.GetStructuredStateValue("Count").ShouldBe("1");
         warning.GetStructuredStateValue("FirstStreamId").ShouldBe(only.StreamId.ToString());
         warning.GetStructuredStateValue("LastStreamId").ShouldBe(only.StreamId.ToString());

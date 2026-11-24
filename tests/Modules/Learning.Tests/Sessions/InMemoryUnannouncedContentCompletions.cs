@@ -42,7 +42,7 @@ internal sealed class InMemoryUnannouncedContentCompletions : IUnannouncedConten
 
         if (Unreadable.Contains(stored))
         {
-            throw new JsonException($"The stored event at version {stored.StreamVersion} does not match ContentCompleted.");
+            throw new JsonException("The stored event does not match ContentCompleted.");
         }
 
         return Task.FromResult(stored.Completed);

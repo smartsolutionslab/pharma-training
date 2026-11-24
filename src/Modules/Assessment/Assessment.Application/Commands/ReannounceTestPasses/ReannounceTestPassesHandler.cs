@@ -17,7 +17,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Assessment.Application.Comman
 /// as a Warning naming the stream and version. One that cannot be read or mapped is skipped, and the pass reads on past
 /// it: it reads a page of a batch at a time, each after the last event it read, until it has announced a batch, reached
 /// the end of the window or read AnnouncementSweepSettings.MostPagesPerPass pages (#337). The pass then logs one
-/// Warning for all it skipped, naming how many, the first and the last, with the first failure attached (#360). Of two
+/// Warning for all it skipped, naming how many, the first and the last, and the first failure's type (#360). Of two
 /// writers that announce the same event (a replica's sweep, the late submit), the marker's primary key lets one commit
 /// through; the other throws, and the hosted service logs it. The pass has no failure of its own: anything else throws.
 /// </summary>
@@ -89,6 +89,7 @@ public sealed partial class ReannounceTestPassesHandler(
         }
         catch (Exception exception) when (exception is not (OperationCanceledException or DbException))
         {
+            // Noted by its type alone: a message about the stored data may quote it, and it is about a learner.
             unreadable.Add(stored, exception);
             return Option<TestPassedV1>.None;
         }

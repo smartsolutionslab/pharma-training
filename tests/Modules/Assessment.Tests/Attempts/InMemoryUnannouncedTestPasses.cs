@@ -42,7 +42,7 @@ internal sealed class InMemoryUnannouncedTestPasses : IUnannouncedTestPasses
 
         if (Unreadable.Contains(stored))
         {
-            throw new JsonException($"The stored event at version {stored.StreamVersion} does not match ExaminationPassed.");
+            throw new JsonException("The stored event does not match ExaminationPassed.");
         }
 
         return Task.FromResult(stored.Passed);
