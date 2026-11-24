@@ -2,7 +2,14 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Testing;
+using Npgsql;
 using RabbitMQ.Client;
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Persistence;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Infrastructure;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Infrastructure.Persistence;
 using static SmartSolutionsLab.PharmaTraining.Integration.Tests.EditorialWorkflow;
 
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
@@ -182,6 +189,44 @@ public class EditorialRepublishTests(AspireFixture aspire)
         }
 
         await RepublishAsync(client, cancellationToken);
+    }
+
+    /// <summary>
+    /// A run whose release fails leaves nothing held (ADR 0019): the test takes the lock through
+    /// <see cref="EditorialRepublishLock"/> on a context and a connection pool of its own, as a run's scope would, and
+    /// leaves the session in a failed transaction EF Core does not know of, so the run's rollback is skipped and its
+    /// unlock fails. Disposing the lock still frees it at once, not when the pool prunes the connection minutes later,
+    /// so the next republish, from the service's own pool, goes through.
+    /// </summary>
+    [Fact]
+    public async Task A_run_whose_release_fails_leaves_the_lock_free_for_the_next_run()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var connectionString = await EditorialDatabase.ConnectionStringAsync(aspire, cancellationToken);
+        var options = new DbContextOptionsBuilder<EditorialDbContext>().UseNpgsql(connectionString).Options;
+        await using var context = new EditorialDbContext(options, NoServices.Instance);
+
+        var logger = new FakeLogger<EditorialRepublishLock>();
+
+        var taken = await new EditorialRepublishLock(context, logger).TryTakeAsync(cancellationToken);
+        taken.HasValue.ShouldBeTrue("no other run may hold the republish's lock while this test takes it");
+        await context.Database.ExecuteSqlRawAsync("BEGIN", cancellationToken);
+        await Should.ThrowAsync<PostgresException>(() => context.Database.ExecuteSqlRawAsync("SELECT 1 / 0", cancellationToken));
+        Exception? released = null;
+        try
+        {
+            await taken.Value.DisposeAsync();
+        }
+        catch (PostgresException exception)
+        {
+            released = exception;
+        }
+
+        await EditorialDatabase.WaitUntilRepublishLockIsFreeAsync(connectionString, cancellationToken);
+        await RepublishAsync(client, cancellationToken);
+        released.ShouldBeNull("a failed release is logged, never thrown out of the run's dispose");
+        logger.Collector.GetSnapshot().ShouldHaveSingleItem().Level.ShouldBe(LogLevel.Warning);
     }
 
     private static async Task<RepublishedCounts> RepublishAsync(HttpClient client, CancellationToken cancellationToken)

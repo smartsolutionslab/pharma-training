@@ -105,6 +105,38 @@ internal static class EditorialDatabase
     }
 
     /// <summary>
+    /// Polls <c>pg_locks</c> until no session of the editorial database holds the republish's advisory lock, and fails
+    /// the test when one still does after ten seconds. It only looks, so it takes nothing a run could be refused for. A
+    /// session that ends releases the lock once PostgreSQL has ended its backend, a moment after the client closed it.
+    /// </summary>
+    public static async Task WaitUntilRepublishLockIsFreeAsync(string connectionString, CancellationToken cancellationToken)
+    {
+        // Not pooled: a pooled connection could be the very one that holds the lock, idle in the test's pool, and
+        // Npgsql's reset as it is reused (which unlocks everything) would release the lock this is to look for.
+        await using var connection = new NpgsqlConnection(new NpgsqlConnectionStringBuilder(connectionString) { Pooling = false }.ConnectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT count(*) FROM pg_locks
+            WHERE locktype = 'advisory' AND objsubid = 1 AND granted
+              AND database = (SELECT oid FROM pg_database WHERE datname = current_database())
+              AND ((classid::bigint << 32) | objid::bigint) = @key
+            """,
+            connection);
+        command.Parameters.AddWithValue("key", 0x5265_7075_626C_6973L);
+
+        var started = TimeProvider.System.GetTimestamp();
+        var held = (long)(await command.ExecuteScalarAsync(cancellationToken) ?? 0L);
+        while (held > 0 && TimeProvider.System.GetElapsedTime(started) < TimeSpan.FromSeconds(10))
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
+            held = (long)(await command.ExecuteScalarAsync(cancellationToken) ?? 0L);
+        }
+
+        held.ShouldBe(0L, "a session still holds the republish's lock ten seconds after the run released it");
+    }
+
+    /// <summary>
     /// Opens a transaction that locks the answer options' table against writes (SHARE): a request that adds or changes
     /// options waits there, after everything it writes before them, until the transaction ends. Reads go on. It holds
     /// every version's options, so only a test in <see cref="EditorialDrafts"/> may take it. Disposing the gate closes

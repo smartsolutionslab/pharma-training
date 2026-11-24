@@ -24,12 +24,17 @@
     <PackageReference Include="WolverineFx" />
     <!-- Builds the PDFs with and without text that EditorialChapterFilesTests uploads (#157). -->
     <PackageReference Include="PdfPig" />
+    <!-- Reads the warning EditorialRepublishLock logs when it cannot release the lock (EditorialRepublishTests). -->
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="../../src/AppHost/AppHost.csproj" />
     <!-- AzureBlobUrls signs the URLs BlobStorageTests sends to the storage emulator. -->
     <ProjectReference Include="../../src/BuildingBlocks/BuildingBlocks.csproj" />
+    <!-- EditorialRepublishTests takes the republish's lock through EditorialRepublishLock itself, on a pool of its own, to
+         see a failed release leave nothing held. -->
+    <ProjectReference Include="../../src/Modules/Editorial/Editorial.Infrastructure/Editorial.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>
