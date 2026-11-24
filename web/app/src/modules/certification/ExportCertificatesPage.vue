@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useForm } from 'vee-validate';
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useQueryClient } from '@tanstack/vue-query';
 import {
@@ -34,7 +34,7 @@ const { current } = useCurrentPharmacy();
 const queryClient = useQueryClient();
 
 const { defineField, errors, handleSubmit, isSubmitting, setFieldError } = useForm({
-  validationSchema: toTypedSchema(exportSchema(clock)),
+  validationSchema: toTypedSchema(exportSchema()),
   initialValues: defaultPeriod(clock),
 });
 const [from, fromAttributes] = defineField('from');
@@ -74,7 +74,11 @@ function release(url: string) {
   URL.revokeObjectURL(url);
 }
 
+/** Cancels the export on its way when the page goes; an answer that still arrives saves nothing. */
+const leaving = new AbortController();
+
 onBeforeUnmount(() => {
+  leaving.abort();
   for (const url of [...pendingUrls.keys()]) {
     release(url);
   }
@@ -98,12 +102,19 @@ function save(blob: Blob, name: string) {
   );
 }
 
+/** Takes the focus to the field, once its error shows, where the error is read out. */
+async function focusField(id: string) {
+  await nextTick();
+  document.getElementById(id)?.focus();
+}
+
 /** Shows the refusal by its code: the period's at to, any other in the alert under the form. */
 function refuse(error: unknown) {
   const refusal = exportRefusal(error);
   if (refusal.kind === 'period') {
     setFieldError('to', messageText(refusal.message));
     hostRefusedTo.value = true;
+    void focusField(toField);
     return;
   }
   failure.value = refusal.message;
@@ -123,12 +134,21 @@ async function send(period: ExportPeriod): Promise<boolean> {
   hostRefusedTo.value = false;
   sending.value = true;
   try {
-    const answer = await getCertificationPharmaciesIdCertificatesExport(pharmacy.id, period);
+    const answer = await getCertificationPharmaciesIdCertificatesExport(pharmacy.id, period, {
+      signal: leaving.signal,
+    });
+    if (leaving.signal.aborted) {
+      return false;
+    }
     // The host's own name; its pattern where the answer names none.
     const name = answer instanceof File ? answer.name : `teilnahmebestaetigungen_${period.from}_${period.to}.zip`;
     save(answer, name);
     return true;
   } catch (error) {
+    // Cancelled because the page went: nobody is there to be told.
+    if (leaving.signal.aborted) {
+      return false;
+    }
     refuse(error);
     return false;
   } finally {
@@ -136,7 +156,14 @@ async function send(period: ExportPeriod): Promise<boolean> {
   }
 }
 
-const submitForm = handleSubmit(send);
+const submitForm = handleSubmit(send, ({ errors: refused }) => {
+  // The first field in error, in the form's order.
+  if (refused.from !== undefined) {
+    void focusField(fromField);
+  } else if (refused.to !== undefined) {
+    void focusField(toField);
+  }
+});
 
 /** Sends once, however often the button is pressed: a press while one is on its way does nothing. */
 async function submit(event: Event) {

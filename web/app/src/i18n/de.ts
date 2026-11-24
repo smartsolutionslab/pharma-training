@@ -159,7 +159,7 @@ export const de = {
       },
       submit: 'ZIP herunterladen',
       preparing: 'Wird erstellt…',
-      done: 'Der Export wurde heruntergeladen.',
+      done: 'Der Download wurde gestartet.',
       failed: 'Der Export konnte nicht erstellt werden. Versuchen Sie es erneut.',
     },
     mine: {

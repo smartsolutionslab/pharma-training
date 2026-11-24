@@ -148,7 +148,7 @@ export const en: MessageSchema = {
       },
       submit: 'Download ZIP',
       preparing: 'Preparing…',
-      done: 'The export has been downloaded.',
+      done: 'The download has started.',
       failed: 'The export could not be created. Try again.',
     },
     mine: {
