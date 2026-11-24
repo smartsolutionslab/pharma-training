@@ -403,24 +403,6 @@ export const de = {
         endedSelf: 'Sie sind nicht mehr Mitglied von {pharmacy}.',
         failed: '{name} konnte nicht ausgetragen werden.',
       },
-      errors: {
-        lastManager: 'Die letzte Apothekenleitung kann nicht ausgetragen oder zum Mitarbeiter gemacht werden.',
-        alreadyMemberOrInvited: 'Diese Adresse ist schon Mitglied oder eingeladen.',
-        noOpenInvitation: 'Diese Einladung ist nicht mehr offen: Sie wurde angenommen oder zurückgezogen.',
-        noActiveMembership: 'Diese Mitgliedschaft ist nicht mehr aktiv.',
-        capabilityMissing: 'Ihre Rolle in dieser Apotheke erlaubt das nicht.',
-        pharmacyNotFound: 'Sie sind nicht mehr Mitglied dieser Apotheke.',
-        pharmacyChanged:
-          'Die Apotheke wurde gerade gleichzeitig geändert. Prüfen Sie die aktualisierte Liste und versuchen Sie es erneut.',
-        invalidEmail: 'Die E-Mail-Adresse fehlt, ist zu lang oder ist keine.',
-        invalidJobFunction: 'Die Tätigkeit fehlt oder ist unbekannt.',
-        invalidMembershipRole: 'Die Rolle fehlt oder ist unbekannt.',
-        identityIncomplete: 'Ihr Konto nennt keinen Namen oder keine gültige E-Mail-Adresse. Ergänzen Sie Ihr Profil.',
-        invitationRenewedTooSoon:
-          'Diese Einladung wurde gerade erst gesendet. Sie können sie in einigen Minuten erneut senden.',
-        tooManyInvitationsToday:
-          'Ihre Apotheke hat die Höchstzahl an Einladungs-E-Mails für heute erreicht. Versuchen Sie es später erneut.',
-      },
     },
   },
   editorial: {

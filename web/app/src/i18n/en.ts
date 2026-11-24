@@ -392,22 +392,6 @@ export const en: MessageSchema = {
         endedSelf: 'You are no longer a member of {pharmacy}.',
         failed: 'The membership of {name} could not be ended.',
       },
-      errors: {
-        lastManager: 'The last pharmacy manager cannot be removed or made an employee.',
-        alreadyMemberOrInvited: 'This address is already a member or invited.',
-        noOpenInvitation: 'This invitation is no longer open: it was accepted or revoked.',
-        noActiveMembership: 'This membership is no longer active.',
-        capabilityMissing: 'Your role in this pharmacy does not allow this.',
-        pharmacyNotFound: 'You are no longer a member of this pharmacy.',
-        pharmacyChanged: 'The pharmacy was changed at the same time. Check the updated list and try again.',
-        invalidEmail: 'The email address is missing, too long or not an email address.',
-        invalidJobFunction: 'The job function is missing or unknown.',
-        invalidMembershipRole: 'The role is missing or unknown.',
-        identityIncomplete: 'Your account gives no name or valid email address. Complete your profile.',
-        invitationRenewedTooSoon: 'This invitation was only just sent. You can send it again in a few minutes.',
-        tooManyInvitationsToday:
-          'Your pharmacy has reached the maximum number of invitation emails for today. Try again later.',
-      },
     },
   },
   editorial: {

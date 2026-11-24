@@ -282,7 +282,7 @@ async function confirm() {
           {{ teamFailureText(refusal.failure) }}
         </p>
         <p v-if="membersFailed" role="alert" class="text-body text-destructive">
-          {{ t(teamLoadFailureKey(membersError, 'organisation.team.members.loadFailed')) }}
+          {{ teamFailureText(teamLoadFailureKey(membersError, 'organisation.team.members.loadFailed')) }}
         </p>
         <DataTable v-else :columns="membersColumns" :data="memberRows" :loading="membersPending" :paging="membersPage">
           <template #empty>
@@ -322,7 +322,7 @@ async function confirm() {
           {{ teamFailureText(refusal.failure) }}
         </p>
         <p v-if="invitationsFailed" role="alert" class="text-body text-destructive">
-          {{ t(teamLoadFailureKey(invitationsError, 'organisation.team.invitations.loadFailed')) }}
+          {{ teamFailureText(teamLoadFailureKey(invitationsError, 'organisation.team.invitations.loadFailed')) }}
         </p>
         <DataTable
           v-else

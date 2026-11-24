@@ -18,7 +18,8 @@ import {
 } from '@/api/generated';
 import { t } from '@/i18n';
 import { notify } from '@/lib/notify';
-import { refusesMembership, type TeamAction, type TeamFailure, teamFailureKey, teamFailureText } from './teamErrors';
+import { refusesMembership, type TeamAction, teamFailureKey, teamFailureText } from './teamErrors';
+import type { ErrorMessage } from '@/i18n/errorText';
 
 /** A section of the page, whose heading a refusal of revoke or end shows under. */
 export type TeamSection = 'members' | 'invitations';
@@ -44,7 +45,7 @@ export function useTeamActions(pharmacy: MaybeRefOrGetter<MyPharmacyDto | undefi
    * The last refused revoke or end, under its section's heading until the next action or another pharmacy. It keeps
    * the failure, not its words, so the page says it in the language of the moment.
    */
-  const refusal = ref<{ section: TeamSection; failure: TeamFailure }>();
+  const refusal = ref<{ section: TeamSection; failure: ErrorMessage }>();
   watch(
     () => toValue(pharmacy)?.id,
     () => {
@@ -78,7 +79,7 @@ export function useTeamActions(pharmacy: MaybeRefOrGetter<MyPharmacyDto | undefi
     values: Record<string, unknown>,
     run: (id: string) => Promise<unknown>,
     done: (id: string) => Promise<unknown>,
-  ): Promise<TeamFailure | undefined> {
+  ): Promise<ErrorMessage | undefined> {
     refusal.value = undefined;
     const { id } = current();
     try {

@@ -17,12 +17,13 @@ import { Input } from '@/components/ui/input';
 import { toTypedSchema } from '@/forms/toTypedSchema';
 import { inviteInitialValues, inviteSchema, jobFunctions, membershipRoles } from './inviteSchema';
 import MembershipSelect from './MembershipSelect.vue';
-import { type TeamFailure, teamFailureText } from './teamErrors';
+import { teamFailureText } from './teamErrors';
+import type { ErrorMessage } from '@/i18n/errorText';
 
 interface InviteMemberDialogProps {
   open: boolean;
   /** Sends the invitation; resolves with the failure the dialog shows, or nothing once it was sent. */
-  invite: (request: InviteOrganisationMemberRequest) => Promise<TeamFailure | undefined>;
+  invite: (request: InviteOrganisationMemberRequest) => Promise<ErrorMessage | undefined>;
 }
 
 // Asks for the address, the job function and the role of a new member, checked as the host checks them. A refusal
@@ -43,7 +44,7 @@ const [jobFunction, jobFunctionAttributes] = defineField('jobFunction');
 const [role, roleAttributes] = defineField('role');
 
 /** Why the last invitation was refused, until the form is sent again or opened anew. */
-const failure = ref<TeamFailure>();
+const failure = ref<ErrorMessage>();
 
 watch(
   () => open,
@@ -76,7 +77,7 @@ async function submit(event: Event) {
   }
   const refused = await sendOnce(event);
   failure.value = refused;
-  if (refused !== undefined && 'key' in refused && refused.key === 'organisation.team.errors.invalidEmail') {
+  if (refused !== undefined && 'key' in refused && refused.key === 'errors.organisation.invalid-email') {
     setFieldError('email', refused.key);
   }
 }
