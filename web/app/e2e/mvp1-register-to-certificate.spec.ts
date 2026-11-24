@@ -4,7 +4,7 @@ import { accessToken, courseTitle, daysAhead, pharmacyName } from './compliance'
 import { acceptOn, invitationLink, mailText, recordAcceptances, signInAs } from './invitations';
 
 // MVP 1 end to end (#55, X1), against the AppHost with no route mocked, in three browsers of their own: the realm's
-// local user owner (Olaf Owner, no realm role) registers a pharmacy and invites employee-a (Anna Employee) on its team
+// local user owner (Olaf Owner, no realm role) registers a pharmacy and invites employee-c (Clara Employee), a user no other spec invites (an address is mailed at most every 10 minutes, #265), on its team
 // page; she accepts from the mail in Mailpit. The realm's local user editor starts a course in the editorial inbox,
 // gives it a text chapter and a test of one question the editor wrote and approved (no AI draft) through the API, as
 // e2e/editorial-workflow.spec.ts does, then submits and publishes it on the version's page. The owner assigns it to her
@@ -20,10 +20,10 @@ import { acceptOn, invitationLink, mailText, recordAcceptances, signInAs } from 
 //   /certification/certificates/{id}/pdf) and its verification link read from the PDF's text, which prints the link
 //   the QR code encodes (CertificatePdfRenderer, "Echtheit prüfen: <link>").
 // Every run registers a pharmacy and publishes a course of its own, so what earlier runs left changes nothing; owner
-// and employee-a may already belong to several pharmacies. Keycloak's login is English.
+// and employee-c may already belong to several pharmacies. Keycloak's login is English.
 
-const employee = 'Anna Employee';
-const employeeAddress = 'employee-a@example.com';
+const employee = 'Clara Employee';
+const employeeAddress = 'employee-c@example.com';
 
 /** The day, a number of months from today in Germany (where the app dates certificates), as dd.mm.yyyy. */
 function germanDayIn(months: number) {
@@ -220,7 +220,7 @@ test('MVP 1: an owner registers and invites, an editor publishes, the employee p
       const link = invitationLink(await mailText(page.request, employeeAddress, pharmacy));
       const accepted = recordAcceptances(learner.page);
       await learner.page.goto(link);
-      await signInAs(learner.page, 'employee-a');
+      await signInAs(learner.page, 'employee-c');
       await acceptOn(learner.page, pharmacy, link.slice(link.indexOf('#token=') + '#token='.length), accepted);
       await expect(toast(learner.page, `Sie sind jetzt Mitglied der Apotheke ${pharmacy}.`)).toBeVisible({
         timeout: 15_000,
@@ -354,7 +354,7 @@ test('MVP 1: an owner registers and invites, an editor publishes, the employee p
       const { id, verificationCode } = certificate ?? { id: '', verificationCode: '' };
 
       // The PDF, as its holder reads it; Certification renders it after issuing, so it may not be ready at once.
-      const holder = await accessToken(page.request, 'employee-a');
+      const holder = await accessToken(page.request, 'employee-c');
       let documentUrl = '';
       await expect
         .poll(
