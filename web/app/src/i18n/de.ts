@@ -161,7 +161,6 @@ export const de = {
       documentFailed: 'Das PDF für {course} konnte nicht geöffnet werden.',
       empty: 'Sie haben noch keine Teilnahmebestätigung.',
       toCourses: 'Zu meinen Schulungen',
-      identityIncomplete: 'Ihre Anmeldung nennt keine Person. Melden Sie sich erneut an.',
       loadFailed: 'Ihre Teilnahmebestätigungen konnten nicht geladen werden.',
     },
   },

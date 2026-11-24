@@ -149,7 +149,6 @@ export const en: MessageSchema = {
       documentFailed: 'The PDF for {course} could not be opened.',
       empty: 'You have no certificates yet.',
       toCourses: 'Go to my courses',
-      identityIncomplete: 'Your sign-in names no person. Please sign in again.',
       loadFailed: 'Your certificates could not be loaded.',
     },
   },

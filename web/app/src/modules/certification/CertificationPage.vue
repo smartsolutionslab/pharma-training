@@ -10,6 +10,7 @@ import { columnsOf, translatedHeader } from '@/components/ui/data-table-columns'
 import { EmptyState } from '@/components/ui/empty-state';
 import { i18n, t as translate } from '@/i18n';
 import { calendarDate } from '@/i18n/formats';
+import { messageText } from '@/i18n/errorText';
 import { notify } from '@/lib/notify';
 import { route as learning } from '@/modules/learning/routes';
 import { useCanReach } from '@/shell/useCanReach';
@@ -75,8 +76,7 @@ async function open(certificate: CertificationCertificateDto) {
   try {
     await openCertificate(certificate.certificateId);
   } catch (refusal) {
-    const failed = documentFailure(refusal);
-    notify.failure('key' in failed ? translate(failed.key, { course: certificate.courseTitle }) : failed.message);
+    notify.failure(messageText(documentFailure(refusal, certificate.courseTitle)));
   } finally {
     opening.value = undefined;
   }
@@ -86,7 +86,7 @@ async function open(certificate: CertificationCertificateDto) {
 <template>
   <main class="flex flex-col gap-6">
     <h1 class="text-title">{{ t(titleKey) }}</h1>
-    <p v-if="failure" role="alert">{{ 'key' in failure ? t(failure.key) : failure.message }}</p>
+    <p v-if="failure" role="alert">{{ messageText(failure) }}</p>
     <DataTable v-else :columns="columns" :data="rows ?? none" :loading="isPending" :paging="page" @update:page="turnTo">
       <template #actions="{ row }">
         <Button
