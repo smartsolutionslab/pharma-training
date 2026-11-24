@@ -34,7 +34,7 @@ const columns = returnsOf.columns([
   }),
   returnsOf.accessor('reason', {
     ...translatedHeader('editorial.returns.columns.reason'),
-    cell: ({ row }) => h('span', { class: 'whitespace-pre-line break-words' }, row.original.reason),
+    cell: ({ row }) => h('span', { class: 'whitespace-pre-wrap break-words' }, row.original.reason),
   }),
 ]);
 const none: ReturnRow[] = [];
