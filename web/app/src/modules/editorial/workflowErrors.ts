@@ -47,11 +47,15 @@ export function isKnownRefusal(error: unknown): boolean {
  * What the course version page says when a step of the workflow is refused or fails, by the refusal's code
  * (src/i18n/errorText.ts): the page's own text where its words depend on the step, else the catalog's errors.<code>,
  * the host's words only for a module code the catalog does not know; a policy's 403 without a code that the editor may
- * not take the step; anything else, a network failure included, that the step failed.
+ * not take the step; anything else, the unique index's already-exists and a network failure included, that the step
+ * failed.
  */
 export function workflowFailure(action: WorkflowAction, error: unknown): ErrorMessage {
   const forbidden = error instanceof ApiError && error.status === 403 && error.failureCode === undefined;
-  return errorMessage(error, forbidden ? 'editorial.workflow.errors.forbidden' : failed[action], { overrides });
+  // A step creates nothing: the unique index's already-exists says that the step failed, not that something was created.
+  return errorMessage(error, forbidden ? 'editorial.workflow.errors.forbidden' : failed[action], {
+    overrides: { ...overrides, 'already-exists': failed[action] },
+  });
 }
 
 /** The failure's text in the language of the moment. */
