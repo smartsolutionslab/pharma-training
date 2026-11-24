@@ -9,11 +9,12 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Courses;
 /// </summary>
 public sealed class PublishedCourse
 {
-    private PublishedCourse(CourseId course, CourseVersion latest, PublishedCourseState state)
+    private PublishedCourse(CourseId course, CourseVersion latest, PublishedCourseState state, IReadOnlyList<CourseVersion> versions)
     {
         Course = course;
         Latest = latest;
         State = state;
+        Versions = versions;
     }
 
     public CourseId Course { get; }
@@ -25,6 +26,9 @@ public sealed class PublishedCourse
 
     /// <summary>Whether the latest version is available or retired, which leaves the course without a current version.</summary>
     public PublishedCourseState State { get; }
+
+    /// <summary>Every version of the course that has arrived, retired or not, by number.</summary>
+    public IReadOnlyList<CourseVersion> Versions { get; }
 
     /// <summary>The course from its versions and retirements; none while no version of it has arrived.</summary>
     public static Option<PublishedCourse> Of(CourseId course, IReadOnlyCollection<CourseVersion> versions, IReadOnlyCollection<CourseVersionRetirement> retirements)
@@ -51,7 +55,8 @@ public sealed class PublishedCourse
 
         var latest = versions.OrderByDescending(version => version.Number).First();
         var state = retirements.Any(retirement => retirement.Id == latest.Id) ? PublishedCourseState.Retired : PublishedCourseState.Available;
-        return Option<PublishedCourse>.Some(new PublishedCourse(course, latest, state));
+        List<CourseVersion> byNumber = [.. versions.OrderBy(version => version.Number)];
+        return Option<PublishedCourse>.Some(new PublishedCourse(course, latest, state, byNumber));
     }
 
     /// <summary>The version new sessions start on: the latest, unless it is retired.</summary>
@@ -63,5 +68,19 @@ public sealed class PublishedCourse
         }
 
         return Option<CourseVersion>.Some(Latest);
+    }
+
+    /// <summary>The version of this course with the id, retired or not; none when Compliance has not received it.</summary>
+    public Option<CourseVersion> FindVersion(CourseVersionId version)
+    {
+        Ensure.That(version).IsNotNull();
+
+        var found = Versions.FirstOrDefault(candidate => candidate.Id == version);
+        if (found is null)
+        {
+            return Option<CourseVersion>.None;
+        }
+
+        return Option<CourseVersion>.Some(found);
     }
 }

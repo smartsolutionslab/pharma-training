@@ -20,6 +20,9 @@ public interface ILearnerProgressStore
 
     void Add(IssuedCertificate certificate);
 
+    /// <summary>The copies of the certificates with the ids, read without tracking, for a query; ids without a copy are left out.</summary>
+    Task<IReadOnlyList<IssuedCertificate>> FindCertificatesAsync(IReadOnlyCollection<CertificateId> certificates, CancellationToken cancellationToken);
+
     /// <summary>One per asked course (distinct), also when nothing is stored for it; read without tracking.</summary>
     Task<IReadOnlyList<LearnerProgress>> OfLearnerAsync(PersonId learner, IReadOnlyCollection<CourseId> courses, CancellationToken cancellationToken);
 }
