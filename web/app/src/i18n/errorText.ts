@@ -19,6 +19,11 @@ export interface ErrorOptions {
 /** The codes warned about in this page load, each once. */
 const warned = new Set<string>();
 
+/** Forgets the codes warned about, so a test sees a code's warning however many tests showed it before. Tests only. */
+export function resetWarnedCodes(): void {
+  warned.clear();
+}
+
 const isMessageKey = (key: string): key is MessageKey => i18n.global.te(key, 'de-DE');
 
 /** A module's code (<module>.<name>): the only kind whose host words may show. The host's own are no sentence. */

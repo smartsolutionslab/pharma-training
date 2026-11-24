@@ -15,7 +15,8 @@ const problem = (status: number, code?: string, detail = 'server words') =>
 
 const refusal = (status: number, code?: string, detail?: string) => new ApiError(status, problem(status, code, detail));
 
-// An unknown code warns in development; a test that asks about the warning spies on it again.
+// An unknown code warns in development, once per code until the warned codes are reset after each test; a test that
+// asks about the warning spies on it again.
 beforeEach(() => {
   vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 });
@@ -23,6 +24,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
+  resetWarnedCodes();
 });
 
 describe('a code the catalog knows', () => {
