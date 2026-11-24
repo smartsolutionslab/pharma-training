@@ -82,13 +82,13 @@ internal static class EditorialDatabase
     /// <summary>
     /// Holds the republish's advisory lock (ADR 0019) on a session of the test's own, as another run would, so a republish
     /// asked for meanwhile is refused as running. The key is Editorial's <c>EditorialRepublishLock.Key</c>, the ASCII of
-    /// "Republis"; the module's Infrastructure is not referenced. Disposing the connection ends the session and the lock.
-    /// Every request that republishes is refused while it is held, so only a test in <see cref="EditorialDrafts"/> may
-    /// take it.
+    /// "Republis"; the module's Infrastructure is not referenced. The connection is not pooled, so disposing it ends the
+    /// session and the lock: a pooled one would go back to the pool with its session, and the lock, still held. Every
+    /// request that republishes is refused while it is held, so only a test in <see cref="EditorialDrafts"/> may take it.
     /// </summary>
     public static async Task<NpgsqlConnection> HoldRepublishLockAsync(string connectionString, CancellationToken cancellationToken)
     {
-        var connection = new NpgsqlConnection(connectionString);
+        var connection = new NpgsqlConnection(new NpgsqlConnectionStringBuilder(connectionString) { Pooling = false }.ConnectionString);
         try
         {
             await connection.OpenAsync(cancellationToken);
