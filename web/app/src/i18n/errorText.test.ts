@@ -8,8 +8,10 @@ import { i18n, type Language, setLanguage, t } from './index';
 // than this SPA; warned once per code in development), and else the action's own failed text.
 
 /** Problem details as the host sends them: its words in the detail, which only an unknown code may show. */
+// A blank detail falls back to the title (baseApi.test.ts pins it; the host writes title: error.Message), so a refusal
+// without words of the host has a blank title as well.
 const problem = (status: number, code?: string, detail = 'server words') =>
-  JSON.stringify({ title: 'Refused', status, detail, code });
+  JSON.stringify({ title: detail.trim() === '' ? ' ' : 'Refused', status, detail, code });
 
 const refusal = (status: number, code?: string, detail?: string) => new ApiError(status, problem(status, code, detail));
 

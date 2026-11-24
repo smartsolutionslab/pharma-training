@@ -57,7 +57,8 @@ function readsServerMessage(source: string): boolean {
 
 /** src-relative paths of every file under src that is no test, with its source. */
 const files = Object.entries(sources)
-  .map(([path, source]) => [path.replace(/^\.\.\//, 'src/'), source] as const)
+  // import.meta.glob names files of this test's own folder ./, all others ../: both become src/ paths.
+  .map(([path, source]) => [path.replace(/^\.\.\//, 'src/').replace(/^\.\//, 'src/i18n/'), source] as const)
   .filter(([path]) => !/\.test\.ts$/.test(path));
 
 test('only the helper and the files still to migrate read ApiError.serverMessage', () => {
