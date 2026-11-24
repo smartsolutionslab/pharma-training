@@ -102,6 +102,30 @@ public class InvitationMailLimitTests
         refused.Error.ShouldBeOfType<InvitationRenewedTooSoon>().RetryAt.ShouldBe(At(requestedAt.AddMinutes(10)));
     }
 
+    // #294: a refusal carries the instant it was refused at, the now its retry instant was computed from.
+    [Fact]
+    public void A_renewal_refused_within_the_cooldown_carries_the_instant_it_was_refused_at()
+    {
+        var pharmacy = TestPharmacies.Register(Owner);
+        var invitation = Invite(pharmacy, "anna@example.org", Start);
+
+        var refused = pharmacy.RenewInvitation(invitation, At(Start.AddMinutes(4)), InvitationMailLimits.Default);
+
+        refused.Error.ShouldBeOfType<InvitationRenewedTooSoon>().RefusedAt.ShouldBe(At(Start.AddMinutes(4)));
+    }
+
+    [Fact]
+    public void An_invite_refused_at_the_daily_cap_carries_the_instant_it_was_refused_at()
+    {
+        var capOfOne = new InvitationMailLimits(RenewCooldown.From(TimeSpan.FromMinutes(10)), DailyMailCap.From(1));
+        var pharmacy = TestPharmacies.Register(Owner);
+        Invite(pharmacy, "anna@example.org", Start, capOfOne);
+
+        var refused = pharmacy.Invite(MembershipId.New(), EmailAddress.From("ben@example.org"), JobFunction.Pta, MembershipRole.Employee, At(Start.AddHours(14)), capOfOne);
+
+        refused.Error.ShouldBeOfType<TooManyInvitationsToday>().RefusedAt.ShouldBe(At(Start.AddHours(14)));
+    }
+
     [Fact]
     public void A_refused_renewal_changes_nothing_and_raises_nothing()
     {

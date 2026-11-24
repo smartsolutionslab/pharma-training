@@ -113,12 +113,24 @@ public class InvitationRecipientTests
     {
         var id = InvitationRecipientId.For(Anna);
 
-        var error = InvitationRecipientErrors.MailedRecently(id, At(Start));
+        var error = InvitationRecipientErrors.MailedRecently(id, At(Start), At(Start.AddMinutes(-4)));
 
         var recently = error.ShouldBeOfType<RecipientMailedRecently>();
         recently.Code.ShouldBe(MailedRecently);
         recently.Recipient.ShouldBe(id);
         recently.RetryAt.ShouldBe(At(Start));
+        recently.RefusedAt.ShouldBe(At(Start.AddMinutes(-4)));
+    }
+
+    // #294
+    [Fact]
+    public void A_refused_mail_carries_the_instant_it_was_refused_at()
+    {
+        var recipient = InvitationRecipient.FirstMailed(Anna, At(Start));
+
+        var refused = recipient.RequestMail(At(Start.AddMinutes(4)), TenMinutes);
+
+        refused.Error.ShouldBeOfType<RecipientMailedRecently>().RefusedAt.ShouldBe(At(Start.AddMinutes(4)));
     }
 
     private static Timestamp At(DateTimeOffset instant) => Timestamp.From(instant);
