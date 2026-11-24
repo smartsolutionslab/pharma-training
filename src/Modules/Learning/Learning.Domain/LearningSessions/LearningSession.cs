@@ -219,7 +219,13 @@ public sealed class LearningSession : EventSourcedAggregate<LearningSessionId>
         }
 
         Status = SessionStatus.InProgress;
-        lastRecordedAt = reopened.ReopenedAt;
+
+        // The pace never measures from an instant before one already recorded (ADR 0024): a reopening stamped by an
+        // instance whose clock runs behind leaves the clock where the last progress put it.
+        if (reopened.ReopenedAt > lastRecordedAt)
+        {
+            lastRecordedAt = reopened.ReopenedAt;
+        }
     }
 
     private void Apply(SessionFinished finished) => Status = SessionStatus.Finished;

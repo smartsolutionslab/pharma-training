@@ -7,7 +7,7 @@ using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Certificates
 namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Queries.GetCertificateDocument;
 
 /// <summary>
-/// Signs a read URL on a certificate's stored PDF for its holder (#50, docs/adr/0002, docs/adr/0027), checking in this
+/// Signs a read URL on a certificate's stored PDF for its holder (#50, docs/adr/0002, docs/adr/0030), checking in this
 /// order, the first that fails answering: the caller is a person (403); a certificate of that person has the id, with
 /// someone else's not found like an unknown one, so nobody learns which ids exist (404); its document is stored (409).
 /// The URL lives five minutes and is signed inline as <c>application/pdf</c>, so the bytes go from storage to the

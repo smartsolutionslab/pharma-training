@@ -1,6 +1,6 @@
-# 0027: The certificate's PDF is rendered once, from a local message, and read through a signed URL
+# 0030: The certificate's PDF is rendered once, from a local message, and read through a signed URL
 
-**Status:** Accepted (#50). Numbered 0027 because 0026 is taken by #51's open pull request; renumber at merge if the sequence on `main` differs.
+**Status:** Accepted (#50).
 
 ## Context
 

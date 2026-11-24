@@ -229,7 +229,7 @@ public class AppHostPublishParametersTests
     /// <summary>
     /// Published, a service whose host does not say it sends mail reads neither the mail server (so it is granted no
     /// access to its Key Vault secret) nor the sender, nor the web app's address unless its project says
-    /// <c>&lt;LinksToFrontend&gt;true&lt;/LinksToFrontend&gt;</c> (docs/adr/0004, docs/adr/0005, docs/adr/0027).
+    /// <c>&lt;LinksToFrontend&gt;true&lt;/LinksToFrontend&gt;</c> (docs/adr/0004, docs/adr/0005, docs/adr/0030).
     /// </summary>
     [Fact]
     public async Task A_service_that_sends_no_mail_has_no_mail_connection_string_once_published()

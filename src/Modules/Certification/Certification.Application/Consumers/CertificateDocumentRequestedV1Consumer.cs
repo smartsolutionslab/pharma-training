@@ -8,7 +8,7 @@ using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Certificates
 namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Consumers;
 
 /// <summary>
-/// Renders a certificate's PDF once its issue is committed, from the host's durable local queue (#50, docs/adr/0027):
+/// Renders a certificate's PDF once its issue is committed, from the host's durable local queue (#50, docs/adr/0030):
 /// from the certificate's own snapshot, with the verification link into the web app, written create-only to
 /// <c>certificates/{id}.pdf</c> in Certification's container and attached in one commit. A certificate whose document is
 /// stored is never rendered again, and a blob already under the name (an earlier attempt that wrote and then failed to

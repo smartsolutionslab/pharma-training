@@ -16,7 +16,7 @@ public sealed class CertificationModule : IModule
     {
         services.AddModuleInfrastructure<CertificationModule>(configuration);
 
-        // The certificate's PDF (#50, docs/adr/0027): the renderer, which has no DbContext and so is no store found by
+        // The certificate's PDF (#50, docs/adr/0030): the renderer, which has no DbContext and so is no store found by
         // convention, and the links into the web app for the verification link it prints (Frontend:BaseUrl, which the
         // AppHost gives a host whose project says <LinksToFrontend>). Certification sends no mail, so it takes the links
         // alone, without AddModuleMail's SMTP settings. The create-only blob writes come with AddModuleInfrastructure.

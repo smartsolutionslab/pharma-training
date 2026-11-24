@@ -7,7 +7,7 @@ using SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Documen
 namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Infrastructure.Documents;
 
 /// <summary>
-/// Lays out a certificate's PDF with PDFsharp (#50, docs/adr/0027): one A4 page in portrait, German, set in Inter, which
+/// Lays out a certificate's PDF with PDFsharp (#50, docs/adr/0030): one A4 page in portrait, German, set in Inter, which
 /// is embedded. From the top: the heading, the holder's name, the statement naming the course and its version, the day
 /// of issue, the result and the last valid day, and at the foot the verification link's QR code, drawn as vector
 /// rectangles so no image is decoded, with the link printed below it. The name and the statement wrap, so a title and a

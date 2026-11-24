@@ -92,7 +92,7 @@ public class AppHostParametersTests
     /// <summary>
     /// The mail settings go only to a service host whose project says it sends mail (docs/adr/0004); every other service
     /// has none of them, and the web app's address only where its project says <c>&lt;LinksToFrontend&gt;true&lt;/LinksToFrontend&gt;</c>
-    /// (docs/adr/0027).
+    /// (docs/adr/0030).
     /// </summary>
     [Fact]
     public async Task A_service_that_sends_no_mail_has_no_mail_connection_string_sender_or_frontend_url_in_run_mode()
