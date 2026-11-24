@@ -18,6 +18,12 @@ public sealed partial class AspireFixture : IAsyncLifetime
     /// <summary>Every editorial model limit of this run, per minute and per day, for content review and test draft alike.</summary>
     public const int EditorialModelLimit = 50;
 
+    /// <summary>The per-address limit on public certificate verification of this run, per minute (docs/adr/0029).</summary>
+    public const int CertificationVerificationLimit = 20;
+
+    /// <summary>The per-address limit on public certificate verification of this run, per day.</summary>
+    public const int CertificationVerificationDailyLimit = 1000;
+
     /// <summary>How many invitations one user may accept a minute in this run (docs/adr/0004), raised from the default 10.</summary>
     public const int OrganisationAcceptsPerMinute = 30;
 
@@ -63,6 +69,14 @@ public sealed partial class AspireFixture : IAsyncLifetime
         {
             editorial.WithEnvironment($"Editorial__ModelLimits__{setting}", EditorialModelLimit.ToString(CultureInfo.InvariantCulture));
         }
+
+        // The run sets the per-address verification limit (docs/adr/0029) to CertificationVerificationLimit a minute, so
+        // CertificationVerificationTests reaches it in a few dozen calls, and the day far above it, so the minute alone
+        // refuses. Every local caller reaches Certification from one address, the edge's, so every call of the run shares
+        // one count: only that collection calls /certification/verify, and it leaves the minute's window reset.
+        var certification = builder.CreateResourceBuilder(builder.Resources.OfType<ProjectResource>().Single(resource => resource.Name == "certification"));
+        certification.WithEnvironment("Certification__VerificationLimits__PerMinute", CertificationVerificationLimit.ToString(CultureInfo.InvariantCulture));
+        certification.WithEnvironment("Certification__VerificationLimits__PerDay", CertificationVerificationDailyLimit.ToString(CultureInfo.InvariantCulture));
 
         // The accept tests accept as employee-a up to about 15 times in quick succession, more than the default 10 a minute
         // (docs/adr/0004), so the run raises the per-minute accept limit to OrganisationAcceptsPerMinute; every user stays
