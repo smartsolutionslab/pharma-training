@@ -20,16 +20,24 @@ public sealed class UnannouncedTestPasses(IDocumentStore store) : IUnannouncedTe
     /// <summary>Marten's stored name of <see cref="ExaminationPassed"/>.</summary>
     public const string SweptEventType = "examination_passed";
 
-    public Task<IReadOnlyList<UnannouncedEvent>> FindAsync(DateTimeOffset storedFrom, DateTimeOffset storedUntil, int limit, CancellationToken cancellationToken) =>
-        UnannouncedEvents.FindAsync(store, Schema, SweptEventType, storedFrom, storedUntil, limit, cancellationToken);
+    public Task<IReadOnlyList<UnannouncedEvent>> FindAsync(DateTimeOffset storedFrom, DateTimeOffset storedUntil, long after, int limit, CancellationToken cancellationToken) =>
+        UnannouncedEvents.FindAsync(store, Schema, SweptEventType, storedFrom, storedUntil, after, limit, cancellationToken);
 
-    public async Task<ExaminationPassed> LoadAsync(UnannouncedEvent found, CancellationToken cancellationToken)
+    /// <summary>
+    /// A database failure Marten wraps once its command runs arrives as the <see cref="System.Data.Common.DbException"/>
+    /// it wraps (<see cref="MartenDatabaseFailures"/>, #337), so the sweep ends the pass on it instead of skipping the
+    /// event as unreadable.
+    /// </summary>
+    public Task<ExaminationPassed> LoadAsync(UnannouncedEvent found, CancellationToken cancellationToken)
     {
         Ensure.That(found).IsNotNull();
 
-        await using var session = store.QuerySession();
-        var stored = await session.Events.LoadAsync(found.EventId, cancellationToken)
-            ?? throw new InvalidOperationException($"Assessment's event store lost event {found.EventId} between finding and loading it.");
-        return (ExaminationPassed)stored.Data;
+        return MartenDatabaseFailures.ReadAsync(async () =>
+        {
+            await using var session = store.QuerySession();
+            var stored = await session.Events.LoadAsync(found.EventId, cancellationToken)
+                ?? throw new InvalidOperationException($"Assessment's event store lost event {found.EventId} between finding and loading it.");
+            return (ExaminationPassed)stored.Data;
+        });
     }
 }

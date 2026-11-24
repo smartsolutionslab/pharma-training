@@ -14,10 +14,11 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.Commands
 /// stored ContentCompleted without a marker, stored between the lookback and the grace period ago, is announced as the
 /// report would have announced it (ContentCompletedV1, the same mapping), oldest first and at most a batch a pass, each
 /// with its marker, keyed on the stream the event is stored in, in a commit of its own, and logged as a Warning naming
-/// the stream and version. One that cannot be read or mapped is skipped with a Warning, and the pass goes on to the
-/// others. Of two writers that announce the same event (a replica's sweep, the late report), the marker's primary key
-/// lets one commit through; the other throws, and the hosted service logs it. The pass has no failure of its own:
-/// anything else throws.
+/// the stream and version. One that cannot be read or mapped is skipped with a Warning, and the pass reads on past it:
+/// it reads a page of a batch at a time, each after the last event it read, until it has announced a batch, reached the
+/// end of the window or read AnnouncementSweepSettings.MostPagesPerPass pages (#337). Of two writers that announce the
+/// same event (a replica's sweep, the late report), the marker's primary key lets one commit through; the other throws,
+/// and the hosted service logs it. The pass has no failure of its own: anything else throws.
 /// </summary>
 public sealed partial class ReannounceContentCompletionsHandler(
     IUnannouncedContentCompletions unannounced,
@@ -35,8 +36,14 @@ public sealed partial class ReannounceContentCompletionsHandler(
         Ensure.That(command).IsNotNull();
 
         var now = time.GetUtcNow();
-        var found = await unannounced.FindAsync(now - settings.Lookback, now - settings.GracePeriod, settings.BatchSize, cancellationToken);
-        foreach (var stored in found)
+        var storedFrom = now - settings.Lookback;
+        var storedUntil = now - settings.GracePeriod;
+        var pages = UnannouncedEventPages.ReadAsync(
+            (after, limit, token) => unannounced.FindAsync(storedFrom, storedUntil, after, limit, token),
+            settings.BatchSize,
+            cancellationToken);
+        var reannounced = 0;
+        await foreach (var stored in pages)
         {
             var announcement = await AnnouncementOfAsync(stored, cancellationToken);
             if (!announcement.HasValue)
@@ -48,14 +55,20 @@ public sealed partial class ReannounceContentCompletionsHandler(
             announced.Add(new AnnouncedEvent { StreamId = stored.StreamId, StreamVersion = stored.StreamVersion, AnnouncedAt = now });
             LogReannounced(logger, EventType, stored.StreamId, stored.StreamVersion, stored.StoredAt);
             await unitOfWork.CommitAsync(cancellationToken);
+            reannounced++;
+            if (reannounced == settings.BatchSize)
+            {
+                break;
+            }
         }
 
         return Success(Unit.Value);
     }
 
     /// <summary>
-    /// The announcement of a stored completion, or none when it cannot be read or mapped: logged and skipped, so one event
-    /// that always fails holds up none behind it. A database failure is no unreadable data: it ends the pass. It keeps no marker, so every pass tries it again until the lookback.
+    /// The announcement of a stored completion, or none when it cannot be read or mapped: logged and skipped, and the pass
+    /// reads on past it. It keeps no marker, so every pass tries it again until the lookback. A database failure is no
+    /// unreadable data: it ends the pass.
     /// </summary>
     private async Task<Option<ContentCompletedV1>> AnnouncementOfAsync(UnannouncedEvent stored, CancellationToken cancellationToken)
     {
