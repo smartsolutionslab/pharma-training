@@ -11,8 +11,9 @@ public static class AnnouncementSweeps
     /// Runs the module's announcement sweep (#277, docs/adr/0016): <typeparamref name="TCommand"/>, sent every interval
     /// by a <see cref="PeriodicCommandService{TCommand}"/>, announces every stored event whose announcement never left.
     /// Reads <see cref="AnnouncementSweepSettings"/> from <c>&lt;module&gt;:AnnouncementSweep</c> once, so a bad value
-    /// stops the host at startup, and registers them for the command's handler. The MigrationRunner never adds a
-    /// module's services, so the sweep never runs there.
+    /// stops the host at startup, and registers them for the command's handler under the command's type, so each
+    /// module's handler takes its own (<c>[FromKeyedServices(typeof(TCommand))]</c>) whichever modules share the
+    /// container. The MigrationRunner never adds a module's services, so the sweep never runs there.
     /// </summary>
     public static IServiceCollection AddAnnouncementSweep<TCommand>(this IServiceCollection services, IConfiguration configuration, string module)
         where TCommand : ICommand<Result<Unit, ApiError>>, new()
@@ -21,7 +22,7 @@ public static class AnnouncementSweeps
 
         var settings = AnnouncementSweepSettings.From(configuration, module);
         services.TryAddSingleton(TimeProvider.System);
-        services.AddSingleton(settings);
+        services.AddKeyedSingleton<AnnouncementSweepSettings>(typeof(TCommand), settings);
         services.AddHostedService(provider => new PeriodicCommandService<TCommand>(
             settings.Interval,
             provider.GetRequiredService<IServiceScopeFactory>(),

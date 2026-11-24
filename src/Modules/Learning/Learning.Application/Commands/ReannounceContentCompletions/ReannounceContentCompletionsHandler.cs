@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.Contracts.Learning;
@@ -21,7 +22,7 @@ public sealed partial class ReannounceContentCompletionsHandler(
     IUnannouncedContentCompletions unannounced,
     IAnnouncedEvents announced,
     ILearningUnitOfWork unitOfWork,
-    AnnouncementSweepSettings settings,
+    [FromKeyedServices(typeof(ReannounceContentCompletions))] AnnouncementSweepSettings settings,
     TimeProvider time,
     ILogger<ReannounceContentCompletionsHandler> logger)
     : ICommandHandler<ReannounceContentCompletions, Result<Unit, ApiError>>

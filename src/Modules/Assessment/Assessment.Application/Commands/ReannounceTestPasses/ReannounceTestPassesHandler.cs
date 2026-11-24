@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.Contracts.Assessment;
@@ -21,7 +22,7 @@ public sealed partial class ReannounceTestPassesHandler(
     IUnannouncedTestPasses unannounced,
     IAnnouncedEvents announced,
     IAssessmentUnitOfWork unitOfWork,
-    AnnouncementSweepSettings settings,
+    [FromKeyedServices(typeof(ReannounceTestPasses))] AnnouncementSweepSettings settings,
     TimeProvider time,
     ILogger<ReannounceTestPassesHandler> logger)
     : ICommandHandler<ReannounceTestPasses, Result<Unit, ApiError>>
