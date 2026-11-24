@@ -3,7 +3,7 @@ import { Award } from '@lucide/vue';
 import { computed, h, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
-import type { CertificationCertificateDto } from '@/api/generated';
+import type { CertificateDto } from '@/api/generated';
 import { Button } from '@/components/ui/button';
 import DataTable from '@/components/ui/DataTable.vue';
 import { columnsOf, translatedHeader } from '@/components/ui/data-table-columns';
@@ -27,7 +27,7 @@ import { useMyCertificates } from './useMyCertificates';
 // value never reaches the host.
 const day = (value: string) => i18n.global.d(calendarDate(value), 'date');
 
-const certificates = columnsOf<CertificationCertificateDto>();
+const certificates = columnsOf<CertificateDto>();
 const columns = certificates.columns([
   certificates.accessor('courseTitle', translatedHeader('certification.mine.columns.course')),
   certificates.accessor('issuedOn', {
@@ -48,7 +48,7 @@ const columns = certificates.columns([
       translate(row.original.documentReady ? 'certification.mine.documentReady' : 'certification.mine.documentPending'),
   }),
 ]);
-const none: CertificationCertificateDto[] = [];
+const none: CertificateDto[] = [];
 
 const route = useRoute();
 const router = useRouter();
@@ -68,7 +68,7 @@ function turnTo(next: number) {
 }
 
 /** Opens the certificate's PDF in this tab; a failure is reported, naming the course, and the page stays. */
-async function open(certificate: CertificationCertificateDto) {
+async function open(certificate: CertificateDto) {
   if (opening.value !== undefined) {
     return;
   }
