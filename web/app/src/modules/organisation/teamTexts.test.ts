@@ -205,6 +205,13 @@ const texts: Text[] = [
     'Anna Albers konnte nicht ausgetragen werden.',
     'The membership of Anna Albers could not be ended.',
   ],
+
+  [
+    'organisation.team.errors.inPharmacy',
+    { ...pharmacy, reason: '<reason>' },
+    'In Apotheke am Markt: <reason>',
+    'In Apotheke am Markt: <reason>',
+  ],
 ];
 
 describe('in German', () => {

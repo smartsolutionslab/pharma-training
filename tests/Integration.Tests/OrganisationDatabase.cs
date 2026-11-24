@@ -396,6 +396,96 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
     }
 
     /// <summary>
+    /// The backends waiting for the gate's backend that hold a lock on the service's durable inbox
+    /// (<c>wolverine.wolverine_incoming_envelopes</c>): requests that stored an envelope there in their open transaction
+    /// before they came to wait for the gate's rows.
+    /// </summary>
+    public async Task<long> WaitersHoldingIncomingEnvelopesAsync(PharmacyLock gate, CancellationToken cancellationToken)
+    {
+        Ensure.That(gate).IsNotNull();
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT count(DISTINCT activity.pid) FROM pg_stat_activity activity
+            JOIN pg_locks held ON held.pid = activity.pid AND held.granted
+            WHERE @gate = ANY(pg_blocking_pids(activity.pid))
+              AND held.relation = 'wolverine.wolverine_incoming_envelopes'::regclass
+            """,
+            connection);
+        command.Parameters.AddWithValue("gate", gate.ProcessId);
+        return (long)(await command.ExecuteScalarAsync(cancellationToken) ?? 0L);
+    }
+
+    /// <summary>
+    /// The mail requests of the pharmacy the service holds, handled or not: the envelopes of InvitationMailRequestedV1 in
+    /// its durable inbox and its dead letters whose body names the pharmacy's id.
+    /// </summary>
+    public async Task<long> MailRequestsOfPharmacyAsync(Guid pharmacy, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT (SELECT count(*) FROM wolverine.wolverine_incoming_envelopes
+                    WHERE message_type = @type AND position(convert_to(@pharmacy, 'UTF8') in body) > 0)
+                 + (SELECT count(*) FROM wolverine.wolverine_dead_letters
+                    WHERE message_type = @type AND position(convert_to(@pharmacy, 'UTF8') in body) > 0)
+            """,
+            connection);
+        command.Parameters.AddWithValue("type", MailRequestType);
+        command.Parameters.AddWithValue("pharmacy", pharmacy.ToString());
+        return (long)(await command.ExecuteScalarAsync(cancellationToken) ?? 0L);
+    }
+
+    /// <summary>The deadlocks PostgreSQL has detected in the organisation database since its statistics were reset.</summary>
+    public async Task<long> DeadlocksAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("SELECT deadlocks FROM pg_stat_database WHERE datname = current_database()", connection);
+        return (long)(await command.ExecuteScalarAsync(cancellationToken) ?? 0L);
+    }
+
+    /// <summary>
+    /// The organisation database's deadlock count once it has settled: the same over two seconds. A backend reports a
+    /// deadlock when it next goes idle, so read it settled before a deadlock that is to be counted.
+    /// </summary>
+    public async Task<long> SettledDeadlocksAsync(CancellationToken cancellationToken)
+    {
+        var started = TimeProvider.System.GetTimestamp();
+        var deadlocks = await DeadlocksAsync(cancellationToken);
+        var stableSince = TimeProvider.System.GetTimestamp();
+        while (TimeProvider.System.GetElapsedTime(stableSince) < TimeSpan.FromSeconds(2))
+        {
+            TimeProvider.System.GetElapsedTime(started).ShouldBeLessThan(TimeSpan.FromSeconds(30), "the organisation database's deadlock count never settled");
+            await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken);
+            var now = await DeadlocksAsync(cancellationToken);
+            if (now != deadlocks)
+            {
+                deadlocks = now;
+                stableSince = TimeProvider.System.GetTimestamp();
+            }
+        }
+
+        return deadlocks;
+    }
+
+    /// <summary>
+    /// Polls the organisation database's deadlock count until it rose above the given one, and fails the test when it
+    /// does not within 30 seconds. A backend reports its statistics when it goes idle, up to about ten seconds late.
+    /// </summary>
+    public async Task ShouldHaveDeadlockedSinceAsync(long before, CancellationToken cancellationToken)
+    {
+        var started = TimeProvider.System.GetTimestamp();
+        var deadlocks = await DeadlocksAsync(cancellationToken);
+        while (deadlocks <= before && TimeProvider.System.GetElapsedTime(started) < TimeSpan.FromSeconds(30))
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken);
+            deadlocks = await DeadlocksAsync(cancellationToken);
+        }
+
+        deadlocks.ShouldBeGreaterThan(before, "the request never ended in a deadlock, so the test never exercised the path it guards");
+    }
+
+    /// <summary>
     /// Polls the service's durable inbox (<c>wolverine.wolverine_incoming_envelopes</c>) until it holds the mail request
     /// of the membership, found by its message type and the membership's id in its body, and answers the envelope; fails
     /// the test when there is none within 30 seconds. Wolverine keeps a handled envelope for a while, so it is found also

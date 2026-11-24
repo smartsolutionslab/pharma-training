@@ -1,5 +1,5 @@
 using System.Text.Json;
-using Npgsql;
+using static SmartSolutionsLab.PharmaTraining.Integration.Tests.CertificationIssuing;
 
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 
@@ -11,10 +11,6 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// </summary>
 public class CertificationCertificatesTests(AspireFixture aspire)
 {
-    private const string StartedType = "SmartSolutionsLab.PharmaTraining.Contracts.Organisation.MembershipStartedV1";
-    private const string EndedType = "SmartSolutionsLab.PharmaTraining.Contracts.Organisation.MembershipEndedV1";
-    private const string PublishedType = "SmartSolutionsLab.PharmaTraining.Contracts.Editorial.CourseVersionPublishedV1";
-    private const string PassedType = "SmartSolutionsLab.PharmaTraining.Contracts.Assessment.TestPassedV1";
     private const string CertificateIssuedExchange = "SmartSolutionsLab.PharmaTraining.Contracts.Certification.CertificateIssuedV1";
     private const string CertificatesByAttempt = "select count(*) from certification.certificates where attempt_id = @id";
 
@@ -147,26 +143,8 @@ public class CertificationCertificatesTests(AspireFixture aspire)
 
     private static Guid PersonOf(JsonElement received) => received.GetProperty("personId").GetGuid();
 
-    private static StartedEvent Started(Guid personId, DateTimeOffset startedAt) =>
-        new(Guid.CreateVersion7(), personId, Guid.CreateVersion7(), $"Anna Berger {Guid.CreateVersion7()}", "Pta", "Employee", startedAt, NewMetadata());
-
-    private static EndedEvent Ended(StartedEvent started) =>
-        new(started.MembershipId, started.PersonId, started.PharmacyId, TimeProvider.System.GetUtcNow(), NewMetadata());
-
-    private static PublishedEvent Published() =>
-        new(
-            Guid.CreateVersion7(),
-            Guid.CreateVersion7(),
-            1,
-            $"Hygiene {Guid.CreateVersion7()}",
-            12,
-            [new SentChapter(Guid.CreateVersion7(), 1, "Grundlagen", "Text", null, "# Grundlagen", null)],
-            NewMetadata());
-
     private static PassedEvent Passed(StartedEvent started, PublishedEvent published) =>
-        new(Guid.CreateVersion7(), Guid.CreateVersion7(), started.PersonId, published.CourseId, published.CourseVersionId, 90, PassedAt, NewMetadata());
-
-    private static EventMetadata NewMetadata() => new(Guid.CreateVersion7(), TimeProvider.System.GetUtcNow());
+        CertificationIssuing.Passed(started, published, PassedAt);
 
     /// <summary>A person of their own passes the published version, and the certificate is issued.</summary>
     private async Task<PassedEvent> IssueAsync(PublishedEvent published, CancellationToken cancellationToken)
@@ -179,7 +157,7 @@ public class CertificationCertificatesTests(AspireFixture aspire)
         return passed;
     }
 
-    // The helpers live in CertificationDatabase; these keep the tests above short.
+    // The helpers live in CertificationDatabase and CertificationIssuing; these keep the tests above short.
     private Task DeliverAsync<T>(string type, T message, CancellationToken cancellationToken) =>
         CertificationDatabase.DeliverAsync(aspire, type, message, cancellationToken);
 
@@ -189,59 +167,6 @@ public class CertificationCertificatesTests(AspireFixture aspire)
     private Task<long> CountAsync(string query, Guid id, CancellationToken cancellationToken) =>
         CertificationDatabase.CountAsync(aspire, query, id, cancellationToken);
 
-    private async Task<List<CertificateRow>> CertificatesAsync(Guid attemptId, CancellationToken cancellationToken)
-    {
-        await using var connection = await CertificationDatabase.OpenAsync(aspire, cancellationToken);
-        await using var command = new NpgsqlCommand(
-            """
-            select id, holder_id, holder_name, course_id, course_version_id, course_title, score_percent, issued_at, valid_until, verification_code, document_state
-            from certification.certificates where attempt_id = @id
-            """,
-            connection);
-        command.Parameters.AddWithValue("id", attemptId);
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        List<CertificateRow> rows = [];
-        while (await reader.ReadAsync(cancellationToken))
-        {
-            rows.Add(new CertificateRow(
-                reader.GetGuid(0),
-                reader.GetGuid(1),
-                reader.GetString(2),
-                reader.GetGuid(3),
-                reader.GetGuid(4),
-                reader.GetString(5),
-                reader.GetInt32(6),
-                reader.GetFieldValue<DateTimeOffset>(7),
-                reader.GetFieldValue<DateOnly>(8),
-                reader.GetString(9),
-                reader.GetString(10)));
-        }
-
-        return rows;
-    }
-
-    private sealed record EventMetadata(Guid EventIdentifier, DateTimeOffset OccurredAt);
-
-    private sealed record StartedEvent(Guid MembershipId, Guid PersonId, Guid PharmacyId, string DisplayName, string JobFunction, string Role, DateTimeOffset StartedAt, EventMetadata Metadata);
-
-    private sealed record EndedEvent(Guid MembershipId, Guid PersonId, Guid PharmacyId, DateTimeOffset EndedAt, EventMetadata Metadata);
-
-    private sealed record SentChapter(Guid ChapterId, int Position, string Title, string Kind, int? VideoDurationSeconds, string? Text, string? File);
-
-    private sealed record PublishedEvent(Guid CourseId, Guid CourseVersionId, int VersionNumber, string Title, int ValidityMonths, IReadOnlyList<SentChapter> Chapters, EventMetadata Metadata);
-
-    private sealed record PassedEvent(Guid AttemptId, Guid SessionId, Guid PersonId, Guid CourseId, Guid CourseVersionId, int ScorePercent, DateTimeOffset PassedAt, EventMetadata Metadata);
-
-    private sealed record CertificateRow(
-        Guid Id,
-        Guid HolderId,
-        string HolderName,
-        Guid CourseId,
-        Guid CourseVersionId,
-        string CourseTitle,
-        int ScorePercent,
-        DateTimeOffset IssuedAt,
-        DateOnly ValidUntil,
-        string VerificationCode,
-        string DocumentState);
+    private Task<List<CertificateRow>> CertificatesAsync(Guid attemptId, CancellationToken cancellationToken) =>
+        CertificationIssuing.CertificatesAsync(aspire, attemptId, cancellationToken);
 }

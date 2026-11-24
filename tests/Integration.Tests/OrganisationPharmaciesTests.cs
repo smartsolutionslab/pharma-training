@@ -42,9 +42,7 @@ public class OrganisationPharmaciesTests(AspireFixture aspire)
         pharmacy.JobFunction.ShouldBe("Pharmacist");
         pharmacy.CanManageMembers.ShouldBeTrue();
         pharmacy.CanAssignCourses.ShouldBeTrue();
-        var mine = await client.GetFromJsonAsync<MyPharmacyPage>(Mine, cancellationToken);
-        mine!.Items.ShouldContain(pharmacy);
-        mine.PageSize.ShouldBe(100);
+        (await AllOfMineAsync(client, cancellationToken)).ShouldContain(pharmacy);
     }
 
     [Fact]
@@ -192,6 +190,26 @@ public class OrganisationPharmaciesTests(AspireFixture aspire)
         using var created = await client.PostAsJsonAsync(Pharmacies, new { name, jobFunction = "Pharmacist" }, cancellationToken);
         created.StatusCode.ShouldBe(HttpStatusCode.Created);
         return await created.Content.ReadFromJsonAsync<Guid>(cancellationToken);
+    }
+
+    /// <summary>
+    /// Every pharmacy the caller is a member of, read a page of 100 at a time, so a long list from earlier tests on the same
+    /// database does not hide the newest one beyond the first page.
+    /// </summary>
+    private static async Task<IReadOnlyList<MyPharmacy>> AllOfMineAsync(HttpClient client, CancellationToken cancellationToken)
+    {
+        List<MyPharmacy> all = [];
+        for (var page = 1; ; page++)
+        {
+            var mine = await client.GetFromJsonAsync<MyPharmacyPage>(new Uri($"/organisation/pharmacies/mine?page={page}&pageSize=100", UriKind.Relative), cancellationToken);
+            mine.ShouldNotBeNull();
+            mine.PageSize.ShouldBe(100);
+            all.AddRange(mine.Items);
+            if (mine.Items.Count == 0 || all.Count >= mine.TotalCount)
+            {
+                return all;
+            }
+        }
     }
 
     private sealed record MyPharmacy(Guid Id, string Name, Guid MembershipId, string Role, string JobFunction, bool CanManageMembers, bool CanAssignCourses);
