@@ -137,27 +137,118 @@ public class TestDraftRequestTests
         result.Error.Status.ShouldBe(HttpStatusCode.Conflict);
     }
 
-    [Theory]
-    [InlineData(0, false)]
-    [InlineData(1, true)]
-    public void A_pdfs_extracted_text_counts_towards_the_limit(int beyondTheLimit, bool refused)
+    [Fact]
+    public void A_pdf_whose_text_would_pass_the_limit_is_cut_to_what_is_left_and_named_as_truncated()
     {
-        // A text chapter "A" of the longest Markdown and a PDF chapter "B" whose text fills the rest of the limit, plus
-        // what goes beyond it: titles and texts of both kinds count alike.
+        // A text chapter "A" of the longest Markdown and a PDF chapter "B" whose text is one character longer than what
+        // the limit leaves it: titles and texts of both kinds count alike, and the PDF gives way.
         var version = Draft();
         version.AddChapter(TextChapter(ChapterId.New(), "A", new string('a', MarkdownText.MaxLength))).IsSuccess.ShouldBeTrue();
-        var rest = TestDraftRequest.MaxCharacters - MarkdownText.MaxLength - 2 + beyondTheLimit;
-        version.AddChapter(TestDraftVersions.PdfWithText(ChapterId.New(), "B", new string('b', rest))).IsSuccess.ShouldBeTrue();
+        var left = TestDraftRequest.MaxCharacters - MarkdownText.MaxLength - 2;
+        var pdf = ChapterId.New();
+        version.AddChapter(TestDraftVersions.PdfWithText(pdf, "B", new string('b', left + 1))).IsSuccess.ShouldBeTrue();
 
-        var result = TestDraftRequest.For(version);
+        var request = TestDraftRequest.For(version).Value;
 
-        result.IsFailure.ShouldBe(refused);
-        if (refused)
-        {
-            result.Error.Code.ShouldBe("editorial.too-much-content-to-draft");
-            result.Error.Status.ShouldBe(HttpStatusCode.UnprocessableEntity);
-        }
+        request.Chapters.Single(chapter => chapter.Id == pdf).Text.Length.ShouldBe(left);
+        Characters(request).ShouldBe(TestDraftRequest.MaxCharacters);
+        request.TruncatedChapters.ShouldBe([pdf]);
     }
+
+    [Fact]
+    public void A_pdf_that_fits_what_is_left_is_sent_whole_and_not_named()
+    {
+        var version = Draft();
+        version.AddChapter(TextChapter(ChapterId.New(), "A", new string('a', MarkdownText.MaxLength))).IsSuccess.ShouldBeTrue();
+        var left = TestDraftRequest.MaxCharacters - MarkdownText.MaxLength - 2;
+        var pdf = ChapterId.New();
+        version.AddChapter(TestDraftVersions.PdfWithText(pdf, "B", new string('b', left))).IsSuccess.ShouldBeTrue();
+
+        var request = TestDraftRequest.For(version).Value;
+
+        request.Chapters.Single(chapter => chapter.Id == pdf).Text.Length.ShouldBe(left);
+        request.TruncatedChapters.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Two_pdfs_of_the_longest_text_share_the_limit_evenly_and_the_version_gets_a_draft()
+    {
+        // #157's promise: long PDFs are cut and named, never the reason a version gets no draft.
+        var version = Draft();
+        var first = ChapterId.New();
+        var second = ChapterId.New();
+        version.AddChapter(TestDraftVersions.PdfWithText(first, "A", new string('a', MarkdownText.MaxLength))).IsSuccess.ShouldBeTrue();
+        version.AddChapter(TestDraftVersions.PdfWithText(second, "B", new string('b', MarkdownText.MaxLength))).IsSuccess.ShouldBeTrue();
+
+        var request = TestDraftRequest.For(version).Value;
+
+        var share = (TestDraftRequest.MaxCharacters - 2) / 2;
+        request.Chapters.Select(chapter => chapter.Text.Length).ShouldBe([share, share]);
+        Characters(request).ShouldBeLessThanOrEqualTo(TestDraftRequest.MaxCharacters);
+        request.TruncatedChapters.ShouldBe([first, second]);
+    }
+
+    [Fact]
+    public void A_short_pdf_is_sent_whole_and_the_long_ones_share_what_it_leaves()
+    {
+        var version = Draft();
+        var longFirst = ChapterId.New();
+        var shortOne = ChapterId.New();
+        var longSecond = ChapterId.New();
+        version.AddChapter(TestDraftVersions.PdfWithText(longFirst, "A", new string('a', MarkdownText.MaxLength))).IsSuccess.ShouldBeTrue();
+        version.AddChapter(TestDraftVersions.PdfWithText(shortOne, "B", new string('b', 1_000))).IsSuccess.ShouldBeTrue();
+        version.AddChapter(TestDraftVersions.PdfWithText(longSecond, "C", new string('c', MarkdownText.MaxLength))).IsSuccess.ShouldBeTrue();
+
+        var request = TestDraftRequest.For(version).Value;
+
+        var lengths = request.Chapters.Select(chapter => chapter.Text.Length).ToList();
+        lengths[1].ShouldBe(1_000);
+        Math.Abs(lengths[0] - lengths[2]).ShouldBeLessThanOrEqualTo(1, "the long PDFs share what is left evenly");
+        Characters(request).ShouldBe(TestDraftRequest.MaxCharacters);
+        request.TruncatedChapters.ShouldBe([longFirst, longSecond]);
+    }
+
+    [Fact]
+    public void A_cut_never_splits_a_surrogate_pair()
+    {
+        var version = Draft();
+        // The cut falls between the two halves of an emoji: the whole pair stays out.
+        version.AddChapter(TextChapter(ChapterId.New(), "A", new string('a', MarkdownText.MaxLength))).IsSuccess.ShouldBeTrue();
+        version.AddChapter(TextChapter(ChapterId.New(), "B", new string('b', 100))).IsSuccess.ShouldBeTrue();
+        var left = TestDraftRequest.MaxCharacters - MarkdownText.MaxLength - 100 - 3;
+        var pdf = ChapterId.New();
+        var text = new string('c', left - 1) + "\U0001F600" + "cc";
+        version.AddChapter(TestDraftVersions.PdfWithText(pdf, "C", text)).IsSuccess.ShouldBeTrue();
+
+        var request = TestDraftRequest.For(version).Value;
+
+        var sent = request.Chapters.Single(chapter => chapter.Id == pdf).Text;
+        sent.ShouldBe(new string('c', left - 1));
+        request.TruncatedChapters.ShouldBe([pdf]);
+    }
+
+    [Fact]
+    public void A_pdf_the_text_chapters_leave_no_room_for_is_left_out_and_named()
+    {
+        // The text chapters take the limit to the last character: the PDF's text has nowhere to go, so it is left out
+        // like a PDF without text, and the version is drafted from its text chapters alone.
+        var version = Draft();
+        var text = ChapterId.New();
+        version.AddChapter(TextChapter(text, "A", new string('a', MarkdownText.MaxLength))).IsSuccess.ShouldBeTrue();
+        version.AddChapter(TextChapter(ChapterId.New(), "B", new string('b', TestDraftRequest.MaxCharacters - MarkdownText.MaxLength - 3))).IsSuccess.ShouldBeTrue();
+        var pdf = ChapterId.New();
+        version.AddChapter(TestDraftVersions.PdfWithText(pdf, "C", new string('c', 1_000))).IsSuccess.ShouldBeTrue();
+
+        var request = TestDraftRequest.For(version).Value;
+
+        request.Chapters.ShouldNotContain(chapter => chapter.Id == pdf);
+        request.LeftOutChapters.ShouldBe([pdf]);
+        request.TruncatedChapters.ShouldBeEmpty();
+        Characters(request).ShouldBeLessThanOrEqualTo(TestDraftRequest.MaxCharacters);
+    }
+
+    private static long Characters(TestDraftRequest request) =>
+        request.Chapters.Sum(chapter => (long)chapter.Title.Value.Length + chapter.Text.Length);
 
     [Theory]
     [InlineData(10, 4, new[] { 3, 3, 2, 2 })]
