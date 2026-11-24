@@ -9,7 +9,8 @@ namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.EventStore;
 
 /// <summary>
 /// One module's Marten store, found from its Infrastructure assembly: its own schema of the project's database (the one
-/// its DbContext uses), its domain events, and the projections of its Infrastructure project, run inline. The host and
+/// its DbContext uses), its domain events, the projections of its Infrastructure project, run inline, and a partial index
+/// on the stored time of each event type an adapter declares as <c>SweptEventType</c> (#277). The host and
 /// the MigrationRunner configure the store the same way; only the runner changes the schema.
 /// </summary>
 public sealed class ModuleEventStore
@@ -19,16 +20,21 @@ public sealed class ModuleEventStore
     // <Module>AggregateStore.Schema, rendered from the module's name as its DbContext's schema is.
     private const string SchemaConstant = "Schema";
 
+    // Marten's stored name of the events an adapter sweeps for (#277), declared by the finder of the module's
+    // announcement sweep: each gets a partial index on its stored time (SweptEventIndex).
+    private const string SweptEventTypeConstant = "SweptEventType";
+
     private readonly string schema;
     private readonly IReadOnlyList<Type> domainEvents;
     private readonly IReadOnlyList<Type> projections;
 
-    private ModuleEventStore(string schema, IReadOnlyList<Type> adapters, IReadOnlyList<Type> domainEvents, IReadOnlyList<Type> projections)
+    private ModuleEventStore(string schema, IReadOnlyList<Type> adapters, IReadOnlyList<Type> domainEvents, IReadOnlyList<Type> projections, IReadOnlyList<string> sweptEventTypes)
     {
         this.schema = schema;
         Adapters = adapters;
         this.domainEvents = domainEvents;
         this.projections = projections;
+        SweptEventIndexes = [.. sweptEventTypes.Select(sweptEventType => new SweptEventIndex(schema, sweptEventType))];
     }
 
     /// <summary>
@@ -36,6 +42,9 @@ public sealed class ModuleEventStore
     /// else it takes (the container supplies the rest).
     /// </summary>
     public IReadOnlyList<Type> Adapters { get; }
+
+    /// <summary>The partial index on the stored time of each event type an adapter sweeps for (#277).</summary>
+    public IReadOnlyList<SweptEventIndex> SweptEventIndexes { get; }
 
     /// <summary>The module's event store, or null when its Infrastructure project has no adapter over one.</summary>
     public static ModuleEventStore? Of(Assembly infrastructure)
@@ -67,7 +76,13 @@ public sealed class ModuleEventStore
             .Where(type => type is { IsClass: true, IsAbstract: false } && typeof(IProjectionSource<IDocumentOperations, IQuerySession>).IsAssignableFrom(type))
             .ToList();
 
-        return new ModuleEventStore(schema, adapters, domainEvents, projections);
+        var sweptEventTypes = adapters
+            .Select(adapter => adapter.GetField(SweptEventTypeConstant, BindingFlags.Public | BindingFlags.Static)?.GetRawConstantValue())
+            .OfType<string>()
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        return new ModuleEventStore(schema, adapters, domainEvents, projections, sweptEventTypes);
     }
 
     public static string ConnectionString(IConfiguration configuration)
@@ -95,6 +110,12 @@ public sealed class ModuleEventStore
         });
         options.AutoCreateSchemaObjects = schemaChanges;
         options.Events.AddEventTypes(domainEvents);
+        foreach (var index in SweptEventIndexes)
+        {
+            // Not Marten's own: the runner makes it after the event tables, and Marten's migrations must not drop it.
+            options.Events.IgnoreIndex(index.Name);
+        }
+
         foreach (var projection in projections)
         {
             options.Projections.Add((IProjectionSource<IDocumentOperations, IQuerySession>)Activator.CreateInstance(projection)!, ProjectionLifecycle.Inline);
