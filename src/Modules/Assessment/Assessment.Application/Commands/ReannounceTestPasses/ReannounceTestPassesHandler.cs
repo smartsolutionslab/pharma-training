@@ -32,8 +32,9 @@ public sealed partial class ReannounceTestPassesHandler(
         var found = await unannounced.FindAsync(now - settings.Lookback, now - settings.GracePeriod, settings.BatchSize, cancellationToken);
         foreach (var stored in found)
         {
-            var stream = stored.Passed.Examination.Value;
-            await unitOfWork.PublishAsync(stored.Passed.ToIntegrationEvent());
+            var passed = await unannounced.LoadAsync(stored, cancellationToken);
+            var stream = passed.Examination.Value;
+            await unitOfWork.PublishAsync(passed.ToIntegrationEvent());
             announced.Add(new AnnouncedEvent { StreamId = stream, StreamVersion = stored.StreamVersion, AnnouncedAt = now });
             LogReannounced(logger, nameof(Domain.Examinations.Events.ExaminationPassed), stream, stored.StreamVersion, stored.StoredAt);
             await unitOfWork.CommitAsync(cancellationToken);
