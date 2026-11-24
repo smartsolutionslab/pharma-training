@@ -8,6 +8,8 @@ using Microsoft.Extensions.Time.Testing;
 using SmartSolutionsLab.PharmaTraining.Contracts.Organisation;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Commands.RenewInvitation;
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.InvitationRecipients;
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.InvitationSenders;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies.Events;
 
@@ -37,7 +39,7 @@ public class RenewInvitationTests
         time.Advance(TimeSpan.FromDays(daysOld) + TimeSpan.FromMinutes(10));
         var now = Start.AddDays(daysOld).AddMinutes(10);
 
-        var renewed = await new RenewInvitationHandler(store, store, new FakeDatabaseClock(time), InvitationMailLimits.Default, NullLogger<RenewInvitationHandler>.Instance)
+        var renewed = await new RenewInvitationHandler(store, store, store, store, new FakeDatabaseClock(time), InvitationMailLimits.Default, RecipientAndSenderMailLimits.Default, NullLogger<RenewInvitationHandler>.Instance)
             .HandleAsync(new RenewInvitation(pharmacy.Id, invitation, Owner), TestContext.Current.CancellationToken);
 
         renewed.IsSuccess.ShouldBeTrue();
@@ -162,7 +164,7 @@ public class RenewInvitationTests
         var time = new FakeTimeProvider(Start);
         time.Advance(TimeSpan.FromMinutes(4));
 
-        var refused = await new RenewInvitationHandler(store, store, new FakeDatabaseClock(time), InvitationMailLimits.Default, NullLogger<RenewInvitationHandler>.Instance)
+        var refused = await new RenewInvitationHandler(store, store, store, store, new FakeDatabaseClock(time), InvitationMailLimits.Default, RecipientAndSenderMailLimits.Default, NullLogger<RenewInvitationHandler>.Instance)
             .HandleAsync(new RenewInvitation(pharmacy.Id, invitation, Owner), TestContext.Current.CancellationToken);
 
         refused.IsSuccess.ShouldBeFalse("an invitation was renewed 4 minutes after its invite");
@@ -183,7 +185,7 @@ public class RenewInvitationTests
         pharmacy.Stored(store);
         var logger = new FakeLogger<RenewInvitationHandler>();
 
-        await new RenewInvitationHandler(store, store, new FakeDatabaseClock(new FakeTimeProvider(Start)), InvitationMailLimits.Default, logger)
+        await new RenewInvitationHandler(store, store, store, store, new FakeDatabaseClock(new FakeTimeProvider(Start)), InvitationMailLimits.Default, RecipientAndSenderMailLimits.Default, logger)
             .HandleAsync(new RenewInvitation(pharmacy.Id, invitation, Owner), TestContext.Current.CancellationToken);
 
         var warning = logger.Collector.GetSnapshot().Where(record => record.Level == LogLevel.Warning).ShouldHaveSingleItem();
@@ -201,10 +203,13 @@ public class RenewInvitationTests
         pharmacy.Stored(store);
         await using var services = new ServiceCollection()
             .AddSingleton<IPharmacyStore>(store)
+            .AddSingleton<IInvitationRecipientStore>(store)
+            .AddSingleton<IInvitationSenderStore>(store)
             .AddSingleton<IOrganisationUnitOfWork>(store)
             .AddSingleton<TimeProvider>(new FakeTimeProvider(Start.AddDays(3)))
             .AddSingleton<IDatabaseClock>(new FakeDatabaseClock(new FakeTimeProvider(Start.AddMinutes(4))))
             .AddSingleton(InvitationMailLimits.Default)
+            .AddSingleton(RecipientAndSenderMailLimits.Default)
             .AddLogging()
             .BuildServiceProvider();
 
@@ -217,7 +222,93 @@ public class RenewInvitationTests
         store.Commits.ShouldBe(0);
     }
 
-    private static RenewInvitationHandler Handler(InMemoryPharmacyStore store) => new(store, store, new FakeDatabaseClock(new FakeTimeProvider(Start)), InvitationMailLimits.Default, NullLogger<RenewInvitationHandler>.Instance);
+    // #265: a renewal counts on its address and on the manager who renews, like an invite.
+    [Fact]
+    public async Task A_renewal_counts_on_the_renewing_manager_not_on_who_invited()
+    {
+        var store = new InMemoryPharmacyStore();
+        var pharmacy = TestPharmacies.Register(Owner);
+        TestPharmacies.AddMember(pharmacy, Anna, MembershipRole.Manager);
+        var invitation = pharmacy.Invite(MembershipId.New(), Invitee, JobFunction.Pta, MembershipRole.Employee, Timestamp.From(Start), InvitationMailLimits.Default).Value;
+        pharmacy.Stored(store);
+
+        var renewed = await Handler(store, new FakeTimeProvider(Start.AddMinutes(10)))
+            .HandleAsync(new RenewInvitation(pharmacy.Id, invitation, Anna), TestContext.Current.CancellationToken);
+
+        renewed.IsSuccess.ShouldBeTrue();
+        var sender = store.StoredSenders.ShouldHaveSingleItem("the renewal stored no sender");
+        sender.Id.ShouldBe(Anna, "the renewal counted on who invited, not on who renewed");
+        sender.MailsThatDay.Value.ShouldBe(1);
+        var recipient = store.StoredRecipients.ShouldHaveSingleItem("the renewal stored no recipient");
+        recipient.Id.ShouldBe(InvitationRecipientId.For(Invitee));
+        recipient.LastMailedAt.ShouldBe(Timestamp.From(Start.AddMinutes(10)));
+    }
+
+    [Fact]
+    public async Task A_renewal_of_an_address_another_pharmacy_mailed_within_the_cooldown_answers_429_recipient_mailed_recently()
+    {
+        var store = new InMemoryPharmacyStore();
+        var pharmacy = TestPharmacies.Register(Owner);
+        var invitation = pharmacy.Invite(MembershipId.New(), Invitee, JobFunction.Pta, MembershipRole.Employee, Timestamp.From(Start), InvitationMailLimits.Default).Value;
+        pharmacy.Stored(store);
+        store.StoredRecipients.Add(InvitationRecipient.FirstMailed(Invitee, Timestamp.From(Start.AddMinutes(8))));
+
+        var refused = await Handler(store, new FakeTimeProvider(Start.AddMinutes(10)))
+            .HandleAsync(new RenewInvitation(pharmacy.Id, invitation, Owner), TestContext.Current.CancellationToken);
+
+        refused.IsSuccess.ShouldBeFalse("an address another pharmacy mailed 2 minutes ago was mailed again by a renewal");
+        refused.Error.Code.ShouldBe("organisation.recipient-mailed-recently");
+        refused.Error.Status.ShouldBe(HttpStatusCode.TooManyRequests);
+        refused.Error.ShouldBeOfType<RetryLaterFailure>().RetryAt.ShouldBe(Start.AddMinutes(18));
+        store.Commits.ShouldBe(0);
+        store.Published.ShouldBeEmpty();
+        store.StoredSenders.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task A_renewal_by_a_sender_at_the_daily_cap_answers_429_too_many_invitations_sent_today()
+    {
+        var store = new InMemoryPharmacyStore();
+        var pharmacy = TestPharmacies.Register(Owner);
+        var invitation = pharmacy.Invite(MembershipId.New(), Invitee, JobFunction.Pta, MembershipRole.Employee, Timestamp.From(Start), InvitationMailLimits.Default).Value;
+        pharmacy.Stored(store);
+        store.StoredSenders.Add(InvitationSender.FirstMailed(Owner, Timestamp.From(Start)));
+        var capOfOne = new RecipientAndSenderMailLimits(RecipientCooldown.From(TimeSpan.FromMinutes(10)), DailyMailCap.From(1));
+
+        var refused = await Handler(store, new FakeTimeProvider(Start.AddMinutes(10)), capOfOne)
+            .HandleAsync(new RenewInvitation(pharmacy.Id, invitation, Owner), TestContext.Current.CancellationToken);
+
+        refused.IsSuccess.ShouldBeFalse("a sender capped at one mail a day renewed a second");
+        refused.Error.Code.ShouldBe("organisation.too-many-invitations-sent-today");
+        refused.Error.Status.ShouldBe(HttpStatusCode.TooManyRequests);
+        refused.Error.ShouldBeOfType<RetryLaterFailure>().RetryAt.ShouldBe(new DateTimeOffset(2027, 4, 2, 0, 0, 0, TimeSpan.Zero));
+        store.Commits.ShouldBe(0);
+        store.Published.ShouldBeEmpty();
+        store.StoredSenders.ShouldHaveSingleItem().MailsThatDay.Value.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task A_renewal_within_its_own_cooldown_is_still_invitation_renewed_too_soon()
+    {
+        var store = new InMemoryPharmacyStore();
+        var pharmacy = TestPharmacies.Register(Owner);
+        var invitation = pharmacy.Invite(MembershipId.New(), Invitee, JobFunction.Pta, MembershipRole.Employee, Timestamp.From(Start), InvitationMailLimits.Default).Value;
+        pharmacy.Stored(store);
+        store.StoredRecipients.Add(InvitationRecipient.FirstMailed(Invitee, Timestamp.From(Start)));
+        var capOfOne = new RecipientAndSenderMailLimits(RecipientCooldown.From(TimeSpan.FromMinutes(10)), DailyMailCap.From(1));
+        store.StoredSenders.Add(InvitationSender.FirstMailed(Owner, Timestamp.From(Start)));
+
+        var refused = await Handler(store, new FakeTimeProvider(Start.AddMinutes(4)), capOfOne)
+            .HandleAsync(new RenewInvitation(pharmacy.Id, invitation, Owner), TestContext.Current.CancellationToken);
+
+        refused.IsSuccess.ShouldBeFalse();
+        refused.Error.Code.ShouldBe("organisation.invitation-renewed-too-soon");
+    }
+
+    private static RenewInvitationHandler Handler(InMemoryPharmacyStore store, FakeTimeProvider time, RecipientAndSenderMailLimits? recipientAndSender = null) =>
+        new(store, store, store, store, new FakeDatabaseClock(time), InvitationMailLimits.Default, recipientAndSender ?? RecipientAndSenderMailLimits.Default, NullLogger<RenewInvitationHandler>.Instance);
+
+    private static RenewInvitationHandler Handler(InMemoryPharmacyStore store) => new(store, store, store, store, new FakeDatabaseClock(new FakeTimeProvider(Start)), InvitationMailLimits.Default, RecipientAndSenderMailLimits.Default, NullLogger<RenewInvitationHandler>.Instance);
 
     private static InvitationToken Token() => InvitationToken.From(RandomNumberGenerator.GetHexString(64));
 }

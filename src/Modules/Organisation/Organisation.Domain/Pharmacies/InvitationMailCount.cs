@@ -1,6 +1,6 @@
 namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
 
-/// <summary>How many invitation mails a pharmacy has requested on one UTC day.</summary>
+/// <summary>How many invitation mails a pharmacy or a sender has requested on one UTC day.</summary>
 public sealed record InvitationMailCount : IValueObject<int>
 {
     private InvitationMailCount(int value) => Value = value;

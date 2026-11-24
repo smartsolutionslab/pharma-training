@@ -12,8 +12,11 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Api;
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Commands.InviteMember;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Commands.RenewInvitation;
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.InvitationRecipients;
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.InvitationSenders;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Tests.Pharmacies;
@@ -78,15 +81,76 @@ public class InvitationLimitEndpointTests
         store.Commits.ShouldBe(0);
     }
 
+    // #265
+    [Fact]
+    public async Task Inviting_an_address_another_pharmacy_mailed_four_minutes_ago_answers_429_with_retry_after_until_its_cooldown_ends()
+    {
+        var store = new InMemoryPharmacyStore();
+        var pharmacy = TestPharmacies.Register(Owner).Stored(store);
+        store.StoredRecipients.Add(InvitationRecipient.FirstMailed(EmailAddress.From("ben@example.org"), Timestamp.From(Start)));
+        var time = new FakeTimeProvider(Start);
+        time.Advance(TimeSpan.FromMinutes(4));
+
+        var answer = await SendAsync(
+            store,
+            time,
+            InvitationMailLimits.Default,
+            "/organisation/pharmacies/{id:guid}/invitations",
+            new RouteValueDictionary { ["id"] = pharmacy.Id.Value.ToString() },
+            body: """{"email":"ben@example.org","jobFunction":"Pta","role":"Employee"}""");
+
+        answer.Status.ShouldBe((int)HttpStatusCode.TooManyRequests, "inviting an address another pharmacy mailed 4 minutes ago");
+        answer.RetryAfter.ShouldBe("360");
+        CodeOf(answer.Body).ShouldBe("organisation.recipient-mailed-recently");
+        RetryAtOf(answer.Body).ShouldBe(Start.AddMinutes(10));
+        store.Commits.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task Inviting_as_a_sender_at_the_daily_cap_answers_429_with_retry_after_until_midnight_utc()
+    {
+        var store = new InMemoryPharmacyStore();
+        var pharmacy = TestPharmacies.Register(Owner).Stored(store);
+        store.StoredSenders.Add(InvitationSender.FirstMailed(Owner, Timestamp.From(Start)));
+        var capOfOne = new RecipientAndSenderMailLimits(RecipientCooldown.From(TimeSpan.FromMinutes(10)), DailyMailCap.From(1));
+        var time = new FakeTimeProvider(new DateTimeOffset(2027, 4, 1, 22, 0, 0, TimeSpan.Zero));
+
+        var answer = await SendAsync(
+            store,
+            time,
+            InvitationMailLimits.Default,
+            "/organisation/pharmacies/{id:guid}/invitations",
+            new RouteValueDictionary { ["id"] = pharmacy.Id.Value.ToString() },
+            body: """{"email":"ben@example.org","jobFunction":"Pta","role":"Employee"}""",
+            recipientAndSender: capOfOne);
+
+        answer.Status.ShouldBe((int)HttpStatusCode.TooManyRequests, "inviting at 22:00 UTC as a sender capped at one mail a day that has sent it");
+        answer.RetryAfter.ShouldBe("7200");
+        CodeOf(answer.Body).ShouldBe("organisation.too-many-invitations-sent-today");
+        RetryAtOf(answer.Body).ShouldBe(new DateTimeOffset(2027, 4, 2, 0, 0, 0, TimeSpan.Zero));
+        store.Commits.ShouldBe(0);
+    }
+
+    private static DateTimeOffset? RetryAtOf(byte[] body)
+    {
+        if (body.Length == 0)
+        {
+            return null;
+        }
+
+        using var document = JsonDocument.Parse(body);
+        return document.RootElement.TryGetProperty("retryAt", out var retryAt) ? retryAt.GetDateTimeOffset() : null;
+    }
+
     private static ClaimsPrincipal Caller() =>
         new(new ClaimsIdentity(
             [new Claim("sub", Owner.Value.ToString()), new Claim("name", "Olaf Owner"), new Claim("email", "owner@example.com")],
             authenticationType: "Bearer"));
 
-    private static IDispatcher Dispatching(InMemoryPharmacyStore store, TimeProvider time, InvitationMailLimits limits)
+    private static IDispatcher Dispatching(InMemoryPharmacyStore store, TimeProvider time, InvitationMailLimits limits, RecipientAndSenderMailLimits recipientAndSender)
     {
-        var invite = new InviteMemberHandler(store, store, new FakeDatabaseClock(time), limits, NullLogger<InviteMemberHandler>.Instance);
-        var renew = new RenewInvitationHandler(store, store, new FakeDatabaseClock(time), limits, NullLogger<RenewInvitationHandler>.Instance);
+        var invite = new InviteMemberHandler(store, store, store, store, new FakeDatabaseClock(time), limits, recipientAndSender, NullLogger<InviteMemberHandler>.Instance);
+        var renew = new RenewInvitationHandler(store, store, store, store, new FakeDatabaseClock(time), limits, recipientAndSender, NullLogger<RenewInvitationHandler>.Instance);
         var dispatcher = Substitute.For<IDispatcher>();
         dispatcher.SendAsync(Arg.Any<ICommand<Result<Guid, ApiError>>>(), Arg.Any<CancellationToken>())
             .Returns(call => invite.HandleAsync((InviteMember)call.ArgAt<ICommand<Result<Guid, ApiError>>>(0), call.ArgAt<CancellationToken>(1)));
@@ -101,10 +165,11 @@ public class InvitationLimitEndpointTests
         InvitationMailLimits limits,
         string route,
         RouteValueDictionary values,
-        string? body)
+        string? body,
+        RecipientAndSenderMailLimits? recipientAndSender = null)
     {
         var builder = WebApplication.CreateSlimBuilder();
-        builder.Services.AddSingleton(Dispatching(store, time, limits));
+        builder.Services.AddSingleton(Dispatching(store, time, limits, recipientAndSender ?? RecipientAndSenderMailLimits.Default));
         builder.Services.AddSingleton<TimeProvider>(time);
 
         // The module maps every endpoint of its group, accept among them, which names the module's per-user limit.
