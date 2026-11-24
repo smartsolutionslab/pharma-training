@@ -1,7 +1,7 @@
 import { computed, type MaybeRefOrGetter, shallowRef, toValue, watch } from 'vue';
 import { useGetCertificationVerifyCode } from '@/api/generated';
 import { type CertificateVerification, certificateVerificationSchema } from './certificateVerification';
-import { type VerificationOutcome, verificationOutcome } from './verificationErrors';
+import { type VerificationOutcome, verificationLoadFailed, verificationOutcome } from './verificationErrors';
 
 /** What the verification page shows once an attempt has settled: the certificate, or why it is not shown. */
 export type VerificationShown = { kind: 'verified'; certificate: CertificateVerification } | VerificationOutcome;
@@ -42,9 +42,7 @@ export function useCertificateVerification(code: MaybeRefOrGetter<string | undef
       return undefined;
     }
     const parsed = certificateVerificationSchema.safeParse(data.value);
-    return parsed.success
-      ? { kind: 'verified', certificate: parsed.data }
-      : { kind: 'alert', key: 'certification.verify.loadFailed' };
+    return parsed.success ? { kind: 'verified', certificate: parsed.data } : verificationLoadFailed;
   }
 
   watch(

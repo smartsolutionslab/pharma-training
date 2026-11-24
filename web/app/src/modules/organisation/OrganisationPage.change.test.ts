@@ -157,7 +157,7 @@ test('the last manager made an employee stays open, says why in it and in a toas
   await user.selectOptions(role, t('glossary.membershipRole.Employee'));
   await user.click(submit);
 
-  const message = t('organisation.team.errors.lastManager');
+  const message = t('errors.organisation.last-manager');
   expect(await dialog.findByRole('alert')).toHaveTextContent(message);
   expect(notify.failure).toHaveBeenCalledWith(message);
   expect(notify.success).not.toHaveBeenCalled();
@@ -177,7 +177,7 @@ test('a membership no longer active is reported in the dialog and the members ar
 
   await user.click(submit);
 
-  expect(await dialog.findByRole('alert')).toHaveTextContent(t('organisation.team.errors.noActiveMembership'));
+  expect(await dialog.findByRole('alert')).toHaveTextContent(t('errors.organisation.no-active-membership'));
   await waitFor(() => expect(memberReads()).toBeGreaterThan(before));
 });
 

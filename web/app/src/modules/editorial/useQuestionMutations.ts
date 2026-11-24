@@ -8,10 +8,9 @@ import {
   usePostEditorialCourseVersionsIdQuestionsQuestionIdApprove,
   usePutEditorialCourseVersionsIdQuestionsQuestionId,
 } from '@/api/generated';
-import { ApiError } from '@/api/baseApi';
 
-/** What changing a question came to: ok, or a failure with the host's words where a module sent some. */
-export type QuestionChange = { ok: true } | { ok: false; serverMessage?: string };
+/** What changing a question came to: ok, or a failure carrying what the call rejected with (shown by errorText). */
+export type QuestionChange = { ok: true } | { ok: false; error: unknown };
 
 /**
  * Adds, replaces, deletes and approves a question of the version's test. Afterwards the version is stale, also after a
@@ -33,9 +32,7 @@ export function useQuestionMutations(versionId: MaybeRefOrGetter<string>) {
       await change;
       return { ok: true };
     } catch (error) {
-      return error instanceof ApiError && error.serverMessage !== undefined
-        ? { ok: false, serverMessage: error.serverMessage }
-        : { ok: false };
+      return { ok: false, error };
     }
   };
 

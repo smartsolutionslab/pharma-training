@@ -20,6 +20,6 @@ public static class AssignmentMappings
             assignment.Status.ToDto(),
             assignment.StartedAt?.Value,
             assignment.CompletedAt?.Value,
-            [.. assignment.History.Select(change => change.ToDto())]);
+            [.. assignment.History.Select(change => change.ToDto(assignment.Learner))]);
     }
 }

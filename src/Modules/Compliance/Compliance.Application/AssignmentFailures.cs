@@ -40,7 +40,7 @@ public static class AssignmentFailures
     /// <summary>A change's reason is longer than <see cref="ChangeReason.MaxLength"/>.</summary>
     public static ApiError InvalidChangeReason() => new InvalidChangeReason();
 
-    /// <summary>A manager may not move or withdraw an assignment of their own (orchestrator's default on #269).</summary>
+    /// <summary>A manager may not move or withdraw an assignment of their own while another manager can (orchestrator's default on #269 and #284).</summary>
     public static ApiError OwnAssignment() => new OwnAssignment();
 
     public static ApiError LearnerNotAMember(Guid person) => new LearnerNotAMember(person);

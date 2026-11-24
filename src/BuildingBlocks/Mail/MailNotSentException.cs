@@ -30,8 +30,11 @@ public sealed class MailNotSentException : InvalidOperationException
     /// <summary>
     /// Whether the server may hold the mail after all: <see langword="false"/> when the failure came before the mail was
     /// handed over (a missing setting, connect, TLS, login) or the server refused it at any step, so the recipient cannot
-    /// have it; <see langword="true"/> for a transport, protocol or timeout failure once the send started. One that does
-    /// not say is <see langword="true"/>, the side that keeps what the mail carries.
+    /// have it; <see langword="true"/> for a transport, protocol or timeout failure once the send started, and for one
+    /// made without saying. A caller counts a mail as possibly delivered only when a sender's failure is this exception
+    /// or a <see cref="MailSendTimedOutException"/> with this set to <see langword="true"/>; every other exception from
+    /// an <see cref="IMailSender"/> counts as not delivered. So a sender that cannot rule out delivery must throw
+    /// <c>new MailNotSentException(message, true)</c>, never let another exception through.
     /// </summary>
     public bool MayHaveBeenDelivered { get; } = true;
 }

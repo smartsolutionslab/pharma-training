@@ -104,8 +104,10 @@ test('an editor starts a new version of a published course and edits it as a dra
   await page.goto(`/editorial/versions/${id}`);
   await expect(page.getByText('Veröffentlicht', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Neue Version anlegen' }).click();
-  // The host's own words (#20's next-version-exists), not the catalog's fallback.
-  await expect(page.getByRole('alert').filter({ hasText: 'already exists' })).toBeVisible();
+  // next-version-exists in the page's language, by its code (#147), not the catalog's fallback.
+  await expect(
+    page.getByRole('alert').filter({ hasText: 'Von dieser Schulung gibt es schon eine neuere Version.' }),
+  ).toBeVisible();
   await expect(
     page.getByRole('alert').filter({ hasText: 'Die neue Version konnte nicht angelegt werden.' }),
   ).toHaveCount(0);

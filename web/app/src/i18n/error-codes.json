@@ -75,9 +75,24 @@
     "message": "There is no such sample."
   },
   {
+    "code": "certification.certificate-not-found",
+    "status": 404,
+    "message": "You hold no certificate with this id."
+  },
+  {
     "code": "certification.certificate-not-verifiable",
     "status": 404,
     "message": "No certificate matches this code."
+  },
+  {
+    "code": "certification.document-not-ready",
+    "status": 409,
+    "message": "The certificate's PDF is being created; ask again shortly."
+  },
+  {
+    "code": "certification.identity-incomplete",
+    "status": 403,
+    "message": "The access token names no person (its subject is missing or no Guid)."
   },
   {
     "code": "certification.invalid-sample-name",

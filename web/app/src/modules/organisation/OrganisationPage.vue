@@ -20,7 +20,7 @@ import ChangeMembershipDialog from './ChangeMembershipDialog.vue';
 import ConfirmMemberActionDialog from './ConfirmMemberActionDialog.vue';
 import { isExpired } from './invitationExpiry';
 import InviteMemberDialog from './InviteMemberDialog.vue';
-import { teamFailureText, teamLoadFailureKey } from './teamErrors';
+import { teamFailureText, teamLoadFailureMessage } from './teamErrors';
 import { titleKey } from './titleKey';
 import { useTeam } from './useTeam';
 import { useTeamActions } from './useTeamActions';
@@ -335,7 +335,7 @@ async function confirm() {
           {{ teamFailureText(refusal.failure) }}
         </p>
         <p v-if="membersFailed" role="alert" class="text-body text-destructive">
-          {{ t(teamLoadFailureKey(membersError, 'organisation.team.members.loadFailed')) }}
+          {{ teamFailureText(teamLoadFailureMessage(membersError, 'organisation.team.members.loadFailed')) }}
         </p>
         <DataTable v-else :columns="membersColumns" :data="memberRows" :loading="membersPending" :paging="membersPage">
           <template #empty>
@@ -375,7 +375,7 @@ async function confirm() {
           {{ teamFailureText(refusal.failure) }}
         </p>
         <p v-if="invitationsFailed" role="alert" class="text-body text-destructive">
-          {{ t(teamLoadFailureKey(invitationsError, 'organisation.team.invitations.loadFailed')) }}
+          {{ teamFailureText(teamLoadFailureMessage(invitationsError, 'organisation.team.invitations.loadFailed')) }}
         </p>
         <DataTable
           v-else

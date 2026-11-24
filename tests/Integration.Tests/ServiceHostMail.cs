@@ -9,15 +9,20 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// </summary>
 internal static class ServiceHostMail
 {
-    public static bool SendsMail(string projectPath)
+    public static bool SendsMail(string projectPath) => Flag(projectPath, "SendsMail");
+
+    /// <summary>Whether a service host links into the web app without mailing: <c>&lt;LinksToFrontend&gt;true&lt;/LinksToFrontend&gt;</c> (#50).</summary>
+    public static bool LinksToFrontend(string projectPath) => Flag(projectPath, "LinksToFrontend");
+
+    private static bool Flag(string projectPath, string name)
     {
-        var value = XDocument.Load(projectPath).Descendants().LastOrDefault(element => element.Name.LocalName == "SendsMail")?.Value;
+        var value = XDocument.Load(projectPath).Descendants().LastOrDefault(element => element.Name.LocalName == name)?.Value;
         if (value is null)
         {
             return false;
         }
 
-        bool.TryParse(value.Trim(), out var sends).ShouldBeTrue($"{projectPath}: <SendsMail> is \"{value}\", neither true nor false.");
-        return sends;
+        bool.TryParse(value.Trim(), out var flag).ShouldBeTrue($"{projectPath}: <{name}> is \"{value}\", neither true nor false.");
+        return flag;
     }
 }
