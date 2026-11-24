@@ -398,6 +398,30 @@ public class ExportPharmacyCertificatesTests
         (await ExportedAsync()).Count.ShouldBe(2000);
     }
 
+    /// <summary>
+    /// #367: the membership rule is applied where the certificates are read, so an export that is refused for holding too
+    /// many never loads more than one certificate beyond the limit, however many its members hold from other times.
+    /// </summary>
+    [Fact]
+    public async Task The_export_reads_at_most_one_certificate_more_than_it_may_hold()
+    {
+        Start(manager, MembershipRole.Manager, LongAgo);
+        var joiner = PersonId.From(Guid.CreateVersion7());
+        Start(joiner, MembershipRole.Employee, new DateTimeOffset(2025, 6, 1, 8, 0, 0, TimeSpan.Zero));
+        var beforeJoining = new DateTimeOffset(2025, 1, 2, 9, 0, 0, TimeSpan.Zero);
+        for (var i = 0; i < 3000; i++)
+        {
+            Issue(joiner, beforeJoining.AddMinutes(i));
+        }
+
+        IssueMany(CertificateExportArchive.MaxCertificates + 5);
+
+        var export = await HandleAsync(manager.Value);
+
+        ShouldBeRefused(export, HttpStatusCode.BadRequest, "certification.export-too-large");
+        certificates.CertificatesReadForExports.ShouldBeLessThanOrEqualTo(CertificateExportArchive.MaxCertificates + 1);
+    }
+
     [Fact]
     public async Task No_query_is_refused()
     {

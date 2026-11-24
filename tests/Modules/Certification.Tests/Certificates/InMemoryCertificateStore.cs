@@ -23,6 +23,9 @@ internal sealed class InMemoryCertificateStore : ICertificateStore, ICertificati
     /// <summary>How often a certificate was looked up by its verification code.</summary>
     public int VerificationLookups { get; private set; }
 
+    /// <summary>How many certificates the reads for exports returned in all, as the database would load them (#367).</summary>
+    public int CertificatesReadForExports { get; private set; }
+
     public Task<bool> ExistsForAttemptAsync(AttemptId attempt, CancellationToken cancellationToken) =>
         Task.FromResult(Stored.Any(certificate => certificate.Attempt == attempt));
 
@@ -48,12 +51,13 @@ internal sealed class InMemoryCertificateStore : ICertificateStore, ICertificati
     /// <summary>The holders' certificates issued from <paramref name="issuedFrom"/> on and before <paramref name="issuedBefore"/>, oldest first, then by id, as the store in Infrastructure reads them.</summary>
     public Task<IReadOnlyList<Certificate>> IssuedToAsync(IReadOnlyCollection<PersonId> holders, Timestamp issuedFrom, Timestamp issuedBefore, CancellationToken cancellationToken)
     {
-        IReadOnlyList<Certificate> issued = Stored
+        var issued = Stored
             .Where(certificate => holders.Contains(certificate.Holder) && issuedFrom <= certificate.IssuedAt && certificate.IssuedAt < issuedBefore)
             .OrderBy(certificate => certificate.IssuedAt.Value)
             .ThenBy(certificate => certificate.Id.Value)
             .ToList();
-        return Task.FromResult(issued);
+        CertificatesReadForExports += issued.Count;
+        return Task.FromResult<IReadOnlyList<Certificate>>(issued);
     }
 
     /// <summary>

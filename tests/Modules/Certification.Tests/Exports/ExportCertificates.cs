@@ -35,5 +35,16 @@ internal static class ExportCertificates
         return certificate;
     }
 
+    /// <summary>
+    /// A certificate marked stored without a location: a row as a database could hold it (no constraint refuses it); the
+    /// domain never writes it, since attaching a document sets both.
+    /// </summary>
+    public static Certificate StoredWithoutLocation(PersonId holder, DateTimeOffset issuedAt)
+    {
+        var certificate = Pending(holder, issuedAt);
+        typeof(Certificate).GetProperty(nameof(Certificate.Document)).ShouldNotBeNull().SetValue(certificate, DocumentState.Stored);
+        return certificate;
+    }
+
     public static string LocationOf(Certificate certificate) => $"certificates/{certificate.Id.Value:D}.pdf";
 }
