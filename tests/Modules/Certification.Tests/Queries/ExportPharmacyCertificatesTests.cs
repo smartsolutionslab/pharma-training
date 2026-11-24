@@ -23,10 +23,15 @@ public class ExportPharmacyCertificatesTests
     private static readonly DateTimeOffset LongAgo = new(2020, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
     private readonly InMemoryMembershipStore memberships = new();
-    private readonly InMemoryCertificateStore certificates = new();
+    private readonly InMemoryCertificateStore certificates;
     private readonly InMemoryBlobReads blobs = new();
     private readonly PharmacyId pharmacy = PharmacyId.From(Guid.CreateVersion7());
     private readonly PersonId manager = PersonId.From(Guid.CreateVersion7());
+
+    public ExportPharmacyCertificatesTests()
+    {
+        certificates = new InMemoryCertificateStore(memberships);
+    }
 
     [Fact]
     public async Task A_caller_who_is_no_person_is_forbidden()
