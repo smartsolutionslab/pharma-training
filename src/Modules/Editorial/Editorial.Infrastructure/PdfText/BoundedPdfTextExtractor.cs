@@ -104,6 +104,10 @@ public sealed partial class BoundedPdfTextExtractor : IPdfTextExtractor, IDispos
     [LoggerMessage(Level = LogLevel.Information, Message = "An abandoned PDF read ended after {Elapsed}.")]
     private static partial void AbandonedEnded(ILogger logger, TimeSpan elapsed);
 
+    /// <summary>Error for running out of memory, the case ADR 0008 D11 leaves unbounded; Warning for any other failure.</summary>
+    [LoggerMessage(Message = "An abandoned PDF read failed with {ExceptionType} after {Elapsed}.")]
+    private static partial void AbandonedFailed(ILogger logger, LogLevel level, Type exceptionType, TimeSpan elapsed);
+
     /// <summary>
     /// One admitted parse: its deadline, its token (the request's and the deadline's), its thread, and its outcome, which
     /// completes with null at the deadline and with the parse's answer only if that comes first.
@@ -148,6 +152,7 @@ public sealed partial class BoundedPdfTextExtractor : IPdfTextExtractor, IDispos
 
         private void Run()
         {
+            Exception? unheard = null;
             try
             {
                 outcome.TrySetResult(owner.parser.Extract(pdf, parse.Token));
@@ -160,15 +165,33 @@ public sealed partial class BoundedPdfTextExtractor : IPdfTextExtractor, IDispos
             {
                 outcome.TrySetCanceled(cancelled.CancellationToken);
             }
+            catch (Exception exception) when (request.IsCancellationRequested)
+            {
+                // The request was cancelled and no longer waits: the failure is logged here, and the outcome is
+                // cancelled rather than faulted, so no task nobody awaits carries it.
+                outcome.TrySetCanceled(request);
+                unheard = exception;
+            }
             catch (Exception exception)
             {
-                // Whatever else a parse throws, a bug or running out of memory, is the caller's: it answers 500.
-                outcome.TrySetException(exception);
+                // Whatever else a parse throws, a bug or running out of memory, is the caller's: it answers 500. Once
+                // the deadline answered the caller, the outcome takes it no longer, and it is logged here instead.
+                if (!outcome.TrySetException(exception))
+                {
+                    unheard = exception;
+                }
             }
             finally
             {
                 // The outcome is complete by now; null means the deadline answered it, not this thread.
-                if (outcome.Task is { IsCompletedSuccessfully: true, Result: null })
+                if (unheard is not null)
+                {
+                    var level = unheard is OutOfMemoryException ? LogLevel.Error : LogLevel.Warning;
+                    var exceptionType = unheard.GetType();
+                    var elapsed = owner.time.GetElapsedTime(started);
+                    AbandonedFailed(owner.logger, level, exceptionType, elapsed);
+                }
+                else if (outcome.Task is { IsCompletedSuccessfully: true, Result: null })
                 {
                     var elapsed = owner.time.GetElapsedTime(started);
                     AbandonedEnded(owner.logger, elapsed);
