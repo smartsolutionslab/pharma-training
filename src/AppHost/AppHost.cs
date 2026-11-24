@@ -61,6 +61,8 @@ var host = builder.AddProject<Projects.Edge>("host")
     .WithReference(keycloak.GetEndpoint("http"))
     .WaitFor(keycloak)
     .WithEnvironment("Authentication__Authority", authority)
+    // Published, the client's address is the one the ingress appended to X-Forwarded-For (Wiring/IngressForwarding.cs).
+    .TrustsTheIngressHop()
     // Published, the edge's image carries the web app's build and serves it; the browser reads its identity provider from
     // the edge's /config.json (Wiring/WebBuild.cs, docs/adr/0005).
     .PublishWithTheWebBuild();
@@ -104,6 +106,8 @@ foreach (var (module, project) in builder.ServiceHosts())
     var service = builder.AddServiceHost(module, project)
         .WithEndpoint("http", endpoint => endpoint.Port = null)
         .WithHttpHealthCheck("/health")
+        // Published, its internal ingress's X-Forwarded-For hop is taken off, leaving the client's the edge sent.
+        .TrustsTheIngressHop()
         .WithConnectionStringsOnly(secrets)
         // The module's migrations, in its database alone, before the service starts: a project of its own in run mode,
         // the service's init container once published (Wiring/Migrations.cs).

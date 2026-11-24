@@ -1,6 +1,6 @@
 # 0029: Anonymous endpoints are limited per client address, from the edge's X-Forwarded-For
 
-**Status:** Accepted (#51)
+**Status:** Accepted (#51); the ingress trust and the forgetting of counters it asks for are ADR 0030 (#292).
 
 ## Context
 
