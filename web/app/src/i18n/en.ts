@@ -618,6 +618,10 @@ export const en: MessageSchema = {
         leftOut: 'The AI drafted no questions for these chapters; write them by hand:',
         truncated:
           'The AI read only the beginning of these PDF chapters; write questions about their later pages by hand:',
+        leftOutSummary:
+          'The AI drafted no questions for one chapter; see the note. | The AI drafted no questions for {count} chapters; see the note.',
+        truncatedSummary:
+          'The AI read only the beginning of one PDF chapter; see the note. | The AI read only the beginning of {count} PDF chapters; see the note.',
         dismiss: 'Dismiss the note',
         errors: {
           tooManyRequests: 'You have asked for too many AI drafts in a short time. Try again later.',

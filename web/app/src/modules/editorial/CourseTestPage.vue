@@ -123,6 +123,29 @@ function dismissDraftNote() {
   leftOutIds.value = [];
   truncatedIds.value = [];
 }
+/** The note in brief, for the draft's polite status: those who do not see the note hear what it names. */
+const draftSummary = computed(() =>
+  [
+    ...(leftOutTitles.value.length > 0
+      ? [
+          t(
+            'editorial.test.draft.leftOutSummary',
+            { count: n(leftOutTitles.value.length, 'integer') },
+            leftOutTitles.value.length,
+          ),
+        ]
+      : []),
+    ...(truncatedTitles.value.length > 0
+      ? [
+          t(
+            'editorial.test.draft.truncatedSummary',
+            { count: n(truncatedTitles.value.length, 'integer') },
+            truncatedTitles.value.length,
+          ),
+        ]
+      : []),
+  ].join(' '),
+);
 
 // Where focus goes after an action (S4): the button pressed may be gone once the version is read again, so focus goes
 // where the editor goes on, never to the body.
@@ -157,6 +180,13 @@ function focusPending() {
   }
 }
 watch([focusWhenReady, questions, locked], focusPending, { flush: 'post' });
+
+/** Dismisses the draft's note; its button goes with it, so focus goes to the draft's status. */
+async function dismissNote() {
+  dismissDraftNote();
+  await nextTick();
+  document.getElementById(draftStatus)?.focus();
+}
 
 /** Asks for the draft once confirmed; it cannot be cancelled, since the model's call would go on. */
 async function startDraft() {
@@ -283,6 +313,7 @@ async function confirmRemove(question: EditorialQuestionDto) {
           </p>
           <p :id="draftStatus" role="status" tabindex="-1" class="text-body">
             <template v-if="isDrafting">{{ t('editorial.test.draft.running') }}</template>
+            <template v-else>{{ draftSummary }}</template>
           </p>
           <div
             v-if="leftOutTitles.length > 0 || truncatedTitles.length > 0"
@@ -307,7 +338,7 @@ async function confirmRemove(question: EditorialQuestionDto) {
               variant="ghost"
               size="icon"
               :aria-label="t('editorial.test.draft.dismiss')"
-              @click="dismissDraftNote"
+              @click="dismissNote"
             >
               <X aria-hidden="true" />
             </Button>

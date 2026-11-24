@@ -11,8 +11,7 @@ import {
 const draftAnswer = z.object({
   draftedQuestionIds: z.array(z.string()),
   leftOutChapterIds: z.array(z.string()),
-  // A host from before #157 cuts nothing and does not name it.
-  truncatedChapterIds: z.array(z.string()).default([]),
+  truncatedChapterIds: z.array(z.string()),
 });
 
 /** What asking for a draft came to: the draft, an answer not of the draft's shape, or the error it failed with. */

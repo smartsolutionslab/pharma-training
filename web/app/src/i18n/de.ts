@@ -633,6 +633,10 @@ export const de = {
         leftOut: 'Zu diesen Kapiteln hat die KI keine Fragen entworfen; schreiben Sie sie von Hand:',
         truncated:
           'Von diesen PDF-Kapiteln hat die KI nur den Anfang gelesen; Fragen zu den späteren Seiten schreiben Sie von Hand:',
+        leftOutSummary:
+          'Zu einem Kapitel hat die KI keine Fragen entworfen; siehe den Hinweis. | Zu {count} Kapiteln hat die KI keine Fragen entworfen; siehe den Hinweis.',
+        truncatedSummary:
+          'Von einem PDF-Kapitel hat die KI nur den Anfang gelesen; siehe den Hinweis. | Von {count} PDF-Kapiteln hat die KI nur den Anfang gelesen; siehe den Hinweis.',
         dismiss: 'Hinweis schließen',
         errors: {
           tooManyRequests: 'Sie haben in kurzer Zeit zu viele KI-Entwürfe angefordert. Versuchen Sie es später erneut.',
