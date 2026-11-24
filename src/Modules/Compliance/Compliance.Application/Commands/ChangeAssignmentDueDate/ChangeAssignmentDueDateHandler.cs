@@ -31,7 +31,7 @@ public sealed class ChangeAssignmentDueDateHandler(
         var now = Timestamp.From(time.GetUtcNow());
         if (command.DueDate.Value > now.DayInGermany().Value.AddYears(AssignCourse.AssignCourse.MaximumYearsAhead))
         {
-            return Failure(AssignmentFailures.DueDateTooFar(AssignCourse.AssignCourse.MaximumYearsAhead));
+            return Failure(AssignmentFailures.DueDateTooFar());
         }
 
         var found = await assignments.FindInPharmacyAsync(command.Pharmacy, command.Assignment, cancellationToken);

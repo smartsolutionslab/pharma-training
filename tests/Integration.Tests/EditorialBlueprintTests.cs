@@ -135,6 +135,27 @@ public class EditorialBlueprintTests(AspireFixture aspire)
         (await ReadAsync(client, id, cancellationToken)).Blueprint.ShouldBe(new BlueprintView(10, 80, 12));
     }
 
+    /// <summary>
+    /// A count below one is refused by the domain's blueprint and one that is no count at all by the request's
+    /// validation; either way the caller reads the one English message its code has (docs/adr, #145).
+    /// </summary>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public async Task A_question_count_of_0_or_minus_1_answers_the_codes_english_message(int questions)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var id = await CreateAsync(client, cancellationToken);
+
+        using var refused = await client.PutAsJsonAsync(Blueprint(id), new { questions, passingScorePercent = 80, validityMonths = 12 }, cancellationToken);
+
+        refused.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        using var problem = JsonDocument.Parse(await refused.Content.ReadAsStringAsync(cancellationToken));
+        problem.RootElement.GetProperty("code").GetString().ShouldBe("editorial.invalid-question-count");
+        problem.RootElement.GetProperty("title").GetString().ShouldBe(ErrorCodeCatalog.MessageOf("editorial.invalid-question-count"));
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

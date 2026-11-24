@@ -158,6 +158,21 @@ public class VideoPaceTests
         Report(session, Film, 95, Timestamp.From(reopenedAt.Value.AddSeconds(320))).IsSuccess.ShouldBeTrue();
     }
 
+    /// <summary>
+    /// A reopening stamped before the last progress, by an instance whose clock runs behind, leaves the clock at that
+    /// progress: the pace never measures from an earlier instant than one already recorded.
+    /// </summary>
+    [Fact]
+    public void A_reopening_stamped_before_the_last_progress_does_not_move_the_clock_back()
+    {
+        var session = Started();
+        Report(session, Intro, 100, At(3600)).IsSuccess.ShouldBeTrue();
+        session.ReopenChapters(ExhaustionNotice.From(Guid.CreateVersion7()), [Intro], At(600)).IsSuccess.ShouldBeTrue();
+
+        ShouldBeTooFast(Report(session, Film, 95, At(3610)));
+        Report(session, Film, 95, At(3600 + 320)).IsSuccess.ShouldBeTrue();
+    }
+
     [Fact]
     public void Replaying_the_stored_events_keeps_the_clock()
     {

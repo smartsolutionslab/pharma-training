@@ -58,7 +58,8 @@ public class AssignmentFailuresTests
 
         error.Code.ShouldBe("compliance.assignment-not-found");
         error.Status.ShouldBe(HttpStatusCode.NotFound);
-        error.Message.ShouldContain(id.ToString());
+        error.Message.ShouldBe("This pharmacy has no such assignment.");
+        error.Message.ShouldNotContain(id.ToString());
     }
 
     [Fact]

@@ -237,11 +237,11 @@ public class AssignmentCoverageTests
     }
 
     [Fact]
-    public void A_due_date_in_the_past_names_the_date_in_german_form()
+    public void A_due_date_in_the_past_says_so_without_the_date()
     {
         var error = AssignmentErrors.DueDateInThePast(DueDate.From(new DateOnly(2027, 2, 28))).Value.ShouldBeOfType<DueDateInThePast>();
 
-        error.Message.ShouldContain("28.02.2027");
+        error.Message.ShouldBe("The due date is in the past.");
     }
 
     private static Assignment Assign(DueDate dueDate, RecurrenceInterval? recurrence = null) =>
