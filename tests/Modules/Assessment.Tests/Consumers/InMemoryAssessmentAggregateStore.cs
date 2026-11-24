@@ -5,13 +5,23 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Assessment.Tests.Consumers;
 
 /// <summary>
 /// The module's event streams in memory: a save appends the aggregate's pending events to its stream, and a load
-/// replays them into a new aggregate, as the event store does.
+/// replays them into a new aggregate, as the event store does. <see cref="LoseNextSave"/> makes the next save lose a
+/// race on its stream, as an append does when another one landed since the examination was loaded:
+/// <see cref="TrySaveAsync"/> answers <see langword="false"/> with nothing stored, and <see cref="SaveAsync"/> throws.
+/// Each save is recorded in <see cref="Steps"/>, which a unit of work may share to show the order.
 /// </summary>
-internal sealed class InMemoryAssessmentAggregateStore : IAssessmentAggregateStore
+internal sealed class InMemoryAssessmentAggregateStore(List<string>? steps = null) : IAssessmentAggregateStore
 {
+    public const string Saved = "save";
+
     private readonly Dictionary<Guid, List<IDomainEvent>> streams = [];
+    private bool loseNextSave;
 
     public IReadOnlyDictionary<Guid, List<IDomainEvent>> Streams => streams;
+
+    public List<string> Steps { get; } = steps ?? [];
+
+    public int Saves { get; private set; }
 
     public Task<Option<TAggregate>> LoadAsync<TAggregate>(IAggregateId id, CancellationToken cancellationToken)
         where TAggregate : class, IEventSourced
@@ -28,6 +38,34 @@ internal sealed class InMemoryAssessmentAggregateStore : IAssessmentAggregateSto
 
     public Task SaveAsync(IEventSourced aggregate, CancellationToken cancellationToken)
     {
+        if (loseNextSave)
+        {
+            loseNextSave = false;
+            throw new InvalidOperationException($"The stream {aggregate.Id.Value} moved on since it was loaded.");
+        }
+
+        Append(aggregate);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>What the module's store answers once it opts in to lost races (ADR 0016): <see langword="false"/> with nothing stored and the aggregate left unmarked.</summary>
+    public Task<bool> TrySaveAsync(IEventSourced aggregate, CancellationToken cancellationToken)
+    {
+        if (loseNextSave)
+        {
+            loseNextSave = false;
+            return Task.FromResult(false);
+        }
+
+        Append(aggregate);
+        return Task.FromResult(true);
+    }
+
+    /// <summary>The next save, whichever way it is made, loses the race on its stream and stores nothing.</summary>
+    public void LoseNextSave() => loseNextSave = true;
+
+    private void Append(IEventSourced aggregate)
+    {
         var history = streams.GetValueOrDefault(aggregate.Id.Value) ?? [];
         if (history.Count != aggregate.Version)
         {
@@ -36,6 +74,7 @@ internal sealed class InMemoryAssessmentAggregateStore : IAssessmentAggregateSto
 
         streams[aggregate.Id.Value] = [.. history, .. aggregate.PendingEvents];
         aggregate.MarkStored();
-        return Task.CompletedTask;
+        Saves++;
+        Steps.Add(Saved);
     }
 }

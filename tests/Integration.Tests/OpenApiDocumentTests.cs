@@ -91,6 +91,30 @@ public class OpenApiDocumentTests(AspireFixture aspire)
     }
 
     /// <summary>
+    /// A learner's attempt routes (#46) are in the document with their methods, so the correctness check above walks
+    /// what they answer and take, and the generated client has them.
+    /// </summary>
+    [Fact]
+    public async Task The_document_describes_the_attempt_routes()
+    {
+        var paths = (await ServedAsync())["paths"]?.AsObject();
+        paths.ShouldNotBeNull("the document has paths");
+
+        string[] described =
+        [
+            .. new (string Path, string Method)[]
+            {
+                ("/assessment/examinations/by-session/{sessionId}", "get"),
+                ("/assessment/examinations/{id}/attempts", "post"),
+                ("/assessment/examinations/{id}/attempts/current/answers/{questionId}", "put"),
+                ("/assessment/examinations/{id}/attempts/current/submit", "post"),
+            }.Where(route => paths[route.Path]?[route.Method] is null).Select(route => $"{route.Method.ToUpperInvariant()} {route.Path}"),
+        ];
+
+        described.ShouldBeEmpty("these attempt routes are missing from the document");
+    }
+
+    /// <summary>
     /// The solutions go to Assessment and never to the frontend (docs/domain/README.md): no schema an assessment path
     /// answers or takes, and no component schema of Assessment's, has a property that names correctness, a solution or an
     /// answer key, however deep.
