@@ -1,10 +1,17 @@
 <script setup lang="ts">
+import { CircleCheck, CircleX } from '@lucide/vue';
+import { useI18n } from 'vue-i18n';
 import type { CertificateValidity } from '@/api/generated';
 
-// Stub for #54 (T3, red first): whether a certificate is valid or expired, as an icon and a word.
+// Whether a certificate is valid or expired: the word, which is text, and an icon beside it that is decoration only.
 defineProps<{ validity: CertificateValidity }>();
+const { t } = useI18n();
 </script>
 
 <template>
-  <span></span>
+  <span class="inline-flex items-center gap-2">
+    <CircleCheck v-if="validity === 'Valid'" aria-hidden="true" class="size-5 shrink-0 text-primary" />
+    <CircleX v-else aria-hidden="true" class="size-5 shrink-0 text-destructive" />
+    <span>{{ t(`certification.validity.${validity}`) }}</span>
+  </span>
 </template>
