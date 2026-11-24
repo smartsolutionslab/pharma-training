@@ -12,11 +12,23 @@ namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.EventStore;
 /// </summary>
 public sealed class SweptEventIndex
 {
+    /// <summary>
+    /// How long each lock the build and the drop wait for may keep them waiting (#351): the transactions that write to
+    /// <c>mt_events</c>, and every transaction holding a snapshot older than the build's, a session left idle in one
+    /// included. Unbounded, such a session would hold the runner, and with it the new revision, for good, without a word;
+    /// bounded, the run fails on the lock timeout and the next run builds again. The build itself has no time limit.
+    /// </summary>
+    public static readonly TimeSpan LockTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>Bounds the lock waits of the session it runs in by <see cref="LockTimeout"/>.</summary>
+    public static readonly string LockTimeoutStatement = $"set lock_timeout = '{(long)LockTimeout.TotalMilliseconds}ms'";
+
     public SweptEventIndex(string schema, string storedType)
     {
         // Query refuses a schema or type that is not a plain SQL identifier; the index is written from the same two.
         _ = UnannouncedEvents.Query(schema, storedType);
 
+        Schema = schema;
         Name = NameOf(storedType);
         CreateStatement = $"create index concurrently if not exists {Name} on {schema}.mt_events (timestamp) where type = '{storedType}'";
         IsInvalidQuery = $"""
@@ -28,6 +40,9 @@ public sealed class SweptEventIndex
             """;
         DropStatement = $"drop index concurrently if exists {schema}.{Name}";
     }
+
+    /// <summary>The schema of the module's event store, which holds <c>mt_events</c>.</summary>
+    public string Schema { get; }
 
     public string Name { get; }
 

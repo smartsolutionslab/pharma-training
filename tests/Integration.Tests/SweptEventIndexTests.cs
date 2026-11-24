@@ -80,6 +80,32 @@ public sealed class SweptEventIndexTests(AspireFixture aspire) : IAsyncDisposabl
         await using var entered = await second;
     }
 
+    /// <summary>
+    /// A concurrent build also waits for every session left idle in a transaction that holds a snapshot (#351). Without a
+    /// bound it would wait for good, and the new revision's init container would hang without a word; with
+    /// <c>lock_timeout</c> on the build's connection the run fails, and its log says which index it was building.
+    /// </summary>
+    [Fact]
+    public async Task A_session_idle_in_a_transaction_fails_the_index_build_after_the_lock_timeout_with_a_log_line()
+    {
+        var administrator = await DatabaseAsync();
+        var index = SweptEventIndex.NameOf("content_completed");
+        await RunTheMigrationRunnerAsync("learning", administrator);
+        await ExecuteAsync(administrator, $"drop index learning.{index}");
+        await using var idle = new NpgsqlConnection(administrator);
+        await idle.OpenAsync(TestContext.Current.CancellationToken);
+        await using (var snapshot = new NpgsqlCommand("begin isolation level repeatable read; select count(*) from learning.mt_events", idle))
+        {
+            await snapshot.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
+        }
+
+        var (exitCode, output) = await MigrationRunnerProcess.RunAsync("learning", administrator, string.Empty, TestContext.Current.CancellationToken);
+
+        exitCode.ShouldNotBe(0, $"The MigrationRunner built {index} although a session held an older snapshot:\n{output}");
+        output.ShouldContain($"Building the index {index}", Case.Sensitive, $"The run did not log the build before it waited:\n{output}");
+        output.ShouldContain("lock timeout", Case.Insensitive, $"The run did not fail on the lock timeout:\n{output}");
+    }
+
     public async ValueTask DisposeAsync()
     {
         var server = await ServerAsync();

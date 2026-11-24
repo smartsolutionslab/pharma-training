@@ -5,10 +5,12 @@ using JasperFx;
 using Marten;
 using Npgsql;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Microsoft.Extensions.DependencyInjection;
 
-public static class EventStoreRegistration
+public static partial class EventStoreRegistration
 {
     /// <summary>
     /// Gives the module its own Marten store when its Infrastructure project has adapters over one: classes whose
@@ -71,10 +73,18 @@ public static class EventStoreRegistration
 
         // Concurrently (#337), so on a large event table the appends of replicas still running are not held up for the
         // build: outside a transaction, and without a command timeout, since the build takes as long as the table needs.
+        // Its lock waits are bounded, though (#351): a session left idle in a transaction would otherwise hold it for good.
+        var logger = services.GetService<ILoggerFactory>()?.CreateLogger(typeof(SweptEventIndex).FullName!) ?? NullLogger.Instance;
         await using var connection = store.Storage.Database.CreateConnection();
         await connection.OpenAsync();
+        await using (var lockTimeout = new NpgsqlCommand(SweptEventIndex.LockTimeoutStatement, connection))
+        {
+            await lockTimeout.ExecuteNonQueryAsync();
+        }
+
         foreach (var index in module.SweptEventIndexes)
         {
+            LogBuilding(logger, index.Name, index.Schema, SweptEventIndex.LockTimeout);
             await using (var isInvalid = new NpgsqlCommand(index.IsInvalidQuery, connection))
             {
                 if (await isInvalid.ExecuteScalarAsync() is true)
@@ -89,4 +99,9 @@ public static class EventStoreRegistration
             await create.ExecuteNonQueryAsync();
         }
     }
+
+    [LoggerMessage(
+        Level = LogLevel.Information,
+        Message = "Building the index {Index} on {Schema}.mt_events concurrently, if it is missing: it waits for the transactions writing to the table and for every older snapshot, a session idle in a transaction included, at most {LockTimeout} each, and the run fails on a lock timeout.")]
+    private static partial void LogBuilding(ILogger logger, string index, string schema, TimeSpan lockTimeout);
 }
