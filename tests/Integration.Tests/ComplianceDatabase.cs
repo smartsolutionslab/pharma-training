@@ -147,6 +147,15 @@ internal static class ComplianceDatabase
         (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1, $"Compliance stores no course version {courseVersionId}.");
     }
 
+    /// <summary>Marks the dead letter replayable, so Wolverine delivers it again.</summary>
+    public static async Task ReplayAsync(AspireFixture aspire, Guid deadLetter, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(aspire, cancellationToken);
+        await using var command = new NpgsqlCommand("UPDATE wolverine.wolverine_dead_letters SET replayable = true WHERE id = @id", connection);
+        command.Parameters.AddWithValue("id", deadLetter);
+        (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1, $"Compliance holds no dead letter {deadLetter}.");
+    }
+
     /// <summary>The rows a counting query finds for the id.</summary>
     public static async Task<long> CountAsync(AspireFixture aspire, string query, Guid id, CancellationToken cancellationToken)
     {

@@ -36,6 +36,28 @@ public class BrokerPublisherReloadTests(AspireFixture aspire)
             .ShouldBe(1, $"Compliance did not store the course version {conflicting.CourseVersionId} it handled after a retry.");
     }
 
+    [Fact]
+    public async Task A_legitimate_course_version_is_handled_after_its_dead_letter_is_replayed()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var courseId = Guid.CreateVersion7();
+        var stored = Published(courseId, 1);
+        await ComplianceDatabase.DeliverAsync(aspire, CourseVersionPublished, stored, cancellationToken);
+        var conflicting = Published(courseId, 1);
+        var messageId = Guid.CreateVersion7();
+
+        await ComplianceDatabase.SendAsync(aspire, CourseVersionPublished, conflicting, messageId, cancellationToken);
+        var reason = await ComplianceDatabase.DeadLetteredAsync(aspire, messageId, cancellationToken);
+        reason.ShouldContain(conflicting.CourseVersionId.ToString(), customMessage: $"The course version {conflicting.CourseVersionId} was dead-lettered for another reason than its conflict: {reason}");
+        reason.ShouldContain(stored.CourseVersionId.ToString(), customMessage: $"The course version {conflicting.CourseVersionId} was dead-lettered for another reason than its conflict: {reason}");
+        await ComplianceDatabase.DeleteCourseVersionAsync(aspire, stored.CourseVersionId, cancellationToken);
+        await ComplianceDatabase.ReplayAsync(aspire, messageId, cancellationToken);
+
+        await ComplianceDatabase.WaitUntilHandledUnlessForgedAsync(aspire, messageId, HandledTimeout, cancellationToken);
+        (await ComplianceDatabase.CountAsync(aspire, CourseVersionsById, conflicting.CourseVersionId, cancellationToken))
+            .ShouldBe(1, $"Compliance did not store the course version {conflicting.CourseVersionId} it handled after its dead letter was replayed.");
+    }
+
     private static PublishedEvent Published(Guid courseId, int versionNumber) =>
         new(
             courseId,
