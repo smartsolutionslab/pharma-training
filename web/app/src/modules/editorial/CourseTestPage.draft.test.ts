@@ -684,7 +684,7 @@ describe('the draft', () => {
     expect(draftStatus()).toHaveTextContent('The AI read only the beginning of 2 PDF chapters; see the note.');
   });
 
-  test('dismissing the note puts focus on the draft’s status, never on the body', async () => {
+  test('dismissing the note puts focus on the draft’s explanation, visible and named, never on the body (#361)', async () => {
     const user = userEvent.setup();
     version = versionOf('Draft', { chapters: [introduction, manual], questions: [] });
     drafting = async () =>
@@ -697,7 +697,9 @@ describe('the draft', () => {
     await user.click(dismiss);
 
     await waitFor(() => expect(truncatedNote()).toBeNull());
-    expect(draftStatus()).toHaveFocus();
+    const explanation = screen.getByText(t('editorial.test.draft.explain'));
+    expect(explanation).toHaveFocus();
+    expect(explanation).not.toHaveTextContent(/^$/);
     expect(document.activeElement).not.toBe(document.body);
   });
 
