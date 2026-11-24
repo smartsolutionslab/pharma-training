@@ -225,12 +225,12 @@ Aggregatgrenze ist die Prüfung pro LearningSession, nicht der einzelne Versuch:
 | Event (intern) | Bedeutung |
 | --- | --- |
 | `ExaminationUnlocked` | Nach `ContentCompleted` |
-| `AttemptStarted` | Gestellte Fragenversionen in fester Reihenfolge |
+| `AttemptStarted` | Gestellte Fragenversionen in fester Reihenfolge; Antwortoptionen in einer aus der AttemptId abgeleiteten Reihenfolge (ADR 0022) |
 | `AttemptSubmitted` | Antworten, Punktzahl, bestanden ja/nein |
 | `ExaminationPassed` | Führt zu `TestPassed`; terminal |
 | `ExaminationLocked` | Nach dem 3. Fehlversuch; führt zu `AttemptsExhausted` |
 
-Invarianten: Versuch nur, wenn freigeschaltet und kein Versuch offen; Bewertung serverseitig gegen die Testdefinition der Version; nach Bestehen keine weiteren Versuche; nach Sperre erst wieder nach erneutem `ContentCompleted`.
+Invarianten: Versuch nur, wenn freigeschaltet und kein Versuch offen; Antworten nur auf Fragen und Optionen des offenen Versuchs; bei Einfachauswahl genau eine Option; Bewertung serverseitig gegen die Testdefinition der Version; nach Bestehen keine weiteren Versuche; nach Sperre erst wieder nach erneutem `ContentCompleted`.
 
 ## Aggregate der übrigen Contexts (Entwurf)
 
@@ -243,15 +243,15 @@ Mitgliedschaften sind Entities **innerhalb** der Apotheke. Eine Apotheke hat wen
 | Command | Invarianten | Event |
 | --- | --- | --- |
 | `Register` | Registrierende Person wird sofort aktive Leitung | `PharmacyRegistered`, `MembershipStarted` |
-| `Invite` | E-Mail nicht schon aktiv oder eingeladen; Tätigkeit und Rolle angegeben | `MemberInvited` |
+| `Invite` | E-Mail nicht schon aktiv oder eingeladen; Tätigkeit und Rolle angegeben; die Mail zählt zur Tagesgrenze der Apotheke (50 Einladungsmails je UTC-Kalendertag, sonst `TooManyInvitationsToday`, 429 bis 00:00 UTC) | `MemberInvited` |
 | `AcceptInvitation` | Einladung offen und nicht abgelaufen; PersonId aus Keycloak | `MembershipStarted` |
-| `RenewInvitation` | Nur offene oder abgelaufene Einladungen; wieder 14 Tage gültig, der alte Link gilt sofort nicht mehr; das neue Token entsteht beim Versand der Mail | `MemberInvited` |
+| `RenewInvitation` | Nur offene oder abgelaufene Einladungen; frühestens 10 Minuten nach der letzten Mail der Einladung (sonst `InvitationRenewedTooSoon`, 429); zählt zur selben Tagesgrenze wie `Invite`; wieder 14 Tage gültig, der alte Link gilt sofort nicht mehr; das neue Token entsteht beim Versand der Mail | `MemberInvited` |
 | `IssueInvitationLink` | Nur offene, nicht abgelaufene Einladungen; beim Versand der Mail, ersetzt den Hash | `InvitationLinkIssued` |
 | `RevokeInvitation` | Nur offene Einladungen | `InvitationRevoked` |
 | `EndMembership` | Nicht die letzte aktive Leitung | `MembershipEnded` |
 | `ChangeJobFunction` / `ChangeRole` | Letzte Leitung kann nicht zum Mitarbeiter werden | `MembershipChanged` |
 
-Value Objects: `PharmacyId`, `PharmacyName`, `MembershipId`, `EmailAddress`, `InvitationToken`, `InvitationTokenHash` (SHA-256 des Tokens, nur er wird gespeichert), `DisplayName`. Enums: `MembershipRole` (Manager, Employee), `JobFunction` (Pharmacist, Pta, Pka, Trainee, Other), `MembershipStatus` (Invited, Active, Ended, Revoked). Fähigkeiten wie `CanAssignCourses` leiten sich aus der Rolle ab.
+Value Objects: `PharmacyId`, `PharmacyName`, `MembershipId`, `EmailAddress`, `InvitationToken`, `InvitationTokenHash` (SHA-256 des Tokens, nur er wird gespeichert), `DisplayName`, `UtcDay` und `InvitationMailCount` (der Tageszähler der Einladungsmails), `RenewCooldown` und `DailyMailCap` (die Grenzen, aus der Konfiguration, zusammen `InvitationMailLimits`). Enums: `MembershipRole` (Manager, Employee), `JobFunction` (Pharmacist, Pta, Pka, Trainee, Other), `MembershipStatus` (Invited, Active, Ended, Revoked). Fähigkeiten wie `CanAssignCourses` leiten sich aus der Rolle ab.
 
 ### CourseVersion (Editorial)
 
@@ -277,7 +277,7 @@ Entsteht aus `TestPassed`; pro bestandenem Versuch genau eine Bestätigung (Atte
 
 Inhalt: `CertificateId`, `PersonId`, `HolderName` und `CourseTitle` als Momentaufnahme beim Ausstellen, `CourseVersionId`, `Score`, `IssuedAt`, `ValidUntil` (Ausstellung + Gültigkeit der Version), `VerificationCode` (zufällig, nicht die Id, für den QR-Code). Das PDF wird beim Ausstellen erzeugt und unverändert gespeichert.
 
-QR-Prüfung (`GET /certification/verify/{code}`, öffentlich, Z2): zeigt nur Name, Schulung, Ausstellungs- und Gültig-bis-Datum sowie gültig/abgelaufen. Unbekannte, falsch geformte Codes und Ids bekommen dieselbe Antwort (404, `certification.certificate-not-verifiable`). Begrenzt auf 30 pro Minute und 500 pro Tag je Client-Adresse (ADR 0026).
+QR-Prüfung (`GET /certification/verify/{code}`, öffentlich, Z2): zeigt nur Name, Schulung, Ausstellungs- und Gültig-bis-Datum sowie gültig/abgelaufen. Unbekannte, falsch geformte Codes und Ids bekommen dieselbe Antwort (404, `certification.certificate-not-verifiable`). Begrenzt auf 30 pro Minute und 500 pro Tag je Client-Adresse (ADR 0029).
 
 ## Endpunkte und Read Models (MVP 1)
 
@@ -312,7 +312,7 @@ Alle Pfade beginnen mit dem Modulnamen; der Edge leitet danach weiter. Kein Serv
 | learning | `GET /learning/sessions/{id}`, `POST …/{id}/progress` | Mitglied | Fortschritt lesen und melden (L1, L2) |
 | learning | `GET /learning/media/{chapterId}` | Mitglied | Kurzlebige Lese-URL für PDF/Video |
 | assessment | `GET /assessment/examinations/by-session/{sessionId}` | Mitglied | Teststatus |
-| assessment | `POST …/{id}/attempts`, `PUT …/attempts/current/answers/{qid}`, `POST …/attempts/current/submit` | Mitglied | Versuch starten, antworten, abgeben (A1, A2) |
+| assessment | `POST /assessment/examinations/{id}/attempts`, `PUT /assessment/examinations/{id}/attempts/current/answers/{qid}`, `POST /assessment/examinations/{id}/attempts/current/submit` | Mitglied | Versuch starten, antworten, abgeben (A1, A2) |
 | certification | `GET /certification/me/certificates`, `GET …/certificates/{id}/pdf` | Mitglied | Eigene Bestätigungen (Z1) |
 | certification | `GET /certification/pharmacies/{id}/certificates/export` | Leitung | ZIP mit PDFs und CSV-Index (Z3) |
 | certification | `GET /certification/verify/{code}` | öffentlich | QR-Prüfung (Z2) |

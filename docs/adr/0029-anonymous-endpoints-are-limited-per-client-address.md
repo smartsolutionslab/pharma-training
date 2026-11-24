@@ -1,4 +1,4 @@
-# 0026: Anonymous endpoints are limited per client address, from the edge's X-Forwarded-For
+# 0029: Anonymous endpoints are limited per client address, from the edge's X-Forwarded-For
 
 **Status:** Accepted (#51)
 

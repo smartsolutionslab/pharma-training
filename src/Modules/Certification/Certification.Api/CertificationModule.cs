@@ -13,7 +13,7 @@ public sealed class CertificationModule : IModule
         services.AddModuleInfrastructure<CertificationModule>(configuration);
 
         // The per-address limit on public verification, read once here: a value the host cannot read stops it at
-        // startup (docs/adr/0026).
+        // startup (docs/adr/0029).
         services.AddUserRateLimit(CertificationVerificationLimits.From(configuration));
     }
 

@@ -8,7 +8,7 @@ namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.RateLimits;
 /// The endpoint filter <c>RequireUserRateLimit</c> and <c>RequireClientRateLimit</c> add: it runs after authorization,
 /// counts the caller's request under the limit and, over it, answers 429 with <c>Retry-After</c> and the limit's refusal
 /// as problem details, without invoking the endpoint (docs/adr/0020). A per-user limit counts the token's subject and
-/// logs it; a per-client limit counts the client's address (docs/adr/0026) and never logs it, as it is personal data.
+/// logs it; a per-client limit counts the client's address (docs/adr/0029) and never logs it, as it is personal data.
 /// </summary>
 internal sealed partial class UserRateLimitFilter : IEndpointFilter
 {

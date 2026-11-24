@@ -14,4 +14,11 @@ public abstract record ApiError(string Code, string Message, HttpStatusCode Stat
         Ensure.That(error).IsNotNull();
         return new DomainFailure(error, status);
     }
+
+    /// <summary>A domain rule's refusal for now, not for good: 429, and the instant from which the caller may try again.</summary>
+    public static ApiError RetryLater(DomainError error, DateTimeOffset retryAt)
+    {
+        Ensure.That(error).IsNotNull();
+        return new RetryLaterFailure(error, retryAt);
+    }
 }

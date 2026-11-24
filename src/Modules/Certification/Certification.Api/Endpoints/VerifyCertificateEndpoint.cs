@@ -11,7 +11,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Api.Endpoints;
 /// <summary>
 /// Public verification of a certificate by the code in its QR link (#51, Z2). Open to anyone: a verifier scans the code
 /// without an account. Every code that finds nothing, malformed or not, answers the same 404; each client address may
-/// verify a limited number of times a minute and a day (docs/adr/0026). No answer may be cached, as the validity changes
+/// verify a limited number of times a minute and a day (docs/adr/0029). No answer may be cached, as the validity changes
 /// with the day and the body is personal data.
 /// </summary>
 public sealed class VerifyCertificateEndpoint : IEndpoint

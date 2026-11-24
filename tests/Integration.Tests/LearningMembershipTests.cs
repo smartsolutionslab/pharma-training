@@ -7,7 +7,8 @@ using static SmartSolutionsLab.PharmaTraining.Integration.Tests.LearningSessions
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 
 /// <summary>
-/// Only an active member of a pharmacy may start or resume a learning session (#194), whichever pharmacy it is, by
+/// Only an active member of a pharmacy may start or resume a learning session (#194), or report progress on one (#242),
+/// whichever pharmacy it is, by
 /// Learning's own copy of the memberships. Someone who is no member is refused with <c>learning.membership-missing</c>
 /// before Learning says whether a version or a session exists; a former member still reads their own session.
 /// <c>visitor</c> is never a member anywhere; <c>former-employee</c> is made one here alone, and every test that does
@@ -132,6 +133,97 @@ public class LearningMembershipTests(AspireFixture aspire)
         read.StatusCode.ShouldBe(HttpStatusCode.NotFound, await read.Content.ReadAsStringAsync(cancellationToken));
         (await CodeOfAsync(read, cancellationToken)).ShouldBe("learning.session-not-found");
     }
+
+    [Fact]
+    public async Task A_member_reports_progress_on_their_session()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var published = await PublishedToLearningAsync(cancellationToken);
+        using var member = await aspire.CreateHostClientAsync("employee-b");
+        await MemberAsync(aspire, SubjectOf(member), cancellationToken);
+        using var started = await StartAsync(member, published.CourseVersionId, cancellationToken);
+        started.StatusCode.ShouldBe(HttpStatusCode.Created, await started.Content.ReadAsStringAsync(cancellationToken));
+        var session = await BodyOfAsync(started, cancellationToken);
+        // A text chapter, which is not paced (ADR 0024), so the report does not wait for a video's playback time.
+        var text = ChapterOf(published, "Text");
+
+        using var reported = await ReportProgressAsync(member, session.Id, text, 100, cancellationToken);
+
+        reported.StatusCode.ShouldBe(HttpStatusCode.OK, await reported.Content.ReadAsStringAsync(cancellationToken));
+        (await BodyOfAsync(reported, cancellationToken)).Chapters.Single(chapter => chapter.ChapterId == text).ProgressPercent.ShouldBe(100);
+    }
+
+    [Fact]
+    public async Task A_person_whose_membership_ended_may_not_report_progress_on_their_own_session_but_still_reads_it()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var published = await PublishedToLearningAsync(cancellationToken);
+        using var former = await aspire.CreateHostClientAsync("former-employee");
+        var person = SubjectOf(former);
+        var pharmacy = Guid.CreateVersion7();
+        var membership = await MemberAsync(aspire, person, pharmacy, cancellationToken);
+        SessionBody session;
+        try
+        {
+            using var started = await StartAsync(former, published.CourseVersionId, cancellationToken);
+            started.StatusCode.ShouldBe(HttpStatusCode.Created, await started.Content.ReadAsStringAsync(cancellationToken));
+            session = await BodyOfAsync(started, cancellationToken);
+        }
+        finally
+        {
+            await EndAsync(aspire, membership, person, pharmacy, cancellationToken);
+        }
+
+        var stored = await EventsInAsync(session.Id, cancellationToken);
+
+        using var reported = await ReportProgressAsync(former, session.Id, ChapterOf(published, "Video"), 60, cancellationToken);
+        using var read = await ReadSessionAsync(former, session.Id, cancellationToken);
+
+        reported.StatusCode.ShouldBe(HttpStatusCode.Forbidden, await reported.Content.ReadAsStringAsync(cancellationToken));
+        (await CodeOfAsync(reported, cancellationToken)).ShouldBe(MembershipMissing);
+        (await EventsInAsync(session.Id, cancellationToken)).ShouldBe(stored);
+        read.StatusCode.ShouldBe(HttpStatusCode.OK);
+        ShouldDescribeTheSame(await BodyOfAsync(read, cancellationToken), session);
+    }
+
+    [Fact]
+    public async Task A_signed_in_person_without_a_membership_may_not_report_progress_on_any_session()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var published = await PublishedToLearningAsync(cancellationToken);
+        using var employeeA = await aspire.CreateHostClientAsync("employee-a");
+        await MemberAsync(aspire, SubjectOf(employeeA), cancellationToken);
+        using var started = await StartAsync(employeeA, published.CourseVersionId, cancellationToken);
+        started.StatusCode.ShouldBe(HttpStatusCode.Created, await started.Content.ReadAsStringAsync(cancellationToken));
+        var session = await BodyOfAsync(started, cancellationToken);
+        var stored = await EventsInAsync(session.Id, cancellationToken);
+        using var visitor = await aspire.CreateHostClientAsync("visitor");
+
+        using var another = await ReportProgressAsync(visitor, session.Id, ChapterOf(published, "Video"), 60, cancellationToken);
+        using var unknown = await ReportProgressAsync(visitor, Guid.CreateVersion7(), ChapterOf(published, "Video"), 60, cancellationToken);
+
+        another.StatusCode.ShouldBe(HttpStatusCode.Forbidden, await another.Content.ReadAsStringAsync(cancellationToken));
+        (await CodeOfAsync(another, cancellationToken)).ShouldBe(MembershipMissing);
+        unknown.StatusCode.ShouldBe(HttpStatusCode.Forbidden, await unknown.Content.ReadAsStringAsync(cancellationToken));
+        (await CodeOfAsync(unknown, cancellationToken)).ShouldBe(MembershipMissing);
+        (await EventsInAsync(session.Id, cancellationToken)).ShouldBe(stored);
+    }
+
+    [Fact]
+    public async Task Without_a_token_reporting_progress_answers_401()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var anonymous = aspire.CreateHostClient();
+
+        using var reported = await ReportProgressAsync(anonymous, Guid.CreateVersion7(), Guid.CreateVersion7(), 60, cancellationToken);
+
+        reported.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+    }
+
+    private static Guid ChapterOf(PublishedEvent published, string kind) => published.Chapters.Single(chapter => chapter.Kind == kind).ChapterId;
+
+    private Task<long> EventsInAsync(Guid session, CancellationToken cancellationToken) =>
+        CountAsync(aspire, "select count(*) from learning.mt_events where stream_id = @id", session, cancellationToken);
 
     /// <summary>How many sessions Learning's projection holds for the learner on the version.</summary>
     private async Task<long> SessionsOfAsync(Guid learner, Guid courseVersionId, CancellationToken cancellationToken)

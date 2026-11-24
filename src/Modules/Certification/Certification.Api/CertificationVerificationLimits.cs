@@ -6,7 +6,7 @@ using Microsoft.Extensions.Configuration;
 namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Api;
 
 /// <summary>
-/// The per-address limit on public verification (#51, docs/adr/0026): <see cref="DefaultPerMinute"/> a minute and
+/// The per-address limit on public verification (#51, docs/adr/0029): <see cref="DefaultPerMinute"/> a minute and
 /// <see cref="DefaultPerDay"/> a day per client address unless the host's configuration says otherwise under
 /// <c>Certification:VerificationLimits</c>. A blank or absent value takes the default; a value that is not a whole
 /// number from 1 stops the host at startup, naming the key.

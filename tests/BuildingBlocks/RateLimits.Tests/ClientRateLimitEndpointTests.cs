@@ -13,7 +13,7 @@ using Microsoft.Extensions.Time.Testing;
 namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.RateLimits.Tests;
 
 /// <summary>
-/// An anonymous endpoint names a registered limit with <c>RequireClientRateLimit</c> (docs/adr/0026): it counts per
+/// An anonymous endpoint names a registered limit with <c>RequireClientRateLimit</c> (docs/adr/0029): it counts per
 /// client address (<see cref="ClientRateSubject"/>), not per token, so a caller over it gets 429 with
 /// <c>Retry-After</c> and the limit's code, and the endpoint's delegate is not invoked. The refusal is logged with the
 /// limit's name, never the address, which is personal data. The request delegate is invoked directly, as the filter

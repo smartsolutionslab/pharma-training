@@ -6,7 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Tests;
 
 /// <summary>
-/// The limit on public verification (#51, docs/adr/0026) is deployment configuration under
+/// The limit on public verification (#51, docs/adr/0029) is deployment configuration under
 /// <c>Certification:VerificationLimits</c>, 30 a minute and 500 a day per client address unless it says otherwise: the
 /// host reads it once at startup, and a value that is not a whole number from 1 stops it there, naming the key.
 /// </summary>

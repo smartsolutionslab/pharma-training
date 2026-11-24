@@ -6,7 +6,7 @@ using Microsoft.Extensions.Primitives;
 namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.RateLimits;
 
 /// <summary>
-/// The caller an anonymous endpoint's limit counts (docs/adr/0026): its address, prefixed <c>address:</c> so it never
+/// The caller an anonymous endpoint's limit counts (docs/adr/0029): its address, prefixed <c>address:</c> so it never
 /// meets a token's <c>sub</c>. The address is the rightmost <c>X-Forwarded-For</c> entry, which the edge sets to the
 /// address it saw, else the connection's own; an IPv4-mapped address counts as its IPv4 address and an IPv6 address as
 /// its /64, which one client holds whole. A caller with no readable address shares <c>address:unknown</c>.

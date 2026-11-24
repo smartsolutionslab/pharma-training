@@ -16,6 +16,19 @@ public sealed class TestDefinitionCopies(AssessmentDbContext context) : ITestDef
         return context.Set<TestDefinitionCopy>().AnyAsync(copy => copy.CourseVersionId == version.Value, cancellationToken);
     }
 
+    public async Task<Option<TestDefinitionCopy>> FindAsync(CourseVersionId version, CancellationToken cancellationToken)
+    {
+        Ensure.That(version).IsNotNull();
+
+        var copy = await context.Set<TestDefinitionCopy>()
+            .AsNoTracking()
+            .Include(definition => definition.Questions.OrderBy(question => question.Position))
+            .ThenInclude(question => question.Options.OrderBy(option => option.Position))
+            .AsSplitQuery()
+            .SingleOrDefaultAsync(definition => definition.CourseVersionId == version.Value, cancellationToken);
+        return copy is null ? Option<TestDefinitionCopy>.None : Option<TestDefinitionCopy>.Some(copy);
+    }
+
     public void Add(TestDefinitionCopy definition)
     {
         Ensure.That(definition).IsNotNull();

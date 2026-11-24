@@ -8,7 +8,7 @@ using Yarp.ReverseProxy.Transforms.Builder;
 namespace SmartSolutionsLab.PharmaTraining.Edge.Tests;
 
 /// <summary>
-/// The address a service sees for a caller (docs/adr/0026): the edge forwards the address it saw itself as
+/// The address a service sees for a caller (docs/adr/0029): the edge forwards the address it saw itself as
 /// <c>X-Forwarded-For</c>, in place of whatever the caller sent, so a caller cannot choose the address an anonymous
 /// endpoint's per-address limit counts it under. YARP's default <c>X-Forwarded-*</c> transform does this (action
 /// <c>Set</c>); the test pins it on the routes <c>AddModuleRoutes</c> gives every module.

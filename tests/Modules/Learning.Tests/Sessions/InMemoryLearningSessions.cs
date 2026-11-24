@@ -30,6 +30,9 @@ internal sealed class InMemoryLearningSessions : ILearningAggregateStore, ILearn
 
     public int Saves { get; private set; }
 
+    /// <summary>How many times a stream was asked for, found or not.</summary>
+    public int Loads { get; private set; }
+
     public List<IntegrationEvent> Published { get; } = [];
 
     public int Commits { get; private set; }
@@ -39,6 +42,7 @@ internal sealed class InMemoryLearningSessions : ILearningAggregateStore, ILearn
     public Task<Option<TAggregate>> LoadAsync<TAggregate>(IAggregateId id, CancellationToken cancellationToken)
         where TAggregate : class, IEventSourced
     {
+        Loads++;
         if (!streams.TryGetValue(id.Value, out var history))
         {
             return Task.FromResult(Option<TAggregate>.None);

@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Http;
 namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.RateLimits.Tests;
 
 /// <summary>
-/// The caller an anonymous endpoint's limit counts is its address (docs/adr/0026): the rightmost <c>X-Forwarded-For</c>
+/// The caller an anonymous endpoint's limit counts is its address (docs/adr/0029): the rightmost <c>X-Forwarded-For</c>
 /// entry, which the edge sets to the address it saw, else the connection's own address, prefixed <c>address:</c> so it
 /// never meets a token's <c>sub</c>. An IPv4-mapped address counts as its IPv4 address and an IPv6 address as its /64,
 /// which one client holds whole. A caller with no address at all shares <c>address:unknown</c> with every other.
