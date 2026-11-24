@@ -33,8 +33,10 @@ public abstract partial class ModuleUnitOfWork<TContext>(IServiceProvider servic
     /// <summary>
     /// Saves and flushes with Wolverine's default, <see cref="MultiFlushMode.OnlyOnce"/>: a scope's outbox flushes once,
     /// and what a later commit in the same scope stores is sent by a durability pass, not at once (Wolverine logs a
-    /// warning). So the envelopes of a save that lost its race, which stay in the context, are never sent at once by a
-    /// later commit in the scope.
+    /// warning). The envelopes of a save that lost its race are not cleared: they stay in the context, outstanding, so a
+    /// later plain commit in the scope does not send them at once, but a later <see cref="CommitOneOfSeveralAsync"/>,
+    /// whose flush is <see cref="MultiFlushMode.AllowMultiples"/>, would send them with its own. A scope that may lose a
+    /// race therefore never commits as one of several.
     /// </summary>
     public Task CommitAsync(CancellationToken cancellationToken) => Outbox.SaveChangesAndFlushMessagesAsync(cancellationToken);
 
