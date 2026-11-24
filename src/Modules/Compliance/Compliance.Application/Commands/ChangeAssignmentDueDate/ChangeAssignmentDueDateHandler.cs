@@ -54,9 +54,10 @@ public sealed class ChangeAssignmentDueDateHandler(
             return Failure(AssignmentFailures.From(changed.Error));
         }
 
-        if (!await unitOfWork.TryCommitAsync(cancellationToken))
+        var saved = await unitOfWork.TryCommitAsync(cancellationToken);
+        if (saved.IsFailure)
         {
-            return Failure(AssignmentFailures.AssignmentsChanged());
+            return Failure(AssignmentFailures.LostRace(saved.Error));
         }
 
         return Success(Unit.Value);

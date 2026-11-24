@@ -17,10 +17,22 @@ public class EditorialQuestionRacesTests(AspireFixture aspire)
 
     private const int DeadlockRounds = 3;
 
+    /// <summary>A request whose row version moved on is told the version changed: load it again.</summary>
+    private const string Changed = "editorial.course-version-changed";
+
+    /// <summary>A request PostgreSQL ended as a deadlock is told another save came at the same moment: try again.</summary>
+    private const string ConcurrentSave = "editorial.concurrent-save";
+
+    /// <summary>
+    /// How the loser of a load race may be refused: on its row version, or, where PostgreSQL ended it first as a deadlock
+    /// (seen when the removal is let through first), told to try again. Either way nothing of it was saved.
+    /// </summary>
+    private static readonly string[] LostEitherWay = [Changed, ConcurrentSave];
+
     private static readonly Uri Courses = new("/editorial/courses", UriKind.Relative);
 
     [Fact]
-    public async Task Of_a_removal_and_an_edit_of_one_question_one_succeeds_and_the_other_is_told_the_version_changed_never_a_server_error()
+    public async Task Of_a_removal_and_an_edit_of_one_question_one_succeeds_and_the_other_is_refused_never_a_server_error()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await aspire.CreateHostClientAsync("editor");
@@ -49,7 +61,7 @@ public class EditorialQuestionRacesTests(AspireFixture aspire)
                 var outcome = await OutcomeAsync(removal, edit, HttpStatusCode.OK, HttpStatusCode.OK, [], cancellationToken);
                 if (outcome is not { } removalWon)
                 {
-                    wrong.Add($"{described}; expected one 200 and one 409 editorial.course-version-changed ({await CodesAsync(removal, edit, cancellationToken)}).");
+                    wrong.Add($"{described}; expected one 200 and one 409 {Changed} or {ConcurrentSave} ({await CodesAsync(removal, edit, cancellationToken)}).");
                     continue;
                 }
 
@@ -99,7 +111,7 @@ public class EditorialQuestionRacesTests(AspireFixture aspire)
                 var outcome = await OutcomeAsync(removal, addition, HttpStatusCode.OK, HttpStatusCode.Created, ["editorial.chapter-not-found"], cancellationToken);
                 if (outcome is not { } removalWon)
                 {
-                    wrong.Add($"{described}; expected one success and the other 409 editorial.course-version-changed (or 404 editorial.chapter-not-found for the POST) ({await CodesAsync(removal, addition, cancellationToken)}).");
+                    wrong.Add($"{described}; expected one success and the other 409 {Changed} or {ConcurrentSave} (or 404 editorial.chapter-not-found for the POST) ({await CodesAsync(removal, addition, cancellationToken)}).");
                     continue;
                 }
 
@@ -159,9 +171,9 @@ public class EditorialQuestionRacesTests(AspireFixture aspire)
             using var removal = await removed;
             using var addition = await added;
             var described = $"round {round}: DELETE chapter answered {(int)removal.StatusCode}, POST question answered {(int)addition.StatusCode}";
-            if (await OutcomeAsync(removal, addition, HttpStatusCode.OK, HttpStatusCode.Created, [], cancellationToken) is null)
+            if (await OutcomeAsync(removal, addition, HttpStatusCode.OK, HttpStatusCode.Created, [], [ConcurrentSave], cancellationToken) is null)
             {
-                wrong.Add($"{described}; expected one success and the other 409 editorial.course-version-changed ({await CodesAsync(removal, addition, cancellationToken)}).");
+                wrong.Add($"{described}; expected one success and the other 409 {ConcurrentSave} ({await CodesAsync(removal, addition, cancellationToken)}).");
             }
 
             await EditorialDatabase.ShouldHaveDeadlockedSinceAsync(connectionString, deadlocksBefore, cancellationToken);
@@ -172,7 +184,7 @@ public class EditorialQuestionRacesTests(AspireFixture aspire)
     }
 
     [Fact]
-    public async Task A_question_added_to_a_chapter_whose_removal_deadlocks_with_it_at_commit_is_told_the_version_changed_never_a_server_error()
+    public async Task A_question_added_to_a_chapter_whose_removal_deadlocks_with_it_at_commit_is_told_to_try_again_never_a_server_error()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await aspire.CreateHostClientAsync("editor");
@@ -209,9 +221,9 @@ public class EditorialQuestionRacesTests(AspireFixture aspire)
             using var removal = await removed;
             using var addition = await added;
             var described = $"round {round}: DELETE chapter answered {(int)removal.StatusCode}, POST question answered {(int)addition.StatusCode}";
-            if (removal.StatusCode != HttpStatusCode.OK || !await IsChangedAsync(addition, [], cancellationToken))
+            if (removal.StatusCode != HttpStatusCode.OK || !await IsChangedAsync(addition, [], [ConcurrentSave], cancellationToken))
             {
-                wrong.Add($"{described}; expected 200 for the removal and 409 editorial.course-version-changed for the addition ({await CodesAsync(removal, addition, cancellationToken)}).");
+                wrong.Add($"{described}; expected 200 for the removal and 409 {ConcurrentSave} for the addition ({await CodesAsync(removal, addition, cancellationToken)}).");
             }
 
             await EditorialDatabase.ShouldHaveDeadlockedSinceAsync(connectionString, deadlocksBefore, cancellationToken);
@@ -379,15 +391,20 @@ public class EditorialQuestionRacesTests(AspireFixture aspire)
     /// Whether the removal won (true) or the other request did (false), when exactly one succeeded and the other was
     /// told the version changed or, for the other request, one of the codes it may also answer; null otherwise.
     /// </summary>
+    private static Task<bool?> OutcomeAsync(
+        HttpResponseMessage removal, HttpResponseMessage other, HttpStatusCode removed, HttpStatusCode succeeded, string[] otherMayAnswer, CancellationToken cancellationToken) =>
+        OutcomeAsync(removal, other, removed, succeeded, otherMayAnswer, LostEitherWay, cancellationToken);
+
+    /// <summary>As above, the loser refused with one of the codes in <paramref name="lostWith"/>.</summary>
     private static async Task<bool?> OutcomeAsync(
-        HttpResponseMessage removal, HttpResponseMessage other, HttpStatusCode removed, HttpStatusCode succeeded, string[] otherMayAnswer, CancellationToken cancellationToken)
+        HttpResponseMessage removal, HttpResponseMessage other, HttpStatusCode removed, HttpStatusCode succeeded, string[] otherMayAnswer, string[] lostWith, CancellationToken cancellationToken)
     {
-        if (removal.StatusCode == removed && await IsChangedAsync(other, otherMayAnswer, cancellationToken))
+        if (removal.StatusCode == removed && await IsChangedAsync(other, otherMayAnswer, lostWith, cancellationToken))
         {
             return true;
         }
 
-        if (other.StatusCode == succeeded && await IsChangedAsync(removal, [], cancellationToken))
+        if (other.StatusCode == succeeded && await IsChangedAsync(removal, [], lostWith, cancellationToken))
         {
             return false;
         }
@@ -395,7 +412,7 @@ public class EditorialQuestionRacesTests(AspireFixture aspire)
         return null;
     }
 
-    private static async Task<bool> IsChangedAsync(HttpResponseMessage response, string[] mayAnswer, CancellationToken cancellationToken)
+    private static async Task<bool> IsChangedAsync(HttpResponseMessage response, string[] mayAnswer, string[] lostWith, CancellationToken cancellationToken)
     {
         if (response.StatusCode is not (HttpStatusCode.Conflict or HttpStatusCode.NotFound))
         {
@@ -404,7 +421,7 @@ public class EditorialQuestionRacesTests(AspireFixture aspire)
 
         var code = await CodeOfAsync(response, cancellationToken);
         return response.StatusCode == HttpStatusCode.Conflict
-            ? code == "editorial.course-version-changed"
+            ? lostWith.Contains(code)
             : mayAnswer.Contains(code);
     }
 

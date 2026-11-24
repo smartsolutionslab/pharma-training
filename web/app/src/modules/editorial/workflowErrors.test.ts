@@ -42,6 +42,14 @@ const answers: [string, WorkflowAction, () => unknown, string, string, string][]
     'The version has changed in the meantime. You now see its current state; please try again.',
   ],
   [
+    '409 concurrent-save',
+    'publish',
+    refusal(409, 'editorial.concurrent-save'),
+    'errors.editorial.concurrent-save',
+    'Gleichzeitig wurde eine andere Änderung an der Version gespeichert; es wurde nichts gespeichert. Versuchen Sie es erneut.',
+    'Another change to the version was saved at the same moment; nothing was saved. Try again.',
+  ],
+  [
     '409 not-a-draft',
     'submit',
     refusal(409, 'editorial.not-a-draft'),

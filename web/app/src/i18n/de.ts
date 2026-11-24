@@ -222,6 +222,8 @@ export const de = {
       submit: 'Zuweisen',
       retry: 'Erneut versuchen',
       changed: 'Die Zuweisungen wurden inzwischen geändert. Prüfen Sie die Angaben und weisen Sie erneut zu.',
+      concurrentSave:
+        'Gleichzeitig wurde eine andere Änderung an den Zuweisungen gespeichert; es wurde nichts zugewiesen. Weisen Sie erneut zu.',
       failed: 'Die Schulung konnte nicht zugewiesen werden. Versuchen Sie es erneut.',
       course: {
         title: 'Schulung wählen',
@@ -1015,6 +1017,8 @@ export const de = {
       'assignment-not-found': 'Diese Zuweisung gibt es in dieser Apotheke nicht mehr.',
       'assignments-changed':
         'Die Zuweisungen wurden inzwischen geändert. Prüfen Sie den aktuellen Stand und versuchen Sie es erneut.',
+      'concurrent-save':
+        'Gleichzeitig wurde eine andere Änderung an den Zuweisungen gespeichert; es wurde nichts gespeichert. Versuchen Sie es erneut.',
       'capability-missing': 'Ihre Rolle in dieser Apotheke erlaubt das nicht.',
       'certificate-predates-assignment': 'Eine Teilnahmebestätigung von vor der Zuweisung erfüllt sie nicht.',
       'course-missing': 'Wählen Sie eine Schulung.',
@@ -1046,6 +1050,8 @@ export const de = {
       'chapter-not-found': 'Dieses Kapitel gibt es in der Version nicht mehr.',
       'course-version-changed':
         'Die Version wurde inzwischen geändert. Laden Sie sie neu und wiederholen Sie die Änderung.',
+      'concurrent-save':
+        'Gleichzeitig wurde eine andere Änderung an der Version gespeichert; es wurde nichts gespeichert. Versuchen Sie es erneut.',
       'course-version-not-found': 'Diese Version gibt es nicht mehr.',
       'file-in-use': 'Diese Datei gehört schon zu einem anderen Kapitel der Version.',
       'four-eyes':
@@ -1149,6 +1155,8 @@ export const de = {
       'person-already-member': 'Sie sind bereits Mitglied dieser Apotheke.',
       'pharmacy-changed':
         'Die Apotheke wurde gerade gleichzeitig geändert. Prüfen Sie den aktuellen Stand und versuchen Sie es erneut.',
+      'concurrent-save':
+        'Gleichzeitig wurde eine andere Änderung an der Apotheke gespeichert; es wurde nichts gespeichert. Versuchen Sie es erneut.',
       'pharmacy-not-found': 'Sie sind nicht mehr Mitglied dieser Apotheke.',
       'recipient-mailed-recently':
         'An diese Adresse wurde gerade erst eine Einladung gesendet. Sie können sie nach einer kurzen Wartezeit erneut einladen.',

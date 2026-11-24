@@ -1,3 +1,4 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using System.Net;
 using Microsoft.Extensions.Time.Testing;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Storage;
@@ -188,7 +189,7 @@ public class PublishCourseVersionTests
         var version = InReview();
         store.Stored.Add(version);
         var lostRace = Substitute.For<IEditorialUnitOfWork>();
-        lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(false);
+        lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(Failure(LostRaces.VersionMovedOn()));
 
         var published = await new PublishCourseVersionHandler(store, lostRace, urls, ReviewSettings.Default, time)
             .HandleAsync(new PublishCourseVersion(version.Id, Reviewer), TestContext.Current.CancellationToken);
@@ -237,7 +238,7 @@ public class PublishCourseVersionTests
         var version = InReview();
         store.Stored.Add(version);
         var lostRace = Substitute.For<IEditorialUnitOfWork>();
-        lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(false);
+        lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(Failure(LostRaces.VersionMovedOn()));
 
         var published = await new PublishCourseVersionHandler(store, lostRace, urls, ReviewSettings.Default, time)
             .HandleAsync(new PublishCourseVersion(version.Id, Reviewer), TestContext.Current.CancellationToken);
@@ -319,7 +320,7 @@ public class PublishCourseVersionTests
             });
         var unitOfWork = Substitute.For<IEditorialUnitOfWork>();
         unitOfWork.When(work => work.PublishAsync(Arg.Any<IntegrationEvent>())).Do(_ => calls.Add("publish"));
-        unitOfWork.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(true);
+        unitOfWork.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(Success(Unit.Value));
 
         var published = await new PublishCourseVersionHandler(store, unitOfWork, signer, ReviewSettings.Default, time)
             .HandleAsync(new PublishCourseVersion(version.Id, Reviewer), TestContext.Current.CancellationToken);

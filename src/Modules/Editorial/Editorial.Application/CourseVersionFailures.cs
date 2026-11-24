@@ -1,3 +1,4 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using System.Net;
 using System.Runtime.CompilerServices;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.PdfText;
@@ -56,6 +57,16 @@ public static class CourseVersionFailures
 
     /// <summary>A save that lost a race: another change to the same version was saved since this one loaded it.</summary>
     public static ApiError Changed(Guid id) => new CourseVersionChanged(id);
+
+    /// <summary>Another save came at the same moment and PostgreSQL ended this one; try again.</summary>
+    public static ApiError ConcurrentSave() => new EditorialConcurrentSave();
+
+    /// <summary>How a save of the course version lost a race.</summary>
+    public static ApiError LostRace(LostRace race, Guid id) => race switch
+    {
+        VersionMovedOn => Changed(id),
+        SaveDeadlocked => ConcurrentSave(),
+    };
 
     /// <summary>The version's successor already exists.</summary>
     public static ApiError NextVersionExists() => new NextVersionExists();

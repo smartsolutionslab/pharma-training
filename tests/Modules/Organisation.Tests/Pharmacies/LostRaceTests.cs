@@ -1,3 +1,4 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using System.Buffers.Text;
 using System.Net;
 using System.Security.Cryptography;
@@ -81,7 +82,7 @@ public class LostRaceTests
         var unitOfWork = new InMemoryPharmacyStore();
         IOrganisationUnitOfWork organisation = unitOfWork;
 
-        (await organisation.TryCommitAsync(TestContext.Current.CancellationToken)).ShouldBeTrue();
+        (await organisation.TryCommitAsync(TestContext.Current.CancellationToken)).IsSuccess.ShouldBeTrue();
 
         unitOfWork.Commits.ShouldBe(1);
     }

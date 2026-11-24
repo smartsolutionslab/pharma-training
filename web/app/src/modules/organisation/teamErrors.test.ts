@@ -75,6 +75,13 @@ const known: Known[] = [
     'The pharmacy was changed at the same time. Check its current state and try again.',
   ],
   [
+    'organisation.concurrent-save',
+    409,
+    'errors.organisation.concurrent-save',
+    'Gleichzeitig wurde eine andere Änderung an der Apotheke gespeichert; es wurde nichts gespeichert. Versuchen Sie es erneut.',
+    'Another change to the pharmacy was saved at the same moment; nothing was saved. Try again.',
+  ],
+  [
     'organisation.invalid-email',
     400,
     'errors.organisation.invalid-email',

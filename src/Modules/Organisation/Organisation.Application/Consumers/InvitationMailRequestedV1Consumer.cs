@@ -122,7 +122,7 @@ public sealed partial class InvitationMailRequestedV1Consumer(
         // changed since.
         try
         {
-            if (pharmacy.RecordInvitationMailed(membership, version).IsFailure || !await unitOfWork.TryCommitAsync(cancellationToken))
+            if (pharmacy.RecordInvitationMailed(membership, version).IsFailure || (await unitOfWork.TryCommitAsync(cancellationToken)).IsFailure)
             {
                 MailedButNotRecorded(logger, message.MembershipId, version.Value);
             }
@@ -151,7 +151,7 @@ public sealed partial class InvitationMailRequestedV1Consumer(
                 return;
             }
 
-            if (await unitOfWork.TryCommitAsync(CancellationToken.None))
+            if ((await unitOfWork.TryCommitAsync(CancellationToken.None)).IsSuccess)
             {
                 return;
             }

@@ -68,9 +68,9 @@ public class ModuleUnitOfWorkFlushTests
         var cancellationToken = TestContext.Current.CancellationToken;
 
         await unitOfWork.PublishAsync(new AnnouncedV1(1));
-        (await unitOfWork.TryCommitAsync(cancellationToken)).ShouldBeTrue();
+        (await unitOfWork.TryCommitAsync(cancellationToken)).IsSuccess.ShouldBeTrue();
         await unitOfWork.PublishAsync(new AnnouncedV1(2));
-        (await unitOfWork.TryCommitAsync(cancellationToken)).ShouldBeTrue();
+        (await unitOfWork.TryCommitAsync(cancellationToken)).IsSuccess.ShouldBeTrue();
 
         outbox.MultiFlushMode.ShouldBe(MultiFlushMode.OnlyOnce);
     }

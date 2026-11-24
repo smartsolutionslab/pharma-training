@@ -23,9 +23,10 @@ public sealed class AddQuestionHandler(ICourseVersionStore versions, IEditorialU
             return Failure(CourseVersionFailures.From(added.Error));
         }
 
-        if (!await unitOfWork.TryCommitAsync(cancellationToken))
+        var saved = await unitOfWork.TryCommitAsync(cancellationToken);
+        if (saved.IsFailure)
         {
-            return Failure(CourseVersionFailures.Changed(command.Version.Value));
+            return Failure(CourseVersionFailures.LostRace(saved.Error, command.Version.Value));
         }
 
         return Success(added.Value.Value);

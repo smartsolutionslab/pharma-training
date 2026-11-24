@@ -463,7 +463,8 @@ public class EditorialCourseVersionsTests(AspireFixture aspire)
 
             try
             {
-                await ShouldBeOneWonAndOneChangedAsync(responses, cancellationToken);
+                // PostgreSQL ended the loser as a deadlock, not on a row version: it is told to try again.
+                await ShouldBeOneWonAndOneRefusedAsync(responses, "editorial.concurrent-save", cancellationToken);
             }
             finally
             {
@@ -550,7 +551,11 @@ public class EditorialCourseVersionsTests(AspireFixture aspire)
         return problem.Code;
     }
 
-    private static async Task ShouldBeOneWonAndOneChangedAsync(HttpResponseMessage[] responses, CancellationToken cancellationToken)
+    private static Task ShouldBeOneWonAndOneChangedAsync(HttpResponseMessage[] responses, CancellationToken cancellationToken) =>
+        ShouldBeOneWonAndOneRefusedAsync(responses, "editorial.course-version-changed", cancellationToken);
+
+    /// <summary>One request answered 200 and the other 409 with the given code.</summary>
+    private static async Task ShouldBeOneWonAndOneRefusedAsync(HttpResponseMessage[] responses, string code, CancellationToken cancellationToken)
     {
         List<string> answers = [];
         foreach (var response in responses)
@@ -560,7 +565,7 @@ public class EditorialCourseVersionsTests(AspireFixture aspire)
 
         responses.Select(response => response.StatusCode).ShouldBe([HttpStatusCode.OK, HttpStatusCode.Conflict], ignoreOrder: true, string.Join(" | ", answers));
         var lost = responses.Single(response => response.StatusCode == HttpStatusCode.Conflict);
-        (await CodeOfAsync(lost, cancellationToken)).ShouldBe("editorial.course-version-changed");
+        (await CodeOfAsync(lost, cancellationToken)).ShouldBe(code, string.Join(" | ", answers));
     }
 
     private Task<string> EditorialConnectionStringAsync(CancellationToken cancellationToken) =>

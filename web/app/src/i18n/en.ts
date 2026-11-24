@@ -211,6 +211,8 @@ export const en: MessageSchema = {
       submit: 'Assign',
       retry: 'Try again',
       changed: 'The assignments have changed in the meantime. Check the details and assign again.',
+      concurrentSave:
+        'Another change to the assignments was saved at the same moment; nothing was assigned. Please assign again.',
       failed: 'The course could not be assigned. Please try again.',
       course: {
         title: 'Choose a course',
@@ -988,6 +990,8 @@ export const en: MessageSchema = {
       'assignment-not-active': 'The assignment is no longer open.',
       'assignment-not-found': 'This assignment no longer exists in this pharmacy.',
       'assignments-changed': 'The assignments were changed in the meantime. Check their current state and try again.',
+      'concurrent-save':
+        'Another change to the assignments was saved at the same moment; nothing was saved. Try again.',
       'capability-missing': 'Your role in this pharmacy does not allow this.',
       'certificate-predates-assignment': 'A certificate from before the assignment does not fulfil it.',
       'course-missing': 'Choose a course.',
@@ -1017,6 +1021,7 @@ export const en: MessageSchema = {
         "The content does not match the chapter's kind: a text chapter has text, a PDF chapter a PDF file, a video chapter a video with its duration.",
       'chapter-not-found': 'This chapter no longer exists in the version.',
       'course-version-changed': 'The version has changed in the meantime. Reload it and repeat the change.',
+      'concurrent-save': 'Another change to the version was saved at the same moment; nothing was saved. Try again.',
       'course-version-not-found': 'This version no longer exists.',
       'file-in-use': 'This file already belongs to another chapter of the version.',
       'four-eyes': 'Four-eyes approval does not let whoever submitted the version publish it. Ask another editor.',
@@ -1116,6 +1121,7 @@ export const en: MessageSchema = {
       'no-open-invitation': 'This invitation is no longer open: it was accepted or revoked.',
       'person-already-member': 'You are already a member of this pharmacy.',
       'pharmacy-changed': 'The pharmacy was changed at the same time. Check its current state and try again.',
+      'concurrent-save': 'Another change to the pharmacy was saved at the same moment; nothing was saved. Try again.',
       'pharmacy-not-found': 'You are no longer a member of this pharmacy.',
       'recipient-mailed-recently':
         'An invitation was only just sent to this address. You can invite it again after a short wait.',

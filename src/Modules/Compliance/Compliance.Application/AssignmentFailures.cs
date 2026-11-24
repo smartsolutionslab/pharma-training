@@ -1,3 +1,4 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using System.Net;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Assignments;
 
@@ -47,8 +48,18 @@ public static class AssignmentFailures
 
     public static ApiError LearnerNotAMember(Guid person) => new LearnerNotAMember(person);
 
-    /// <summary>The save lost a race to another, or deadlocked with it; nothing of it was saved or announced.</summary>
+    /// <summary>A row the save changed was changed by another since it was loaded; nothing of it was saved or announced.</summary>
     public static ApiError AssignmentsChanged() => new AssignmentsChanged();
+
+    /// <summary>Another save came at the same moment and PostgreSQL ended this one; try again.</summary>
+    public static ApiError ConcurrentSave() => new ComplianceConcurrentSave();
+
+    /// <summary>How a save of assignments lost a race.</summary>
+    public static ApiError LostRace(LostRace race) => race switch
+    {
+        VersionMovedOn => AssignmentsChanged(),
+        SaveDeadlocked => ConcurrentSave(),
+    };
 
     /// <summary>The learner already has an open or in-progress assignment of the course in the pharmacy.</summary>
     public static ApiError AlreadyActive(DomainError error) => ApiError.From(error, HttpStatusCode.Conflict);
