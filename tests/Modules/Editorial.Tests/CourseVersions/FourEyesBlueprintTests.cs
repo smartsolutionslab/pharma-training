@@ -7,14 +7,17 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersion
 /// <summary>
 /// The owner's decision of 2026-11-23 (#246): with four eyes on, the editor who last changed a version's test blueprint
 /// does not publish it, as the submitter does not. <see cref="CourseVersion.BlueprintChangedBy"/> records that editor
-/// on a change that reset at least one approval (the issue's "changed after its last approval"; orchestrator default,
-/// 2026-11-24): a change with no approval to reset records no one. The last such change wins, a return and a
+/// on every change that takes effect once the version has had an approval (the issue's "changed after its last
+/// approval"; orchestrator reading of 2026-11-24, after #364's review): a change before any approval records no one.
+/// The last such change wins, a return and a
 /// resubmission keep it, and the next version starts without one. The refusal is <see cref="FourEyesRequired"/>, checked
 /// before <see cref="PublisherApprovedQuestions"/>. With four eyes off nothing changes.
 /// </summary>
 public class FourEyesBlueprintTests
 {
     private const string FourEyes = "editorial.four-eyes";
+
+    private static readonly Timestamp Later = Timestamp.From(new DateTimeOffset(2027, 3, 1, 10, 0, 0, TimeSpan.Zero));
 
     [Fact]
     public void With_four_eyes_on_the_editor_who_last_changed_the_test_blueprint_cannot_publish()
@@ -163,6 +166,86 @@ public class FourEyesBlueprintTests
         var next = published.DraftNext(CourseVersionId.New(), Author, ChapterId.New, QuestionId.New, AnswerOptionId.New).Value;
 
         next.BlueprintChangedBy.ShouldBeNull();
+    }
+
+    /// <summary>Bypass (a) of #364's review: a second change while nothing is approved still names its editor.</summary>
+    [Fact]
+    public void A_second_change_while_nothing_is_approved_records_its_editor_and_bars_them()
+    {
+        var version = DraftWithChapter(out var chapter);
+        var question = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
+        version.ApproveQuestion(question, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(OneQuestion(80), Approver).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(OneQuestion(90), Reviewer).IsSuccess.ShouldBeTrue();
+        version.BlueprintChangedBy.ShouldBe(Reviewer);
+        version.ApproveQuestion(question, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
+        version.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
+
+        var published = version.Publish(Reviewer, ReviewPolicy.FourEyes, Now);
+
+        published.IsFailure.ShouldBeTrue("the editor who last changed the settings published under four eyes");
+        published.Error.Value.ShouldBeOfType<FourEyesRequired>();
+    }
+
+    /// <summary>Bypass (b) of #364's review: an edit that clears the approval first does not hide the next change.</summary>
+    [Fact]
+    public void A_change_after_an_edit_cleared_the_approvals_records_its_editor_and_bars_them()
+    {
+        var version = DraftWithChapter(out var chapter);
+        var question = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
+        version.ApproveQuestion(question, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
+        version.EditQuestion(question, SingleChoice(chapter), Reviewer, AnswerOptionId.New).IsSuccess.ShouldBeTrue();
+        version.Questions.ShouldHaveSingleItem().Review.ShouldBe(ReviewState.Unreviewed);
+        version.SetBlueprint(OneQuestion(80), Reviewer).IsSuccess.ShouldBeTrue();
+        version.BlueprintChangedBy.ShouldBe(Reviewer);
+        version.ApproveQuestion(question, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
+        version.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
+
+        var published = version.Publish(Reviewer, ReviewPolicy.FourEyes, Now);
+
+        published.IsFailure.ShouldBeTrue("the editor who changed the settings after clearing the approval published under four eyes");
+        published.Error.Value.ShouldBeOfType<FourEyesRequired>();
+    }
+
+    [Fact]
+    public void A_change_after_a_chapter_replacement_cleared_the_approvals_records_its_editor()
+    {
+        var version = DraftWithChapter(out var chapter);
+        var question = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
+        version.ApproveQuestion(question, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
+        version.ReplaceChapter(TextChapter(chapter, "Händehygiene", "Neu: vor und nach …"), Reviewer).IsSuccess.ShouldBeTrue();
+
+        version.SetBlueprint(OneQuestion(80), Reviewer).IsSuccess.ShouldBeTrue();
+
+        version.BlueprintChangedBy.ShouldBe(Reviewer);
+    }
+
+    [Fact]
+    public void The_first_approval_is_remembered_and_later_approvals_keep_it()
+    {
+        var version = DraftWithChapter(out var chapter);
+        version.FirstApprovedAt.ShouldBeNull();
+        var first = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
+        var second = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
+
+        version.ApproveQuestion(first, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
+        version.ApproveQuestion(second, Author, AuthorsName, Later).IsSuccess.ShouldBeTrue();
+
+        version.FirstApprovedAt.ShouldBe(Now);
+    }
+
+    [Fact]
+    public void A_next_version_with_copied_approvals_has_been_approved_so_a_change_after_an_edit_records_its_editor()
+    {
+        var published = Published(out _);
+        var next = published.DraftNext(CourseVersionId.New(), Author, ChapterId.New, QuestionId.New, AnswerOptionId.New).Value;
+        next.FirstApprovedAt.ShouldNotBeNull();
+        var question = next.Questions.ShouldHaveSingleItem();
+        next.EditQuestion(question.Id, SingleChoice(question.Chapter), Reviewer, AnswerOptionId.New).IsSuccess.ShouldBeTrue();
+
+        next.SetBlueprint(OneQuestion(90), Reviewer).IsSuccess.ShouldBeTrue();
+
+        next.BlueprintChangedBy.ShouldBe(Reviewer);
     }
 
     /// <summary>
