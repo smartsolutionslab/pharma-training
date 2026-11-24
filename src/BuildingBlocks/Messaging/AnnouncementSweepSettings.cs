@@ -33,6 +33,13 @@ public sealed record AnnouncementSweepSettings
     /// </summary>
     public const int MostPagesPerPass = 10;
 
+    /// <summary>
+    /// The most events one pass reads, whatever its <see cref="BatchSize"/> (#351): with the largest batch, ten pages of
+    /// events that cannot be read would otherwise cost every replica ten thousand loads and warnings a pass. It is
+    /// <see cref="MostPagesPerPass"/> pages of the default batch, so a pass at the default reads as far as it did.
+    /// </summary>
+    public const int MostEventsPerPass = MostPagesPerPass * DefaultBatchSize;
+
     public static readonly TimeSpan DefaultInterval = TimeSpan.FromMinutes(1);
 
     public static readonly TimeSpan DefaultGracePeriod = TimeSpan.FromMinutes(2);

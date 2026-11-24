@@ -24,7 +24,8 @@
     <PackageReference Include="WolverineFx" />
     <!-- Builds the PDFs with and without text that EditorialChapterFilesTests uploads (#157). -->
     <PackageReference Include="PdfPig" />
-    <!-- Reads the warning EditorialRepublishLock logs when it cannot release the lock (EditorialRepublishTests). -->
+    <!-- FakeLogger: what a run waiting at the migration gate logs (SweptEventIndexTests, #351), and the warning
+         EditorialRepublishLock logs when it cannot release the lock (EditorialRepublishTests). -->
     <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
   </ItemGroup>
 
