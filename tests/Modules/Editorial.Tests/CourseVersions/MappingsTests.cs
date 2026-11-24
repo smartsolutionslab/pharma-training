@@ -81,17 +81,35 @@ public class MappingsTests
         var version = DraftWithChapter(out var first);
         var pdf = ChapterId.New();
         var video = ChapterId.New();
-        version.AddChapter(Chapter.OfPdf(pdf, ChapterTitle.From("Hygieneplan"), BlobReference.From("courses/plan.pdf"))).IsSuccess.ShouldBeTrue();
+        version.AddChapter(Chapter.OfPdf(pdf, ChapterTitle.From("Hygieneplan"), BlobReference.From("courses/plan.pdf"), PdfTextExtraction.NoText, null)).IsSuccess.ShouldBeTrue();
         version.AddChapter(Chapter.OfVideo(video, ChapterTitle.From("Vorführung"), BlobReference.From("courses/demo.mp4"), VideoDuration.From(90))).IsSuccess.ShouldBeTrue();
 
         var dto = version.ToDto();
 
         dto.Chapters.ShouldBe(
         [
-            new EditorialChapterDto(first.Value, 1, "Händehygiene", EditorialChapterKind.Text, "Hände vor und nach …", null, null),
-            new EditorialChapterDto(pdf.Value, 2, "Hygieneplan", EditorialChapterKind.Pdf, null, "courses/plan.pdf", null),
-            new EditorialChapterDto(video.Value, 3, "Vorführung", EditorialChapterKind.Video, null, "courses/demo.mp4", 90),
+            new EditorialChapterDto(first.Value, 1, "Händehygiene", EditorialChapterKind.Text, "Hände vor und nach …", null, null, null),
+            new EditorialChapterDto(pdf.Value, 2, "Hygieneplan", EditorialChapterKind.Pdf, null, "courses/plan.pdf", null, EditorialPdfText.NoText),
+            new EditorialChapterDto(video.Value, 3, "Vorführung", EditorialChapterKind.Video, null, "courses/demo.mp4", 90, null),
         ]);
+    }
+
+    /// <summary>
+    /// A PDF chapter says whether it has text to draft from (#157); a PDF recorded before extraction existed reads as
+    /// without text. Text and video chapters have no such state.
+    /// </summary>
+    [Fact]
+    public void A_pdf_chapter_carries_whether_its_text_was_extracted_and_other_chapters_carry_none()
+    {
+        var version = TestDrafting.TestDraftVersions.WithChapters(1, "TPRNLV", out _);
+
+        var dto = version.ToDto();
+
+        dto.Chapters.Select(chapter => chapter.PdfText).ShouldBe(
+            [null, EditorialPdfText.Complete, EditorialPdfText.Truncated, EditorialPdfText.NoText, EditorialPdfText.NoText, null]);
+        dto.Chapters.Select(chapter => chapter.Text).ShouldBe(
+            [TestDrafting.TestDraftVersions.TextOf('T', 1), null, null, null, null, null],
+            "a PDF's extracted text is not the chapter's Markdown and is not sent to the page");
     }
 
     /// <summary>Each count lands in its own field: the three differ, so a swap shows.</summary>
