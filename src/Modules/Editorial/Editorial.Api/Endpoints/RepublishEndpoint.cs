@@ -20,7 +20,8 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Api.Endpoints;
 public sealed class RepublishEndpoint : IEndpoint
 {
     public void Map(IEndpointRouteBuilder endpoints) =>
-        endpoints.MapPost("/course-versions/republish", RepublishAsync)
+        endpoints.MapPost("/course-versions/republish", (ClaimsPrincipal user, IDispatcher dispatcher, CancellationToken cancellationToken) =>
+                RepublishAsync(user, dispatcher, cancellationToken))
             .RequireAuthorization(EditorialPolicyNames.Edit);
 
     /// <summary>The calling editor's run: a caller without a person is refused before anything is dispatched.</summary>
