@@ -7,6 +7,9 @@
   <ItemGroup>
     <ProjectReference Include="../../../src/Modules/Certification/Certification.Api/Certification.Api.csproj" />
     <Compile Include="../../Fakes/*.cs" Link="Fakes/%(Filename)%(Extension)" />
+    <!-- The renderer's tests open the PDF it writes and compare its QR code with the library's own encoding (#50). -->
+    <PackageReference Include="PDFsharp" />
+    <PackageReference Include="Net.Codecrete.QrCodeGenerator" />
   </ItemGroup>
 
 </Project>

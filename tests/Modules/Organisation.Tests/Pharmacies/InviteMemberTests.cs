@@ -211,6 +211,7 @@ public class InviteMemberTests
         warning.Message.ShouldContain(pharmacy.Id.Value.ToString());
         warning.Message.ShouldContain("2027-04-04");
         warning.Message.ShouldContain("2027-04-01");
+        warning.Message.ShouldContain("the database's clock moved back");
     }
 
     [Fact]
@@ -451,6 +452,7 @@ public class InviteMemberTests
         warning.Message.ShouldContain("2027-04-04");
         warning.Message.ShouldContain("2027-04-01");
         warning.Message.ShouldNotContain(Invitee.Value);
+        warning.Message.ShouldContain("the database's clock moved back");
         var sender = store.StoredSenders.ShouldHaveSingleItem();
         sender.MailDay.ShouldBe(UtcDay.Of(Timestamp.From(Start)));
         sender.MailsThatDay.Value.ShouldBe(1);

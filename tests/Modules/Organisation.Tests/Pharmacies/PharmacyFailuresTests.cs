@@ -161,19 +161,22 @@ public class PharmacyFailuresTests
     {
         var renewAt = Timestamp.From(new DateTimeOffset(2027, 4, 1, 8, 10, 0, TimeSpan.Zero));
         var tomorrow = Timestamp.From(new DateTimeOffset(2027, 4, 2, 0, 0, 0, TimeSpan.Zero));
+        var refusedAt = Timestamp.From(new DateTimeOffset(2027, 4, 1, 8, 4, 0, TimeSpan.Zero));
         var membership = MembershipId.New();
 
-        var tooSoon = PharmacyFailures.From(PharmacyErrors.InvitationRenewedTooSoon(Pharmacy, membership, renewAt));
-        var tooMany = PharmacyFailures.From(PharmacyErrors.TooManyInvitationsToday(Pharmacy, tomorrow));
+        var tooSoon = PharmacyFailures.From(PharmacyErrors.InvitationRenewedTooSoon(Pharmacy, membership, renewAt, refusedAt));
+        var tooMany = PharmacyFailures.From(PharmacyErrors.TooManyInvitationsToday(Pharmacy, tomorrow, refusedAt));
 
         tooSoon.Code.ShouldBe("organisation.invitation-renewed-too-soon");
         tooSoon.Status.ShouldBe(HttpStatusCode.TooManyRequests);
         tooSoon.Message.ShouldNotBeNullOrWhiteSpace();
         tooSoon.ShouldBeOfType<RetryLaterFailure>().RetryAt.ShouldBe(renewAt.Value);
+        tooSoon.ShouldBeOfType<RetryLaterFailure>().RefusedAt.ShouldBe(Option<DateTimeOffset>.Some(refusedAt.Value));
         tooMany.Code.ShouldBe("organisation.too-many-invitations-today");
         tooMany.Status.ShouldBe(HttpStatusCode.TooManyRequests);
         tooMany.Message.ShouldNotBeNullOrWhiteSpace();
         tooMany.ShouldBeOfType<RetryLaterFailure>().RetryAt.ShouldBe(tomorrow.Value);
+        tooMany.ShouldBeOfType<RetryLaterFailure>().RefusedAt.ShouldBe(Option<DateTimeOffset>.Some(refusedAt.Value));
     }
 
     [Fact]
@@ -182,19 +185,22 @@ public class PharmacyFailuresTests
         var mailAgainAt = Timestamp.From(new DateTimeOffset(2027, 4, 1, 8, 10, 0, TimeSpan.Zero));
         var tomorrow = Timestamp.From(new DateTimeOffset(2027, 4, 2, 0, 0, 0, TimeSpan.Zero));
         var address = EmailAddress.From("anna@example.org");
+        var refusedAt = Timestamp.From(new DateTimeOffset(2027, 4, 1, 8, 4, 0, TimeSpan.Zero));
         var sender = PersonId.From(Guid.CreateVersion7());
 
-        var recently = PharmacyFailures.From(InvitationRecipientErrors.MailedRecently(InvitationRecipientId.For(address), mailAgainAt));
-        var tooMany = PharmacyFailures.From(InvitationSenderErrors.TooManyToday(sender, tomorrow));
+        var recently = PharmacyFailures.From(InvitationRecipientErrors.MailedRecently(InvitationRecipientId.For(address), mailAgainAt, refusedAt));
+        var tooMany = PharmacyFailures.From(InvitationSenderErrors.TooManyToday(sender, tomorrow, refusedAt));
 
         recently.Code.ShouldBe("organisation.recipient-mailed-recently");
         recently.Status.ShouldBe(HttpStatusCode.TooManyRequests);
         recently.Message.ShouldNotBeNullOrWhiteSpace();
         recently.Message.ShouldNotContain(address.Value);
         recently.ShouldBeOfType<RetryLaterFailure>().RetryAt.ShouldBe(mailAgainAt.Value);
+        recently.ShouldBeOfType<RetryLaterFailure>().RefusedAt.ShouldBe(Option<DateTimeOffset>.Some(refusedAt.Value));
         tooMany.Code.ShouldBe("organisation.too-many-invitations-sent-today");
         tooMany.Status.ShouldBe(HttpStatusCode.TooManyRequests);
         tooMany.Message.ShouldNotBeNullOrWhiteSpace();
         tooMany.ShouldBeOfType<RetryLaterFailure>().RetryAt.ShouldBe(tomorrow.Value);
+        tooMany.ShouldBeOfType<RetryLaterFailure>().RefusedAt.ShouldBe(Option<DateTimeOffset>.Some(refusedAt.Value));
     }
 }

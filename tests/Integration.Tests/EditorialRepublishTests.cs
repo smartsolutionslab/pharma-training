@@ -10,7 +10,8 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// <summary>
 /// Republishing Editorial's course-version events (#189): a queue bound after a version went out receives, once an
 /// editor republishes, the version, its test definition and its retirement, with the payload they were first announced
-/// with and under new event identifiers; and the consumers that already hold them keep one copy however often it runs.
+/// with and under new event identifiers; the consumers that already hold them keep one copy however often it runs; and
+/// one run goes at a time.
 /// The database is shared with the other tests, so every queue is read for the test's own versions only.
 /// </summary>
 [Collection(EditorialDrafts.Name)]
@@ -23,6 +24,8 @@ public class EditorialRepublishTests(AspireFixture aspire)
     private const string ComplianceVersionsById = "select count(*) from compliance.course_versions where id = @id";
     private const string ComplianceRetirementsById = "select count(*) from compliance.course_version_retirements where id = @id";
     private const string LearningVersionsById = "select count(*) from learning.course_versions where id = @id";
+    private const string CatalogVersionsById = "select count(*) from catalog.course_versions where id = @id";
+    private const string CatalogRetirementsById = "select count(*) from catalog.course_version_retirements where course_version_id = @id";
     private const string DeadLettersById = "select count(*) from wolverine.wolverine_dead_letters where id = @id";
 
     private static readonly Uri Republish = new("/editorial/course-versions/republish", UriKind.Relative);
@@ -118,10 +121,11 @@ public class EditorialRepublishTests(AspireFixture aspire)
 
     /// <summary>
     /// The second run's events are read off queues of the test's own under the message-id Wolverine gave them, which is
-    /// the envelope id each consumer's inbox stores, so the test waits until Compliance and Learning handled exactly them.
+    /// the envelope id each consumer's inbox stores, so the test waits until Compliance, Learning and Catalog handled
+    /// exactly them.
     /// </summary>
     [Fact]
-    public async Task Republishing_twice_leaves_one_copy_of_the_version_and_one_retirement_in_compliance_and_learning()
+    public async Task Republishing_twice_leaves_one_copy_of_the_version_and_one_retirement_in_compliance_learning_and_catalog()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await aspire.CreateHostClientAsync("editor");
@@ -143,13 +147,44 @@ public class EditorialRepublishTests(AspireFixture aspire)
         await ComplianceDatabase.WaitUntilHandledAsync(aspire, courseMessage, cancellationToken);
         await ComplianceDatabase.WaitUntilHandledAsync(aspire, retiredMessage, cancellationToken);
         await LearningDatabase.WaitUntilHandledAsync(aspire, courseMessage, cancellationToken);
+        await CatalogDatabase.WaitUntilHandledAsync(aspire, courseMessage, cancellationToken);
+        await CatalogDatabase.WaitUntilHandledAsync(aspire, retiredMessage, cancellationToken);
 
         (await ComplianceDatabase.CountAsync(aspire, ComplianceVersionsById, published.Id, cancellationToken)).ShouldBe(1);
         (await ComplianceDatabase.CountAsync(aspire, ComplianceRetirementsById, published.Id, cancellationToken)).ShouldBe(1);
         (await LearningDatabase.CountAsync(aspire, LearningVersionsById, published.Id, cancellationToken)).ShouldBe(1);
+        (await CatalogDatabase.CountAsync(aspire, CatalogVersionsById, published.Id, cancellationToken)).ShouldBe(1);
+        (await CatalogDatabase.CountAsync(aspire, CatalogRetirementsById, published.Id, cancellationToken)).ShouldBe(1);
         (await ComplianceDatabase.CountAsync(aspire, DeadLettersById, courseMessage, cancellationToken)).ShouldBe(0);
         (await ComplianceDatabase.CountAsync(aspire, DeadLettersById, retiredMessage, cancellationToken)).ShouldBe(0);
         (await LearningDatabase.CountAsync(aspire, DeadLettersById, courseMessage, cancellationToken)).ShouldBe(0);
+        (await CatalogDatabase.CountAsync(aspire, DeadLettersById, courseMessage, cancellationToken)).ShouldBe(0);
+        (await CatalogDatabase.CountAsync(aspire, DeadLettersById, retiredMessage, cancellationToken)).ShouldBe(0);
+    }
+
+    /// <summary>
+    /// One run at a time (ADR 0019): while the test holds the run's advisory lock as another run would, a republish is
+    /// refused as running at once; once the lock is released, the next run goes through.
+    /// </summary>
+    [Fact]
+    public async Task A_republish_while_another_run_holds_the_lock_answers_409_republish_running()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("editor");
+        var connectionString = await EditorialDatabase.ConnectionStringAsync(aspire, cancellationToken);
+
+        await using (await EditorialDatabase.HoldRepublishLockAsync(connectionString, cancellationToken))
+        {
+            using var refused = await client.PostAsync(Republish, null, cancellationToken);
+            var body = await refused.Content.ReadAsStringAsync(cancellationToken);
+
+            refused.StatusCode.ShouldBe(HttpStatusCode.Conflict, $"POST {Republish} answered {(int)refused.StatusCode} {body}");
+            using var problem = JsonDocument.Parse(body);
+            problem.RootElement.GetProperty("code").GetString().ShouldBe("editorial.republish-running");
+            problem.RootElement.GetProperty("title").GetString().ShouldBe(ErrorCodeCatalog.MessageOf("editorial.republish-running"));
+        }
+
+        await RepublishAsync(client, cancellationToken);
     }
 
     private static async Task<RepublishedCounts> RepublishAsync(HttpClient client, CancellationToken cancellationToken)

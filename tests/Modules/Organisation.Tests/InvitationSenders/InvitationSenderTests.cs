@@ -120,12 +120,24 @@ public class InvitationSenderTests
     [Fact]
     public void The_errors_factory_names_the_sender_and_the_instant()
     {
-        var error = InvitationSenderErrors.TooManyToday(Sina, At(NextMidnight));
+        var error = InvitationSenderErrors.TooManyToday(Sina, At(NextMidnight), At(Start));
 
         var tooMany = error.ShouldBeOfType<TooManyInvitationsSentToday>();
         tooMany.Code.ShouldBe(TooManyToday);
         tooMany.Sender.ShouldBe(Sina);
         tooMany.RetryAt.ShouldBe(At(NextMidnight));
+        tooMany.RefusedAt.ShouldBe(At(Start));
+    }
+
+    // #294
+    [Fact]
+    public void A_refused_mail_carries_the_instant_it_was_refused_at()
+    {
+        var sender = InvitationSender.FirstMailed(Sina, At(Start));
+
+        var refused = sender.RequestMail(At(Start.AddHours(1)), DailyMailCap.From(1));
+
+        refused.Error.ShouldBeOfType<TooManyInvitationsSentToday>().RefusedAt.ShouldBe(At(Start.AddHours(1)));
     }
 
     private static Timestamp At(DateTimeOffset instant) => Timestamp.From(instant);

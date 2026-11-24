@@ -8,6 +8,6 @@ public static class AppliedTestDraftMappings
     public static EditorialTestDraftDto ToDto(this AppliedTestDraft draft)
     {
         Ensure.That(draft).IsNotNull();
-        return new EditorialTestDraftDto([.. draft.Questions.Select(id => id.Value)], [.. draft.LeftOutChapters.Select(id => id.Value)]);
+        return new EditorialTestDraftDto([.. draft.Questions.Select(id => id.Value)], [.. draft.LeftOutChapters.Select(id => id.Value)], [.. draft.TruncatedChapters.Select(id => id.Value)]);
     }
 }

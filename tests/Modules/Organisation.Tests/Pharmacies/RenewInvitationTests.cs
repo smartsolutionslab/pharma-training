@@ -179,19 +179,87 @@ public class RenewInvitationTests
     [Fact]
     public async Task A_stored_mail_day_beyond_tomorrow_is_logged_as_a_warning_even_when_the_renewal_is_refused()
     {
+        // The renewed invitation was requested a moment ago, so its own cooldown refuses the renewal; only the pharmacy's
+        // mail day lies ahead, stored by a second invitation three days on (#294: a request time ahead warns on its own).
         var store = new InMemoryPharmacyStore();
         var pharmacy = TestPharmacies.Register(Owner);
-        var invitation = pharmacy.Invite(MembershipId.New(), Invitee, JobFunction.Pta, MembershipRole.Employee, Timestamp.From(Start.AddDays(3)), InvitationMailLimits.Default).Value;
+        var invitation = pharmacy.Invite(MembershipId.New(), Invitee, JobFunction.Pta, MembershipRole.Employee, Timestamp.From(Start), InvitationMailLimits.Default).Value;
+        pharmacy.Invite(MembershipId.New(), EmailAddress.From("second@example.org"), JobFunction.Pta, MembershipRole.Employee, Timestamp.From(Start.AddDays(3)), InvitationMailLimits.Default).IsSuccess.ShouldBeTrue();
         pharmacy.Stored(store);
         var logger = new FakeLogger<RenewInvitationHandler>();
 
-        await new RenewInvitationHandler(store, store, store, store, new FakeDatabaseClock(new FakeTimeProvider(Start)), InvitationMailLimits.Default, RecipientAndSenderMailLimits.Default, logger)
+        var refused = await new RenewInvitationHandler(store, store, store, store, new FakeDatabaseClock(new FakeTimeProvider(Start)), InvitationMailLimits.Default, RecipientAndSenderMailLimits.Default, logger)
             .HandleAsync(new RenewInvitation(pharmacy.Id, invitation, Owner), TestContext.Current.CancellationToken);
 
+        refused.IsFailure.ShouldBeTrue();
+        refused.Error.Code.ShouldBe("organisation.invitation-renewed-too-soon");
         var warning = logger.Collector.GetSnapshot().Where(record => record.Level == LogLevel.Warning).ShouldHaveSingleItem();
         warning.Message.ShouldContain(pharmacy.Id.Value.ToString());
         warning.Message.ShouldContain("2027-04-04");
         warning.Message.ShouldContain("2027-04-01");
+        warning.Message.ShouldContain("the database's clock moved back");
+    }
+
+    // #294: a request time a cooldown or more ahead is not trusted, and that is logged like a mail day beyond tomorrow.
+    [Fact]
+    public async Task A_request_time_a_cooldown_or_more_ahead_is_logged_as_a_warning_naming_the_pharmacy_the_invitation_and_both_instants()
+    {
+        var store = new InMemoryPharmacyStore();
+        var pharmacy = TestPharmacies.Register(Owner);
+        var requestedAt = Start.AddHours(1);
+        var invitation = pharmacy.Invite(MembershipId.New(), Invitee, JobFunction.Pta, MembershipRole.Employee, Timestamp.From(requestedAt), InvitationMailLimits.Default).Value;
+        pharmacy.Stored(store);
+        var logger = new FakeLogger<RenewInvitationHandler>();
+
+        var renewed = await new RenewInvitationHandler(store, store, store, store, new FakeDatabaseClock(new FakeTimeProvider(Start)), InvitationMailLimits.Default, RecipientAndSenderMailLimits.Default, logger)
+            .HandleAsync(new RenewInvitation(pharmacy.Id, invitation, Owner), TestContext.Current.CancellationToken);
+
+        var warning = logger.Collector.GetSnapshot().Where(record => record.Level == LogLevel.Warning)
+            .ShouldHaveSingleItem("a request time an hour ahead of the database's now logged no warning");
+        warning.Message.ShouldContain(pharmacy.Id.Value.ToString());
+        warning.Message.ShouldContain(invitation.Value.ToString());
+        warning.Message.ShouldContain(requestedAt.ToString("O"));
+        warning.Message.ShouldContain(Start.ToString("O"));
+        warning.Message.ShouldContain("the database's clock moved back");
+        warning.Message.ShouldNotContain(Invitee.Value, Case.Insensitive);
+        renewed.IsSuccess.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task A_request_time_ahead_is_logged_even_when_another_limit_refuses_the_renewal()
+    {
+        var store = new InMemoryPharmacyStore();
+        var capOfOne = new InvitationMailLimits(RenewCooldown.From(TimeSpan.FromMinutes(10)), DailyMailCap.From(1));
+        var pharmacy = TestPharmacies.Register(Owner);
+        var invitation = pharmacy.Invite(MembershipId.New(), Invitee, JobFunction.Pta, MembershipRole.Employee, Timestamp.From(Start.AddHours(1)), capOfOne).Value;
+        pharmacy.Stored(store);
+        var logger = new FakeLogger<RenewInvitationHandler>();
+
+        var refused = await new RenewInvitationHandler(store, store, store, store, new FakeDatabaseClock(new FakeTimeProvider(Start)), capOfOne, RecipientAndSenderMailLimits.Default, logger)
+            .HandleAsync(new RenewInvitation(pharmacy.Id, invitation, Owner), TestContext.Current.CancellationToken);
+
+        var warning = logger.Collector.GetSnapshot().Where(record => record.Level == LogLevel.Warning)
+            .ShouldHaveSingleItem("a request time ahead logged no warning when the pharmacy's daily cap refused the renewal");
+        warning.Message.ShouldContain(invitation.Value.ToString());
+        refused.IsSuccess.ShouldBeFalse();
+        refused.Error.Code.ShouldBe("organisation.too-many-invitations-today");
+        store.Commits.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task A_request_time_within_the_cooldown_logs_no_warning()
+    {
+        var store = new InMemoryPharmacyStore();
+        var pharmacy = TestPharmacies.Register(Owner);
+        var invitation = pharmacy.Invite(MembershipId.New(), Invitee, JobFunction.Pta, MembershipRole.Employee, Timestamp.From(Start.AddMinutes(10).AddSeconds(-1)), InvitationMailLimits.Default).Value;
+        pharmacy.Stored(store);
+        var logger = new FakeLogger<RenewInvitationHandler>();
+
+        var refused = await new RenewInvitationHandler(store, store, store, store, new FakeDatabaseClock(new FakeTimeProvider(Start)), InvitationMailLimits.Default, RecipientAndSenderMailLimits.Default, logger)
+            .HandleAsync(new RenewInvitation(pharmacy.Id, invitation, Owner), TestContext.Current.CancellationToken);
+
+        logger.Collector.GetSnapshot().ShouldNotContain(record => record.Level == LogLevel.Warning);
+        refused.Error.Code.ShouldBe("organisation.invitation-renewed-too-soon");
     }
 
     [Fact]

@@ -76,6 +76,15 @@ partial class EditorialModelSnapshot : ModelSnapshot
                     .HasColumnType("integer")
                     .HasColumnName("duration_seconds");
 
+                b.Property<string>("ExtractedText")
+                    .HasColumnType("text")
+                    .HasColumnName("pdf_text");
+
+                b.Property<string>("Extraction")
+                    .HasMaxLength(20)
+                    .HasColumnType("character varying(20)")
+                    .HasColumnName("pdf_text_extraction");
+
                 b.Property<string>("File")
                     .HasMaxLength(1024)
                     .HasColumnType("character varying(1024)")

@@ -171,6 +171,24 @@ public class ChapterUploadsTests
         AddFileChapterTests.ShouldBeRefused(accepted.IsFailure ? accepted.Error : null, "editorial.upload-not-accepted", HttpStatusCode.BadRequest, "the properties checked and the bytes checked must be one version's");
     }
 
+    [Theory]
+    [InlineData(ChapterKind.Pdf, ".pdf", "application/pdf")]
+    [InlineData(ChapterKind.Video, ".mp4", "video/mp4")]
+    public async Task An_accepted_upload_answers_the_blob_it_found_so_the_file_read_next_is_that_version(ChapterKind kind, string extension, string contentType)
+    {
+        var blobs = new InMemoryStoredBlobs();
+        var file = AddFileChapterTests.IssuedName(Version, extension);
+        blobs.Upload(file, contentType, 1024);
+        var found = blobs.Current(file);
+
+        var accepted = await ChapterUploads.AcceptAsync(blobs, BlobReference.From(file), Version, kind, TestContext.Current.CancellationToken);
+
+        accepted.IsSuccess.ShouldBeTrue(accepted.IsFailure ? accepted.Error.Code : string.Empty);
+        accepted.Value.ShouldBe(found, "the blob the lookup found, with the ETag a later read carries");
+        accepted.Value.ETag.ShouldBe(found.ETag);
+        accepted.Value.Length.ShouldBe(1024);
+    }
+
     [Fact]
     public async Task A_video_is_accepted_once_its_leading_bytes_are_read_and_bytes_4_to_7_are_ftyp()
     {

@@ -165,9 +165,9 @@ test.each([
   },
 );
 
-// A module's own words, as the host sent them (ApiError.serverMessage): nothing translates them until #147. A refusal
-// without them, a network failure, a 5xx, or a framework's problem (no code, or a failed guard's invalid-argument), is
-// told in the catalog's words: the framework's English titles never reach the user.
+// A refusal is told by its code in the catalog's words (#147, ADR 0007), the host's invalid-argument included; the
+// host's own words only for a module code the catalog does not know. A refusal without a code, a network failure or a
+// 5xx is told in the action's own words: the framework's English titles never reach the user.
 test.each([
   [
     "a 400 with the module's problem details and a detail",
@@ -176,21 +176,30 @@ test.each([
         JSON.stringify({
           title: 'Bad Request',
           status: 400,
-          detail: 'Der Name ist zu lang, sagt der Server.',
+          detail: 'SERVER WORDS',
           code: 'organisation.invalid-pharmacy-name',
         }),
         { status: 400, headers: { 'Content-Type': 'application/problem+json' } },
       ),
-    () => 'Der Name ist zu lang, sagt der Server.',
+    () => 'Der Name einer Apotheke hat 1 bis 120 Zeichen und enthält keine Steuer- oder Richtungszeichen.',
   ],
   [
     "a 403 with the module's problem title only",
     () =>
+      new Response(JSON.stringify({ title: 'SERVER WORDS', status: 403, code: 'organisation.identity-incomplete' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/problem+json' },
+      }),
+    () => 'Ihr Konto nennt keinen Namen oder keine gültige E-Mail-Adresse. Ergänzen Sie Ihr Profil.',
+  ],
+  [
+    'a 409 with a module code the catalog does not know',
+    () =>
       new Response(
-        JSON.stringify({ title: 'Kein Name im Konto.', status: 403, code: 'organisation.identity-incomplete' }),
-        { status: 403, headers: { 'Content-Type': 'application/problem+json' } },
+        JSON.stringify({ title: 'Conflict', status: 409, detail: 'SERVER WORDS', code: 'organisation.zzz-unknown' }),
+        { status: 409, headers: { 'Content-Type': 'application/problem+json' } },
       ),
-    () => 'Kein Name im Konto.',
+    () => 'SERVER WORDS',
   ],
   [
     "a 500 with the framework's problem title",
@@ -226,7 +235,7 @@ test.each([
         }),
         { status: 400, headers: { 'Content-Type': 'application/problem+json' } },
       ),
-    () => t('organisation.register.failed'),
+    () => 'Eine Angabe ist ungültig. Prüfen Sie Ihre Eingaben und versuchen Sie es erneut.',
   ],
   ['a 500 without a body', () => new Response('', { status: 500 }), () => t('organisation.register.failed')],
   [
@@ -269,6 +278,35 @@ test('a refusal without a server message is told in the language of the moment',
     i18n.global.t('organisation.register.failed', {}, { locale: 'de-DE' }),
   );
 });
+
+test.each([
+  ['de-DE', 'Der Name einer Apotheke hat 1 bis 120 Zeichen und enthält keine Steuer- oder Richtungszeichen.'],
+  ['en-GB', "A pharmacy's name has 1 to 120 characters and contains no control or direction characters."],
+] as const)(
+  'a registration refused with invalid-pharmacy-name is told in %s in the catalog words, never the host words',
+  async (language, said) => {
+    setLanguage(language, { remember: false });
+    host.mockImplementation(async (_input, init) =>
+      init?.method === 'POST'
+        ? new Response(
+            JSON.stringify({
+              title: 'Bad Request',
+              status: 400,
+              detail: 'SERVER WORDS',
+              code: 'organisation.invalid-pharmacy-name',
+            }),
+            { status: 400, headers: { 'Content-Type': 'application/problem+json' } },
+          )
+        : Response.json({ items: [markt], totalCount: 1, page: 1, pageSize: 100 }),
+    );
+    await renderInShell();
+
+    await registerNeueApotheke();
+
+    await waitFor(() => expect(notify.failure).toHaveBeenCalledExactlyOnceWith(said));
+    expect(String(notify.failure.mock.calls)).not.toContain('SERVER WORDS');
+  },
+);
 
 // The host's words for this code speak of a refusal it shares with accepting an invitation; the page has words of its
 // own for it, in the language of the moment, which tell the user what to do before registering again.

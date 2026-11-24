@@ -5,9 +5,11 @@ using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application.Queries.Ge
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Assignments;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Courses;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Members;
+using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Progress;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Tests.Assignments;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Tests.Courses;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Tests.Members;
+using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Tests.Progress;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Tests.Queries;
 
@@ -33,6 +35,7 @@ public class GetComplianceMatrixTests
     private readonly InMemoryMemberStore members = new();
     private readonly InMemoryAssignmentStore assignments = new();
     private readonly InMemoryCourseVersionStore courses = new();
+    private readonly InMemoryLearnerProgressStore progress = new();
     private readonly FakeTimeProvider time = new(Now);
 
     [Fact]
@@ -329,6 +332,50 @@ public class GetComplianceMatrixTests
         (matrix.Assignments, matrix.CompliantAssignments, matrix.OverdueAssignments, matrix.ComplianceRate).ShouldBe((1, 0, 0, 0.0));
     }
 
+    /// <summary>#287: a completion is valid for the months of the version its certificate was issued for, not the latest's.</summary>
+    [Fact]
+    public async Task A_completion_is_valid_for_the_months_of_the_version_it_was_certified_for()
+    {
+        await TeamAsync();
+        var hygiene = Course("Hygiene", 24);
+        var first = courses.Versions.Single(version => version.Course == hygiene).Id;
+        courses.Versions.Add(CourseVersion.Published(CourseVersionId.From(Guid.CreateVersion7()), hygiene, VersionNumber.From(2), CourseTitle.From("Hygiene"), ValidityMonths.From(6)));
+        CompletedOn(Anna, hygiene, first);
+
+        var matrix = (await MatrixAsync(Manager)).Value;
+
+        RowOf(matrix, Anna).Cells.ShouldHaveSingleItem().ValidUntil.ShouldBe(new DateOnly(2028, 4, 1));
+        (matrix.Assignments, matrix.CompliantAssignments, matrix.OverdueAssignments, matrix.ComplianceRate).ShouldBe((1, 1, 0, 1.0));
+    }
+
+    [Fact]
+    public async Task A_completion_certified_on_a_shorter_version_runs_out_although_the_latest_is_valid_longer()
+    {
+        await TeamAsync();
+        var hygiene = Course("Hygiene", 6);
+        var first = courses.Versions.Single(version => version.Course == hygiene).Id;
+        courses.Versions.Add(CourseVersion.Published(CourseVersionId.From(Guid.CreateVersion7()), hygiene, VersionNumber.From(2), CourseTitle.From("Hygiene"), ValidityMonths.From(24)));
+        CompletedOn(Anna, hygiene, first);
+
+        var matrix = (await MatrixAsync(Manager)).Value;
+
+        RowOf(matrix, Anna).Cells.ShouldHaveSingleItem().ValidUntil.ShouldBe(new DateOnly(2026, 10, 1));
+        (matrix.Assignments, matrix.CompliantAssignments, matrix.OverdueAssignments, matrix.ComplianceRate).ShouldBe((1, 0, 0, 0.0));
+    }
+
+    [Fact]
+    public async Task A_certificate_for_a_version_Compliance_does_not_know_falls_back_to_the_latest_version()
+    {
+        await TeamAsync();
+        var hygiene = Course("Hygiene", 24);
+        courses.Versions.Add(CourseVersion.Published(CourseVersionId.From(Guid.CreateVersion7()), hygiene, VersionNumber.From(2), CourseTitle.From("Hygiene"), ValidityMonths.From(6)));
+        CompletedOn(Anna, hygiene, CourseVersionId.From(Guid.CreateVersion7()));
+
+        var matrix = (await MatrixAsync(Manager)).Value;
+
+        RowOf(matrix, Anna).Cells.ShouldHaveSingleItem().ValidUntil.ShouldBe(new DateOnly(2026, 10, 1));
+    }
+
     [Fact]
     public async Task A_fully_trained_team_is_entirely_compliant()
     {
@@ -475,6 +522,19 @@ public class GetComplianceMatrixTests
         return course;
     }
 
+    /// <summary>
+    /// The learner's assignment of the course, completed on 2026-04-01 by a certificate Compliance kept a copy of, issued
+    /// for the version given.
+    /// </summary>
+    private void CompletedOn(PersonId learner, CourseId course, CourseVersionId version)
+    {
+        var completedAt = Timestamp.From(new DateTimeOffset(2026, 4, 1, 10, 0, 0, TimeSpan.Zero));
+        var certificate = CertificateId.From(Guid.CreateVersion7());
+        var assignment = Assigned(learner, course, new DateOnly(2026, 4, 30), at: Timestamp.From(new DateTimeOffset(2026, 3, 1, 8, 0, 0, TimeSpan.Zero)));
+        assignment.Complete(certificate, completedAt).IsSuccess.ShouldBeTrue();
+        progress.Add(IssuedCertificate.Of(certificate, learner, course, version, completedAt));
+    }
+
     /// <summary>An assignment of the course to the learner, stored as it is assigned; the caller moves it on.</summary>
     private Assignment Assigned(PersonId learner, CourseId course, DateOnly dueDate, PharmacyId? pharmacy = null, Timestamp? at = null, RecurrenceInterval? recurrence = null)
     {
@@ -489,7 +549,7 @@ public class GetComplianceMatrixTests
         Page? page = null,
         PageSize? pageSize = null,
         TimeProvider? clock = null) =>
-        new GetComplianceMatrixHandler(members, assignments, courses, clock ?? time).HandleAsync(
+        new GetComplianceMatrixHandler(members, assignments, courses, progress, clock ?? time).HandleAsync(
             new GetComplianceMatrix(Pharmacy, by, jobFunction, page ?? Page.First, pageSize ?? PageSize.Default),
             TestContext.Current.CancellationToken);
 }

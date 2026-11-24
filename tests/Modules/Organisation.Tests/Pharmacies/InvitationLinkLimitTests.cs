@@ -93,5 +93,5 @@ public class InvitationLinkLimitTests
     private bool Accepts(Pharmacy pharmacy, InvitationToken token) =>
         pharmacy.AcceptInvitation(token, PersonId.From(Guid.CreateVersion7()), DisplayName.From("Anna Berger"), Anna, Now()).IsSuccess;
 
-    private InvitationMailRequestedV1Consumer Consumer() => new(store, store, mails, Links(), time, logger);
+    private InvitationMailRequestedV1Consumer Consumer() => BothClocks.Consumer(store, mails, Links(), time, logger);
 }

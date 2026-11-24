@@ -17,8 +17,9 @@ import {
   usePostOrganisationPharmaciesIdInvitationsMembershipIdRenew,
 } from '@/api/generated';
 import { t } from '@/i18n';
+import type { ErrorMessage } from '@/i18n/errorText';
 import { notify } from '@/lib/notify';
-import { refusesMembership, type TeamAction, type TeamFailure, teamFailureKey, teamFailureText } from './teamErrors';
+import { refusesMembership, type TeamAction, teamFailureMessage, teamFailureText } from './teamErrors';
 
 /** A section of the page, whose heading a refusal of revoke or end shows under. */
 export type TeamSection = 'members' | 'invitations';
@@ -28,7 +29,7 @@ const startPage = '/';
 
 /**
  * The page's five actions on the current pharmacy's members and invitations (#12): each reports what it did, reads
- * again what it changed and, refused, says why (teamFailureKey) in a toast and returns the failure for the page to show
+ * again what it changed and, refused, says why (teamFailureMessage) in a toast and returns the failure for the page to show
  * in place. A refused revoke or end also stays readable under its section's heading until the next action.
  */
 export function useTeamActions(pharmacy: MaybeRefOrGetter<MyPharmacyDto | undefined>) {
@@ -44,7 +45,7 @@ export function useTeamActions(pharmacy: MaybeRefOrGetter<MyPharmacyDto | undefi
    * The last refused revoke or end, under its section's heading until the next action or another pharmacy. It keeps
    * the failure, not its words, so the page says it in the language of the moment.
    */
-  const refusal = ref<{ section: TeamSection; failure: TeamFailure }>();
+  const refusal = ref<{ section: TeamSection; failure: ErrorMessage }>();
   watch(
     () => toValue(pharmacy)?.id,
     () => {
@@ -79,16 +80,16 @@ export function useTeamActions(pharmacy: MaybeRefOrGetter<MyPharmacyDto | undefi
     run: (id: string) => Promise<unknown>,
     done: (id: string) => Promise<unknown>,
     takenIn: MyPharmacyDto = current(),
-  ): Promise<TeamFailure | undefined> {
+  ): Promise<ErrorMessage | undefined> {
     refusal.value = undefined;
     const { id, name } = takenIn;
     try {
       await run(id);
     } catch (error) {
-      const failure = teamFailureKey(action, error, values);
+      const failure = teamFailureMessage(action, error, values);
       const reason = teamFailureText(failure);
       // Answered after a switch, the toast shows over another pharmacy: it names the one that refused.
-      notify.failure(stillShown(id) ? reason : t('organisation.team.errors.inPharmacy', { pharmacy: name, reason }));
+      notify.failure(stillShown(id) ? reason : t('organisation.team.inPharmacy', { pharmacy: name, reason }));
       void readMembers(id);
       void readInvitations(id);
       if (refusesMembership(error)) {

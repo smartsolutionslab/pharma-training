@@ -138,6 +138,49 @@ public class OrganisationInvitationLimitsTests(AspireFixture aspire)
         }
     }
 
+    /// <summary>
+    /// A request time a cooldown or more ahead of the database's now is not trusted (#294): a row edited by hand, or a
+    /// database clock that moved back, cannot block renewing for longer than two cooldowns.
+    /// </summary>
+    [Fact]
+    public async Task Renewing_an_invitation_whose_request_time_lies_a_year_ahead_is_ok_and_mails_again()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var owner = await aspire.CreateHostClientAsync("owner");
+        var pharmacy = await RegisterAsync(owner, cancellationToken);
+        var address = Invitee();
+        var membership = await InviteAsync(owner, pharmacy, address, cancellationToken);
+        (await mailpit.MessagesToAsync(address, 1, cancellationToken)).ShouldHaveSingleItem();
+        await database.SetInvitationRequestedAheadAsync(membership, TimeSpan.FromDays(365), cancellationToken);
+        await database.MoveRecipientMailBackAsync(address, TimeSpan.FromMinutes(10), cancellationToken);
+
+        using var renewed = await owner.PostAsync(RenewUri(pharmacy, membership), content: null, cancellationToken);
+
+        renewed.StatusCode.ShouldBe(HttpStatusCode.OK, await renewed.Content.ReadAsStringAsync(cancellationToken));
+        (await mailpit.MessagesToAsync(address, 2, cancellationToken)).Count.ShouldBe(2, "the renewal sent no second mail");
+    }
+
+    /// <summary>
+    /// A stored mail day beyond tomorrow is discarded (#158, #294): even at the end of the calendar and at the cap, the
+    /// pharmacy invites, and today's tally starts afresh. Characterizes behaviour that shipped with #158.
+    /// </summary>
+    [Fact]
+    public async Task A_pharmacy_whose_stored_mail_day_is_9999_12_31_at_the_cap_invites_and_today_starts_the_tally_afresh()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var owner = await aspire.CreateHostClientAsync("owner");
+        var pharmacy = await RegisterAsync(owner, cancellationToken);
+        var today = await database.TodayUtcAsync(cancellationToken);
+        await database.SetInvitationMailsAsync(pharmacy, new DateOnly(9999, 12, 31), 50, cancellationToken);
+        var address = Invitee();
+
+        await InviteAsync(owner, pharmacy, address, cancellationToken);
+
+        (await mailpit.MessagesToAsync(address, 1, cancellationToken)).ShouldHaveSingleItem();
+        (await database.InvitationMailsThatDayAsync(pharmacy, cancellationToken)).ShouldBe(1, "today's tally did not start afresh");
+        (await database.InvitationMailDayAsync(pharmacy, cancellationToken)).ShouldBeOneOf([today, today.AddDays(1)], "the stored day is not today");
+    }
+
     private static object Invitation(string address) => new { email = address, jobFunction = "Pta", role = "Employee" };
 
     private static string Invitee() => $"invitee-{Guid.CreateVersion7()}@example.com";

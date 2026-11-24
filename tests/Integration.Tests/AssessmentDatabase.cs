@@ -109,6 +109,63 @@ internal static class AssessmentDatabase
         await session.SaveChangesAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Appends an <c>ExaminationPassed</c> to the examination's stream in Assessment's event store, with no marker and no
+    /// announcement, as a crash between the submit's append and its outbox commit leaves it (#277); answers the stream
+    /// version Marten stored it at.
+    /// </summary>
+    public static async Task<long> PlantPassAsync(AspireFixture aspire, PlantedExaminationPassed passed, CancellationToken cancellationToken)
+    {
+        Ensure.That(passed).IsNotNull();
+
+        var connectionString = await aspire.App.GetConnectionStringAsync("assessment-database", cancellationToken)
+            ?? throw new InvalidOperationException("Assessment's database has no connection string.");
+        await using var store = DocumentStore.For(options =>
+        {
+            options.Connection(connectionString);
+            options.DatabaseSchemaName = "assessment";
+            options.Events.DatabaseSchemaName = "assessment";
+            options.AutoCreateSchemaObjects = AutoCreate.None;
+            options.UseSystemTextJsonForSerialization();
+            options.Events.MapEventType<PlantedExaminationPassed>("examination_passed");
+        });
+        await using var session = store.LightweightSession();
+        var planted = session.Events.Append(passed.Examination, passed).Events.ShouldHaveSingleItem();
+        await session.SaveChangesAsync(cancellationToken);
+
+        await using var connection = await OpenAsync(aspire, cancellationToken);
+        await using var command = new NpgsqlCommand("select version from assessment.mt_events where id = @id", connection);
+        command.Parameters.AddWithValue("id", planted.Id);
+        return (long)(await command.ExecuteScalarAsync(cancellationToken) ?? throw new InvalidOperationException($"Assessment's event store holds no event {planted.Id}."));
+    }
+
+    /// <summary>The stream version of the stream's only event of the stored type (<c>examination_passed</c>).</summary>
+    public static async Task<long> StoredVersionAsync(AspireFixture aspire, Guid stream, string type, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(aspire, cancellationToken);
+        await using var command = new NpgsqlCommand("select version from assessment.mt_events where stream_id = @stream and type = @type", connection);
+        command.Parameters.AddWithValue("stream", stream);
+        command.Parameters.AddWithValue("type", type);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        List<long> versions = [];
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            versions.Add(reader.GetInt64(0));
+        }
+
+        return versions.ShouldHaveSingleItem($"stream {stream} should hold one {type}");
+    }
+
+    /// <summary>How many markers Assessment holds for the stored event at the stream's version (#277): one once it was announced.</summary>
+    public static async Task<long> CountAnnouncedAsync(AspireFixture aspire, Guid stream, long version, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(aspire, cancellationToken);
+        await using var command = new NpgsqlCommand("select count(*) from assessment.announced_events where stream_id = @stream and stream_version = @version", connection);
+        command.Parameters.AddWithValue("stream", stream);
+        command.Parameters.AddWithValue("version", version);
+        return (long)(await command.ExecuteScalarAsync(cancellationToken))!;
+    }
+
     /// <summary>Deletes the completion's handled marker, as when the marker's commit failed on every retry (ADR 0012's window).</summary>
     public static async Task ForgetHandledAsync(AspireFixture aspire, Guid eventIdentifier, CancellationToken cancellationToken)
     {

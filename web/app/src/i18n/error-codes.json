@@ -75,9 +75,24 @@
     "message": "There is no such sample."
   },
   {
+    "code": "certification.certificate-not-found",
+    "status": 404,
+    "message": "You hold no certificate with this id."
+  },
+  {
     "code": "certification.certificate-not-verifiable",
     "status": 404,
     "message": "No certificate matches this code."
+  },
+  {
+    "code": "certification.document-not-ready",
+    "status": 409,
+    "message": "The certificate's PDF is being created; ask again shortly."
+  },
+  {
+    "code": "certification.identity-incomplete",
+    "status": 403,
+    "message": "The access token names no person (its subject is missing or no Guid)."
   },
   {
     "code": "certification.invalid-sample-name",
@@ -198,6 +213,11 @@
     "code": "compliance.own-assignment",
     "status": 403,
     "message": "Only another manager of the pharmacy can change or withdraw your own assignment."
+  },
+  {
+    "code": "compliance.pharmacy-missing",
+    "status": 400,
+    "message": "The pharmacy is missing."
   },
   {
     "code": "compliance.pharmacy-not-found",
@@ -372,7 +392,7 @@
   {
     "code": "editorial.no-text-chapters",
     "status": 409,
-    "message": "The version has no text chapter to draft test questions from."
+    "message": "The version has no chapter with text to draft test questions from."
   },
   {
     "code": "editorial.no-text-chapters-to-review",
@@ -405,6 +425,11 @@
     "message": "The order must name every chapter exactly once."
   },
   {
+    "code": "editorial.pdf-readers-busy",
+    "status": 429,
+    "message": "Too many PDFs are being read right now; try again in a few seconds."
+  },
+  {
     "code": "editorial.publisher-approved-questions",
     "status": 403,
     "message": "Under four eyes, an editor who approved a question of this version cannot publish it."
@@ -423,6 +448,11 @@
     "code": "editorial.question-not-found",
     "status": 404,
     "message": "The course version has no such question."
+  },
+  {
+    "code": "editorial.republish-running",
+    "status": 409,
+    "message": "A republish of the course versions is running already; wait until it has finished, then run it again if needed."
   },
   {
     "code": "editorial.reviewer-name-missing",
@@ -457,7 +487,7 @@
   {
     "code": "editorial.too-much-content-to-draft",
     "status": 422,
-    "message": "The version's text chapters are too long to draft a test from in one request."
+    "message": "The version's chapters are too long to draft a test from in one request."
   },
   {
     "code": "editorial.too-much-content-to-review",

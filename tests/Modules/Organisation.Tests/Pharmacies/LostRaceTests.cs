@@ -59,7 +59,7 @@ public class LostRaceTests
         pharmacy.IssueInvitationLink(invitation, token, TestPharmacies.RegisteredAt).IsSuccess.ShouldBeTrue();
         pharmacy.ClearDomainEvents();
 
-        var accepted = await new AcceptInvitationHandler(store, store, new FakeTimeProvider(TestPharmacies.RegisteredAt.Value))
+        var accepted = await BothClocks.Accept(store, new FakeTimeProvider(TestPharmacies.RegisteredAt.Value))
             .HandleAsync(
                 new AcceptInvitation(token, PersonId.From(Guid.CreateVersion7()), DisplayName.From("Bert Klein"), AccountEmail.From(email, verified: true)),
                 TestContext.Current.CancellationToken);

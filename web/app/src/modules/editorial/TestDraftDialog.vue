@@ -19,12 +19,12 @@ interface TestDraftDialogProps {
   toDraft: number;
   /** The unreviewed questions the draft replaces, hand-written ones included (the owner's decision, ADR 0008). */
   unreviewed: number;
-  /** Whether the version has PDF or video chapters, which the AI does not read. */
-  hasFileChapters: boolean;
+  /** Whether the version has chapters the AI does not read: videos, and PDFs without text (#157). */
+  hasChaptersWithoutText: boolean;
 }
 
 // Asks before the AI drafts the test: how many questions it drafts, and how many unreviewed questions it replaces.
-const { open, toDraft, unreviewed, hasFileChapters } = defineProps<TestDraftDialogProps>();
+const { open, toDraft, unreviewed, hasChaptersWithoutText } = defineProps<TestDraftDialogProps>();
 const emit = defineEmits<{ confirm: []; cancel: []; closed: [event: Event] }>();
 const { t, n } = useI18n();
 
@@ -63,7 +63,7 @@ function confirm() {
               t('editorial.test.draft.confirm.replaces', { count: n(unreviewed, 'integer') }, unreviewed)
             }}</span>
           </span>
-          <span v-if="hasFileChapters">{{ t('editorial.test.draft.confirm.leftOut') }}</span>
+          <span v-if="hasChaptersWithoutText">{{ t('editorial.test.draft.confirm.leftOut') }}</span>
         </DialogDescription>
       </DialogHeader>
       <DialogFooter>

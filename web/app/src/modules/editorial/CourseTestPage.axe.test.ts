@@ -1,5 +1,6 @@
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query';
-import { cleanup, render, screen } from '@testing-library/vue';
+import { cleanup, render, screen, within } from '@testing-library/vue';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { createMemoryHistory } from 'vue-router';
@@ -36,8 +37,9 @@ vi.mock('@/api/generated', async (importOriginal) => {
     shown.examples !== undefined && hook in shown.examples
       ? state(shown.examples[hook], false)
       : state(undefined, true);
-  // A mutation nobody has triggered is idle, not saving: the page shows as it first does.
-  const idle = () => ({
+  // A mutation nobody has triggered is idle, not saving: the page shows as it first does. Triggered, it answers with
+  // its example, if the data shown has one.
+  const idle = (hook: string) => ({
     data: ref(undefined),
     error: ref(null),
     isIdle: ref(true),
@@ -46,7 +48,7 @@ vi.mock('@/api/generated', async (importOriginal) => {
     isError: ref(false),
     status: ref('idle'),
     mutate: vi.fn(),
-    mutateAsync: vi.fn(),
+    mutateAsync: vi.fn(async () => shown.examples?.[hook]),
     reset: vi.fn(),
   });
   const generated = await importOriginal<Record<string, unknown>>();
@@ -56,12 +58,12 @@ vi.mock('@/api/generated', async (importOriginal) => {
       if (!/^use[A-Z]/.test(name)) {
         return [name, value];
       }
-      return [name, isMutation(name) ? idle : () => answer(name)];
+      return [name, isMutation(name) ? () => idle(name) : () => answer(name)];
     }),
   );
 });
 
-const { examples } = data;
+const { examples, pdfDraftExamples } = data;
 // A data file written before it had an empty example has none: the page is then not checked with nothing to show.
 const emptyExamples = (data as { emptyExamples?: Record<string, unknown> }).emptyExamples ?? {};
 
@@ -172,6 +174,35 @@ describe.each(languages)('in %s', (language) => {
       shown.examples = emptyExamples;
       switchOn();
       const container = await renderPage();
+
+      expect(await axe(container)).toHaveNoViolations();
+    },
+  );
+
+  // A version of PDF chapters only, after a draft that left out a PDF without text and a video and cut a long PDF
+  // (#301): the note that names them is checked too.
+  async function renderDraftedPdfs(user: ReturnType<typeof userEvent.setup>) {
+    shown.examples = pdfDraftExamples;
+    const container = await renderPage();
+    await user.click(screen.getByRole('button', { name: t('editorial.test.draft.start') }));
+    const dialog = within(await screen.findByRole('dialog', { name: t('editorial.test.draft.confirm.title') }));
+    await user.click(dialog.getByRole('button', { name: t('editorial.test.draft.confirm.submit') }));
+    await screen.findByText(t('editorial.test.draft.truncated'));
+    expect(screen.getByText(t('editorial.test.draft.leftOut'))).toBeInTheDocument();
+    return container;
+  }
+
+  test('the course test page passes axe with a drafted version of PDF chapters only', async () => {
+    const container = await renderDraftedPdfs(userEvent.setup());
+
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  test.each(themes)(
+    'the course test page passes axe with a drafted version of PDF chapters only in the $name theme',
+    async ({ switchOn }) => {
+      switchOn();
+      const container = await renderDraftedPdfs(userEvent.setup());
 
       expect(await axe(container)).toHaveNoViolations();
     },

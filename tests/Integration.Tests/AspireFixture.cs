@@ -30,6 +30,12 @@ public sealed partial class AspireFixture : IAsyncLifetime
     /// <summary>How many invitation mails one user may send a UTC day in this run (#265), raised from the default 100.</summary>
     public const int InvitationMailsPerSenderPerDay = 1000;
 
+    /// <summary>How often Learning's and Assessment's announcement sweeps run in this run (#277), lowered from the default minute.</summary>
+    public static readonly TimeSpan AnnouncementSweepInterval = TimeSpan.FromSeconds(1);
+
+    /// <summary>How long the sweeps leave a stored event to its handler in this run (#277), lowered from the default two minutes.</summary>
+    public static readonly TimeSpan AnnouncementGracePeriod = TimeSpan.FromSeconds(5);
+
     // Twice the largest start-up of the green CI runs listed in #134 (204 s), rounded up to the minute. Before #126 the
     // edge and every service host were rebuilt at each start, which took 3.5 to over 5 minutes; now every project starts
     // from the AppHost's build. The fixture logs each run's start-up beside this limit.
@@ -96,6 +102,19 @@ public sealed partial class AspireFixture : IAsyncLifetime
         // than the default 100 a day would leave room for. The run raises the cap to InvitationMailsPerSenderPerDay, and
         // OrganisationMailRecipientAndSenderLimitsTests reaches it with editor-b, a user only it invites as.
         organisation.WithEnvironment("Organisation__InvitationLimits__MailsPerSenderPerDay", InvitationMailsPerSenderPerDay.ToString(CultureInfo.InvariantCulture));
+
+        // The announcement sweeps (#277) announce a stored ContentCompleted or ExaminationPassed whose announcement never
+        // left once it is older than the grace period, every interval. The defaults (a minute, two minutes) would keep
+        // LearningAnnouncementSweepTests and AssessmentAnnouncementSweepTests waiting for minutes, so the run sweeps every
+        // AnnouncementSweepInterval after AnnouncementGracePeriod. Five seconds is still far above the milliseconds a
+        // report or submit takes between its append and its outbox commit, even under CI load, so no other test's
+        // announcement is ever taken for a lost one.
+        foreach (var (service, module) in new[] { ("learning", "Learning"), ("assessment", "Assessment") })
+        {
+            var sweeping = builder.CreateResourceBuilder(builder.Resources.OfType<ProjectResource>().Single(resource => resource.Name == service));
+            sweeping.WithEnvironment($"{module}__AnnouncementSweep__Interval", AnnouncementSweepInterval.ToString("c", CultureInfo.InvariantCulture));
+            sweeping.WithEnvironment($"{module}__AnnouncementSweep__GracePeriod", AnnouncementGracePeriod.ToString("c", CultureInfo.InvariantCulture));
+        }
 
         app = await builder.BuildAsync(timeout.Token);
         await app.StartAsync(timeout.Token);

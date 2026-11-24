@@ -5,8 +5,8 @@ import { verificationOutcome } from './verificationErrors';
 // What the verification page (#54) shows when the host does not verify a code, by the spec's "Refusal → UI" table. An
 // unknown code is the host's 404 certification.certificate-not-verifiable: the page says so as its content, the same
 // words it shows for a malformed code, never as an alert. The shared rate limit (ADR 0026) is an alert with its own
-// words. Another of the module's own refusals shows the host's words (ADR 0007); anything else, the network included,
-// says the certificate could not be verified.
+// words. Another of the module's own refusals shows its catalog text, the host's words only for a code the catalog does
+// not know (#147, ADR 0007); anything else, the network included, says the certificate could not be verified.
 
 /** Problem details as the host sends them, with a code where it has one. */
 const problem = (status: number, code?: string, detail = 'Words of the host, not for the user.') =>
@@ -21,17 +21,24 @@ test('404 certification.certificate-not-verifiable says the code cannot be verif
 test('429 certification.verification-limit-reached is an alert with the page’s own words', () => {
   expect(verificationOutcome(new ApiError(429, problem(429, 'certification.verification-limit-reached')))).toEqual({
     kind: 'alert',
-    key: 'certification.verify.limitReached',
+    message: { key: 'certification.verify.limitReached', values: {} },
+  });
+});
+
+test('another of the module’s own refusals the catalog knows is an alert in the catalog’s text', () => {
+  expect(verificationOutcome(new ApiError(404, problem(404, 'certification.sample-not-found')))).toEqual({
+    kind: 'alert',
+    message: { key: 'errors.certification.sample-not-found', values: {} },
   });
 });
 
 test.each([
   [409, 'certification.something-new', 'Etwas Neues.'],
   [400, 'certification.invalid-code', 'Dieser Code ist ungültig.'],
-])('another of the module’s own refusals, %i %s, is an alert in the host’s words', (status, code, detail) => {
+])('a module refusal the catalog does not know, %i %s, is an alert in the host’s words', (status, code, detail) => {
   expect(verificationOutcome(new ApiError(status, problem(status, code, detail)))).toEqual({
     kind: 'alert',
-    message: detail,
+    message: { serverMessage: detail },
   });
 });
 
@@ -49,5 +56,8 @@ test.each([
   ['the network', () => new TypeError('Failed to fetch')],
   ['anything else', () => new Error('Something broke.')],
 ])('%s says the certificate could not be verified', (_name, failure) => {
-  expect(verificationOutcome(failure())).toEqual({ kind: 'alert', key: 'certification.verify.loadFailed' });
+  expect(verificationOutcome(failure())).toEqual({
+    kind: 'alert',
+    message: { key: 'certification.verify.loadFailed', values: {} },
+  });
 });

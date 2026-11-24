@@ -86,7 +86,7 @@ public class CourseVersionCoverageTests
     [Fact]
     public void A_pdf_chapter_holds_its_file_and_a_video_chapter_its_file_and_length()
     {
-        var pdf = Chapter.OfPdf(ChapterId.New(), ChapterTitle.From("Hygieneplan"), BlobReference.From("courses/plan.pdf"));
+        var pdf = Chapter.OfPdf(ChapterId.New(), ChapterTitle.From("Hygieneplan"), BlobReference.From("courses/plan.pdf"), PdfTextExtraction.NoText, null);
         var video = Chapter.OfVideo(ChapterId.New(), ChapterTitle.From("Vorführung"), BlobReference.From("courses/demo.mp4"), VideoDuration.From(90));
 
         pdf.Kind.ShouldBe(ChapterKind.Pdf);
@@ -107,7 +107,7 @@ public class CourseVersionCoverageTests
         version.AddChapter(TextChapter(second, "Flächendesinfektion", "Wischen.")).IsSuccess.ShouldBeTrue();
         var stored = version.Chapters[0];
 
-        var replaced = version.ReplaceChapter(Chapter.OfPdf(first, ChapterTitle.From("Hygieneplan"), BlobReference.From("courses/plan.pdf")), Author);
+        var replaced = version.ReplaceChapter(Chapter.OfPdf(first, ChapterTitle.From("Hygieneplan"), BlobReference.From("courses/plan.pdf"), PdfTextExtraction.NoText, null), Author);
 
         replaced.IsSuccess.ShouldBeTrue();
         version.Chapters.Select(chapter => chapter.Id).ShouldBe([first, second]);

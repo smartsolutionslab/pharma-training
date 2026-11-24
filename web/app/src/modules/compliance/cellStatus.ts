@@ -1,8 +1,6 @@
 import type { ComplianceAssignmentState } from '@/api/generated';
+import type { AssignmentStatus } from '@/components/status/assignmentStatus';
 import { calendarDate } from '@/i18n/formats';
-
-/** What a cell of the team matrix shows: the assignment's state, or Expired, which the host does not name. */
-export type CellStatus = ComplianceAssignmentState | 'Expired';
 
 /** The part of a matrix cell its status depends on. */
 export interface StatusOfCell {
@@ -15,7 +13,7 @@ export interface StatusOfCell {
  * A cell's status on a day: its state, except that a completion (Completed or CompletedLate) is Expired from local
  * midnight after its validUntil, the last day it holds.
  */
-export function cellStatus(cell: StatusOfCell, today: Date): CellStatus {
+export function cellStatus(cell: StatusOfCell, today: Date): AssignmentStatus {
   const completed = cell.state === 'Completed' || cell.state === 'CompletedLate';
   if (!completed || cell.validUntil === null) {
     return cell.state;

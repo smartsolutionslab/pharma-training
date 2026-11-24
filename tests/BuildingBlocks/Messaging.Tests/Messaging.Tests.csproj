@@ -1,12 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Tests of the building blocks' messaging (src/BuildingBlocks/Messaging): the Wolverine policies the service hosts apply. -->
+  <!-- Tests of the building blocks' messaging (src/BuildingBlocks/Messaging): the Wolverine policies the service hosts apply,
+       and the periodic command a module's announcement sweep runs on. -->
   <PropertyGroup>
     <RootNamespace>SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging.Tests</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="../../../src/BuildingBlocks/BuildingBlocks.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- FakeLogger: what the periodic command service logs of a pass that throws. -->
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
   </ItemGroup>
 
 </Project>

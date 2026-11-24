@@ -1,10 +1,11 @@
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Storage;
+using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.PdfText;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.ReplaceFileChapter;
 
-public sealed class ReplaceFileChapterHandler(ICourseVersionStore versions, IEditorialUnitOfWork unitOfWork, IStoredBlobs blobs)
+public sealed class ReplaceFileChapterHandler(ICourseVersionStore versions, IEditorialUnitOfWork unitOfWork, IStoredBlobs blobs, IPdfTextExtractor extractor)
     : ICommandHandler<ReplaceFileChapter, Result<Unit, ApiError>>
 {
     public async Task<Result<Unit, ApiError>> HandleAsync(ReplaceFileChapter command, CancellationToken cancellationToken)
@@ -33,7 +34,11 @@ public sealed class ReplaceFileChapterHandler(ICourseVersionStore versions, IEdi
 
         // A chapter that keeps its file of the same kind needs no new upload: a chapter copied into this version names
         // its file under the version it was copied from, and that file was checked when it was first recorded.
+        // It keeps its extraction too: a chapter recorded before extraction existed keeps having none to draft from.
         var keepsItsFile = current.Kind == command.Kind && current.File == command.File;
+        var text = command.Kind == ChapterKind.Pdf && keepsItsFile
+            ? new PdfChapterText(current.Extraction ?? PdfTextExtraction.NoText, current.ExtractedText)
+            : null;
         if (!keepsItsFile)
         {
             // A file another chapter of the version holds is in use before the storage is asked about it.
@@ -48,9 +53,21 @@ public sealed class ReplaceFileChapterHandler(ICourseVersionStore versions, IEdi
             {
                 return Failure(accepted.Error);
             }
+
+            // A new PDF's text is read now, from the file just accepted, and saved with the chapter (ADR 0008 D11).
+            if (command.Kind == ChapterKind.Pdf)
+            {
+                var extracted = await PdfChapterTexts.ExtractAsync(blobs, extractor, accepted.Value, cancellationToken);
+                if (extracted.IsFailure)
+                {
+                    return Failure(extracted.Error);
+                }
+
+                text = extracted.Value;
+            }
         }
 
-        var changed = found.Value.ReplaceChapter(FileChapters.Of(command.Chapter, command.Title, command.Kind, command.File, command.Duration), command.Editor);
+        var changed = found.Value.ReplaceChapter(FileChapters.Of(command.Chapter, command.Title, command.File, command.Duration, text), command.Editor);
         if (changed.IsFailure)
         {
             return Failure(CourseVersionFailures.From(changed.Error));

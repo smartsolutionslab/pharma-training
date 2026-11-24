@@ -3,6 +3,8 @@ using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application.Consumers;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Assignments;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Courses;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Members;
+using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Tests.Progress;
+using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Progress;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Tests.Assignments;
 
@@ -19,6 +21,7 @@ public class CertificateIssuedV1FollowUpRequestTests
     private static readonly PersonId Manager = PersonId.From(Guid.CreateVersion7());
 
     private readonly InMemoryAssignmentStore store = new();
+    private readonly InMemoryLearnerProgressStore progress = new();
     private readonly PersonId learner = PersonId.From(Guid.CreateVersion7());
     private readonly PharmacyId pharmacy = PharmacyId.From(Guid.CreateVersion7());
     private readonly CourseId course = CourseId.From(Guid.CreateVersion7());
@@ -60,6 +63,9 @@ public class CertificateIssuedV1FollowUpRequestTests
         var followUp = predecessor.FollowUp(AssignmentId.New(), Timestamp.From(IssuedAt)).Value;
         store.Stored.Add(followUp);
 
+        // The first delivery kept its copy of the certificate (docs/adr/0028), so the redelivery finds it.
+        progress.Add(IssuedCertificate.Of(CertificateId.From(issued.CertificateId), learner, course, CourseVersionId.From(issued.CourseVersionId), Timestamp.From(IssuedAt)));
+
         await Consumer(store).HandleAsync(issued, TestContext.Current.CancellationToken);
 
         store.Published.ShouldBeEmpty();
@@ -68,7 +74,7 @@ public class CertificateIssuedV1FollowUpRequestTests
         store.Commits.ShouldBe(0);
     }
 
-    private static CertificateIssuedV1Consumer Consumer(InMemoryAssignmentStore store) => new(store, store);
+    private CertificateIssuedV1Consumer Consumer(InMemoryAssignmentStore store) => new(store, progress, store);
 
     private Assignment Stored(RecurrenceInterval? recurrence)
     {
