@@ -66,7 +66,7 @@ done
 # deletion. Only those listed in the rulesets (not their details) are fetched one by one. Who may bypass it is printed for
 # a person to confirm; a repository role below admin (anyone with write access) may not (#331).
 deploy_tags_protected=false
-for id in $(gh api "repos/$repository/rulesets" | jq -r '.[] | select(.target == "tag" and .enforcement == "active") | .id'); do
+for id in $(gh api --paginate "repos/$repository/rulesets" | jq -s -r 'add // [] | .[] | select(.target == "tag" and .enforcement == "active") | .id'); do
   ruleset=$(gh api "repos/$repository/rulesets/$id")
   if jq -e '
       (.conditions.ref_name.include // []) as $include
@@ -75,6 +75,12 @@ for id in $(gh api "repos/$repository/rulesets" | jq -r '.[] | select(.target ==
         and ($exclude | length == 0)
         and ((["creation", "update", "deletion"] - [.rules[]?.type]) | length == 0)' >/dev/null <<<"$ruleset"; then
     deploy_tags_protected=true
+    # GitHub shows the bypass list only to whoever may administer the ruleset: without it, nobody can tell (#335).
+    if [ "$(jq -r 'has("bypass_actors") and .bypass_actors != null' <<<"$ruleset")" != true ]; then
+      problem "deploy/* tags" "cannot read who may bypass the ruleset \"$(jq -r .name <<<"$ruleset")\"; run gh as a repository administrator."
+      continue
+    fi
+
     # A repository role is named by its id; 5 is admin, and any other is a role below it.
     roles=$(jq -r '[.bypass_actors[]? | select(.actor_type == "RepositoryRole" and .actor_id != 5) | .actor_id] | join(", ")' <<<"$ruleset")
     if [ -n "$roles" ]; then
@@ -90,20 +96,32 @@ fi
 
 # Both environments trust main, so main itself takes changes through pull requests alone and refuses force pushes, by a
 # ruleset (the rules that apply to main) or by classic branch protection (#331).
-main_rules=$(gh api "repos/$repository/rules/branches/main" | jq -r '[.[].type] | join(" ")')
-if classic=$(gh api "repos/$repository/branches/main/protection" 2>/dev/null); then
+main_rules=$(gh api --paginate "repos/$repository/rules/branches/main" | jq -s -r 'add // [] | [.[].type] | join(" ")')
+main_unreadable=false
+if [[ " $main_rules " == *" pull_request "* && " $main_rules " == *" non_fast_forward "* ]]; then
+  # The rules on main settle it; classic protection, which only administrators may read, is not needed.
+  classic_pull_requests=true
+  classic_force_pushes=false
+elif classic=$(gh api "repos/$repository/branches/main/protection" 2>"$errors"); then
   classic_pull_requests=$(jq -r '.required_pull_request_reviews != null' <<<"$classic")
-  classic_force_pushes=$(jq -r '.allow_force_pushes.enabled // false' <<<"$classic")
+  # A protection that does not say it refuses force pushes is not taken to refuse them.
+  classic_force_pushes=$(jq -r 'if .allow_force_pushes.enabled == false then "false" else "true" end' <<<"$classic")
 else
   classic_pull_requests=false
   classic_force_pushes=true
+  if ! grep -q 'HTTP 404' "$errors"; then
+    main_unreadable=true
+    problem "main" "its branch protection could not be read ($(tr '\n' ' ' <"$errors")); run gh as a repository administrator."
+  fi
 fi
 
-if [[ " $main_rules " != *" pull_request "* ]] && [ "$classic_pull_requests" != true ]; then
+if [ "$main_unreadable" = true ]; then
+  :
+elif [[ " $main_rules " != *" pull_request "* ]] && [ "$classic_pull_requests" != true ]; then
   problem "main" "it takes pushes without a pull request; require one (a branch ruleset on main, or branch protection), or a deploy.yml pushed straight to main reaches both environments."
 fi
 
-if [[ " $main_rules " != *" non_fast_forward "* ]] && [ "$classic_force_pushes" != false ]; then
+if [ "$main_unreadable" != true ] && [[ " $main_rules " != *" non_fast_forward "* ]] && [ "$classic_force_pushes" != false ]; then
   problem "main" "force pushes are allowed; block them (\"Block force pushes\" in a branch ruleset on main, or branch protection)."
 fi
 
