@@ -70,13 +70,12 @@ public class AnnouncementSweepSettingsTests
         refused.Message.ShouldContain($"'{value}'", Case.Sensitive);
     }
 
-    [Theory]
-    [InlineData("01:00:00", "01:00:00")]
-    [InlineData("01:00:00", "00:59:59")]
-    public void A_lookback_not_longer_than_the_grace_period_is_refused(string lookback, string gracePeriod)
+    /// <summary>The lookback's least (one hour) is the grace period's most, so the two meet only there.</summary>
+    [Fact]
+    public void A_lookback_not_longer_than_the_grace_period_is_refused()
     {
         var refused = Should.Throw<InvalidOperationException>(() =>
-            AnnouncementSweepSettings.From(Settings(($"{Section}:Lookback", lookback), ($"{Section}:GracePeriod", gracePeriod)), "Learning"));
+            AnnouncementSweepSettings.From(Settings(($"{Section}:Lookback", "01:00:00"), ($"{Section}:GracePeriod", "01:00:00")), "Learning"));
 
         refused.Message.ShouldContain($"{Section}:Lookback", Case.Sensitive);
         refused.Message.ShouldContain($"{Section}:GracePeriod", Case.Sensitive);
