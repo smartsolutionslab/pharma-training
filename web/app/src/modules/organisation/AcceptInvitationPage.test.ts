@@ -778,7 +778,7 @@ test('a failure the host gives no words for shows the catalog text, in German', 
   expect(screen.queryByText('Service Unavailable')).not.toBeInTheDocument();
 });
 
-// A refusal of the module's the page has no text of its own for: the module's words as it sent them (ADR 0007).
+// A refusal of the module's whose code the catalog does not know either: the module's words as it sent them (#147).
 test("a module's refusal the page does not know shows the module's words under the failed title", async () => {
   acceptance = async () =>
     problem(422, 'organisation.pharmacy-closed', 'Die Apotheke nimmt keine Mitglieder mehr auf.');
@@ -790,6 +790,35 @@ test("a module's refusal the page does not know shows the module's words under t
   ).toBeInTheDocument();
   expect(main.getByText('Die Apotheke nimmt keine Mitglieder mehr auf.')).toBeInTheDocument();
   expect(main.queryByText(t('organisation.accept.failed.text'))).not.toBeInTheDocument();
+});
+
+// A refusal the page has no state of its own for, whose code the catalog knows (#147): the failed title over the
+// catalog's text for the code, never the host's words; a text already shown follows a switch of the language.
+test('an unmapped invalid-email shows the catalog text under the failed title, in German and then in English', async () => {
+  acceptance = async () => problem(400, 'organisation.invalid-email', 'SERVER WORDS');
+  await openAndAccept();
+
+  const main = within(await screen.findByRole('main'));
+  expect(await main.findByRole('heading', { level: 1, name: 'Einladung nicht angenommen' })).toBeInTheDocument();
+  expect(main.getByText('Die E-Mail-Adresse fehlt, ist zu lang oder ist keine.')).toBeInTheDocument();
+  expect(main.queryByText(t('organisation.accept.failed.text'))).not.toBeInTheDocument();
+  expect(document.body.textContent).not.toContain('SERVER WORDS');
+
+  setLanguage('en-GB', { remember: false });
+
+  expect(await main.findByText('The email address is missing, too long or not an email address.')).toBeInTheDocument();
+  expect(document.body.textContent).not.toContain('SERVER WORDS');
+});
+
+test("a framework's invalid-argument shows the catalog text for its code under the failed title", async () => {
+  acceptance = async () => problem(400, 'invalid-argument', 'SERVER WORDS');
+  await openAndAccept();
+
+  const main = within(await screen.findByRole('main'));
+  expect(
+    await main.findByText('Eine Angabe ist ungültig. Prüfen Sie Ihre Eingaben und versuchen Sie es erneut.'),
+  ).toBeInTheDocument();
+  expect(document.body.textContent).not.toContain('SERVER WORDS');
 });
 
 // Verification followed in another tab: back from the identity provider, but that tab's sessionStorage never held the

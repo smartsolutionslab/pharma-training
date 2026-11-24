@@ -87,7 +87,7 @@ test('a refused end on one pharmacy is gone once the page shows another', async 
   const { user, store } = await renderOnMarkt();
   await user.click(await endButton(you));
   await user.click(await confirmIn(t('organisation.team.end.confirm')));
-  const message = t('organisation.team.errors.lastManager');
+  const message = t('errors.organisation.last-manager');
   expect(await within(membersSection()).findByRole('alert')).toHaveTextContent(message);
 
   store.choose(ufer.id);
@@ -103,7 +103,7 @@ test('a refused revoke on one pharmacy is gone once the page shows another', asy
   const { user, store } = await renderOnMarkt();
   await user.click(await revokeButton(ben));
   await user.click(await confirmIn(t('organisation.team.revoke.confirm')));
-  const message = t('organisation.team.errors.noOpenInvitation');
+  const message = t('errors.organisation.no-open-invitation');
   expect(await within(invitationsSection()).findByRole('alert')).toHaveTextContent(message);
 
   store.choose(ufer.id);
@@ -128,7 +128,7 @@ test('an end refused only after the page switched to another pharmacy is not sho
 
   await vi.waitFor(() => expect(notify.failure).toHaveBeenCalled());
   expect(within(membersSection()).queryByRole('alert')).not.toBeInTheDocument();
-  expect(screen.queryByText(t('organisation.team.errors.lastManager'))).not.toBeInTheDocument();
+  expect(screen.queryByText(t('errors.organisation.last-manager'))).not.toBeInTheDocument();
 });
 
 test('a revoke refused only after the page switched to another pharmacy is not shown there', async () => {
@@ -144,5 +144,5 @@ test('a revoke refused only after the page switched to another pharmacy is not s
 
   await vi.waitFor(() => expect(notify.failure).toHaveBeenCalled());
   expect(within(invitationsSection()).queryByRole('alert')).not.toBeInTheDocument();
-  expect(screen.queryByText(t('organisation.team.errors.noOpenInvitation'))).not.toBeInTheDocument();
+  expect(screen.queryByText(t('errors.organisation.no-open-invitation'))).not.toBeInTheDocument();
 });
