@@ -189,9 +189,11 @@ export async function signInTo(page: Page, pharmacy: string) {
   const region = page.getByRole('region', { name: 'Apotheke', exact: true });
   const switcher = region.getByRole('button', { name: /^Apotheke( wählen$|: )/ });
   const name = region.getByText(pharmacy, { exact: true });
-  const chosen = region.getByRole('button', { name: `Apotheke: ${pharmacy}` });
+  const chosen = region.getByRole('button', { name: `Apotheke: ${pharmacy}`, exact: true });
   const only = region.getByRole('paragraph').filter({ has: page.getByText(pharmacy, { exact: true }) });
-  const another = switcher.filter({ hasNotText: pharmacy });
+  // Any switcher but this pharmacy's, by its whole name: a name that holds this one ("… Nord") is another.
+  const escaped = pharmacy.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const another = region.getByRole('button', { name: new RegExp(`^Apotheke( wählen|: (?!${escaped}$).+)$`) });
   // A settled state before deciding, as the MVP 1 spec's choose(): the pharmacy is current (chosen on the switcher, or the
   // only one), or the switcher shows another (or none). While the memberships load, or a list read before the pharmacy
   // was added names only another, neither shows and the wait goes on; either one stays until the test chooses.
