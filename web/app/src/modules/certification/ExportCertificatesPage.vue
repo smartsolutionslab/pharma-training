@@ -1,7 +1,148 @@
 <script setup lang="ts">
-// The managers' certificate export (#297): not built yet.
+import { useForm } from 'vee-validate';
+import { ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
+import { getCertificationPharmaciesIdCertificatesExport } from '@/api/generated';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { toTypedSchema } from '@/forms/toTypedSchema';
+import { i18n, type MessageKey, t as translate } from '@/i18n';
+import { notify } from '@/lib/notify';
+import { useCurrentPharmacy } from '@/shell/useCurrentPharmacy';
+import { defaultPeriod, type ExportPeriod, exportSchema } from './exportSchema';
+
+// The managers' certificate export (#297, ADR 0032): the issue days from and to, the last twelve months in the German
+// day to begin with, and the ZIP the host streams for the current pharmacy, saved under the host's file name. The ZIP
+// is fetched with the plain call, never a query: nothing else reads it, and the cache would hold its megabytes. Hiding
+// the page from anyone but a manager is the shell's convenience; the host decides who may export (ADR 0003).
+const clock = () => new Date();
+
+const fromField = 'export-from';
+const toField = 'export-to';
+
+const { t } = useI18n();
+const { current } = useCurrentPharmacy();
+
+const { defineField, errors, handleSubmit, isSubmitting } = useForm({
+  validationSchema: toTypedSchema(exportSchema(clock)),
+  initialValues: defaultPeriod(clock),
+});
+const [from, fromAttributes] = defineField('from');
+const [to, toAttributes] = defineField('to');
+
+/** Why the last export failed, under the form; the form stays, so submitting again retries. */
+const failure = ref<MessageKey>();
+/** The request is on its way: from the moment it is sent, after the range was checked, to its answer. */
+const sending = ref(false);
+
+// Another pharmacy's refusal says nothing about this one; the range stays.
+watch(
+  () => current.value?.id,
+  () => {
+    failure.value = undefined;
+  },
+);
+
+/** A field's error: a key of the catalog, as the schema gives it. */
+const fieldText = (error: string) => (i18n.global.te(error) ? translate(error as MessageKey) : error);
+
+/** Saves the bytes under the name through a temporary link, then lets the object URL go. */
+function save(blob: Blob, name: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  // The click has handed the file to the download by now.
+  URL.revokeObjectURL(url);
+}
+
+/** Asks for the ZIP and saves it; whether it was saved. */
+async function send(period: ExportPeriod): Promise<boolean> {
+  const pharmacy = current.value;
+  if (pharmacy === undefined) {
+    return false;
+  }
+  failure.value = undefined;
+  sending.value = true;
+  try {
+    const answer = await getCertificationPharmaciesIdCertificatesExport(pharmacy.id, period);
+    // The host's own name; its pattern where the answer names none.
+    const name = answer instanceof File ? answer.name : `teilnahmebestaetigungen_${period.from}_${period.to}.zip`;
+    save(answer, name);
+    return true;
+  } catch {
+    failure.value = 'certification.export.failed';
+    return false;
+  } finally {
+    sending.value = false;
+  }
+}
+
+const submitForm = handleSubmit(send);
+
+/** Sends once, however often the button is pressed: a press while one is on its way does nothing. */
+async function submit(event: Event) {
+  if (isSubmitting.value) {
+    event.preventDefault();
+    return;
+  }
+  // Said once the form is done with it, the button ready for the next export.
+  if ((await submitForm(event)) === true) {
+    notify.success(translate('certification.export.done'));
+  }
+}
 </script>
 
 <template>
-  <section />
+  <main class="flex max-w-2xl flex-col gap-6">
+    <h1 class="text-title">{{ t('modules.certification.pages.export.title') }}</h1>
+    <p v-if="current !== undefined" class="text-body">
+      {{ t('certification.export.intro', { pharmacy: current.name }) }}
+    </p>
+    <form class="flex flex-col gap-4" novalidate @submit="submit">
+      <div class="flex flex-wrap gap-4">
+        <div class="flex flex-col gap-2">
+          <label :for="fromField" class="text-body font-medium">{{ t('certification.export.from') }}</label>
+          <Input
+            :id="fromField"
+            v-model="from"
+            v-bind="fromAttributes"
+            type="date"
+            aria-required="true"
+            :aria-invalid="errors.from ? true : undefined"
+            :aria-describedby="errors.from ? `${fromField}-error` : undefined"
+            class="w-fit"
+          />
+          <p v-if="errors.from" :id="`${fromField}-error`" role="alert" class="text-caption text-destructive">
+            {{ fieldText(errors.from) }}
+          </p>
+        </div>
+        <div class="flex flex-col gap-2">
+          <label :for="toField" class="text-body font-medium">{{ t('certification.export.to') }}</label>
+          <Input
+            :id="toField"
+            v-model="to"
+            v-bind="toAttributes"
+            type="date"
+            aria-required="true"
+            :aria-invalid="errors.to ? true : undefined"
+            :aria-describedby="errors.to ? `${toField}-error` : undefined"
+            class="w-fit"
+          />
+          <p v-if="errors.to" :id="`${toField}-error`" role="alert" class="text-caption text-destructive">
+            {{ fieldText(errors.to) }}
+          </p>
+        </div>
+      </div>
+      <div>
+        <Button type="submit" :disabled="isSubmitting || sending">
+          {{ sending ? t('certification.export.preparing') : t('certification.export.submit') }}
+        </Button>
+      </div>
+      <p v-if="failure !== undefined" role="alert" class="text-body text-destructive">{{ t(failure) }}</p>
+    </form>
+  </main>
 </template>
