@@ -58,16 +58,14 @@ public abstract partial class ModuleUnitOfWork<TContext>(IServiceProvider servic
     /// <c>WolverineVersionTests</c> pins: recheck that method when it changes), and Wolverine's flush after
     /// the commit (<c>EfCoreOutboxFlushing</c>) runs outside the classification, so whatever it throws, a 40P01 or 40001 of
     /// <c>DurabilityMode.ServerlessWithOutbox</c>'s delete of the sent outbox rows included, comes through as it came and
-    /// never answers 409 for a change that is committed. Where domain-event scrapers are registered (none are here), it
-    /// calls Wolverine's own <c>SaveChangesAndFlushMessagesAsync</c>, which runs them, and classifies its failures as a
-    /// whole. Every other failure is rethrown as it came.
+    /// never answers 409 for a change that is committed. Registered domain-event scrapers run first, inside the
+    /// classification, as Wolverine's method runs them, so no path classifies a failure after the commit. Every other failure is rethrown as it came.
     /// </summary>
     public async Task<Result<Unit, LostRace>> TryCommitAsync(CancellationToken cancellationToken)
     {
-        var scraped = services.GetServices<IDomainEventScraper>().Any();
         try
         {
-            await (scraped ? Outbox.SaveChangesAndFlushMessagesAsync(cancellationToken) : SaveAndCommitAsync(cancellationToken));
+            await ScrapeSaveAndCommitAsync(cancellationToken);
         }
         catch (Exception exception) when (EndedAsLostRace(exception) is { } ended)
         {
@@ -77,27 +75,38 @@ public abstract partial class ModuleUnitOfWork<TContext>(IServiceProvider servic
                 LogOtherFailure(Logger, other, typeof(TContext).Name);
             }
 
-            return Failure<LostRace>(new SaveDeadlocked(ended.SqlState));
+            return Failure(LostRaces.Deadlocked(ended.SqlState));
         }
         catch (DbUpdateConcurrencyException)
         {
-            return Failure<LostRace>(new VersionMovedOn());
+            return Failure(LostRaces.VersionMovedOn());
         }
 
-        if (!scraped)
-        {
-            // After the commit: the change is saved, so nothing here is a lost race. Every outbox the host resolves is a
-            // MessageContext; only a test's substitute takes the interface's own flush.
-            await (Outbox is MessageContext context ? EfCoreOutboxFlushing.FlushOutgoingMessagesAsync(context) : Outbox.FlushOutgoingMessagesAsync());
-        }
-
+        // After the commit: the change is saved, so nothing here is a lost race, whatever the flush throws. Every outbox
+        // the host resolves is a MessageContext; only a test's substitute takes the interface's own flush.
+        await (Outbox is MessageContext context ? EfCoreOutboxFlushing.FlushOutgoingMessagesAsync(context) : Outbox.FlushOutgoingMessagesAsync());
         return Success(Unit.Value);
     }
 
-    /// <summary>The steps of Wolverine's <c>SaveChangesAndFlushMessagesAsync</c> up to the commit: the save, then the commit of any open transaction.</summary>
-    private async Task SaveAndCommitAsync(CancellationToken cancellationToken)
+    /// <summary>
+    /// The steps of Wolverine's <c>SaveChangesAndFlushMessagesAsync</c> up to the commit: every registered domain-event
+    /// scraper (none is registered here), the save, then the commit of any open transaction. The flush after it is the
+    /// caller's, outside the lost-race classification.
+    /// </summary>
+    private async Task ScrapeSaveAndCommitAsync(CancellationToken cancellationToken)
     {
         var context = Outbox.DbContext;
+        var scrapers = services.GetServices<IDomainEventScraper>().ToList();
+        if (scrapers.Count > 0)
+        {
+            var bus = Outbox as MessageContext
+                ?? throw new InvalidOperationException("A domain-event scraper needs Wolverine's message context, which every outbox the host resolves is.");
+            foreach (var scraper in scrapers)
+            {
+                await scraper.ScrapeEvents(context, bus);
+            }
+        }
+
         await context.SaveChangesAsync(cancellationToken);
         if (context.Database.CurrentTransaction is not null)
         {

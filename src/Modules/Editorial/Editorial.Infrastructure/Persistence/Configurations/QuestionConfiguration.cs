@@ -48,8 +48,8 @@ public sealed class QuestionConfiguration : IEntityTypeConfiguration<Question>
         // DELETE chapter, then UPDATE version; adding a question to it saves INSERT question, UPDATE version, INSERT
         // options. When the addition's version UPDATE lands between the removal's two statements, the addition's
         // commit-time check of this key waits for the deleted chapter while the removal waits for the version row.
-        // PostgreSQL ends one of them after deadlock_timeout (40P01, an error in its log), and EFCore.PG reports that
-        // as a DbUpdateConcurrencyException, so the caller still gets 409 editorial.course-version-changed.
+        // PostgreSQL ends one of them after deadlock_timeout (40P01, an error in its log), which TryCommitAsync answers
+        // as a lost race to a deadlock, so the caller gets 409 editorial.concurrent-save and may try again.
         // EditorialQuestionRacesTests forces the interleaving and fails if a deadlocked round answers anything else.
         // Updating the version's row before its children would avoid it, but that is RowVersionBump, which every
         // module shares.

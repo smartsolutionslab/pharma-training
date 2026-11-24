@@ -46,7 +46,7 @@ public static class AssignmentFailures
 
     public static ApiError LearnerNotAMember(Guid person) => new LearnerNotAMember(person);
 
-    /// <summary>The save lost a race to another, or deadlocked with it; nothing of it was saved or announced.</summary>
+    /// <summary>A row the save changed was changed by another since it was loaded; nothing of it was saved or announced.</summary>
     public static ApiError AssignmentsChanged() => new AssignmentsChanged();
 
     /// <summary>Another save came at the same moment and PostgreSQL ended this one; try again.</summary>

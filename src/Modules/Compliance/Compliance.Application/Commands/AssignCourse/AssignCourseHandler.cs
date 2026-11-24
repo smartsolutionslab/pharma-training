@@ -14,8 +14,9 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application.Comman
 /// course or anyone in the list is looked up. A day in the past refuses the whole request (422, the same rule as
 /// <see cref="Assignment.Assign"/>, which keeps its own check), and one more than
 /// <see cref="AssignCourse.MaximumYearsAhead"/> years ahead refuses it too (400); either saves nothing. A save that lost a
-/// race, or deadlocked with another, saves and announces nothing (docs/adr/0002); one the partial unique index refuses
-/// answers 409 already-exists.
+/// race saves and announces nothing (docs/adr/0002): 409 compliance.assignments-changed when a row moved on, 409
+/// compliance.concurrent-save when it deadlocked with another save; one the partial unique index refuses answers 409
+/// already-exists.
 /// <para>
 /// The answer lists each learner assigned and each refused with the reason. That is a deliberate exception to
 /// CQRS-logical's "a command returns at most an identifier": #29 asks for the refusals to be reported per person, and
