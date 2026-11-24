@@ -612,9 +612,11 @@ export const de = {
         },
       },
       draft: {
-        explain: 'Die KI entwirft die fehlenden Fragen aus den Textkapiteln. Sie prüfen jede Frage, bevor sie gilt.',
+        explain:
+          'Die KI entwirft die fehlenden Fragen aus den Textkapiteln und dem Text der PDF-Kapitel; Videos sieht sie sich nicht an. Sie prüfen jede Frage, bevor sie gilt.',
         start: 'KI-Entwurf erstellen',
-        noTextChapters: 'Die KI entwirft nur aus Textkapiteln. Legen Sie zuerst ein Textkapitel an.',
+        noTextChapters:
+          'Die KI entwirft nur aus Kapiteln mit Text: aus Textkapiteln und aus PDF-Kapiteln, deren Text sich lesen lässt. Legen Sie zuerst ein solches Kapitel an.',
         nothingToDraft: 'Die geprüften Fragen erfüllen die Vorgaben bereits; es gibt nichts zu entwerfen.',
         confirm: {
           title: 'KI-Entwurf erstellen?',
@@ -622,12 +624,19 @@ export const de = {
             'Die KI entwirft eine Frage. Geprüfte Fragen bleiben erhalten. | Die KI entwirft {count} Fragen. Geprüfte Fragen bleiben erhalten.',
           replaces:
             'Eine ungeprüfte Frage wird ersetzt, auch wenn sie von Hand geschrieben ist. | {count} ungeprüfte Fragen werden ersetzt, auch von Hand geschriebene.',
-          leftOut: 'PDF- und Videokapitel liest die KI nicht; Fragen dazu schreiben Sie von Hand.',
+          leftOut:
+            'Videokapitel und PDF-Kapitel ohne lesbaren Text liest die KI nicht; Fragen dazu schreiben Sie von Hand.',
           submit: 'Entwurf erstellen',
         },
         running: 'Die KI entwirft den Test. Das kann einige Minuten dauern; bitte lassen Sie die Seite geöffnet.',
         done: 'Die KI hat eine Frage entworfen. Bitte prüfen Sie sie. | Die KI hat {count} Fragen entworfen. Bitte prüfen Sie sie.',
         leftOut: 'Zu diesen Kapiteln hat die KI keine Fragen entworfen; schreiben Sie sie von Hand:',
+        truncated:
+          'Von diesen PDF-Kapiteln hat die KI nur den Anfang gelesen; Fragen zu den späteren Seiten schreiben Sie von Hand:',
+        leftOutSummary:
+          'Zu einem Kapitel hat die KI keine Fragen entworfen; siehe den Hinweis. | Zu {count} Kapiteln hat die KI keine Fragen entworfen; siehe den Hinweis.',
+        truncatedSummary:
+          'Von einem PDF-Kapitel hat die KI nur den Anfang gelesen; siehe den Hinweis. | Von {count} PDF-Kapiteln hat die KI nur den Anfang gelesen; siehe den Hinweis.',
         dismiss: 'Hinweis schließen',
         errors: {
           tooManyRequests: 'Sie haben in kurzer Zeit zu viele KI-Entwürfe angefordert. Versuchen Sie es später erneut.',
@@ -1051,7 +1060,8 @@ export const de = {
       'next-version-exists':
         'Von dieser Schulung gibt es schon eine neuere Version. Bearbeiten Sie diese, statt eine weitere anzulegen.',
       'no-chapters': 'Die Version braucht mindestens ein Kapitel.',
-      'no-text-chapters': 'Die KI entwirft nur aus Textkapiteln. Legen Sie zuerst ein Textkapitel an.',
+      'no-text-chapters':
+        'Die KI entwirft nur aus Kapiteln mit Text: aus Textkapiteln und aus PDF-Kapiteln, deren Text sich lesen lässt. Legen Sie zuerst ein solches Kapitel an.',
       'no-text-chapters-to-review': 'Die Version hat kein Textkapitel, das die KI prüfen könnte.',
       'not-a-draft': 'Nur ein Entwurf kann bearbeitet werden.',
       'not-in-review': 'Die Version ist nicht mehr in Prüfung.',
@@ -1073,7 +1083,7 @@ export const de = {
       'too-few-options': 'Eine Frage braucht mindestens {min} Antwortoptionen.',
       'too-many-questions': 'Ein Test hat höchstens {max} Fragen.',
       'too-much-content-to-draft':
-        'Die Textkapitel sind zu lang für einen KI-Entwurf. Kürzen Sie sie oder schreiben Sie die Fragen von Hand.',
+        'Die Textkapitel sind zusammen zu lang für einen KI-Entwurf; PDF-Kapitel werden dafür gekürzt, Textkapitel nicht. Kürzen Sie die Textkapitel oder schreiben Sie die Fragen von Hand.',
       'too-much-content-to-review': 'Die Textkapitel sind zu lang für eine KI-Prüfung in einem Durchgang.',
       'upload-not-accepted': 'Die Datei ist weder ein PDF noch ein MP4-Video.',
       'upload-not-found': 'Die Datei ist noch nicht hochgeladen. Laden Sie sie hoch und speichern Sie dann erneut.',
