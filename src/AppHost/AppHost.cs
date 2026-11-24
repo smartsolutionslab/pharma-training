@@ -121,6 +121,12 @@ foreach (var (module, project) in builder.ServiceHosts())
         service.WithMail(mail, secrets)
             .WithEnvironment("Frontend__BaseUrl", frontendUrl);
     }
+    else if (ServiceHostProjects.LinksToFrontend(project))
+    {
+        // A service that links into the web app without mailing, as its project says with <LinksToFrontend>true</LinksToFrontend>,
+        // gets the web app's address alone: Certification prints the verification link on its PDFs (docs/adr/0027).
+        service.WithEnvironment("Frontend__BaseUrl", frontendUrl);
+    }
 
     // The edge routes /<module>/... to the service it finds under the module's name, listed under Edge:Modules.
     host.WithReference(service)

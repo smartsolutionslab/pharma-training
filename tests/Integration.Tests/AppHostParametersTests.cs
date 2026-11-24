@@ -90,8 +90,9 @@ public class AppHostParametersTests
     }
 
     /// <summary>
-    /// The mail settings, and the web app's address that only mail links read, go only to a service host whose project
-    /// says it sends mail (docs/adr/0004); every other service has none of them.
+    /// The mail settings go only to a service host whose project says it sends mail (docs/adr/0004); every other service
+    /// has none of them, and the web app's address only where its project says <c>&lt;LinksToFrontend&gt;true&lt;/LinksToFrontend&gt;</c>
+    /// (docs/adr/0027).
     /// </summary>
     [Fact]
     public async Task A_service_that_sends_no_mail_has_no_mail_connection_string_sender_or_frontend_url_in_run_mode()
@@ -110,7 +111,16 @@ public class AppHostParametersTests
 
             environment.ShouldNotContainKey("ConnectionStrings__mail", $"{service.Name} sends no mail but reads the connection string mail.");
             environment.ShouldNotContainKey("Mail__From", $"{service.Name} sends no mail but reads Mail:From.");
-            environment.ShouldNotContainKey("Frontend__BaseUrl", $"{service.Name} sends no mail but reads Frontend:BaseUrl.");
+            if (LinksToFrontend(service))
+            {
+                // A host that prints links into the web app without mailing gets its address alone (#50).
+                environment.ShouldContainKey("Frontend__BaseUrl", $"{service.Name} says <LinksToFrontend>true</LinksToFrontend> but does not read Frontend:BaseUrl.");
+                environment["Frontend__BaseUrl"].ShouldContain("{web.bindings.http.", Case.Sensitive);
+            }
+            else
+            {
+                environment.ShouldNotContainKey("Frontend__BaseUrl", $"{service.Name} sends no mail and links nowhere but reads Frontend:BaseUrl.");
+            }
         }
 
         services.Where(SendsMail).ShouldNotBeEmpty("no service host's project says <SendsMail>true</SendsMail>");
@@ -134,6 +144,8 @@ public class AppHostParametersTests
     }
 
     private static bool SendsMail(ProjectResource service) => ServiceHostMail.SendsMail(service.GetProjectMetadata().ProjectPath);
+
+    private static bool LinksToFrontend(ProjectResource service) => ServiceHostMail.LinksToFrontend(service.GetProjectMetadata().ProjectPath);
 
     /// <summary>The service's environment as the model sets it, values unresolved.</summary>
     private static async Task<Dictionary<string, string>> EnvironmentAsync(ProjectResource service, CancellationToken cancellationToken)

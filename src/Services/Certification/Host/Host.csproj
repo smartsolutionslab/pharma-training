@@ -5,6 +5,8 @@
     <AssemblyName>SmartSolutionsLab.PharmaTraining.Services.Certification.Host</AssemblyName>
     <!-- The AppHost names this service's resource after its module. -->
     <ModuleName>certification</ModuleName>
+    <!-- The AppHost gives this service the web app's address; its PDFs print the verification link (#50, docs/adr/0027). -->
+    <LinksToFrontend>true</LinksToFrontend>
   </PropertyGroup>
 
   <ItemGroup>
