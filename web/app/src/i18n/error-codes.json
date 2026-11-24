@@ -1,5 +1,10 @@
 [
   {
+    "code": "already-exists",
+    "status": 409,
+    "message": "Something with that name or key already exists."
+  },
+  {
     "code": "assessment.invalid-sample-name",
     "status": 400,
     "message": "A sample's name is 1 to 100 characters and not blank."
@@ -7,12 +12,12 @@
   {
     "code": "assessment.sample-not-found",
     "status": 404,
-    "message": "There is no sample 01a20af1-86b8-783b-95ff-8448d8bdf459."
+    "message": "There is no such sample."
   },
   {
     "code": "catalog.course-version-not-found",
     "status": 404,
-    "message": "There is no course version 01a20af1-86be-72c6-b185-42f59f447f45."
+    "message": "There is no such course version."
   },
   {
     "code": "catalog.invalid-sample-name",
@@ -22,7 +27,7 @@
   {
     "code": "catalog.sample-not-found",
     "status": 404,
-    "message": "There is no sample 01a20af1-86be-763d-b986-20b6086cf9c1."
+    "message": "There is no such sample."
   },
   {
     "code": "certification.invalid-sample-name",
@@ -32,92 +37,92 @@
   {
     "code": "certification.sample-not-found",
     "status": 404,
-    "message": "There is no sample 01a20af1-86bf-7e90-a5f1-9ba0b635eb6b."
+    "message": "There is no such sample."
   },
   {
     "code": "compliance.assignment-already-active",
     "status": 409,
-    "message": "Für diese Schulung gibt es schon eine offene Zuweisung."
+    "message": "The person already has an open assignment of this course."
   },
   {
     "code": "compliance.assignment-not-active",
     "status": 409,
-    "message": "Die Zuweisung ist bereits Cancelled."
+    "message": "The assignment is no longer open."
   },
   {
     "code": "compliance.assignment-not-found",
     "status": 404,
-    "message": "Es gibt keine Zuweisung 01a20af1-86bf-75ea-9a75-3792509a24a4 in dieser Apotheke."
+    "message": "This pharmacy has no such assignment."
   },
   {
     "code": "compliance.assignments-changed",
     "status": 409,
-    "message": "Zuweisungen wurden gleichzeitig geändert; bitte erneut versuchen."
+    "message": "Assignments were changed at the same time; try again."
   },
   {
     "code": "compliance.capability-missing",
     "status": 403,
-    "message": "Ihre Rolle in dieser Apotheke erlaubt das nicht."
+    "message": "Your role in this pharmacy does not allow this."
   },
   {
     "code": "compliance.certificate-predates-assignment",
     "status": 409,
-    "message": "Eine Bestätigung von vor der Zuweisung erfüllt sie nicht."
+    "message": "A certificate from before the assignment does not fulfil it."
   },
   {
     "code": "compliance.course-missing",
     "status": 400,
-    "message": "Die Schulung fehlt."
+    "message": "The course is missing."
   },
   {
     "code": "compliance.course-not-found",
     "status": 404,
-    "message": "Es gibt keine Schulung 01a20af1-86bf-76d9-8aa7-5fde09813533."
+    "message": "There is no such course."
   },
   {
     "code": "compliance.course-retired",
     "status": 409,
-    "message": "Die Schulung 01a20af1-86bf-7711-bd10-c3521b60b887 ist zurückgezogen und kann nicht zugewiesen werden."
+    "message": "The course is retired and cannot be assigned."
   },
   {
     "code": "compliance.due-date-in-the-past",
     "status": 422,
-    "message": "Die Frist 01.01.0001 liegt in der Vergangenheit."
+    "message": "The due date is in the past."
   },
   {
     "code": "compliance.due-date-missing",
     "status": 400,
-    "message": "Die Frist fehlt."
+    "message": "The due date is missing."
   },
   {
     "code": "compliance.due-date-too-far",
     "status": 400,
-    "message": "Die Frist liegt mehr als 7 Jahre in der Zukunft."
+    "message": "The due date is more than 10 years in the future."
   },
   {
     "code": "compliance.identity-incomplete",
     "status": 403,
-    "message": "Das Konto liefert keine gültige Person."
+    "message": "The account names no valid person."
   },
   {
     "code": "compliance.invalid-change-reason",
     "status": 400,
-    "message": "Der Grund darf höchstens 7 Zeichen lang sein und keine Steuer- oder Formatzeichen enthalten."
+    "message": "A reason is at most 500 characters and holds no control or format characters."
   },
   {
     "code": "compliance.invalid-job-function",
     "status": 400,
-    "message": "Diese Tätigkeit gibt es nicht."
+    "message": "There is no such job function."
   },
   {
     "code": "compliance.invalid-person",
     "status": 400,
-    "message": "Eine der Personen hat keine gültige Kennung."
+    "message": "One of the persons has no valid identifier."
   },
   {
     "code": "compliance.invalid-recurrence",
     "status": 400,
-    "message": "Die Wiederholung muss zwischen 7 und 7 Monaten liegen."
+    "message": "A recurrence is 1 to 60 months."
   },
   {
     "code": "compliance.invalid-sample-name",
@@ -127,32 +132,32 @@
   {
     "code": "compliance.learner-not-a-member",
     "status": 422,
-    "message": "Die Person 01a20af1-86c1-7ecc-8109-d7efc9283bbe ist kein Mitglied dieser Apotheke."
+    "message": "A person to assign is not a member of this pharmacy."
   },
   {
     "code": "compliance.no-learners",
     "status": 400,
-    "message": "Bitte mindestens eine Person auswählen."
+    "message": "Choose at least one person."
   },
   {
     "code": "compliance.own-assignment",
     "status": 403,
-    "message": "Ihre eigene Zuweisung kann nur eine andere Leitung der Apotheke ändern oder zurückziehen."
+    "message": "Only another manager of the pharmacy can change or withdraw your own assignment."
   },
   {
     "code": "compliance.pharmacy-not-found",
     "status": 404,
-    "message": "Es gibt keine Apotheke 01a20af1-86c1-7b74-88f1-69692068ec3d, in der Sie Mitglied sind."
+    "message": "There is no pharmacy of yours with this id."
   },
   {
     "code": "compliance.sample-not-found",
     "status": 404,
-    "message": "There is no sample 01a20af1-86c2-7195-aa3a-94c2499afd41."
+    "message": "There is no such sample."
   },
   {
     "code": "compliance.too-many-learners",
     "status": 400,
-    "message": "Höchstens 7 Personen auf einmal zuweisen."
+    "message": "Assign at most 100 persons at once."
   },
   {
     "code": "editorial.ai-draft-malformed",
@@ -172,17 +177,17 @@
   {
     "code": "editorial.chapter-not-found",
     "status": 404,
-    "message": "Course version 01a20af1-86ca-77ae-b80a-1f4c0f0811cc has no chapter 01a20af1-86ca-7d77-b44e-b5cadc3447ac."
+    "message": "The course version has no such chapter."
   },
   {
     "code": "editorial.course-version-changed",
     "status": 409,
-    "message": "The course version 01a20af1-86c7-797f-be34-86e0c00ee82f changed in the meantime; load it again and repeat the change."
+    "message": "The course version changed in the meantime; load it again and repeat the change."
   },
   {
     "code": "editorial.course-version-not-found",
     "status": 404,
-    "message": "There is no course version 01a20af1-86c7-7ed5-9e59-b5b7396a5551."
+    "message": "There is no such course version."
   },
   {
     "code": "editorial.file-in-use",
@@ -192,7 +197,7 @@
   {
     "code": "editorial.four-eyes",
     "status": 403,
-    "message": "Veröffentlichen muss eine andere Person als die, die eingereicht hat."
+    "message": "Under four eyes, the editor who submitted this version cannot publish it."
   },
   {
     "code": "editorial.identity-incomplete",
@@ -297,17 +302,17 @@
   {
     "code": "editorial.multiple-choice-a-correct",
     "status": 422,
-    "message": "Eine Multiple-Choice-Frage hat mindestens eine richtige Antwort."
+    "message": "A multiple-choice question has at least one correct answer."
   },
   {
     "code": "editorial.next-version-exists",
     "status": 409,
-    "message": "Version 7 of this course already exists (01a20af1-86c9-751e-9ade-21bc3c2a787c); continue that one instead of drafting another from 01a20af1-86c9-7450-b2c4-d62ab2410d0a."
+    "message": "Version 7 of this course already exists (01a20b00-aca3-7996-b5a7-154565982472); continue that one instead of drafting another from 01a20b00-aca3-7721-8ea1-94d7d47270ab."
   },
   {
     "code": "editorial.no-chapters",
     "status": 409,
-    "message": "Eine Schulung braucht mindestens ein Kapitel."
+    "message": "A course needs at least one chapter."
   },
   {
     "code": "editorial.no-text-chapters",
@@ -322,17 +327,17 @@
   {
     "code": "editorial.not-a-draft",
     "status": 409,
-    "message": "Nur ein Entwurf kann bearbeitet werden."
+    "message": "Only a draft can be changed."
   },
   {
     "code": "editorial.not-in-review",
     "status": 409,
-    "message": "Die Version ist nicht in Prüfung."
+    "message": "The version is not in review."
   },
   {
     "code": "editorial.not-published",
     "status": 409,
-    "message": "Die Version ist nicht veröffentlicht."
+    "message": "The version is not published."
   },
   {
     "code": "editorial.nothing-to-draft",
@@ -342,7 +347,7 @@
   {
     "code": "editorial.order-does-not-match",
     "status": 409,
-    "message": "Die Reihenfolge muss jedes Kapitel genau einmal enthalten."
+    "message": "The order must name every chapter exactly once."
   },
   {
     "code": "editorial.publisher-approved-questions",
@@ -357,12 +362,12 @@
   {
     "code": "editorial.question-not-approved",
     "status": 409,
-    "message": "Jede Frage muss vor der Veröffentlichung freigegeben sein."
+    "message": "Every question must be approved before publishing."
   },
   {
     "code": "editorial.question-not-found",
     "status": 404,
-    "message": "Course version 01a20af1-86ca-74fe-b4f9-746395fa56e0 has no question 01a20af1-86ca-7ea5-963e-772a02e14407."
+    "message": "The course version has no such question."
   },
   {
     "code": "editorial.reviewer-name-missing",
@@ -372,22 +377,22 @@
   {
     "code": "editorial.sample-not-found",
     "status": 404,
-    "message": "There is no sample 01a20af1-86c9-7b8b-85d4-3b5c8aa1e83c."
+    "message": "There is no such sample."
   },
   {
     "code": "editorial.single-choice-one-correct",
     "status": 422,
-    "message": "Eine Single-Choice-Frage hat genau eine richtige Antwort."
+    "message": "A single-choice question has exactly one correct answer."
   },
   {
     "code": "editorial.test-incomplete",
     "status": 409,
-    "message": "Der Test braucht 0 Fragen."
+    "message": "The test does not have the number of questions its blueprint asks for."
   },
   {
     "code": "editorial.too-few-options",
     "status": 422,
-    "message": "Eine Frage braucht mindestens zwei Antwortoptionen."
+    "message": "A question needs at least two answer options."
   },
   {
     "code": "editorial.too-many-questions",
@@ -415,29 +420,34 @@
     "message": "Nothing was uploaded under this file's name yet; upload it, then repeat the change."
   },
   {
+    "code": "invalid-argument",
+    "status": 400,
+    "message": "The request is invalid."
+  },
+  {
     "code": "learning.chapter-has-no-media",
     "status": 404,
-    "message": "Chapter 01a20af1-86d1-78f6-9bfc-5496f7157d7d is a text chapter; it has no PDF or video."
+    "message": "The chapter is a text chapter; it has no PDF or video."
   },
   {
     "code": "learning.chapter-not-found",
     "status": 404,
-    "message": "Learning holds no chapter 01a20af1-86d2-75dc-8371-7cffc4cbde19."
+    "message": "Learning holds no such chapter."
   },
   {
     "code": "learning.chapter-not-in-course",
     "status": 422,
-    "message": "Dieses Kapitel gehört nicht zu dieser Schulungsversion."
+    "message": "This chapter does not belong to this course version."
   },
   {
     "code": "learning.course-version-not-found",
     "status": 404,
-    "message": "Learning holds no course version 01a20af1-86d1-7552-85ce-4695cc74f8bb; a version just published may not have reached it yet."
+    "message": "Learning holds no such course version; a version just published may not have reached it yet."
   },
   {
     "code": "learning.course-version-retired",
     "status": 409,
-    "message": "Course version 01a20af1-86d1-7dc0-93e3-f1b465d6c8d1 is retired; a new learning session cannot start on it. A session already started on it can still be resumed."
+    "message": "The course version is retired; a new learning session cannot start on it. A session already started on it can still be resumed."
   },
   {
     "code": "learning.identity-incomplete",
@@ -452,7 +462,7 @@
   {
     "code": "learning.media-not-ready",
     "status": 409,
-    "message": "The file of chapter 01a20af1-86d1-752e-ba04-c70e022cb92b has not been copied into Learning yet; ask again shortly."
+    "message": "The chapter's file has not been copied into Learning yet; ask again shortly."
   },
   {
     "code": "learning.membership-missing",
@@ -462,42 +472,47 @@
   {
     "code": "learning.no-session-on-version",
     "status": 403,
-    "message": "You have no learning session on a course version that holds chapter 01a20af1-86d2-7441-9d79-164e56f70686."
+    "message": "You have no learning session on a course version that holds this chapter."
   },
   {
     "code": "learning.progress-too-fast",
     "status": 422,
-    "message": "Der gemeldete Fortschritt wächst schneller, als das Video abgespielt werden kann."
+    "message": "The reported progress grows faster than the video can be played."
   },
   {
     "code": "learning.sample-not-found",
     "status": 404,
-    "message": "There is no sample 01a20af1-86d3-7982-8d45-a1181568b0b1."
+    "message": "There is no such sample."
   },
   {
     "code": "learning.session-changed",
     "status": 409,
-    "message": "The learning session 01a20af1-86d2-7b94-832b-87da3bf47180 changed in the meantime; report again."
+    "message": "The learning session changed in the meantime; report again."
   },
   {
     "code": "learning.session-finished",
     "status": 409,
-    "message": "Diese Schulung ist bereits abgeschlossen."
+    "message": "This learning session is already finished."
   },
   {
     "code": "learning.session-not-found",
     "status": 404,
-    "message": "There is no learning session 01a20af1-86d2-74b6-b9d6-0fd34fddb24b of yours."
+    "message": "You have no such learning session."
+  },
+  {
+    "code": "model-not-configured",
+    "status": 503,
+    "message": "The AI model is not configured."
   },
   {
     "code": "organisation.already-member-or-invited",
     "status": 409,
-    "message": "Diese Adresse ist schon Mitglied oder eingeladen."
+    "message": "This address is already a member or invited."
   },
   {
     "code": "organisation.capability-missing",
     "status": 403,
-    "message": "Ihre Rolle in dieser Apotheke erlaubt das nicht."
+    "message": "Your role in this pharmacy does not allow this."
   },
   {
     "code": "organisation.email-not-verified",
@@ -507,12 +522,12 @@
   {
     "code": "organisation.identity-incomplete",
     "status": 403,
-    "message": "Das Konto liefert keine Person, keinen Namen oder keine gültige E-Mail-Adresse."
+    "message": "The account names no person, no name or no valid e-mail address."
   },
   {
     "code": "organisation.invalid-email",
     "status": 400,
-    "message": "Die E-Mail-Adresse fehlt, ist zu lang oder ist keine."
+    "message": "The e-mail address is missing, too long or not an e-mail address."
   },
   {
     "code": "organisation.invalid-invitation-token",
@@ -522,17 +537,17 @@
   {
     "code": "organisation.invalid-job-function",
     "status": 400,
-    "message": "Die Tätigkeit fehlt oder ist unbekannt."
+    "message": "The job function is missing or unknown."
   },
   {
     "code": "organisation.invalid-membership-role",
     "status": 400,
-    "message": "Die Rolle fehlt oder ist unbekannt."
+    "message": "The role is missing or unknown."
   },
   {
     "code": "organisation.invalid-pharmacy-name",
     "status": 400,
-    "message": "Der Name einer Apotheke hat 1 bis 120 Zeichen und ist nicht leer."
+    "message": "A pharmacy's name is 1 to 120 characters and not blank."
   },
   {
     "code": "organisation.invalid-sample-name",
@@ -547,51 +562,51 @@
   {
     "code": "organisation.invitation-expired",
     "status": 410,
-    "message": "Die Einladung ist abgelaufen. Bitte eine neue anfordern."
+    "message": "The invitation has expired; ask for a new one."
   },
   {
     "code": "organisation.invitation-for-another-address",
     "status": 403,
-    "message": "Die Einladung gilt für eine andere E-Mail-Adresse."
+    "message": "The invitation is for another e-mail address."
   },
   {
     "code": "organisation.invitation-not-found",
     "status": 404,
-    "message": "Der Einladungslink ist ungültig oder wurde schon benutzt."
+    "message": "The invitation link is invalid or has already been used."
   },
   {
     "code": "organisation.last-manager",
     "status": 409,
-    "message": "Die letzte Apothekenleitung kann nicht entfernt oder herabgestuft werden."
+    "message": "The last manager of a pharmacy cannot be removed or demoted."
   },
   {
     "code": "organisation.no-active-membership",
     "status": 404,
-    "message": "Es gibt keine aktive Mitgliedschaft 01a20af1-86d5-7eda-b6b7-7a5342eca8b5 in dieser Apotheke."
+    "message": "This pharmacy has no such active membership."
   },
   {
     "code": "organisation.no-open-invitation",
     "status": 404,
-    "message": "Es gibt keine offene Einladung 01a20af1-86d5-764b-ac71-804cc4241f21 in dieser Apotheke."
+    "message": "This pharmacy has no such open invitation."
   },
   {
     "code": "organisation.person-already-member",
     "status": 409,
-    "message": "Diese Person ist bereits Mitglied der Apotheke."
+    "message": "This person is already a member of the pharmacy."
   },
   {
     "code": "organisation.pharmacy-changed",
     "status": 409,
-    "message": "Die Apotheke 01a20af1-86d5-7e64-b2f3-6e77b2ac7b01 wurde inzwischen geändert; laden Sie sie neu und wiederholen Sie die Änderung."
+    "message": "The pharmacy changed in the meantime; load it again and repeat the change."
   },
   {
     "code": "organisation.pharmacy-not-found",
     "status": 404,
-    "message": "Es gibt keine Apotheke 01a20af1-86d6-7a83-8619-e9980336ea2c, in der Sie Mitglied sind."
+    "message": "There is no pharmacy of yours with this id."
   },
   {
     "code": "organisation.sample-not-found",
     "status": 404,
-    "message": "There is no sample 01a20af1-86d6-724a-94bf-b458ec5f5246."
+    "message": "There is no such sample."
   }
 ]
