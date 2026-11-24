@@ -188,12 +188,20 @@ describe('exporting', () => {
     vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
     vi.setSystemTime(now);
 
+    // When the object URL was made, on the fake clock: vi.waitFor moves fake time on each check, so the 30 seconds are
+    // counted from that moment rather than from the end of the waits.
+    let madeAt = 0;
+    createObjectURL.mockImplementation(() => {
+      madeAt = Date.now();
+      return 'blob:export-1';
+    });
+
     await fireEvent.click(submitButton());
     await vi.waitFor(() => expect(saved).toHaveLength(1));
     await vi.waitFor(() => expect(notify.success).toHaveBeenCalled());
 
     expect(revokeObjectURL).not.toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(29_999);
+    await vi.advanceTimersByTimeAsync(madeAt + 29_999 - Date.now());
     expect(revokeObjectURL).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     expect(revokeObjectURL).toHaveBeenCalledTimes(1);
