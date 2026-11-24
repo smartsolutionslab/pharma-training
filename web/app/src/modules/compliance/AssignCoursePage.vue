@@ -8,12 +8,13 @@ import { toTypedSchema } from '@/forms/toTypedSchema';
 import { type MessageKey, t as translate } from '@/i18n';
 import { type ErrorMessage, messageText } from '@/i18n/errorText';
 import { calendarDate } from '@/i18n/formats';
+import { today } from '@/lib/germanDay';
 import { notify } from '@/lib/notify';
 import { useCurrentPharmacy } from '@/shell/useCurrentPharmacy';
 import AssignCourseStep from './AssignCourseStep.vue';
 import AssignLearnersStep from './AssignLearnersStep.vue';
 import AssignResult from './AssignResult.vue';
-import { type AssignValues, createAssignSchema, latest, maximumLearners, today } from './assignSchema';
+import { type AssignValues, createAssignSchema, latest, maximumLearners } from './assignSchema';
 import { type DueDateCode, useAssignCourse } from './useAssignCourse';
 
 // Assigning a course (#37): a course from the catalog, the learners, a due date with an optional yearly recurrence,

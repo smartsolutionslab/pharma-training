@@ -77,7 +77,12 @@ export const en: MessageSchema = {
       },
     },
     assessment: { title: 'Tests' },
-    certification: { title: 'Certificates' },
+    certification: {
+      title: 'Certificates',
+      entries: {
+        verify: { title: 'Verify a certificate' },
+      },
+    },
     compliance: {
       title: 'Team matrix',
       pages: {
@@ -101,6 +106,27 @@ export const en: MessageSchema = {
         test: { title: 'Test' },
       },
     },
+  },
+  certification: {
+    validity: {
+      Valid: 'Valid',
+      Expired: 'Expired',
+    },
+    verify: {
+      validText: 'This certificate is genuine and valid until {date}.',
+      expiredText: 'This certificate is genuine, but was valid only until {date}.',
+      holder: 'Name',
+      course: 'Course',
+      issuedOn: 'Issued on',
+      validUntil: 'Valid until',
+      notVerifiable: {
+        title: 'Cannot be verified',
+        text: 'There is no certificate for this link. Check that you opened the complete link from the QR code.',
+      },
+      limitReached: 'Too many checks are being requested right now. Please try again in a minute.',
+      loadFailed: 'The certificate could not be verified.',
+    },
+    retry: 'Try again',
   },
   compliance: {
     matrix: {
@@ -392,6 +418,8 @@ export const en: MessageSchema = {
         endedSelf: 'You are no longer a member of {pharmacy}.',
         failed: 'The membership of {name} could not be ended.',
       },
+      // A refusal answered after a switch to another pharmacy names the pharmacy that refused.
+      inPharmacy: 'In {pharmacy}: {reason}',
     },
   },
   editorial: {
@@ -835,8 +863,11 @@ export const en: MessageSchema = {
       'sample-not-found': 'This sample does not exist.',
     },
     certification: {
+      'certificate-not-verifiable':
+        'There is no certificate for this code. Check that you opened the complete link from the QR code.',
       'invalid-sample-name': "A sample's name has 1 to {max} characters and must not be blank.",
       'sample-not-found': 'This sample does not exist.',
+      'verification-limit-reached': 'Too many checks are being requested right now. Try again in a minute.',
     },
     compliance: {
       'assignment-already-active': 'There is already an open assignment for this course.',
@@ -968,7 +999,11 @@ export const en: MessageSchema = {
       'person-already-member': 'You are already a member of this pharmacy.',
       'pharmacy-changed': 'The pharmacy was changed at the same time. Check its current state and try again.',
       'pharmacy-not-found': 'You are no longer a member of this pharmacy.',
+      'recipient-mailed-recently':
+        'An invitation was only just sent to this address. You can invite it again after a short wait.',
       'sample-not-found': 'This sample does not exist.',
+      'too-many-invitations-sent-today':
+        'You have sent as many invitation emails today as you may. Try again tomorrow.',
       'too-many-invitations-today':
         'Your pharmacy has reached the maximum number of invitation emails for today. Try again tomorrow.',
     },

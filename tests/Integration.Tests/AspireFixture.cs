@@ -18,8 +18,17 @@ public sealed partial class AspireFixture : IAsyncLifetime
     /// <summary>Every editorial model limit of this run, per minute and per day, for content review and test draft alike.</summary>
     public const int EditorialModelLimit = 50;
 
+    /// <summary>The per-address limit on public certificate verification of this run, per minute (docs/adr/0029).</summary>
+    public const int CertificationVerificationLimit = 20;
+
+    /// <summary>The per-address limit on public certificate verification of this run, per day.</summary>
+    public const int CertificationVerificationDailyLimit = 1000;
+
     /// <summary>How many invitations one user may accept a minute in this run (docs/adr/0004), raised from the default 10.</summary>
     public const int OrganisationAcceptsPerMinute = 30;
+
+    /// <summary>How many invitation mails one user may send a UTC day in this run (#265), raised from the default 100.</summary>
+    public const int InvitationMailsPerSenderPerDay = 1000;
 
     // Twice the largest start-up of the green CI runs listed in #134 (204 s), rounded up to the minute. Before #126 the
     // edge and every service host were rebuilt at each start, which took 3.5 to over 5 minutes; now every project starts
@@ -64,11 +73,24 @@ public sealed partial class AspireFixture : IAsyncLifetime
             editorial.WithEnvironment($"Editorial__ModelLimits__{setting}", EditorialModelLimit.ToString(CultureInfo.InvariantCulture));
         }
 
+        // The run sets the per-address verification limit (docs/adr/0029) to CertificationVerificationLimit a minute, so
+        // CertificationVerificationTests reaches it in a few dozen calls, and the day far above it, so the minute alone
+        // refuses. Every local caller reaches Certification from one address, the edge's, so every call of the run shares
+        // one count: only that collection calls /certification/verify, and it leaves the minute's window reset.
+        var certification = builder.CreateResourceBuilder(builder.Resources.OfType<ProjectResource>().Single(resource => resource.Name == "certification"));
+        certification.WithEnvironment("Certification__VerificationLimits__PerMinute", CertificationVerificationLimit.ToString(CultureInfo.InvariantCulture));
+        certification.WithEnvironment("Certification__VerificationLimits__PerDay", CertificationVerificationDailyLimit.ToString(CultureInfo.InvariantCulture));
+
         // The accept tests accept as employee-a up to about 15 times in quick succession, more than the default 10 a minute
         // (docs/adr/0004), so the run raises the per-minute accept limit to OrganisationAcceptsPerMinute; every user stays
         // under it, and only OrganisationAcceptLimitTests accepts as visitor, to reach it.
         var organisation = builder.CreateResourceBuilder(builder.Resources.OfType<ProjectResource>().Single(resource => resource.Name == "organisation"));
         organisation.WithEnvironment("Organisation__AcceptLimit__PerMinute", OrganisationAcceptsPerMinute.ToString(CultureInfo.InvariantCulture));
+
+        // Every invite and renewal as owner counts on owner's one sender tally (#265), about 50 a run and growing, more
+        // than the default 100 a day would leave room for. The run raises the cap to InvitationMailsPerSenderPerDay, and
+        // OrganisationMailRecipientAndSenderLimitsTests reaches it with editor-b, a user only it invites as.
+        organisation.WithEnvironment("Organisation__InvitationLimits__MailsPerSenderPerDay", InvitationMailsPerSenderPerDay.ToString(CultureInfo.InvariantCulture));
 
         app = await builder.BuildAsync(timeout.Token);
         await app.StartAsync(timeout.Token);

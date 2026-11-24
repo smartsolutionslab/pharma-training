@@ -1,13 +1,15 @@
+import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query';
 import { render, screen, within } from '@testing-library/vue';
 import userEvent from '@testing-library/user-event';
 import { createPinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { axe } from 'vitest-axe';
-import { computed } from 'vue';
+import { computed, type Plugin } from 'vue';
 import { createMemoryHistory } from 'vue-router';
 import type { MyPharmacyDto, PagedResultOfMyPharmacyDto } from '@/api/generated';
 import App from '@/App.vue';
 import { signedInAsDeveloper } from '@/auth/signedInAsDeveloper';
+import { type Auth, authKey } from '@/auth/useAuth';
 import { createAppRouter } from '@/router';
 import { languages, setLanguage, t } from '@/i18n';
 
@@ -55,6 +57,7 @@ beforeEach(() => {
 afterEach(() => {
   document.documentElement.removeAttribute('class');
   localStorage.clear();
+  vi.unstubAllGlobals();
 });
 
 // The shell renders for the local user developer, signed in, as the app shows it, in the first of two pharmacies.
@@ -75,6 +78,32 @@ const themes = [
     },
   },
 ];
+
+// A public page (#54) in the public layout, for a visitor signed out: the verification page, whose request to the host
+// waits for an answer that never comes (the page's own states are its own axe check's).
+async function renderPublicLayout() {
+  vi.stubGlobal('fetch', () => new Promise<Response>(() => undefined));
+  const router = createAppRouter(createMemoryHistory());
+  await router.push('/verify/AbCdEfGhIjKlMnOpQrStUvWxYz012-_9');
+  return render(App, {
+    global: { plugins: [router, createPinia(), [VueQueryPlugin, { queryClient: new QueryClient() }], signedOut] },
+  }).container;
+}
+
+const signedOut: Plugin = {
+  install(app) {
+    const auth: Auth = {
+      user: computed(() => null),
+      isAuthenticated: computed(() => false),
+      isLoading: computed(() => false),
+      error: computed(() => null),
+      activeNavigator: computed(() => null),
+      signinRedirect: () => Promise.resolve(),
+      signoutRedirect: () => Promise.resolve(),
+    };
+    app.provide(authKey, auth);
+  },
+};
 
 // The pharmacy switcher's name for the developer's first pharmacy, in the language shown.
 const markets = () => t('shell.pharmacy.current', { name: 'Apotheke am Markt' });
@@ -144,6 +173,19 @@ describe.each(languages)('in %s', (language) => {
 
     expect(await axe(container)).toHaveNoViolations();
   });
+
+  test.each(themes)(
+    'the public layout has no accessibility violations axe can find in the $name theme',
+    async ({ switchOn }) => {
+      switchOn();
+      const container = await renderPublicLayout();
+      await screen.findByRole('heading', { level: 1, name: t('modules.certification.entries.verify.title') });
+      // The public layout, not the shell: its header holds the language group.
+      expect(within(screen.getByRole('banner')).getByRole('group', { name: t('language.label') })).toBeInTheDocument();
+
+      expect(await axe(container)).toHaveNoViolations();
+    },
+  );
 
   test('a page that is not available has no accessibility violations axe can find', async () => {
     localStorage.setItem('pharmacy', dom.id);

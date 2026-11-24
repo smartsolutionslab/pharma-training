@@ -14,7 +14,17 @@ public static class UserRateLimitEndpoints
     /// host: the check runs in the endpoint filter factory, when routing first builds the endpoints, so the first request
     /// routed to the host (or building its OpenAPI document) fails with an <see cref="InvalidOperationException"/> naming it.
     /// </summary>
-    public static RouteHandlerBuilder RequireUserRateLimit(this RouteHandlerBuilder builder, string name)
+    public static RouteHandlerBuilder RequireUserRateLimit(this RouteHandlerBuilder builder, string name) =>
+        builder.RequireRateLimit(name, UserRateLimitFilter.PerUser);
+
+    /// <summary>
+    /// Builds the filter of the limit registered as <paramref name="name"/> when routing first builds the endpoints, or
+    /// fails naming it; shared by the per-user and the per-client limit, which differ only in the caller they count.
+    /// </summary>
+    internal static RouteHandlerBuilder RequireRateLimit(
+        this RouteHandlerBuilder builder,
+        string name,
+        Func<UserRateLimit, UserRateLimiter, ILogger<UserRateLimitFilter>, UserRateLimitFilter> filterOf)
     {
         Ensure.That(builder).IsNotNull();
         Ensure.That(name).IsNotNullOrWhiteSpace();
@@ -28,7 +38,7 @@ public static class UserRateLimitEndpoints
                 throw new InvalidOperationException($"The endpoint names the rate limit '{name}', which no module registered with AddUserRateLimit.");
             }
 
-            var filter = new UserRateLimitFilter(
+            var filter = filterOf(
                 registered.Value,
                 services.GetRequiredService<UserRateLimiter>(),
                 services.GetRequiredService<ILogger<UserRateLimitFilter>>());

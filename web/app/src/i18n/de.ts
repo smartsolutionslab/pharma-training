@@ -88,7 +88,12 @@ export const de = {
       },
     },
     assessment: { title: 'Tests' },
-    certification: { title: 'Teilnahmebestätigungen' },
+    certification: {
+      title: 'Teilnahmebestätigungen',
+      entries: {
+        verify: { title: 'Bestätigung prüfen' },
+      },
+    },
     compliance: {
       title: 'Team-Matrix',
       pages: {
@@ -112,6 +117,27 @@ export const de = {
         test: { title: 'Test' },
       },
     },
+  },
+  certification: {
+    validity: {
+      Valid: 'Gültig',
+      Expired: 'Abgelaufen',
+    },
+    verify: {
+      validText: 'Diese Teilnahmebestätigung ist echt und gültig bis {date}.',
+      expiredText: 'Diese Teilnahmebestätigung ist echt, war aber nur bis {date} gültig.',
+      holder: 'Name',
+      course: 'Schulung',
+      issuedOn: 'Ausgestellt am',
+      validUntil: 'Gültig bis',
+      notVerifiable: {
+        title: 'Nicht prüfbar',
+        text: 'Zu diesem Link gibt es keine Teilnahmebestätigung. Prüfen Sie, ob Sie den vollständigen Link aus dem QR-Code geöffnet haben.',
+      },
+      limitReached: 'Gerade werden zu viele Prüfungen angefragt. Bitte versuchen Sie es in einer Minute erneut.',
+      loadFailed: 'Die Bestätigung konnte nicht geprüft werden.',
+    },
+    retry: 'Erneut versuchen',
   },
   compliance: {
     matrix: {
@@ -403,6 +429,8 @@ export const de = {
         endedSelf: 'Sie sind nicht mehr Mitglied von {pharmacy}.',
         failed: '{name} konnte nicht ausgetragen werden.',
       },
+      // A refusal answered after a switch to another pharmacy names the pharmacy that refused.
+      inPharmacy: 'In {pharmacy}: {reason}',
     },
   },
   editorial: {
@@ -857,8 +885,12 @@ export const de = {
       'sample-not-found': 'Dieses Beispiel gibt es nicht.',
     },
     certification: {
+      'certificate-not-verifiable':
+        'Zu diesem Code gibt es keine Teilnahmebestätigung. Prüfen Sie, ob Sie den vollständigen Link aus dem QR-Code geöffnet haben.',
       'invalid-sample-name': 'Der Name eines Beispiels hat 1 bis {max} Zeichen und darf nicht leer sein.',
       'sample-not-found': 'Dieses Beispiel gibt es nicht.',
+      'verification-limit-reached':
+        'Gerade werden zu viele Prüfungen angefragt. Versuchen Sie es in einer Minute erneut.',
     },
     compliance: {
       'assignment-already-active': 'Für diese Schulung gibt es schon eine offene Zuweisung.',
@@ -997,7 +1029,11 @@ export const de = {
       'pharmacy-changed':
         'Die Apotheke wurde gerade gleichzeitig geändert. Prüfen Sie den aktuellen Stand und versuchen Sie es erneut.',
       'pharmacy-not-found': 'Sie sind nicht mehr Mitglied dieser Apotheke.',
+      'recipient-mailed-recently':
+        'An diese Adresse wurde gerade erst eine Einladung gesendet. Sie können sie nach einer kurzen Wartezeit erneut einladen.',
       'sample-not-found': 'Dieses Beispiel gibt es nicht.',
+      'too-many-invitations-sent-today':
+        'Sie haben heute so viele Einladungs-E-Mails gesendet, wie Sie dürfen. Versuchen Sie es morgen erneut.',
       'too-many-invitations-today':
         'Ihre Apotheke hat die Höchstzahl an Einladungs-E-Mails für heute erreicht. Versuchen Sie es morgen erneut.',
     },
