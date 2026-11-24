@@ -232,6 +232,44 @@ public class DeployEnvironmentsCheckTests
         }
     }
 
+    /// <summary>
+    /// The review of #335: GitHub shows a ruleset's bypass list only to whoever may administer it. A ruleset read without
+    /// one is not a ruleset nobody may bypass: the check says it cannot tell, and fails.
+    /// </summary>
+    [Fact]
+    public async Task A_tag_ruleset_read_without_its_bypass_list_fails_as_unreadable()
+    {
+        var ruleset = DeployTagRuleset();
+        ruleset.Remove("bypass_actors");
+
+        var run = await CheckWithRulesetAsync(ruleset, Restricted("staging", reviewers: false), Restricted("production", reviewers: true));
+
+        run.ExitCode.ShouldNotBe(0, run.ToString());
+        run.Output.ShouldContain("cannot read who may bypass");
+        run.Output.ShouldNotContain("nobody");
+    }
+
+    [Fact]
+    public async Task Main_whose_classic_protection_cannot_be_read_is_reported_as_unreadable_not_as_unprotected()
+    {
+        var run = await CheckRepositoryAsync(DeployTagRuleset(), MainRules(), new JsonObject { ["forbidden"] = true }, Restricted("staging", reviewers: false), Restricted("production", reviewers: true));
+
+        run.ExitCode.ShouldNotBe(0, run.ToString());
+        run.Output.ShouldContain("main:");
+        run.Output.ShouldContain("HTTP 403");
+    }
+
+    [Fact]
+    public async Task Main_whose_classic_protection_does_not_say_whether_it_allows_force_pushes_fails()
+    {
+        var protection = new JsonObject { ["required_pull_request_reviews"] = new JsonObject { ["required_approving_review_count"] = 1 } };
+
+        var run = await CheckRepositoryAsync(DeployTagRuleset(), MainRules(), protection, Restricted("staging", reviewers: false), Restricted("production", reviewers: true));
+
+        run.ExitCode.ShouldNotBe(0, run.ToString());
+        run.Output.ShouldContain("force pushes");
+    }
+
     [Fact]
     public async Task Main_protected_by_classic_branch_protection_passes()
     {
@@ -379,15 +417,17 @@ public class DeployEnvironmentsCheckTests
             if (mainProtection is not null)
             {
                 var protection = Directory.CreateDirectory(Path.Combine(answers.FullName, "repos", Repository, "branches", "main"));
-                await File.WriteAllTextAsync(Path.Combine(protection.FullName, "protection.json"), mainProtection.ToJsonString());
+                await File.WriteAllTextAsync(Path.Combine(protection.FullName, "protection.json"), mainProtection.ContainsKey("forbidden") ? "forbidden" : mainProtection.ToJsonString());
             }
 
             var bin = Directory.CreateDirectory(Path.Combine(directory.FullName, "bin"));
             var gh = Path.Combine(bin.FullName, "gh");
             await File.WriteAllTextAsync(gh, """
                 #!/usr/bin/env bash
-                [ "$1" = api ] || { echo "stub gh: only 'gh api <path>' is answered, not: $*" >&2; exit 2; }
-                file="$GH_STUB_ANSWERS/${2#/}.json"
+                [ "$1" = api ] || { echo "stub gh: only 'gh api [--paginate] <path>' is answered, not: $*" >&2; exit 2; }
+                shift
+                [ "$1" != --paginate ] || shift
+                file="$GH_STUB_ANSWERS/${1#/}.json"
                 [ -f "$file" ] || { echo 'gh: Not Found (HTTP 404)' >&2; exit 1; }
                 [ "$(cat "$file")" != forbidden ] || { echo 'gh: Resource not accessible by personal access token (HTTP 403)' >&2; exit 1; }
                 cat "$file"
