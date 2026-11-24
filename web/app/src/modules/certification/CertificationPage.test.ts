@@ -95,7 +95,7 @@ async function renderAt(path = '/certification') {
   render(CertificationPage, {
     global: { plugins: [router, createPinia(), signedInAsDeveloper, [VueQueryPlugin, { queryClient }]] },
   });
-  return { router };
+  return { router, queryClient };
 }
 
 /** The row of the course in the table. */
@@ -317,4 +317,47 @@ test('while another page is being read, the page shown before never moves the ad
   expect(await rowOf('Schulung 41')).not.toBeNull();
   expect(router.currentRoute.value.query).toEqual({ page: '3' });
   expect(replace).not.toHaveBeenCalled();
+});
+
+// A read that fails can be tried again, but a refusal a second read cannot turn round; one that fails in the background,
+// with the certificates already shown, keeps them and says so above them.
+test('a list that could not be loaded offers Retry, which reads it again', async () => {
+  listing = async () => new Response('', { status: 500 });
+  await renderAt();
+  await screen.findByRole('alert');
+  listing = async (page) => Response.json({ items: [hygiene, privacy], totalCount: 2, page, pageSize: 20 });
+
+  await userEvent.click(screen.getByRole('button', { name: 'Erneut versuchen' }));
+
+  expect(await rowOf(hygiene.courseTitle)).not.toBeNull();
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Erneut versuchen' })).not.toBeInTheDocument();
+});
+
+test('a token without a subject offers no Retry, since reading again cannot help', async () => {
+  listing = async () => problem(403, 'certification.identity-incomplete', 'The access token names no person.');
+  await renderAt();
+
+  await screen.findByRole('alert');
+  expect(screen.queryByRole('button', { name: 'Erneut versuchen' })).not.toBeInTheDocument();
+});
+
+test('a background read that fails keeps the certificates shown, says so, and Retry reads them again', async () => {
+  const { queryClient } = await renderAt();
+  await rowOf(hygiene.courseTitle);
+  listing = async () => new Response('', { status: 500 });
+
+  await queryClient.refetchQueries();
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Ihre Teilnahmebestätigungen konnten nicht geladen werden.',
+  );
+  expect(screen.getByRole('cell', { name: hygiene.courseTitle })).toBeInTheDocument();
+  expect(screen.getByRole('cell', { name: privacy.courseTitle })).toBeInTheDocument();
+  listing = async (page) => Response.json({ items: [hygiene, privacy], totalCount: 2, page, pageSize: 20 });
+
+  await userEvent.click(screen.getByRole('button', { name: 'Erneut versuchen' }));
+
+  await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+  expect(screen.getByRole('cell', { name: hygiene.courseTitle })).toBeInTheDocument();
 });
