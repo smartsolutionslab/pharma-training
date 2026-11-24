@@ -107,6 +107,27 @@ export const en: MessageSchema = {
       },
     },
   },
+  certification: {
+    validity: {
+      Valid: 'Valid',
+      Expired: 'Expired',
+    },
+    verify: {
+      validText: 'This certificate is genuine and valid until {date}.',
+      expiredText: 'This certificate is genuine, but was valid only until {date}.',
+      holder: 'Name',
+      course: 'Course',
+      issuedOn: 'Issued on',
+      validUntil: 'Valid until',
+      notVerifiable: {
+        title: 'Cannot be verified',
+        text: 'There is no certificate for this link. Check that you opened the complete link from the QR code.',
+      },
+      limitReached: 'Too many checks are being requested right now. Please try again in a minute.',
+      loadFailed: 'The certificate could not be verified.',
+    },
+    retry: 'Try again',
+  },
   compliance: {
     matrix: {
       intro: 'Who in {pharmacy} has to complete which course by when.',
