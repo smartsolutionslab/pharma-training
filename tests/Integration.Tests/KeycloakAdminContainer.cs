@@ -14,7 +14,6 @@ public sealed class KeycloakAdminContainer : IAsyncLifetime
 {
     public const string Administrator = "admin";
 
-    private const string Image = "pharma-training-keycloak-published:test";
 
     private const string BinDirectory = "/opt/keycloak/bin";
 
@@ -25,6 +24,9 @@ public sealed class KeycloakAdminContainer : IAsyncLifetime
     private static readonly TimeSpan CommandTimeout = TimeSpan.FromMinutes(2);
 
     private readonly string name = $"keycloak-admin-{Guid.CreateVersion7():N}";
+
+    // An image of this run's own, so runs side by side never share or remove each other's; removed on dispose.
+    private string Image => $"pharma-training-keycloak-published:{name}";
 
     /// <summary>The bootstrap administrator's password, made up for this run.</summary>
     public string AdministratorPassword { get; } = Guid.CreateVersion7().ToString("N");
@@ -62,8 +64,11 @@ public sealed class KeycloakAdminContainer : IAsyncLifetime
         signIn.ExitCode.ShouldBe(0, $"The bootstrap administrator could not sign in within {StartTimeout}:\n{signIn}");
     }
 
-    public async ValueTask DisposeAsync() =>
+    public async ValueTask DisposeAsync()
+    {
         await DockerAsync(["rm", "-f", name], new Dictionary<string, string>(StringComparer.Ordinal), null, CommandTimeout);
+        await DockerAsync(["image", "rm", Image], new Dictionary<string, string>(StringComparer.Ordinal), null, CommandTimeout);
+    }
 
     /// <summary>Signs kcadm.sh in as the bootstrap administrator, as the runbook's first step does.</summary>
     public Task<CommandRun> SignInAsAdministratorAsync() =>
@@ -84,6 +89,13 @@ public sealed class KeycloakAdminContainer : IAsyncLifetime
     /// <summary>Runs a bash script in the container's <c>/opt/keycloak/bin</c>, with the given variables and nothing on standard input.</summary>
     public Task<CommandRun> ExecAsync(string script, IReadOnlyDictionary<string, string>? environment = null, string? input = null) =>
         DockerAsync(ExecArguments(script, environment), environment ?? new Dictionary<string, string>(StringComparer.Ordinal), null, CommandTimeout, input);
+
+    /// <summary>
+    /// Runs a bash script in a terminal (<c>docker exec -t</c>), as <c>az containerapp exec</c> gives an operator: standard
+    /// input is the terminal, on which nothing is typed. Standard error arrives with standard output.
+    /// </summary>
+    public Task<CommandRun> ExecInTerminalAsync(string script) =>
+        DockerAsync(["exec", "-t", "-w", BinDirectory, name, "bash", "-c", script], new Dictionary<string, string>(StringComparer.Ordinal), null, CommandTimeout);
 
     /// <summary>
     /// Runs a bash script as <see cref="ExecAsync"/> does, answering it on standard input: each line it prints is shown to
