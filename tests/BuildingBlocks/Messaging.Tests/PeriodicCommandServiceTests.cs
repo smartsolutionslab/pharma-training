@@ -97,7 +97,7 @@ public sealed class PeriodicCommandServiceTests : IAsyncDisposable
     {
         var lostRace = new DbUpdateException(
             "An error occurred while saving the entity changes.",
-            new PostgresException("duplicate key value violates unique constraint \"pk_announced_events\"", "ERROR", "ERROR", PostgresErrorCodes.UniqueViolation));
+            new PostgresException("duplicate key value violates unique constraint \"pk_announced_events\"", "ERROR", "ERROR", PostgresErrorCodes.UniqueViolation, constraintName: "pk_announced_events"));
         var first = Expect(_ => Task.FromException<Result<Unit, ApiError>>(lostRace));
         var second = Expect();
         await StartAsync();
@@ -109,6 +109,27 @@ public sealed class PeriodicCommandServiceTests : IAsyncDisposable
 
         Logs().ShouldNotContain(record => record.Level >= LogLevel.Warning, "a pass that lost the race to another writer was logged as a failure");
         Logs().ShouldContain(record => record.Level == LogLevel.Information);
+        Service.ExecuteTask.ShouldNotBeNull().IsCompleted.ShouldBeFalse("the loop ended after a unique violation");
+    }
+
+    [Fact]
+    public async Task A_pass_ending_on_a_unique_violation_of_another_constraint_is_logged_as_an_error()
+    {
+        var other = new DbUpdateException(
+            "An error occurred while saving the entity changes.",
+            new PostgresException("duplicate key value violates unique constraint \"pk_wolverine_outgoing_envelopes\"", "ERROR", "ERROR", PostgresErrorCodes.UniqueViolation, constraintName: "pk_wolverine_outgoing_envelopes"));
+        var first = Expect(_ => Task.FromException<Result<Unit, ApiError>>(other));
+        var second = Expect();
+        await StartAsync();
+
+        time.Advance(Interval);
+        await first;
+        time.Advance(Interval);
+        await second;
+
+        var logged = Logs().Where(record => record.Level >= LogLevel.Warning).ShouldHaveSingleItem("only the marker's primary key means another writer announced the event first");
+        logged.Level.ShouldBe(LogLevel.Error);
+        logged.Exception.ShouldBeSameAs(other);
         Service.ExecuteTask.ShouldNotBeNull().IsCompleted.ShouldBeFalse("the loop ended after a unique violation");
     }
 
