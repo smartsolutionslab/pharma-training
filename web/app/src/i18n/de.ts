@@ -736,7 +736,7 @@ export const de = {
         submitted: 'Die Version ist zur Prüfung eingereicht.',
         notSubmitted: 'Die Version muss noch zur Prüfung eingereicht werden.',
         fourEyes:
-          'Sie haben diese Version eingereicht. Mit Vier-Augen-Freigabe muss eine andere Person sie veröffentlichen.',
+          'Sie haben diese Version eingereicht oder ihre Testvorgaben zuletzt geändert. Mit Vier-Augen-Freigabe muss eine andere Person sie veröffentlichen.',
         publisherApproved:
           'Sie haben Fragen dieser Version freigegeben. Mit Vier-Augen-Freigabe muss eine andere Person sie veröffentlichen.',
       },
@@ -1080,7 +1080,7 @@ export const de = {
       'course-version-not-found': 'Diese Version gibt es nicht mehr.',
       'file-in-use': 'Diese Datei gehört schon zu einem anderen Kapitel der Version.',
       'four-eyes':
-        'Mit Vier-Augen-Freigabe darf nicht veröffentlichen, wer die Version eingereicht hat. Bitten Sie eine andere Person aus der Redaktion.',
+        'Mit Vier-Augen-Freigabe darf nicht veröffentlichen, wer die Version eingereicht oder ihre Testvorgaben zuletzt geändert hat. Bitten Sie eine andere Person aus der Redaktion.',
       'identity-incomplete': 'Ihre Anmeldung nennt keine Person. Melden Sie sich erneut an.',
       'invalid-answer-options': 'Eine Frage hat höchstens {max} Antwortoptionen, und keine davon darf fehlen.',
       'invalid-answer-text': 'Eine Antwortoption hat 1 bis {max} Zeichen und darf nicht leer sein.',

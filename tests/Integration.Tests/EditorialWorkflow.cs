@@ -12,6 +12,12 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// </summary>
 internal static class EditorialWorkflow
 {
+    /// <summary>
+    /// The realm user who publishes in the run's tests. The run uses four eyes (ADR 0007, #246), which refuses the editor who
+    /// submitted a version or approved its questions, and <c>editor-b</c> is kept for EditorialModelLimitsTests' model budget.
+    /// </summary>
+    public const string Publisher = "editor-c";
+
     private static readonly Uri Courses = new("/editorial/courses", UriKind.Relative);
 
     /// <summary>Talks to the storage emulator directly, as the editor's browser does with a signed upload URL.</summary>
@@ -59,8 +65,12 @@ internal static class EditorialWorkflow
     public static Task SubmitAsync(HttpClient client, Guid id, CancellationToken cancellationToken) =>
         ShouldBeAcceptedAsync(client, id, "submit", cancellationToken);
 
-    public static Task PublishAsync(HttpClient client, Guid id, CancellationToken cancellationToken) =>
-        ShouldBeAcceptedAsync(client, id, "publish", cancellationToken);
+    /// <summary>
+    /// Publishes the version as <paramref name="publisher"/>. The run uses four eyes (ADR 0007), so the publisher is an
+    /// editor who neither submitted the version nor approved its questions: <c>editor-c</c>.
+    /// </summary>
+    public static Task PublishAsync(HttpClient publisher, Guid id, CancellationToken cancellationToken) =>
+        ShouldBeAcceptedAsync(publisher, id, "publish", cancellationToken);
 
     /// <summary>Approves every question of the version, as the calling editor.</summary>
     public static async Task ApproveAllAsync(HttpClient client, Guid id, CancellationToken cancellationToken)
@@ -75,24 +85,28 @@ internal static class EditorialWorkflow
         }
     }
 
-    /// <summary>A new course whose first version was submitted, approved and published by the calling editor.</summary>
-    public static async Task<WorkflowDraft> PublishedAsync(HttpClient client, CancellationToken cancellationToken)
+    /// <summary>
+    /// A new course whose first version was submitted and approved by <paramref name="editor"/> and published by
+    /// <paramref name="publisher"/>, another editor, as four eyes requires.
+    /// </summary>
+    public static async Task<WorkflowDraft> PublishedAsync(HttpClient editor, HttpClient publisher, CancellationToken cancellationToken)
     {
-        var draft = await ReadyToSubmitAsync(client, cancellationToken);
-        await SubmitAsync(client, draft.Id, cancellationToken);
-        await ApproveAllAsync(client, draft.Id, cancellationToken);
-        await PublishAsync(client, draft.Id, cancellationToken);
+        var draft = await ReadyToSubmitAsync(editor, cancellationToken);
+        await SubmitAsync(editor, draft.Id, cancellationToken);
+        await ApproveAllAsync(editor, draft.Id, cancellationToken);
+        await PublishAsync(publisher, draft.Id, cancellationToken);
         return draft;
     }
 
     /// <summary>
     /// A new course whose first version holds one PDF chapter, uploaded with the given bytes as the editor's browser
-    /// uploads it, and one question on it, submitted, approved and published by the calling editor: the version's id
-    /// and the PDF chapter's.
+    /// uploads it, and one question on it, submitted and approved by the calling editor and published by
+    /// <paramref name="publisher"/>, another editor, as four eyes requires: the version's id and the PDF chapter's.
     /// </summary>
-    public static async Task<(Guid VersionId, Guid ChapterId)> PublishedWithPdfChapterAsync(HttpClient client, byte[] bytes, CancellationToken cancellationToken)
+    public static async Task<(Guid VersionId, Guid ChapterId)> PublishedWithPdfChapterAsync(HttpClient client, HttpClient publisher, byte[] bytes, CancellationToken cancellationToken)
     {
         Ensure.That(client).IsNotNull();
+        Ensure.That(publisher).IsNotNull();
         Ensure.That(bytes).IsNotNull();
 
         Guid id;
@@ -136,7 +150,7 @@ internal static class EditorialWorkflow
 
         await SubmitAsync(client, id, cancellationToken);
         await ApproveAllAsync(client, id, cancellationToken);
-        await PublishAsync(client, id, cancellationToken);
+        await PublishAsync(publisher, id, cancellationToken);
         return (id, chapter);
     }
 

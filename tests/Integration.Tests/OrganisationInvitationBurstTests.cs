@@ -87,9 +87,9 @@ public class OrganisationInvitationBurstTests(AspireFixture aspire)
 
     /// <summary>
     /// Invites the address as an employee and answers the membership. The invitations race one another on the
-    /// pharmacy's row version and on the sender's (#265), and so do the mail consumers' commits; an invite that loses
-    /// such a race is told 409 organisation.pharmacy-changed, or already-exists when it lost the insert of the sender's
-    /// first row, and is asked again, as a manager would.
+    /// pharmacy's row version, and so do the mail consumers' commits; on the sender's row they wait for each other (#369).
+    /// An invite that loses a race on the pharmacy is told 409 organisation.pharmacy-changed and is asked again, as a
+    /// manager would.
     /// </summary>
     private static async Task<Guid> InviteAsync(HttpClient client, Guid pharmacy, string address, CancellationToken cancellationToken)
     {
@@ -108,7 +108,7 @@ public class OrganisationInvitationBurstTests(AspireFixture aspire)
 
             var code = string.IsNullOrWhiteSpace(body) ? null : JsonSerializer.Deserialize<Problem>(body, JsonSerializerOptions.Web)?.Code;
             invited.StatusCode.ShouldBe(HttpStatusCode.Conflict, $"{(int)invited.StatusCode} with body: {body}");
-            code.ShouldBeOneOf(["organisation.pharmacy-changed", "already-exists"], $"{(int)invited.StatusCode} with body: {body}");
+            code.ShouldBe("organisation.pharmacy-changed", $"{(int)invited.StatusCode} with body: {body}");
             refusals.Add(code ?? string.Empty);
         }
 

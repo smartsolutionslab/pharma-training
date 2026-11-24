@@ -69,9 +69,10 @@ public class LearningMediaTests(AspireFixture aspire)
         var cancellationToken = TestContext.Current.CancellationToken;
         var bytes = Encoding.ASCII.GetBytes($"%PDF-1.4\n% {Guid.CreateVersion7()}\n1 0 obj << /Type /Catalog >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n");
         using var editor = await aspire.CreateHostClientAsync("editor");
+        using var publisher = await aspire.CreateHostClientAsync(Publisher);
         using var learner = await aspire.CreateHostClientAsync("employee-a");
         await MemberAsync(aspire, SubjectOf(learner), cancellationToken);
-        var (versionId, chapterId) = await PublishedWithPdfChapterAsync(editor, bytes, cancellationToken);
+        var (versionId, chapterId) = await PublishedWithPdfChapterAsync(editor, publisher, bytes, cancellationToken);
 
         // Learning holds the version once its consumer took Editorial's announcement; until then the start answers 404.
         using var started = await WaitUntilAsync(() => StartAsync(learner, versionId, cancellationToken), HttpStatusCode.Created, $"POST {Sessions} for version {versionId}", cancellationToken);
