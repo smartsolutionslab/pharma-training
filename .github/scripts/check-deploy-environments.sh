@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Checks the GitHub environments deploy.yml deploys with, before the first deploy and before real data (#278, README
 # "Before the first deploy"): `staging` and `production` each deploy from the branch `main` and the tags `deploy/*` alone,
-# so a deploy.yml changed on another branch gets neither their secrets nor their Azure identity; and `production` waits
-# for reviewers, never the one who started the run. Prints each problem and exits 1 if there is one.
+# so a deploy.yml changed on another branch gets neither their secrets nor their Azure identity; neither lets an
+# administrator bypass those rules; `production` waits for reviewers, never the one who started the run; and an active tag
+# ruleset restricts creating, moving and deleting `deploy/*` tags to its bypass list, since whoever can push such a tag
+# could otherwise deploy a deploy.yml of their own. Prints each problem and exits 1 if there is one.
 #
 # Usage: bash .github/scripts/check-deploy-environments.sh <owner/repository>
 # Needs gh, signed in as someone who may read the repository's environments, and jq.
@@ -28,6 +30,10 @@ for environment in staging production; do
     continue
   fi
 
+  if [ "$(jq -r '.can_admins_bypass == false' <<<"$settings")" != true ]; then
+    problem "$environment" "administrators may bypass its rules; turn off \"Allow administrators to bypass configured protection rules\"."
+  fi
+
   custom=$(jq -r '.deployment_branch_policy.custom_branch_policies // false' <<<"$settings")
   protected=$(jq -r '.deployment_branch_policy.protected_branches // false' <<<"$settings")
   if [ "$custom" != true ] || [ "$protected" = true ]; then
@@ -50,8 +56,26 @@ for environment in staging production; do
   fi
 done
 
+# An active tag ruleset whose conditions take in every deploy/* tag and exclude none, restricting creation, update and
+# deletion. Only those listed in the rulesets (not their details) are fetched one by one.
+deploy_tags_protected=false
+for id in $(gh api "repos/$repository/rulesets" | jq -r '.[] | select(.target == "tag" and .enforcement == "active") | .id'); do
+  if gh api "repos/$repository/rulesets/$id" | jq -e '
+      (.conditions.ref_name.include // []) as $include
+      | (.conditions.ref_name.exclude // []) as $exclude
+      | ($include | any(. == "refs/tags/deploy/*" or . == "~ALL"))
+        and ($exclude | length == 0)
+        and ((["creation", "update", "deletion"] - [.rules[]?.type]) | length == 0)' >/dev/null; then
+    deploy_tags_protected=true
+  fi
+done
+
+if [ "$deploy_tags_protected" != true ]; then
+  problem "deploy/* tags" "no active tag ruleset restricts creating, moving and deleting them (Settings, Rules, Rulesets; target refs/tags/deploy/*, no exclusions); whoever can push a deploy/* tag could deploy a deploy.yml of their own."
+fi
+
 if [ "$problems" -gt 0 ]; then
   exit 1
 fi
 
-echo "Both environments deploy from main and deploy/* alone, and production waits for a reviewer other than the one who started the run."
+echo "Both environments deploy from main and deploy/* alone, without an administrator's bypass; production waits for a reviewer other than the one who started the run; and only the tag ruleset's bypass list may create, move or delete deploy/* tags."
