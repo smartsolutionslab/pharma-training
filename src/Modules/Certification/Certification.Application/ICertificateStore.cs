@@ -17,5 +17,8 @@ public interface ICertificateStore
     /// <summary>The certificate as stored, read without tracking, to answer a query; none when no certificate has the id.</summary>
     Task<Option<Certificate>> FindAsync(CertificateId id, CancellationToken cancellationToken);
 
+    /// <summary>The certificate the code names, read without tracking, if any.</summary>
+    Task<Option<Certificate>> FindByVerificationCodeAsync(VerificationCode code, CancellationToken cancellationToken);
+
     void Add(Certificate certificate);
 }

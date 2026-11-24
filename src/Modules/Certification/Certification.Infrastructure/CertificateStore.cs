@@ -24,5 +24,18 @@ public sealed class CertificateStore(CertificationDbContext context) : ICertific
             ? Option<Certificate>.Some(certificate)
             : Option<Certificate>.None;
 
+    public async Task<Option<Certificate>> FindByVerificationCodeAsync(VerificationCode code, CancellationToken cancellationToken)
+    {
+        var certificate = await context.Set<Certificate>()
+            .AsNoTracking()
+            .SingleOrDefaultAsync(candidate => candidate.VerificationCode == code, cancellationToken);
+        if (certificate is null)
+        {
+            return Option<Certificate>.None;
+        }
+
+        return Option<Certificate>.Some(certificate);
+    }
+
     public void Add(Certificate certificate) => context.Add(certificate);
 }

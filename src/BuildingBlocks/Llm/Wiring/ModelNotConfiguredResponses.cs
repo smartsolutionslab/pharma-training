@@ -7,12 +7,9 @@ namespace Microsoft.Extensions.DependencyInjection;
 
 public static partial class ModelNotConfiguredResponses
 {
-    /// <summary>The <c>code</c> of every problem a missing model answers.</summary>
-    public const string Code = "model-not-configured";
-
     /// <summary>
     /// A request that needs the model while its endpoint or key is not set answers <c>503</c> problem details with the
-    /// code <see cref="Code"/>; the rest of the application keeps working.
+    /// code of <see cref="ModelNotConfigured"/>; the rest of the application keeps working.
     /// </summary>
     public static IServiceCollection AddModelNotConfiguredResponses(this IServiceCollection services) =>
         services.AddProblemDetails()
@@ -25,6 +22,9 @@ public static partial class ModelNotConfiguredResponses
     /// </summary>
     private sealed partial class ModelNotConfiguredExceptionHandler(IProblemDetailsService problemDetails, ILogger<ModelNotConfiguredExceptionHandler> logger) : IExceptionHandler
     {
+        /// <summary>The code, title and status of every problem a missing model answers.</summary>
+        private static readonly ModelNotConfigured Refusal = new();
+
         public async ValueTask<bool> TryHandleAsync(HttpContext httpContext, Exception exception, CancellationToken cancellationToken)
         {
             Ensure.That(httpContext).IsNotNull();
@@ -36,17 +36,17 @@ public static partial class ModelNotConfiguredResponses
 
             LogNotConfigured(logger, missing.Parameter);
 
-            httpContext.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+            httpContext.Response.StatusCode = (int)Refusal.Status;
 
             await problemDetails.TryWriteAsync(new ProblemDetailsContext
             {
                 HttpContext = httpContext,
                 ProblemDetails =
                 {
-                    Status = StatusCodes.Status503ServiceUnavailable,
-                    Title = "The AI model is not configured.",
+                    Status = (int)Refusal.Status,
+                    Title = Refusal.Message,
                     Detail = "AI actions are unavailable until the application's model is configured; everything else keeps working.",
-                    Extensions = { ["code"] = Code },
+                    Extensions = { ["code"] = Refusal.Code },
                 },
             });
 

@@ -2,6 +2,7 @@ using Marten.Exceptions;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Http;
 
 namespace Microsoft.Extensions.DependencyInjection;
 
@@ -9,7 +10,7 @@ public static partial class DuplicateStreamResponses
 {
     /// <summary>
     /// A save that starts a stream another save has already started answers <c>409</c> problem details with the code
-    /// <see cref="DuplicateStreamExceptionHandler.Code"/>; every other event store failure stays a <c>500</c>.
+    /// of <see cref="AlreadyExists"/>; every other event store failure stays a <c>500</c>.
     /// </summary>
     public static IServiceCollection AddDuplicateStreamResponses(this IServiceCollection services) =>
         services.AddProblemDetails()
@@ -22,8 +23,8 @@ public static partial class DuplicateStreamResponses
     /// </summary>
     private sealed partial class DuplicateStreamExceptionHandler(IProblemDetailsService problemDetails, ILogger<DuplicateStreamExceptionHandler> logger) : IExceptionHandler
     {
-        /// <summary>The <c>code</c> of every problem a duplicate stream answers, the one a unique index's refusal answers too.</summary>
-        public const string Code = "already-exists";
+        /// <summary>The code, title and status of every problem a duplicate stream answers, the one a unique index's refusal answers too.</summary>
+        private static readonly AlreadyExists Refusal = new();
 
         /// <summary>
         /// Only a stream that had to be new: an append that loses to another on a stream that exists
@@ -40,7 +41,7 @@ public static partial class DuplicateStreamResponses
 
             LogRefused(logger);
 
-            httpContext.Response.StatusCode = StatusCodes.Status409Conflict;
+            httpContext.Response.StatusCode = (int)Refusal.Status;
 
             // Nothing from the exception reaches the caller: its message names the stream.
             await problemDetails.TryWriteAsync(new ProblemDetailsContext
@@ -48,10 +49,10 @@ public static partial class DuplicateStreamResponses
                 HttpContext = httpContext,
                 ProblemDetails =
                 {
-                    Status = StatusCodes.Status409Conflict,
-                    Title = "Something with that name or key already exists.",
+                    Status = (int)Refusal.Status,
+                    Title = Refusal.Message,
                     Detail = "Choose a different one; retrying this request unchanged is refused again.",
-                    Extensions = { ["code"] = Code },
+                    Extensions = { ["code"] = Refusal.Code },
                 },
             });
 

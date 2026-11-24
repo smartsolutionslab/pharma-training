@@ -56,3 +56,13 @@ updates:
       npm-minor-and-patch:
         update-types: [minor, patch]
 
+  # The base image of the web app's build (web/Dockerfile), which the edge's image carries.
+  - package-ecosystem: docker
+    directory: /web
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore(deps)
+    groups:
+      docker-web-minor-and-patch:
+        update-types: [minor, patch]

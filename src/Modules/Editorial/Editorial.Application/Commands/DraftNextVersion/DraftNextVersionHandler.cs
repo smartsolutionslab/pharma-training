@@ -33,7 +33,7 @@ public sealed class DraftNextVersionHandler(ICourseVersionStore versions, IEdito
         var existing = await versions.FindByNumberAsync(next.Course, next.Number, cancellationToken);
         if (existing.HasValue)
         {
-            return Failure(CourseVersionFailures.NextVersionExists(source.Id.Value, existing.Value.Value, next.Number.Value));
+            return Failure(CourseVersionFailures.NextVersionExists());
         }
 
         versions.Add(next);
@@ -44,7 +44,7 @@ public sealed class DraftNextVersionHandler(ICourseVersionStore versions, IEdito
             var concurrent = await versions.FindByNumberAsync(next.Course, next.Number, cancellationToken);
             if (concurrent.HasValue)
             {
-                return Failure(CourseVersionFailures.NextVersionExists(source.Id.Value, concurrent.Value.Value, next.Number.Value));
+                return Failure(CourseVersionFailures.NextVersionExists());
             }
 
             return Failure(CourseVersionFailures.Changed(command.Version.Value));

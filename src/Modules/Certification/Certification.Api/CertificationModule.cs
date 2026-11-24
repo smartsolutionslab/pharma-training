@@ -22,6 +22,10 @@ public sealed class CertificationModule : IModule
         // alone, without AddModuleMail's SMTP settings. The create-only blob writes come with AddModuleInfrastructure.
         services.TryAddSingleton<ICertificateRenderer, CertificatePdfRenderer>();
         services.TryAddSingleton<IFrontendLinks>(_ => new FrontendLinks(configuration));
+
+        // The per-address limit on public verification, read once here: a value the host cannot read stops it at
+        // startup (docs/adr/0029).
+        services.AddUserRateLimit(CertificationVerificationLimits.From(configuration));
     }
 
     public void MapEndpoints(IEndpointRouteBuilder endpoints) =>
