@@ -885,8 +885,12 @@ export const de = {
       'sample-not-found': 'Dieses Beispiel gibt es nicht.',
     },
     certification: {
+      'certificate-not-found': 'Diese Teilnahmebestätigung gibt es nicht, oder sie gehört nicht Ihnen.',
       'certificate-not-verifiable':
         'Zu diesem Code gibt es keine Teilnahmebestätigung. Prüfen Sie, ob Sie den vollständigen Link aus dem QR-Code geöffnet haben.',
+      'document-not-ready':
+        'Das PDF der Teilnahmebestätigung wird gerade erstellt. Versuchen Sie es gleich noch einmal.',
+      'identity-incomplete': 'Ihre Anmeldung nennt keine Person. Melden Sie sich erneut an.',
       'invalid-sample-name': 'Der Name eines Beispiels hat 1 bis {max} Zeichen und darf nicht leer sein.',
       'sample-not-found': 'Dieses Beispiel gibt es nicht.',
       'verification-limit-reached':
