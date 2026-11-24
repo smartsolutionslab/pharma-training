@@ -129,7 +129,8 @@ export function useProgressReporter(
         pending.clear();
         return false;
       }
-      if (code === 'learning.session-changed' && attempt === 1) {
+      // The session moved on, or PostgreSQL ended the report as a deadlock with another save: neither stored anything.
+      if ((code === 'learning.session-changed' || code === 'learning.concurrent-save') && attempt === 1) {
         await queryClient.invalidateQueries({ queryKey: sessionKey(id) });
         if (id === toValue(sessionId) && percent > acknowledged(chapterId)) {
           return send(chapterId, percent, keepalive, attempt + 1);
