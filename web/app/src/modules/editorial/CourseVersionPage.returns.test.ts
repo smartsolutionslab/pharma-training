@@ -20,7 +20,8 @@ import {
 // above the chapters, in every status, since the history is an audit trail and stays readable once the version is
 // published or retired. A return taken on the page shows as the history's first row without a reload: the step's
 // invalidation reads the history again, and the history goes back to its first page, where the new record is. A
-// refused return stores nothing (ADR 0013), so the history is not read again.
+// refused return stores nothing (ADR 0013); a conflict reads the history again with the version (#376), since another
+// tab may have returned it meanwhile.
 
 const notify = vi.hoisted(() => ({ success: vi.fn(), failure: vi.fn() }));
 vi.mock('@/lib/notify', () => ({ notify }));
@@ -202,10 +203,14 @@ describe('a return taken on the page', () => {
     await waitFor(() => expect(shownRows()[0]).toEqual(newReturn));
   });
 
-  test('refused, adds no row and does not read the history again', async () => {
+  // A conflict may mean another tab returned the version meanwhile (#376): the history is read again with the version,
+  // so the other return shows, and the refused one stores nothing (ADR 0013).
+  test('refused for a conflict, reads the history again and shows the return another tab took', async () => {
+    const theirs = returnRecord(3, 'Kapitel 4 fehlt.', editorSub);
     host.returns = [older];
     host.step = async () => {
-      host.version = versionOf('Published');
+      host.version = versionOf('Draft');
+      host.returns = [theirs, older];
       return refused(409, 'editorial.not-in-review');
     };
     await renderPage();
@@ -215,8 +220,26 @@ describe('a return taken on the page', () => {
     await returnWith(reason);
 
     await waitFor(() => expect(notify.failure).toHaveBeenCalledWith('Die Version ist nicht mehr in Prüfung.'));
-    // The version is read again, and shows it is published: the refusal's own invalidation has run by now.
-    await waitFor(() => expect(screen.getByText(t('glossary.courseVersionStatus.Published'))).toBeVisible());
+    await waitFor(() => expect(historyReads().length).toBeGreaterThan(readsBefore));
+    await within(history()).findByText(theirs.reason);
+    expect(shownRows().map((row) => row[2])).toEqual([theirs.reason, older.reason]);
+    expect(within(history()).queryByText(reason)).toBeNull();
+  });
+
+  // A failure that changed nothing (the edge's 5xx, the network) reads nothing again: the host may be out of reach.
+  test('failed without a refusal, adds no row and does not read the history again', async () => {
+    host.returns = [older];
+    host.step = async () => refused(503);
+    await renderPage();
+    await within(await screen.findByRole('region', { name: 'Rückgaben' })).findByText(older.reason);
+    const readsBefore = historyReads().length;
+
+    await returnWith(reason);
+
+    await waitFor(() => expect(notify.failure).toHaveBeenCalled());
+    // The dialog stays open on a failure, for another try; closed, the page is there again.
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(historyReads()).toHaveLength(readsBefore);
     expect(shownRows()).toEqual([[dateTime(older.returnedAt), 'einer anderen Person aus der Redaktion', older.reason]]);
     expect(host.returns).toEqual([older]);

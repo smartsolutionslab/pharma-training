@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Api;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application;
@@ -10,8 +11,9 @@ using Microsoft.AspNetCore.Routing;
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Api.Endpoints;
 
 /// <summary>
-/// An editor sets the test blueprint of a draft. What the caller got wrong is refused before it becomes a value
-/// object, whose factory would throw on it; the empty Guid is no version.
+/// An editor sets the test blueprint of a draft and is recorded as the one who changed it, so a caller whose token
+/// names no person is refused (403 <c>editorial.identity-incomplete</c>) before the body is checked. What the caller
+/// got wrong is refused before it becomes a value object, whose factory would throw on it; the empty Guid is no version.
 /// </summary>
 public sealed class BlueprintEndpoints : IEndpoint
 {
@@ -19,11 +21,17 @@ public sealed class BlueprintEndpoints : IEndpoint
     {
         Ensure.That(endpoints).IsNotNull();
 
-        endpoints.MapPut("/course-versions/{id:guid}/blueprint", async (Guid id, EditorialBlueprintRequest request, IDispatcher dispatcher, CancellationToken cancellationToken) =>
+        endpoints.MapPut("/course-versions/{id:guid}/blueprint", async (Guid id, EditorialBlueprintRequest request, ClaimsPrincipal user, IDispatcher dispatcher, CancellationToken cancellationToken) =>
         {
             if (id == Guid.Empty)
             {
                 return Result<Unit, ApiError>.Failure(CourseVersionFailures.NotFound(id)).ToHttpResult();
+            }
+
+            var editor = EditorialCaller.PersonOf(user);
+            if (!editor.HasValue)
+            {
+                return Result<Unit, ApiError>.Failure(CourseVersionFailures.IdentityIncomplete()).ToHttpResult();
             }
 
             var blueprint = Blueprint(request);
@@ -32,7 +40,7 @@ public sealed class BlueprintEndpoints : IEndpoint
                 return Result<Unit, ApiError>.Failure(blueprint.Error).ToHttpResult();
             }
 
-            return (await dispatcher.SendAsync(new SetTestBlueprint(CourseVersionId.From(id), blueprint.Value), cancellationToken)).ToHttpResult();
+            return (await dispatcher.SendAsync(new SetTestBlueprint(CourseVersionId.From(id), blueprint.Value, editor.Value), cancellationToken)).ToHttpResult();
         }).RequireAuthorization(EditorialPolicyNames.Edit);
     }
 

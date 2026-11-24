@@ -89,10 +89,100 @@ export async function apiFetch<T>(url: string, init: RequestInit): Promise<T> {
     headers.set('Authorization', `Bearer ${token}`);
   }
   const response = await fetch(`/api${url}`, { ...init, headers });
+  if (response.ok && isBinary(response.headers.get('Content-Type'))) {
+    return (await binaryOf(response)) as T;
+  }
   const body = await response.text();
   if (!response.ok) {
     throw new ApiError(response.status, body);
   }
 
   return (body === '' ? undefined : JSON.parse(body)) as T;
+}
+
+/** An answer neither JSON, text nor without a type: a file the host streams (ADR 0032's certificate export). */
+function isBinary(contentType: string | null): boolean {
+  if (contentType === null || contentType.trim() === '') {
+    return false;
+  }
+  const mediaType = (contentType.split(';')[0] ?? '').trim().toLowerCase();
+  return mediaType !== 'application/json' && !mediaType.endsWith('+json') && !mediaType.startsWith('text/');
+}
+
+/** The response's own Blob, wrapped in a File only to carry the name Content-Disposition gives; never a copy. */
+async function binaryOf(response: Response): Promise<Blob> {
+  const blob = await response.blob();
+  const name = fileNameOf(response.headers.get('Content-Disposition'));
+  if (name === undefined) {
+    return blob;
+  }
+  const type = response.headers.get('Content-Type') ?? blob.type;
+  return new File([blob], name, { type });
+}
+
+/** The file a Content-Disposition names: filename* (RFC 5987) first, else filename. */
+function fileNameOf(disposition: string | null): string | undefined {
+  if (disposition === null) {
+    return undefined;
+  }
+  const parameters = parametersOf(disposition);
+  const extended = parameters.get('filename*');
+  if (extended !== undefined) {
+    const encoded = /^[^']*'[^']*'(.+)$/.exec(extended)?.[1];
+    if (encoded !== undefined) {
+      try {
+        const name = decodeURIComponent(encoded.trim());
+        if (name !== '') {
+          return name;
+        }
+      } catch {
+        // A malformed filename*: fall back to filename.
+      }
+    }
+  }
+  const name = parameters.get('filename')?.trim();
+  return name === undefined || name === '' ? undefined : name;
+}
+
+/**
+ * A header's parameters after its first value, by lower-cased name: each name stands at the start of a parameter (after
+ * `;`), and a quoted value is read to its closing quote, its quoted-pairs (`\"`) unescaped (RFC 9110 5.6.4, RFC 6266).
+ */
+function parametersOf(header: string): Map<string, string> {
+  const parameters = new Map<string, string>();
+  let index = header.indexOf(';');
+  while (index !== -1 && index < header.length) {
+    index += 1;
+    const equals = header.indexOf('=', index);
+    const semicolon = header.indexOf(';', index);
+    if (equals === -1 || (semicolon !== -1 && semicolon < equals)) {
+      index = semicolon;
+      continue;
+    }
+    const name = header.slice(index, equals).trim().toLowerCase();
+    let position = equals + 1;
+    while (header.charAt(position) === ' ' || header.charAt(position) === '\t') {
+      position += 1;
+    }
+    let value = '';
+    if (header.charAt(position) === '"') {
+      position += 1;
+      while (position < header.length && header.charAt(position) !== '"') {
+        if (header.charAt(position) === '\\' && position + 1 < header.length) {
+          position += 1;
+        }
+        value += header.charAt(position);
+        position += 1;
+      }
+      index = header.indexOf(';', position);
+    } else {
+      const end = header.indexOf(';', position);
+      value = header.slice(position, end === -1 ? undefined : end).trim();
+      index = end;
+    }
+    if (name !== '' && !parameters.has(name)) {
+      parameters.set(name, value);
+    }
+  }
+  return parameters;
 }

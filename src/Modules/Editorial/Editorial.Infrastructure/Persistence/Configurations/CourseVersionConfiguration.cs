@@ -22,6 +22,8 @@ public sealed class CourseVersionConfiguration : IEntityTypeConfiguration<Course
         builder.Property(version => version.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(EnumLength).IsRequired();
         builder.Property(version => version.CreatedBy).HasColumnName("created_by").IsRequired();
         builder.Property(version => version.SubmittedBy).HasColumnName("submitted_by");
+        builder.Property(version => version.BlueprintChangedBy).HasColumnName("blueprint_changed_by");
+        builder.Property(version => version.FirstApprovedAt).HasColumnName("first_approved_at");
         builder.Property(version => version.PublishedBy).HasColumnName("published_by");
         builder.Property(version => version.PublishedAt).HasColumnName("published_at");
         builder.Property(version => version.ReturnedBy).HasColumnName("returned_by");

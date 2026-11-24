@@ -100,6 +100,16 @@ test('a manager who may assign courses is offered the way to assign one', async 
   await waitFor(() => expect(assignLink()).toHaveAttribute('href', '/compliance/assign'));
 });
 
+// The certificate export (#297): the matrix is the page a manager has open when an inspection asks for records. Its
+// audience is the export's, so the link needs no gating of its own; the export's handler decides (ADR 0003).
+test('the header offers the way to export the records', async () => {
+  await renderMatrixPage();
+
+  await screen.findByText(intro());
+  const exportLink = screen.getByRole('link', { name: 'Nachweise exportieren' });
+  expect(exportLink).toHaveAttribute('href', '/certification/export');
+});
+
 // Hiding only (ADR 0003): the wizard asks the host itself.
 test('a manager who may not assign courses is not offered the way to assign one, but sees the matrix', async () => {
   host.memberships = [membersOnly];

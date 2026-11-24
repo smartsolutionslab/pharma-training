@@ -20,7 +20,7 @@ public class QuestionOriginTests
         var copied = next.Questions.ShouldHaveSingleItem().Id;
         var handWritten = next.AddQuestion(QuestionId.New(), MultipleChoice(chapter), AnswerOptionId.New).Value;
         var earlierAi = next.ApplyAiTestDraft([SingleChoice(chapter)], QuestionId.New, AnswerOptionId.New).Value.ShouldHaveSingleItem();
-        next.SetBlueprint(new TestBlueprint(QuestionCount.From(4), ScorePercent.From(90), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
+        next.SetBlueprint(new TestBlueprint(QuestionCount.From(4), ScorePercent.From(90), RecurrenceInterval.Yearly), Author).IsSuccess.ShouldBeTrue();
         next.Questions.ShouldAllBe(question => question.Review == ReviewState.Unreviewed);
         var keptBefore = Contents(next, copied, handWritten);
 
@@ -76,7 +76,7 @@ public class QuestionOriginTests
             .DraftNext(CourseVersionId.New(), Author, ChapterId.New, QuestionId.New, AnswerOptionId.New).Value;
         var chapter = next.Chapters.ShouldHaveSingleItem().Id;
         List<QuestionId> copied = [.. next.Questions.Select(question => question.Id)];
-        next.SetBlueprint(new TestBlueprint(QuestionCount.From(3), ScorePercent.From(80), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
+        next.SetBlueprint(new TestBlueprint(QuestionCount.From(3), ScorePercent.From(80), RecurrenceInterval.Yearly), Author).IsSuccess.ShouldBeTrue();
 
         var applied = next.ApplyAiTestDraft([SingleChoice(chapter)], QuestionId.New, AnswerOptionId.New);
 
@@ -106,7 +106,7 @@ public class QuestionOriginTests
     {
         var version = DraftWithChapter(out var chapter);
         var drafted = version.ApplyAiTestDraft([SingleChoice(chapter)], QuestionId.New, AnswerOptionId.New).Value.ShouldHaveSingleItem();
-        version.EditQuestion(drafted, MultipleChoice(chapter), AnswerOptionId.New).IsSuccess.ShouldBeTrue();
+        version.EditQuestion(drafted, MultipleChoice(chapter), Author, AnswerOptionId.New).IsSuccess.ShouldBeTrue();
         var edited = version.Questions.ShouldHaveSingleItem();
         edited.Origin.ShouldBe(QuestionOrigin.AiDraft);
         edited.EditHistory.ShouldBe(EditHistory.Edited);
@@ -128,7 +128,7 @@ public class QuestionOriginTests
         var version = DraftWithChapter(out var chapter);
         var drafted = version.ApplyAiTestDraft([SingleChoice(chapter)], QuestionId.New, AnswerOptionId.New).Value.ShouldHaveSingleItem();
         version.ApproveQuestion(drafted, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
-        version.SetBlueprint(new TestBlueprint(QuestionCount.From(3), ScorePercent.From(90), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(new TestBlueprint(QuestionCount.From(3), ScorePercent.From(90), RecurrenceInterval.Yearly), Author).IsSuccess.ShouldBeTrue();
         var reset = version.Questions.ShouldHaveSingleItem();
         reset.Review.ShouldBe(ReviewState.Unreviewed);
         reset.ApprovalHistory.ShouldBe(ApprovalHistory.ApprovedOnce);
@@ -145,7 +145,7 @@ public class QuestionOriginTests
         var version = DraftWithChapter(out var chapter);
         var drafted = version.ApplyAiTestDraft([SingleChoice(chapter)], QuestionId.New, AnswerOptionId.New).Value.ShouldHaveSingleItem();
         version.ApproveQuestion(drafted, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
-        version.ReplaceChapter(TextChapter(chapter, "Geändert")).IsSuccess.ShouldBeTrue();
+        version.ReplaceChapter(TextChapter(chapter, "Geändert"), Author).IsSuccess.ShouldBeTrue();
         version.Questions.ShouldHaveSingleItem().Review.ShouldBe(ReviewState.Unreviewed);
 
         var applied = version.ApplyAiTestDraft([MultipleChoice(chapter)], QuestionId.New, AnswerOptionId.New);
@@ -186,7 +186,7 @@ public class QuestionOriginTests
         var drafted = version.ApplyAiTestDraft([SingleChoice(chapter)], QuestionId.New, AnswerOptionId.New).Value.ShouldHaveSingleItem();
         version.ApproveQuestion(drafted, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
 
-        version.EditQuestion(drafted, MultipleChoice(chapter), AnswerOptionId.New).IsSuccess.ShouldBeTrue();
+        version.EditQuestion(drafted, MultipleChoice(chapter), Author, AnswerOptionId.New).IsSuccess.ShouldBeTrue();
 
         var question = version.Questions.ShouldHaveSingleItem();
         question.Review.ShouldBe(ReviewState.Unreviewed);
@@ -199,9 +199,9 @@ public class QuestionOriginTests
     public void Drafting_the_next_version_keeps_each_question_s_edit_and_approval_history()
     {
         var version = DraftWithChapter(out var chapter);
-        version.SetBlueprint(new TestBlueprint(QuestionCount.From(2), ScorePercent.From(80), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(new TestBlueprint(QuestionCount.From(2), ScorePercent.From(80), RecurrenceInterval.Yearly), Author).IsSuccess.ShouldBeTrue();
         List<QuestionId> drafted = [.. version.ApplyAiTestDraft([SingleChoice(chapter), SingleChoice(chapter)], QuestionId.New, AnswerOptionId.New).Value];
-        version.EditQuestion(drafted[0], SingleChoice(chapter), AnswerOptionId.New).IsSuccess.ShouldBeTrue();
+        version.EditQuestion(drafted[0], SingleChoice(chapter), Author, AnswerOptionId.New).IsSuccess.ShouldBeTrue();
         drafted.ForEach(id => version.ApproveQuestion(id, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue());
         version.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
         version.Publish(Reviewer, ReviewPolicy.FourEyes, Now).IsSuccess.ShouldBeTrue();
@@ -233,7 +233,7 @@ public class QuestionOriginTests
     private static CourseVersion PublishedWithAHandWrittenAndAnAiDraftedQuestion()
     {
         var version = DraftWithChapter(out var chapter);
-        version.SetBlueprint(new TestBlueprint(QuestionCount.From(2), ScorePercent.From(80), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(new TestBlueprint(QuestionCount.From(2), ScorePercent.From(80), RecurrenceInterval.Yearly), Author).IsSuccess.ShouldBeTrue();
         var handWritten = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
         version.ApproveQuestion(handWritten, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
         var drafted = version.ApplyAiTestDraft([MultipleChoice(chapter)], QuestionId.New, AnswerOptionId.New).Value.ShouldHaveSingleItem();

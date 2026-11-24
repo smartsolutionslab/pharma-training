@@ -109,6 +109,33 @@ public class PublishCourseVersionTests
         store.Published.ShouldBeEmpty();
     }
 
+    /// <summary>
+    /// The owner's decision of 2026-11-23 (#246): under four eyes the editor who last changed the test blueprint does not
+    /// publish; forbidden as the submitter, and nothing is saved, announced, signed or superseded.
+    /// </summary>
+    [Fact]
+    public async Task With_four_eyes_on_the_editor_who_last_changed_the_blueprint_cannot_publish()
+    {
+        var first = Published();
+        var next = first.DraftNext(CourseVersionId.New(), Author, ChapterId.New, QuestionId.New, AnswerOptionId.New).Value;
+        next.SetBlueprint(new TestBlueprint(QuestionCount.From(1), ScorePercent.From(81), RecurrenceInterval.Yearly), Approver).IsSuccess.ShouldBeTrue();
+        next.ApproveQuestion(next.Questions.ShouldHaveSingleItem().Id, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
+        next.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
+        store.Stored.AddRange([first, next]);
+
+        var published = await Handler(new ReviewSettings(ReviewPolicy.FourEyes)).HandleAsync(new PublishCourseVersion(next.Id, Approver), TestContext.Current.CancellationToken);
+
+        published.IsFailure.ShouldBeTrue("the editor who last changed the test blueprint published the version under four eyes");
+        published.Error.Code.ShouldBe("editorial.four-eyes");
+        published.Error.Status.ShouldBe(HttpStatusCode.Forbidden);
+        next.Status.ShouldBe(CourseVersionStatus.InReview);
+        next.PublishedBy.ShouldBeNull();
+        first.Status.ShouldBe(CourseVersionStatus.Published);
+        store.Commits.ShouldBe(0);
+        store.Published.ShouldBeEmpty();
+        urls.Reads.ShouldBeEmpty();
+    }
+
     [Fact]
     public async Task With_four_eyes_on_another_editor_publishes()
     {
@@ -143,7 +170,7 @@ public class PublishCourseVersionTests
         var first = Published();
         var next = first.DraftNext(CourseVersionId.New(), Author, ChapterId.New, QuestionId.New, AnswerOptionId.New).Value;
         var chapter = next.Chapters.ShouldHaveSingleItem().Id;
-        next.ReplaceChapter(TextChapter(chapter, "Händehygiene", "Neu: vor und nach …")).IsSuccess.ShouldBeTrue();
+        next.ReplaceChapter(TextChapter(chapter, "Händehygiene", "Neu: vor und nach …"), Author).IsSuccess.ShouldBeTrue();
         next.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
         store.Stored.AddRange([first, next]);
 
@@ -356,7 +383,7 @@ public class PublishCourseVersionTests
         video = ChapterId.New();
         version.AddChapter(Chapter.OfPdf(pdf, ChapterTitle.From("Merkblatt"), BlobReference.From(PdfFile(version)), PdfTextExtraction.NoText, null)).IsSuccess.ShouldBeTrue();
         version.AddChapter(Chapter.OfVideo(video, ChapterTitle.From("Praxis"), BlobReference.From(VideoFile(version)), VideoDuration.From(754))).IsSuccess.ShouldBeTrue();
-        version.SetBlueprint(new TestBlueprint(QuestionCount.From(1), ScorePercent.From(80), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(new TestBlueprint(QuestionCount.From(1), ScorePercent.From(80), RecurrenceInterval.Yearly), Author).IsSuccess.ShouldBeTrue();
         var question = version.AddQuestion(QuestionId.New(), SingleChoice(text), AnswerOptionId.New).Value;
         version.ApproveQuestion(question, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
         version.SubmitForReview(Author).IsSuccess.ShouldBeTrue();

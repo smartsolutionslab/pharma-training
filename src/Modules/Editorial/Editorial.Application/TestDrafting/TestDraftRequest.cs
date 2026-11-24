@@ -19,7 +19,10 @@ public sealed record TestDraftRequest(
     IReadOnlyList<ChapterId> LeftOutChapters,
     IReadOnlyList<ChapterId> TruncatedChapters)
 {
-    /// <summary>The most characters of chapter titles and texts one request sends, about 100k tokens.</summary>
+    /// <summary>
+    /// The most characters of chapter titles and texts one request sends, about 100k tokens, counted before JSON escaping,
+    /// which can lengthen them, so the message itself can be longer.
+    /// </summary>
     public const int MaxCharacters = 400_000;
 
     public static Result<TestDraftRequest, ApiError> For(CourseVersion version)

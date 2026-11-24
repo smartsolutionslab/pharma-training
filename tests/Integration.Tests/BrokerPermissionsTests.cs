@@ -339,7 +339,8 @@ public class BrokerPermissionsTests(AspireFixture aspire)
     private async Task TestDefinitionExchangeExistsAsync(CancellationToken cancellationToken)
     {
         using var editor = await aspire.CreateHostClientAsync("editor");
-        await EditorialWorkflow.PublishedAsync(editor, cancellationToken);
+        using var publisher = await aspire.CreateHostClientAsync(EditorialWorkflow.Publisher);
+        await EditorialWorkflow.PublishedAsync(editor, publisher, cancellationToken);
         await using var admin = await Broker.ConnectAsync(aspire, cancellationToken);
         await Broker.WaitForExchangeAsync(admin, TestDefinitionPublished, cancellationToken);
     }

@@ -1,8 +1,10 @@
+using System.Data.Common;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Testing;
 using Npgsql;
@@ -46,8 +48,9 @@ public class EditorialRepublishTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await aspire.CreateHostClientAsync("editor");
-        var first = await PublishedAsync(client, cancellationToken);
-        var second = await SupersedeAsync(client, first.Id, cancellationToken);
+        using var publisher = await aspire.CreateHostClientAsync(Publisher);
+        var first = await PublishedAsync(client, publisher, cancellationToken);
+        var second = await SupersedeAsync(client, publisher, first.Id, cancellationToken);
         await RetireAsync(client, first.Id, cancellationToken);
 
         await using var connection = await Broker.ConnectAsync(aspire, cancellationToken);
@@ -84,7 +87,7 @@ public class EditorialRepublishTests(AspireFixture aspire)
         QuestionIdsOf(secondTest).ShouldBe(second.Questions);
 
         // A version retired after the republish is a marker: its retirement reaches the queue after every republished one.
-        var marker = await PublishedAsync(client, cancellationToken);
+        var marker = await PublishedAsync(client, publisher, cancellationToken);
         await RetireAsync(client, marker.Id, cancellationToken);
         var retirements = await Broker.ReceiveUntilAsync<JsonElement>(channel, retiredQueue, received => VersionOf(received) == marker.Id, cancellationToken);
         retirements.Where(received => VersionOf(received) == first.Id).ShouldHaveSingleItem().GetProperty("courseId").GetGuid().ShouldBe(first.CourseId);
@@ -100,17 +103,18 @@ public class EditorialRepublishTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await aspire.CreateHostClientAsync("editor");
+        using var publisher = await aspire.CreateHostClientAsync(Publisher);
         await using var connection = await Broker.ConnectAsync(aspire, cancellationToken);
         await using var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
 
         // A version published first, so Editorial has sent a test definition and Wolverine has declared its exchange.
-        await PublishedAsync(client, cancellationToken);
+        await PublishedAsync(client, publisher, cancellationToken);
         await Broker.WaitForExchangeAsync(connection, CourseVersionPublishedExchange, cancellationToken);
         await Broker.WaitForExchangeAsync(connection, TestDefinitionPublishedExchange, cancellationToken);
         var originalCourseQueue = await Broker.BindQueueAsync(channel, CourseVersionPublishedExchange, cancellationToken);
         var originalTestQueue = await Broker.BindQueueAsync(channel, TestDefinitionPublishedExchange, cancellationToken);
 
-        var published = await PublishedAsync(client, cancellationToken);
+        var published = await PublishedAsync(client, publisher, cancellationToken);
         var originalCourse = await Broker.ReceiveAsync<JsonElement>(channel, originalCourseQueue, received => VersionOf(received) == published.Id, cancellationToken);
         var originalTest = await Broker.ReceiveAsync<JsonElement>(channel, originalTestQueue, received => VersionOf(received) == published.Id, cancellationToken);
         var republishedCourseQueue = await Broker.BindQueueAsync(channel, CourseVersionPublishedExchange, cancellationToken);
@@ -134,7 +138,8 @@ public class EditorialRepublishTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await aspire.CreateHostClientAsync("editor");
-        var published = await PublishedAsync(client, cancellationToken);
+        using var publisher = await aspire.CreateHostClientAsync(Publisher);
+        var published = await PublishedAsync(client, publisher, cancellationToken);
         await RetireAsync(client, published.Id, cancellationToken);
 
         await RepublishAsync(client, cancellationToken);
@@ -229,6 +234,76 @@ public class EditorialRepublishTests(AspireFixture aspire)
         logger.Collector.GetSnapshot().ShouldHaveSingleItem().Level.ShouldBe(LogLevel.Warning);
     }
 
+    /// <summary>
+    /// A run that leaves its context's connection open (#357's review): closing the lock's hold of it leaves it open,
+    /// so the context still points at the run's own session and is not pointed back at the pool, which would throw on an
+    /// open connection. Disposing the lock unlocks on that session and throws nothing; disposing the context ends it.
+    /// </summary>
+    [Fact]
+    public async Task A_run_that_leaves_its_connection_open_releases_the_lock_without_throwing()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var connectionString = await EditorialDatabase.ConnectionStringAsync(aspire, cancellationToken);
+        var options = new DbContextOptionsBuilder<EditorialDbContext>().UseNpgsql(connectionString).Options;
+        var logger = new FakeLogger<EditorialRepublishLock>();
+        Exception? released = null;
+        await using (var context = new EditorialDbContext(options, NoServices.Instance))
+        {
+            var taken = await new EditorialRepublishLock(context, logger).TryTakeAsync(cancellationToken);
+            taken.HasValue.ShouldBeTrue("no other run may hold the republish's lock while this test takes it");
+            await context.Database.OpenConnectionAsync(cancellationToken);
+            try
+            {
+                await taken.Value.DisposeAsync();
+            }
+            catch (InvalidOperationException exception)
+            {
+                released = exception;
+            }
+
+            await EditorialDatabase.WaitUntilRepublishLockIsFreeAsync(connectionString, cancellationToken);
+        }
+
+        released.ShouldBeNull("a connection the run left open stays on its session, never repointed while open");
+        logger.Collector.GetSnapshot().ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// A release that fails with something other than a database error (#357's review), here a timeout of the unlock's
+    /// command, is logged as a warning and never thrown out of the run's dispose, as a failed release is: closing the
+    /// session, which follows, frees the lock.
+    /// </summary>
+    [Fact]
+    public async Task A_run_whose_unlock_times_out_logs_it_and_leaves_the_lock_free()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var connectionString = await EditorialDatabase.ConnectionStringAsync(aspire, cancellationToken);
+        var options = new DbContextOptionsBuilder<EditorialDbContext>()
+            .UseNpgsql(connectionString)
+            .AddInterceptors(new UnlockTimesOut())
+            .Options;
+        await using var context = new EditorialDbContext(options, NoServices.Instance);
+        var logger = new FakeLogger<EditorialRepublishLock>();
+
+        var taken = await new EditorialRepublishLock(context, logger).TryTakeAsync(cancellationToken);
+        taken.HasValue.ShouldBeTrue("no other run may hold the republish's lock while this test takes it");
+        Exception? released = null;
+        try
+        {
+            await taken.Value.DisposeAsync();
+        }
+        catch (TimeoutException exception)
+        {
+            released = exception;
+        }
+
+        await EditorialDatabase.WaitUntilRepublishLockIsFreeAsync(connectionString, cancellationToken);
+        released.ShouldBeNull("a failed release is logged, never thrown out of the run's dispose");
+        var logged = logger.Collector.GetSnapshot().ShouldHaveSingleItem();
+        logged.Level.ShouldBe(LogLevel.Warning);
+        logged.Exception.ShouldBeOfType<TimeoutException>();
+    }
+
     private static async Task<RepublishedCounts> RepublishAsync(HttpClient client, CancellationToken cancellationToken)
     {
         using var response = await client.PostAsync(Republish, null, cancellationToken);
@@ -248,7 +323,7 @@ public class EditorialRepublishTests(AspireFixture aspire)
     /// Drafts, changes and publishes the next version of a published one, which supersedes it. Its chapter is rewritten,
     /// which sends its question back for approval, so the editor approves it again before publishing.
     /// </summary>
-    private static async Task<NextVersion> SupersedeAsync(HttpClient client, Guid id, CancellationToken cancellationToken)
+    private static async Task<NextVersion> SupersedeAsync(HttpClient client, HttpClient publisher, Guid id, CancellationToken cancellationToken)
     {
         var nextId = await DraftNextAsync(client, id, cancellationToken);
         var drafted = await ContentAsync(client, nextId, cancellationToken);
@@ -260,7 +335,7 @@ public class EditorialRepublishTests(AspireFixture aspire)
 
         await SubmitAsync(client, nextId, cancellationToken);
         await ApproveAllAsync(client, nextId, cancellationToken);
-        await PublishAsync(client, nextId, cancellationToken);
+        await PublishAsync(publisher, nextId, cancellationToken);
         return await ContentAsync(client, nextId, cancellationToken);
     }
 
@@ -319,4 +394,22 @@ public class EditorialRepublishTests(AspireFixture aspire)
     private sealed record RepublishedCounts(int CourseVersions, int TestDefinitions, int Retirements);
 
     private sealed record NextVersion(Guid Id, IReadOnlyList<Guid> Chapters, IReadOnlyList<Guid> Questions);
+
+    /// <summary>Fails the unlock's command with a timeout, as a server that does not answer in time would.</summary>
+    private sealed class UnlockTimesOut : DbCommandInterceptor
+    {
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
+            DbCommand command,
+            CommandEventData eventData,
+            InterceptionResult<DbDataReader> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (command.CommandText.Contains("pg_advisory_unlock", StringComparison.Ordinal))
+            {
+                throw new TimeoutException("The unlock's command timed out.");
+            }
+
+            return base.ReaderExecutingAsync(command, eventData, result, cancellationToken);
+        }
+    }
 }

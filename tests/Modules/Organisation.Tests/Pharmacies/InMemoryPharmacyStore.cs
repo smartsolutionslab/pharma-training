@@ -42,15 +42,26 @@ internal sealed class InMemoryPharmacyStore : IPharmacyStore, IInvitationRecipie
 
     public void Add(InvitationRecipient recipient) => addedRecipients.Add(recipient);
 
-    public void Add(InvitationSender sender) => addedSenders.Add(sender);
-
     /// <summary>The stored recipient itself, so what a command changes on it is what the next read finds once committed.</summary>
     public Task<Option<InvitationRecipient>> LoadAsync(InvitationRecipientId id, CancellationToken cancellationToken) =>
         Task.FromResult(StoredRecipients.SingleOrDefault(recipient => recipient.Id == id) is { } recipient ? Option<InvitationRecipient>.Some(recipient) : Option<InvitationRecipient>.None);
 
-    /// <summary>The stored sender itself, so what a command changes on it is what the next read finds once committed.</summary>
-    public Task<Option<InvitationSender>> LoadAsync(PersonId id, CancellationToken cancellationToken) =>
-        Task.FromResult(StoredSenders.SingleOrDefault(sender => sender.Id == id) is { } sender ? Option<InvitationSender>.Some(sender) : Option<InvitationSender>.None);
+    /// <summary>
+    /// The stored sender itself, so what a command changes on it is what the next read finds once committed; a sender
+    /// with none gets a new one, <see cref="InvitationSender.NotYetMailed"/>, stored only once committed, as the database's
+    /// row inserted in the command's transaction is.
+    /// </summary>
+    public Task<InvitationSender> LoadForMailAsync(PersonId id, Timestamp now, CancellationToken cancellationToken)
+    {
+        if ((StoredSenders.SingleOrDefault(sender => sender.Id == id) ?? addedSenders.SingleOrDefault(sender => sender.Id == id)) is { } known)
+        {
+            return Task.FromResult(known);
+        }
+
+        var created = InvitationSender.NotYetMailed(id, now);
+        addedSenders.Add(created);
+        return Task.FromResult(created);
+    }
 
     public Task<Option<Pharmacy>> FindAsync(PharmacyId id, CancellationToken cancellationToken)
     {

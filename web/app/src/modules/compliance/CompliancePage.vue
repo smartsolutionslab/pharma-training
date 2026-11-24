@@ -128,9 +128,15 @@ function openPerson(personId: string, opener: HTMLElement) {
           {{ t('compliance.matrix.intro', { pharmacy: current.name }) }}
         </p>
       </div>
-      <Button v-if="current?.canAssignCourses" as-child>
-        <RouterLink to="/compliance/assign">{{ t('modules.compliance.pages.assign.title') }}</RouterLink>
-      </Button>
+      <div class="flex flex-wrap gap-2">
+        <!-- The records an inspection asks for (#297): the export's audience is the matrix's, its handler decides. -->
+        <Button variant="outline" as-child>
+          <RouterLink to="/certification/export">{{ t('modules.certification.pages.export.title') }}</RouterLink>
+        </Button>
+        <Button v-if="current?.canAssignCourses" as-child>
+          <RouterLink to="/compliance/assign">{{ t('modules.compliance.pages.assign.title') }}</RouterLink>
+        </Button>
+      </div>
     </div>
     <p v-if="failureText !== undefined" role="alert" class="text-body text-destructive">
       {{ failureText }}

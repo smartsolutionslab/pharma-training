@@ -86,7 +86,7 @@ public class PdfChapterTextTests
         var chapter = ChapterId.New();
         version.AddChapter(Chapter.OfPdf(chapter, ChapterTitle.From("Merkblatt"), BlobReference.From("course-versions/a/merkblatt.pdf"), PdfTextExtraction.Complete, Extracted)).IsSuccess.ShouldBeTrue();
 
-        version.ReplaceChapter(TextChapter(chapter, "Merkblatt", "Jetzt als Text.")).IsSuccess.ShouldBeTrue();
+        version.ReplaceChapter(TextChapter(chapter, "Merkblatt", "Jetzt als Text."), Author).IsSuccess.ShouldBeTrue();
 
         var replaced = version.Chapters.ShouldHaveSingleItem();
         replaced.Kind.ShouldBe(ChapterKind.Text);
@@ -102,7 +102,7 @@ public class PdfChapterTextTests
         var chapter = ChapterId.New();
         version.AddChapter(Chapter.OfPdf(chapter, ChapterTitle.From("Merkblatt"), BlobReference.From("course-versions/a/merkblatt.pdf"), PdfTextExtraction.Truncated, Extracted)).IsSuccess.ShouldBeTrue();
 
-        version.ReplaceChapter(Chapter.OfVideo(chapter, ChapterTitle.From("Vorführung"), BlobReference.From("course-versions/a/demo.mp4"), VideoDuration.From(90))).IsSuccess.ShouldBeTrue();
+        version.ReplaceChapter(Chapter.OfVideo(chapter, ChapterTitle.From("Vorführung"), BlobReference.From("course-versions/a/demo.mp4"), VideoDuration.From(90)), Author).IsSuccess.ShouldBeTrue();
 
         var replaced = version.Chapters.ShouldHaveSingleItem();
         replaced.Extraction.ShouldBeNull();
@@ -116,7 +116,7 @@ public class PdfChapterTextTests
         var chapter = ChapterId.New();
         version.AddChapter(Chapter.OfPdf(chapter, ChapterTitle.From("Merkblatt"), BlobReference.From("course-versions/a/merkblatt.pdf"), PdfTextExtraction.Complete, Extracted)).IsSuccess.ShouldBeTrue();
 
-        version.ReplaceChapter(Chapter.OfPdf(chapter, ChapterTitle.From("Scan"), BlobReference.From("course-versions/a/scan.pdf"), PdfTextExtraction.NoText, null)).IsSuccess.ShouldBeTrue();
+        version.ReplaceChapter(Chapter.OfPdf(chapter, ChapterTitle.From("Scan"), BlobReference.From("course-versions/a/scan.pdf"), PdfTextExtraction.NoText, null), Author).IsSuccess.ShouldBeTrue();
 
         var replaced = version.Chapters.ShouldHaveSingleItem();
         replaced.Extraction.ShouldBe(PdfTextExtraction.NoText);
@@ -127,7 +127,7 @@ public class PdfChapterTextTests
     {
         var version = DraftWithChapter(out var chapter);
         version.AddChapter(Chapter.OfPdf(ChapterId.New(), ChapterTitle.From("Merkblatt"), BlobReference.From("course-versions/a/merkblatt.pdf"), extraction, text)).IsSuccess.ShouldBeTrue();
-        version.SetBlueprint(new TestBlueprint(QuestionCount.From(1), ScorePercent.From(80), RecurrenceInterval.Yearly)).IsSuccess.ShouldBeTrue();
+        version.SetBlueprint(new TestBlueprint(QuestionCount.From(1), ScorePercent.From(80), RecurrenceInterval.Yearly), Author).IsSuccess.ShouldBeTrue();
         var question = version.AddQuestion(QuestionId.New(), SingleChoice(chapter), AnswerOptionId.New).Value;
         version.ApproveQuestion(question, Author, AuthorsName, Now).IsSuccess.ShouldBeTrue();
         version.SubmitForReview(Author).IsSuccess.ShouldBeTrue();
