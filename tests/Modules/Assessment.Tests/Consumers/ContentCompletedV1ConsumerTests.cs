@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Extensions.Time.Testing;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.EventSourcing;
 using SmartSolutionsLab.PharmaTraining.Contracts;
@@ -18,6 +20,7 @@ public class ContentCompletedV1ConsumerTests
     private readonly InMemoryAssessmentAggregateStore examinations = new();
     private readonly InMemoryHandledContentCompletions handled = new();
     private readonly FakeTimeProvider time = new(Start);
+    private readonly FakeLogger<ContentCompletedV1Consumer> logger = new();
 
     [Fact]
     public async Task The_first_completion_of_a_session_opens_its_examination_unlocked()
@@ -161,6 +164,73 @@ public class ContentCompletedV1ConsumerTests
     }
 
     [Theory]
+    [InlineData(-60)]
+    [InlineData(0)]
+    public async Task A_completion_not_after_the_exhaustion_logs_one_warning_naming_the_examination_the_event_and_the_session(int minutesFromExhaustion)
+    {
+        var completed = Completed();
+        await HandleAsync(completed);
+        time.Advance(TimeSpan.FromHours(1));
+        await ExhaustAsync(completed);
+        var stale = completed with { Metadata = new EventMetadata(Guid.CreateVersion7(), Start.AddHours(1).AddMinutes(minutesFromExhaustion)) };
+
+        await HandleAsync(stale);
+
+        // If clock skew ever strands a learner after an exhaustion, it shows in the logs (docs/adr/0012): ids only.
+        var warning = logger.Collector.GetSnapshot().Where(record => record.Level >= LogLevel.Warning).ShouldHaveSingleItem();
+        warning.Level.ShouldBe(LogLevel.Warning);
+        warning.GetStructuredStateValue("Examination").ShouldBe(ExaminationId.For(LearningSessionId.From(completed.SessionId)).Value.ToString());
+        warning.GetStructuredStateValue("EventIdentifier").ShouldBe(stale.Metadata.EventIdentifier.ToString());
+        warning.GetStructuredStateValue("Session").ShouldBe(completed.SessionId.ToString());
+        warning.Message.ShouldNotContain(completed.PersonId.ToString(), Case.Insensitive);
+        (await LoadAsync(completed)).Status.ShouldBe(ExaminationStatus.Exhausted);
+    }
+
+    [Fact]
+    public async Task A_completion_that_opens_or_unlocks_the_examination_logs_no_warning()
+    {
+        var completed = Completed();
+        await HandleAsync(completed);
+        await ExhaustAsync(completed);
+        time.Advance(TimeSpan.FromDays(2));
+
+        await HandleAsync(Again(completed));
+
+        (await LoadAsync(completed)).Status.ShouldBe(ExaminationStatus.Unlocked);
+        logger.Collector.GetSnapshot().ShouldNotContain(record => record.Level >= LogLevel.Warning);
+    }
+
+    [Fact]
+    public async Task An_old_completion_for_an_examination_unlocked_since_its_exhaustion_logs_no_warning()
+    {
+        var completed = Completed();
+        await HandleAsync(completed);
+        time.Advance(TimeSpan.FromHours(1));
+        await ExhaustAsync(completed);
+        time.Advance(TimeSpan.FromHours(1));
+        await HandleAsync(Again(completed));
+
+        // Older than the exhaustion, but nobody is stranded: the examination is unlocked already.
+        await HandleAsync(completed with { Metadata = new EventMetadata(Guid.CreateVersion7(), Start) });
+
+        (await LoadAsync(completed)).Status.ShouldBe(ExaminationStatus.Unlocked);
+        logger.Collector.GetSnapshot().ShouldNotContain(record => record.Level >= LogLevel.Warning);
+    }
+
+    [Fact]
+    public async Task A_redelivery_after_the_exhaustion_logs_no_warning()
+    {
+        var completed = Completed();
+        await HandleAsync(completed);
+        await ExhaustAsync(completed);
+
+        // Its marker stops it before anything is loaded: it is a duplicate, not a completion refused for its age.
+        await HandleAsync(completed);
+
+        logger.Collector.GetSnapshot().ShouldNotContain(record => record.Level >= LogLevel.Warning);
+    }
+
+    [Theory]
     [InlineData("another learner")]
     [InlineData("another course")]
     [InlineData("another version")]
@@ -267,7 +337,7 @@ public class ContentCompletedV1ConsumerTests
             AttemptNumber.From(3));
 
     private Task HandleAsync(ContentCompletedV1 completed) =>
-        new ContentCompletedV1Consumer(examinations, handled, handled, time).HandleAsync(completed, TestContext.Current.CancellationToken);
+        new ContentCompletedV1Consumer(examinations, handled, handled, time, logger).HandleAsync(completed, TestContext.Current.CancellationToken);
 
     private async Task DeliverIgnoringRefusalAsync(ContentCompletedV1 completed)
     {
