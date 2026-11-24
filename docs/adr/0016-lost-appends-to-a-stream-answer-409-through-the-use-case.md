@@ -1,6 +1,6 @@
 # 0016: Lost appends to a stream answer 409 through the use case
 
-**Status:** Accepted (#40)
+**Status:** Accepted (#40); amended for #277: a sweep announces a stored completion or pass whose announcement never left.
 
 ## Context
 
@@ -19,11 +19,31 @@
 - **Learning opts in for progress reports.** `ReportProgressHandler` maps `false` to `learning.session-changed` (`LearningSessionFailures.Changed`, `409`) and publishes nothing. The server does not retry; the client reports again, which is always safe because a report at or below the stored progress stores nothing.
 - **No exception handler maps the race**, as in ADR 0002.
 
+## Decision (#277): a lost announcement is announced again
+
+- **The marker.** Each module that announces a stored event records it in `announced_events` (`stream_id`, `stream_version`, `announced_at`; primary key on the first two), in the same outbox commit as the announcement. `stream_version` is Marten's version of the event in its stream, counted from 1: the aggregate's version before the save plus the event's place among the pending events. Learning records each `ContentCompleted` it announces as `ContentCompletedV1` (`ReportProgressHandler`), Assessment each `ExaminationPassed` it announces as `TestPassedV1` (`SubmitAttemptHandler`). A marker exists exactly when the envelope committed, and a committed envelope is delivered by Wolverine's outbox.
+- **The sweep.** Every `Interval`, each service sends its module's sweep command (`ReannounceContentCompletions`, `ReannounceTestPasses`) through a `PeriodicCommandService` (`src/BuildingBlocks/Messaging/`). A pass announces every stored `ContentCompleted` (`ExaminationPassed`) stored between `Lookback` and `GracePeriod` ago that has no marker, oldest first and at most `BatchSize` a pass, with the handler's own mapping, records the marker in the same commit, one commit per event, and logs a Warning naming the stream and version. The settings are read once at startup from `<Module>:AnnouncementSweep`; a bad value stops the host:
+
+  | Key | Default | Accepted |
+  | --- | --- | --- |
+  | `Interval` | `00:01:00` | `00:00:01` to `01:00:00` |
+  | `GracePeriod` | `00:02:00` | `00:00:01` to `01:00:00` |
+  | `Lookback` | `7.00:00:00` | `01:00:00` to `90.00:00:00`, and longer than `GracePeriod` |
+  | `BatchSize` | `100` | `1` to `1000` |
+
+- **Exactly once.** The marker's primary key lets one of the handler, the sweep and every replica's sweep commit an event's announcement; the others roll back with their envelope, and a pass that loses so is logged at Information. No lock and no leader election.
+- **Why not re-announce every terminal event in a window** and rely on the consumers' idempotency: a re-announce is a new publish under a new `EventIdentifier` and a later `OccurredAt`. Assessment unlocks an exhausted examination on a completion later than the exhaustion (ADR 0012), and Compliance's register keeps the latest completion or lock (ADR 0023); both would be misled by a second announcement of a completion that did leave. It would also announce every terminal event on every tick.
+- **Why not Wolverine's envelope storage:** a sent envelope's row is deleted once the broker took it, and both announcements leave the service, so "no envelope" means both "sent" and "never stored".
+- **Backfill.** The migration that adds `announced_events` (`AddAnnouncedEvents`, in each module) marks every terminal event already stored as announced, because the store cannot tell a lost announcement from a delivered one. A completion or pass lost before #277 stays lost.
+
 ## Consequences
 
 - Of any reports racing on one session, one append lands, so each chapter completes and the content completes at most once per cycle, and only the winner publishes `ContentCompletedV1`.
-- The announcement (`ContentCompletedV1`, and `LearningSessionStartedV1` for a new session) is committed to the outbox in a second transaction after the append, and the request's cancellation no longer reaches it: a caller who goes away after the save does not lose it. A process crash between the append and the outbox commit still loses it, as the fabric ADR accepts.
-- That second transaction can also fail on its own after the append landed (the outbox insert, the connection, a deadlock), not only by a crash: the request then answers `500`, and the client's retry stores nothing new because the progress already stands, so the announcement is lost all the same. Publishing from what the stream stored (a Marten subscription or outbox reading the appended `ContentCompleted` and `SessionStarted` events) closes this; it is a decision of its own, proposed with Assessment opening the examination (#40's T5).
+- The announcement (`ContentCompletedV1`, and `LearningSessionStartedV1` for a new session) is committed to the outbox in a second transaction after the append, and the request's cancellation no longer reaches it: a caller who goes away after the save does not lose it.
+- A crash or failure between the append and the outbox commit delays `ContentCompletedV1` or `TestPassedV1` by at most `GracePeriod + Interval` (3 minutes by default), logged as a Warning per re-announced event. The request that failed still answers `500`, as before.
+- `LearningSessionStartedV1` (Learning) and, once #305 lands, `TestFailedV1` and `AttemptsExhaustedV1` (Assessment) are still announced in a second transaction without a marker; a crash there still loses them, until they adopt the same marker.
+- Publishing from what the stream stored (Wolverine's Marten outbox or a Marten subscription, in the append's own transaction) would remove both the gap and the sweep; it stays the alternative, a decision of its own.
+- In the rare case where the sweep commits first and the handler's late commit hits the marker, that request answers `409 already-exists` although its change and announcement stand; the grace period makes this practically unreachable.
 - A learner's client sees an occasional `409 learning.session-changed` when two of its reports overlap; it reports again.
-- Assessment's event-sourced use cases keep `500` for a lost append until they opt in the same way.
+- Assessment's SubmitAttempt opted in the same way with #271 (`assessment.examination-changed`).
 - A Marten upgrade may rename the refusal's exception; the integration test above fails with a `500` if it does.
