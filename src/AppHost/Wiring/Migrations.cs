@@ -18,13 +18,18 @@ namespace Aspire.Hosting;
 /// it, and the service's own identity (lifecycle <c>Main</c>) is never granted that secret for it. It reads the connection
 /// string the service logs in with too, the module role's (<see cref="Databases.RoleConnectionString"/>), as
 /// <c>ConnectionStrings__application</c>, and creates or updates that role after the migrations. Nothing here is listed
-/// per module: the AppHost's loop over the services calls <see cref="RunsMigrationsFirst"/> for each.
+/// per module: the AppHost's loop over the services calls <see cref="RunsMigrationsFirst"/> for each. Published, Keycloak
+/// runs the same image as its init container in the role-only mode (<see cref="EnsuresOwnedSchemaFirst"/>,
+/// <c>Migrations__OwnedSchema</c> and no module), which ensures <c>keycloak_app</c> and the schema it owns (Q2 on #114).
 /// </summary>
 public static class Migrations
 {
     private const string Name = "migrations";
 
     private const string ModuleVariable = "Migrations__Module";
+
+    // The schema a role-only run makes its role the owner of (MigrationRun.OwnedSchemaSetting).
+    private const string OwnedSchemaVariable = "Migrations__OwnedSchema";
 
     private const string AdministratorVariable = "ConnectionStrings__database";
 
@@ -85,21 +90,69 @@ public static class Migrations
             throw new InvalidOperationException($"Published, {service.Resource.Name}'s migrations run as its init container from the migrations job's image; pass the job AddMigrations returned.");
         }
 
-        var own = service.IdentityOf();
+        return service.RunsInitContainer(migrations, database, secrets, ModuleVariable, module);
+    }
+
+    /// <summary>
+    /// Published, ensures the role <paramref name="app"/> logs in to <paramref name="database"/> as, and the schema it owns
+    /// there, <paramref name="schema"/>, before <paramref name="app"/> starts: <paramref name="migrations"/>' image as its
+    /// init container in the role-only mode. In run mode nothing: Keycloak keeps its data on its own volume.
+    /// </summary>
+    public static IResourceBuilder<ContainerResource> EnsuresOwnedSchemaFirst(
+        this IResourceBuilder<ContainerResource> app,
+        string schema,
+        IResourceBuilder<IResourceWithConnectionString> database,
+        IResourceBuilder<ProjectResource>? migrations,
+        DeploymentSecrets secrets)
+    {
+        ArgumentNullException.ThrowIfNull(app);
+        ArgumentException.ThrowIfNullOrWhiteSpace(schema);
+        ArgumentNullException.ThrowIfNull(database);
+        ArgumentNullException.ThrowIfNull(secrets);
+
+        if (!app.ApplicationBuilder.ExecutionContext.IsPublishMode)
+        {
+            return app;
+        }
+
+        if (migrations is null)
+        {
+            throw new InvalidOperationException($"Published, {app.Resource.Name}'s role is ensured by its init container from the migrations job's image; pass the job AddMigrations returned.");
+        }
+
+        return app.RunsInitContainer(migrations, database, secrets, OwnedSchemaVariable, schema);
+    }
+
+    /// <summary>
+    /// The init container <c>migrations</c> of a published app, a project or a container: <paramref name="migrations"/>'
+    /// image, with the database's administrator and role connection strings under the app's migrations identity and
+    /// <paramref name="mode"/> set to <paramref name="value"/>.
+    /// </summary>
+    private static IResourceBuilder<T> RunsInitContainer<T>(
+        this IResourceBuilder<T> app,
+        IResourceBuilder<ProjectResource> migrations,
+        IResourceBuilder<IResourceWithConnectionString> database,
+        DeploymentSecrets secrets,
+        string mode,
+        string value)
+        where T : IComputeResource, IResourceWithWaitSupport
+    {
+        var own = app.IdentityOf();
         var init = new InitContainerAnnotation(
             Name,
             migrations.Resource,
-            service.AdditionalIdentity(Name),
+            app.AdditionalIdentity(Name),
             new Dictionary<string, object>(StringComparer.Ordinal)
             {
-                [ModuleVariable] = module,
+                [mode] = value,
                 [AdministratorVariable] = AdministratorSecret(database.Resource),
                 [ApplicationVariable] = Databases.RoleConnectionString(database, secrets),
             });
-        // Container Apps ignores waits; the publish pipeline orders the service's deployment after the job's image is pushed.
-        return service.WithAnnotation(init)
+        // Container Apps ignores waits; the publish pipeline orders the app's deployment after the job's image is pushed.
+        // As PublishAsAzureContainerApp would, for a project or a container alike.
+        return app.WithAnnotation(init)
             .WaitFor(migrations)
-            .PublishAsAzureContainerApp((infrastructure, app) => AddInitContainer(infrastructure, app, init, own));
+            .WithAnnotation(new AzureContainerAppCustomizationAnnotation((infrastructure, containerApp) => AddInitContainer(infrastructure, containerApp, init, own)));
     }
 
     /// <summary>

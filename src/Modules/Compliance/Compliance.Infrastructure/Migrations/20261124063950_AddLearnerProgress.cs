@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Infrastructure.Migrations;
 
 /// <inheritdoc />
-public partial class _20261123223745_AddLearnerProgress : Migration
+public partial class _20261124063950_AddLearnerProgress : Migration
 {
     /// <inheritdoc />
     protected override void Up(MigrationBuilder migrationBuilder)

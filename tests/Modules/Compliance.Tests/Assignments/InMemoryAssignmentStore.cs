@@ -24,6 +24,20 @@ internal sealed class InMemoryAssignmentStore : IAssignmentStore, IComplianceUni
 
     public int Commits { get; private set; }
 
+    public Task<Option<Assignment>> ReadAsync(AssignmentId assignment, CancellationToken cancellationToken)
+    {
+        var found = Stored.FirstOrDefault(stored => stored.Id == assignment);
+        if (found is null)
+        {
+            return Task.FromResult(Option<Assignment>.None);
+        }
+
+        return Task.FromResult(Option<Assignment>.Some(found));
+    }
+
+    public Task<bool> HasFollowUpAsync(AssignmentId assignment, CancellationToken cancellationToken) =>
+        Task.FromResult(Stored.Any(stored => stored.Follows == assignment));
+
     public Task<IReadOnlyList<Assignment>> InPharmacyAsync(PharmacyId pharmacy, CancellationToken cancellationToken)
     {
         IReadOnlyList<Assignment> inPharmacy = [.. Stored.Where(assignment => assignment.Pharmacy == pharmacy)];

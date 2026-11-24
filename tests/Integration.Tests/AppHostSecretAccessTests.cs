@@ -110,26 +110,57 @@ public partial class AppHostSecretAccessTests
         bicep.Module("messaging-roles-secrets").ShouldNotContain("messaging-definitions", Case.Sensitive, "messaging-roles-secrets still grants the definitions document.");
     }
 
+    /// <summary>
+    /// An administrator connection string, as the Flexible Server writes it (<c>connectionstrings--postgres</c> and
+    /// <c>connectionstrings--&lt;database&gt;-database</c>), logs in as the server's administrator. Published, only an init
+    /// stage reads one: each database's own, under <c>&lt;app&gt;-migrations-identity</c>, whose lifecycle is <c>None</c>.
+    /// That holds for every module's database and for Keycloak's, whose init container ensures <c>keycloak_app</c> (Q2 on
+    /// #114); Keycloak's own container logs in as that role. Replaces
+    /// <c>Only_migrations_and_keycloak_read_an_administrator_connection_string</c>, which let Keycloak read one.
+    /// </summary>
     [Fact]
-    public async Task Only_migrations_and_keycloak_read_an_administrator_connection_string()
+    public async Task Only_init_stages_read_an_administrator_connection_string()
     {
+        await using var builder = await PublishedAppHost.ModelAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
+        var databases = builder.Resources.OfType<AzurePostgresFlexibleServerResource>().ShouldHaveSingleItem().Databases.Values.ToList();
+
         var bicep = await PublishedAppHost.PublishAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
 
-        // A module database's connection string as the Flexible Server writes it, connectionstrings--<module>-database, logs
-        // in as the server's administrator; a service logs in as its module's role instead (OQ8 c on #114, docs/adr/0005).
-        // Keycloak still logs in as the administrator until it has a role of its own (Q2).
         var readers = bicep.Identities()
             .SelectMany(identity => bicep.RoleAssignmentsOf(identity)
                 .Where(assignment => assignment.Role == KeyVaultSecretsUser && assignment.ScopeType == VaultSecret)
                 .Where(assignment => AdministratorConnectionString().IsMatch(assignment.ScopeName))
-                .Select(assignment => (Identity: identity, Secret: assignment.ScopeName)))
-            .Distinct()
+                .Select(assignment => $"{identity} reads {assignment.ScopeName}"))
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
             .ToList();
 
-        readers.ShouldNotBeEmpty("No identity reads an administrator connection string; the migrations could not log in.");
-        readers.Where(reader => !reader.Identity.EndsWith("-migrations-identity", StringComparison.Ordinal) && reader.Identity != "keycloak-identity")
-            .Select(reader => $"{reader.Identity} reads {reader.Secret}")
-            .ShouldBeEmpty("Only an init stage's migrations identity, and Keycloak's, may read an administrator connection string.");
+        databases.ShouldContain("keycloak");
+        readers.ShouldBe(
+            databases.Select(database => $"{database}-migrations-identity reads connectionstrings--{database}-database").Order(StringComparer.Ordinal).ToList(),
+            ignoreOrder: false,
+            "Each database's administrator connection string should be read by its own init stage's migrations identity alone, Keycloak's included; no app's own identity may read one.");
+    }
+
+    /// <summary>
+    /// K5: Keycloak's own identity reads its administrator's password, the SMTP user and password, and its role's database
+    /// password, and nothing else; never a connection string.
+    /// </summary>
+    [Fact]
+    public async Task Keycloak_reads_its_administrators_mail_and_database_passwords_alone()
+    {
+        var bicep = await PublishedAppHost.PublishAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
+        List<string> expected = ["keycloak-admin-password", "keycloak-database-password", "smtp-password", "smtp-username"];
+
+        bicep.ContainerApps.ShouldContainKey("keycloak");
+        PublishedBicep.SecretEntries(bicep.ContainerApps["keycloak"])
+            .Where(entry => entry.Identity == "keycloak-identity")
+            .Select(entry => entry.VaultSecret)
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToList()
+            .ShouldBe(expected, ignoreOrder: false, "Keycloak's own container should read exactly its administrator's password, the SMTP user and password, and keycloak-database-password.");
+        Granted(bicep, "keycloak").ShouldBe(expected, ignoreOrder: false, $"keycloak-identity should be a Key Vault Secrets User on exactly these. It holds: {Describe(bicep.RoleAssignmentsOf("keycloak-identity"))}");
     }
 
     /// <summary>
@@ -380,6 +411,6 @@ public partial class AppHostSecretAccessTests
     private static string Describe(IEnumerable<PublishedRoleAssignment> assignments) =>
         string.Join("; ", assignments.Select(assignment => $"{assignment.Role} on {assignment.ScopeType} '{assignment.ScopeName}' ({assignment.File})"));
 
-    [GeneratedRegex(@"^connectionstrings--.+-database$")]
+    [GeneratedRegex(@"^connectionstrings--(postgres|.+-database)$")]
     private static partial Regex AdministratorConnectionString();
 }

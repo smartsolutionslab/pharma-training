@@ -10,6 +10,12 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application;
 /// </summary>
 public interface IAssignmentStore
 {
+    /// <summary>The assignment, whatever its status or pharmacy, read without tracking.</summary>
+    Task<Option<Assignment>> ReadAsync(AssignmentId assignment, CancellationToken cancellationToken);
+
+    /// <summary>Whether an assignment that follows up this one is stored, whatever its status.</summary>
+    Task<bool> HasFollowUpAsync(AssignmentId assignment, CancellationToken cancellationToken);
+
     /// <summary>Every assignment in the pharmacy, whatever its status or learner, read without tracking.</summary>
     Task<IReadOnlyList<Assignment>> InPharmacyAsync(PharmacyId pharmacy, CancellationToken cancellationToken);
 

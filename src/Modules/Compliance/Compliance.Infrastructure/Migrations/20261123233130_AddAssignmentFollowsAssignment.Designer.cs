@@ -13,8 +13,8 @@ using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Infrastructure.Persist
 namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Infrastructure.Migrations;
 
 [DbContext(typeof(ComplianceDbContext))]
-[Migration("20261123223745_AddLearnerProgress")]
-partial class _20261123223745_AddLearnerProgress
+[Migration("20261123233130_AddAssignmentFollowsAssignment")]
+partial class _20261123233130_AddAssignmentFollowsAssignment
 {
     /// <inheritdoc />
     protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -56,6 +56,10 @@ partial class _20261123223745_AddLearnerProgress
                 b.Property<DateOnly>("DueDate")
                     .HasColumnType("date")
                     .HasColumnName("due_date");
+
+                b.Property<Guid?>("Follows")
+                    .HasColumnType("uuid")
+                    .HasColumnName("follows_assignment_id");
 
                 b.Property<Guid>("Learner")
                     .HasColumnType("uuid")
@@ -118,6 +122,10 @@ partial class _20261123223745_AddLearnerProgress
 
                 b.HasKey("Id")
                     .HasName("pk_assignments");
+
+                b.HasIndex("Follows")
+                    .IsUnique()
+                    .HasDatabaseName("ux_assignments_follows_assignment_id");
 
                 b.HasIndex("Learner")
                     .HasDatabaseName("ix_assignments_learner_id");
@@ -290,68 +298,6 @@ partial class _20261123223745_AddLearnerProgress
                     .HasName("pk_membership_endings");
 
                 b.ToTable("membership_endings", "compliance");
-            });
-
-        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Progress.IssuedCertificate", b =>
-            {
-                b.Property<Guid>("Id")
-                    .HasColumnType("uuid")
-                    .HasColumnName("id");
-
-                b.Property<Guid>("Course")
-                    .HasColumnType("uuid")
-                    .HasColumnName("course_id");
-
-                b.Property<DateTimeOffset>("IssuedAt")
-                    .HasColumnType("timestamp with time zone")
-                    .HasColumnName("issued_at");
-
-                b.Property<Guid>("Learner")
-                    .HasColumnType("uuid")
-                    .HasColumnName("learner_id");
-
-                b.Property<Guid>("Version")
-                    .HasColumnType("uuid")
-                    .HasColumnName("course_version_id");
-
-                b.HasKey("Id")
-                    .HasName("pk_issued_certificates");
-
-                b.HasIndex("Learner", "Course")
-                    .HasDatabaseName("ix_issued_certificates_learner_id_course_id");
-
-                b.ToTable("issued_certificates", "compliance");
-            });
-
-        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Progress.LearningSessionStart", b =>
-            {
-                b.Property<Guid>("Id")
-                    .HasColumnType("uuid")
-                    .HasColumnName("id");
-
-                b.Property<Guid>("Course")
-                    .HasColumnType("uuid")
-                    .HasColumnName("course_id");
-
-                b.Property<Guid>("Learner")
-                    .HasColumnType("uuid")
-                    .HasColumnName("learner_id");
-
-                b.Property<DateTimeOffset>("StartedAt")
-                    .HasColumnType("timestamp with time zone")
-                    .HasColumnName("started_at");
-
-                b.Property<Guid>("Version")
-                    .HasColumnType("uuid")
-                    .HasColumnName("course_version_id");
-
-                b.HasKey("Id")
-                    .HasName("pk_learning_session_starts");
-
-                b.HasIndex("Learner", "Course")
-                    .HasDatabaseName("ix_learning_session_starts_learner_id_course_id");
-
-                b.ToTable("learning_session_starts", "compliance");
             });
 
         modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Samples.Sample", b =>

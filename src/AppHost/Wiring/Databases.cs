@@ -14,10 +14,12 @@ namespace Aspire.Hosting;
 /// string, so a service reads its own as a Key Vault reference. Its size and backups follow the environment
 /// (<see cref="DatabaseServerSize"/>), and it has a database for Keycloak beside the modules' (docs/adr/0005). Published, a
 /// service logs in as its module's role, never as the administrator: the server's own module writes the role's connection
-/// string into the vault too, <c>connectionstrings--&lt;module&gt;-database-app</c>, for every module's database and no other,
-/// with the user <c>&lt;module&gt;_app</c> and the password <c>guid(database_roles_key, '&lt;module&gt;')</c>, derived from
-/// the deployment secret <c>database-roles-key</c>. The MigrationRunner, the service's init container, creates the role from
-/// it (<see cref="Migrations"/>, OQ8 c and Q1 on #114).
+/// string into the vault too, <c>connectionstrings--&lt;database&gt;-database-app</c>, for every database on the server,
+/// Keycloak's included, with the user <c>&lt;database&gt;_app</c> and the password
+/// <c>guid(database_roles_key, '&lt;database&gt;')</c>, derived from the deployment secret <c>database-roles-key</c>. The
+/// MigrationRunner, the service's init container, creates the role from it (<see cref="Migrations"/>, OQ8 c and Q1 on #114).
+/// Keycloak, which takes its password alone, reads it from <c>keycloak-database-password</c>, which the server's module
+/// writes too; its init container ensures <c>keycloak_app</c> (Q2 on #114).
 /// </summary>
 public static class Databases
 {
@@ -36,6 +38,8 @@ public static class Databases
 
     private const string RoleSecretSuffix = "-app";
 
+    private const string PasswordSecretSuffix = "-password";
+
     public static IResourceBuilder<IResourceWithConnectionString> AddDatabaseServer(this IDistributedApplicationBuilder builder, DeploymentSecrets secrets)
     {
         ArgumentNullException.ThrowIfNull(builder);
@@ -53,7 +57,7 @@ public static class Databases
         var userName = builder.AddParameter($"{Name}-username");
         var password = secrets.Secret($"{Name}-password");
         // Every role's password is guid(database_roles_key, '<module>'): the key is all that stands between a guess and every
-        // role, so publishing refuses one under 32 characters.
+        // role, so publishing refuses one under 32 characters, and main.bicep and the server's module declare @minLength(32).
         var rolesKey = secrets.Secret(RolesKey).RequireMinimumLength(RolesKeyMinimumLength);
         var server = builder.AddAzurePostgresFlexibleServer(Name)
             .WithPasswordAuthentication(secrets.Vault, userName, password)
@@ -109,7 +113,7 @@ public static class Databases
 
         if (database.Resource is not AzurePostgresFlexibleServerDatabaseResource moduleDatabase)
         {
-            throw new InvalidOperationException($"{database.Resource.Name} is no database on the Flexible Server; a module's role exists once published alone.");
+            throw new InvalidOperationException($"{database.Resource.Name} is no database on the Flexible Server; a database's role exists once published alone.");
         }
 
         // Written by the server's deployment, so whoever is granted it is granted once the server is deployed.
@@ -119,20 +123,54 @@ public static class Databases
     }
 
     /// <summary>
-    /// Writes, next to Aspire's connection strings, one for each module database's role, logging in as
-    /// <c>&lt;module&gt;_app</c> with the password derived from <c>database-roles-key</c>. Every database on the server but
-    /// Keycloak's is a module's, so nothing is listed per module.
+    /// Keycloak's database on the server; publish mode only, where Keycloak keeps its data there as its own role
+    /// (<see cref="KeycloakPublishing"/>).
+    /// </summary>
+    public static IResourceBuilder<IResourceWithConnectionString> KeycloakDatabaseOf(IResourceBuilder<IResourceWithConnectionString> server)
+    {
+        ArgumentNullException.ThrowIfNull(server);
+
+        var database = server.ApplicationBuilder.Resources.OfType<AzurePostgresFlexibleServerDatabaseResource>()
+            .SingleOrDefault(candidate => candidate.Parent == server.Resource && candidate.DatabaseName == KeycloakDatabase)
+            ?? throw new InvalidOperationException($"{server.Resource.Name} has no database {KeycloakDatabase}; it exists once published alone.");
+        return server.ApplicationBuilder.CreateResourceBuilder<IResourceWithConnectionString>(database);
+    }
+
+    /// <summary>
+    /// The vault secret holding the password of a database's role alone, which the server's own module writes for
+    /// Keycloak's database (<c>keycloak-database-password</c>); publish mode only.
+    /// </summary>
+    public static IAzureKeyVaultSecretReference RolePassword(IResourceBuilder<IResourceWithConnectionString> database, DeploymentSecrets secrets)
+    {
+        ArgumentNullException.ThrowIfNull(database);
+        ArgumentNullException.ThrowIfNull(secrets);
+
+        if (database.Resource is not AzurePostgresFlexibleServerDatabaseResource keycloakDatabase || keycloakDatabase.DatabaseName != KeycloakDatabase)
+        {
+            throw new InvalidOperationException($"{database.Resource.Name} is not Keycloak's database on the Flexible Server; only its role's password is written alone.");
+        }
+
+        var reference = secrets.Vault.Resource.GetSecret($"{keycloakDatabase.Name}{PasswordSecretSuffix}");
+        reference.SecretOwner = keycloakDatabase.Parent;
+        return reference;
+    }
+
+    /// <summary>
+    /// Writes, next to Aspire's connection strings, one for each database's role, logging in as
+    /// <c>&lt;database&gt;_app</c> with the password derived from <c>database-roles-key</c>, and for Keycloak's, which takes
+    /// the password alone, that password too. Nothing is listed per module.
     /// </summary>
     private static void WriteRoleConnectionStrings(AzureResourceInfrastructure infrastructure, PostgreSqlFlexibleServer flexibleServer)
     {
         var server = (AzurePostgresFlexibleServerResource)infrastructure.AspireResource;
         var vault = infrastructure.GetProvisionableResources().OfType<KeyVaultService>().Single();
-        var rolesKey = new ProvisioningParameter(Infrastructure.NormalizeBicepIdentifier(RolesKey), typeof(string)) { IsSecure = true };
+        // The same floor as main.bicep's (RequireMinimumLength), which Azure enforces however the key arrives.
+        var rolesKey = new MinimumLengthParameter(Infrastructure.NormalizeBicepIdentifier(RolesKey), RolesKeyMinimumLength) { IsSecure = true };
         infrastructure.Add(rolesKey);
 
-        foreach (var (resourceName, databaseName) in server.Databases.Where(database => database.Value != KeycloakDatabase))
+        foreach (var (resourceName, databaseName) in server.Databases)
         {
-            var role = $"{databaseName.Replace('-', '_')}_app";
+            var role = RoleName(databaseName);
             BicepValue<string> salt = databaseName;
             var password = BicepFunction.CreateGuid(rolesKey, salt);
             infrastructure.Add(new KeyVaultSecret(Infrastructure.NormalizeBicepIdentifier($"{resourceName}_app_connectionString"))
@@ -144,7 +182,25 @@ public static class Databases
                 },
                 Parent = vault,
             });
+
+            if (databaseName == KeycloakDatabase)
+            {
+                infrastructure.Add(new KeyVaultSecret(Infrastructure.NormalizeBicepIdentifier($"{resourceName}_password"))
+                {
+                    Name = $"{resourceName}{PasswordSecretSuffix}",
+                    Properties = new SecretProperties { Value = password },
+                    Parent = vault,
+                });
+            }
         }
+    }
+
+    /// <summary>The role a database's app logs in as once published: <c>&lt;database&gt;_app</c>.</summary>
+    public static string RoleName(string databaseName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(databaseName);
+
+        return $"{databaseName.Replace('-', '_')}_app";
     }
 
     private static string RoleSecretName(string databaseResource) => $"{ConnectionStringSecretPrefix}{databaseResource}{RoleSecretSuffix}";

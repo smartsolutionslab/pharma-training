@@ -13,6 +13,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application.Consum
 /// whichever version the certificate is for, and announces each completion as AssignmentCompletedV1 in the same commit.
 /// A certificate issued before an assignment was made does not fulfil it: that assignment stays active, nothing is
 /// announced for it, and nothing is thrown, since a retry could never change the answer.
+/// A recurring assignment's follow-up is requested in the same commit (AssignmentFollowUpRequestedV1, docs/adr/0026).
 /// It deduplicates by state, not on <c>Metadata.EventIdentifier</c>: only active assignments are loaded and completing
 /// makes them inactive, so the same certificate again, also re-published under a new identifier, finds nothing to do.
 /// Two deliveries handled at once both load the same rows; the second commit loses on the row version
@@ -64,6 +65,11 @@ public sealed class CertificateIssuedV1Consumer(IAssignmentStore assignments, IL
             foreach (var completion in assignment.DomainEvents.OfType<AssignmentCompleted>())
             {
                 await unitOfWork.PublishAsync(completion.ToIntegrationEvent());
+                if (assignment.Recurrence is not null)
+                {
+                    await unitOfWork.PublishAsync(completion.ToFollowUpRequest());
+                }
+
                 announced++;
             }
         }

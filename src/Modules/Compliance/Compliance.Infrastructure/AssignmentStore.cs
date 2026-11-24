@@ -10,6 +10,22 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Infrastructure;
 /// <summary>The module's assignments. The module's unit of work saves what is added.</summary>
 public sealed class AssignmentStore(ComplianceDbContext context) : IAssignmentStore
 {
+    public async Task<Option<Assignment>> ReadAsync(AssignmentId assignment, CancellationToken cancellationToken)
+    {
+        var found = await context.Set<Assignment>()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(stored => stored.Id == assignment, cancellationToken);
+        if (found is null)
+        {
+            return Option<Assignment>.None;
+        }
+
+        return Option<Assignment>.Some(found);
+    }
+
+    public Task<bool> HasFollowUpAsync(AssignmentId assignment, CancellationToken cancellationToken) =>
+        context.Set<Assignment>().AnyAsync(stored => stored.Follows == assignment, cancellationToken);
+
     public async Task<IReadOnlyList<Assignment>> InPharmacyAsync(PharmacyId pharmacy, CancellationToken cancellationToken) =>
         await context.Set<Assignment>()
             .AsNoTracking()

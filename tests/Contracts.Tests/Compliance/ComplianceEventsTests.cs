@@ -27,4 +27,10 @@ public class ComplianceEventsTests
             new DateTimeOffset(2027, 1, 5, 14, 15, 0, TimeSpan.FromHours(1)),
             true));
     }
+
+    [Fact]
+    public void AssignmentFollowUpRequestedV1_survives_the_wire()
+    {
+        Wire.ShouldSurviveTheWire(new AssignmentFollowUpRequestedV1(Guid.CreateVersion7()));
+    }
 }
