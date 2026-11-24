@@ -115,6 +115,45 @@ public class ReannounceTestPassesTests
         warning.Message.ShouldNotContain(lost.Passed.Learner.Value.ToString(), Case.Insensitive);
     }
 
+    [Fact]
+    public async Task A_pass_keys_the_marker_on_the_stream_the_test_pass_is_stored_in()
+    {
+        var stream = Guid.CreateVersion7();
+        var lost = Stored(streamVersion: 3, storedAt: Now.AddMinutes(-5)) with { Stream = stream };
+        unannounced.Stored.Add(lost);
+
+        await PassAsync(Settings());
+
+        var marker = announced.Added.ShouldHaveSingleItem();
+        marker.StreamId.ShouldBe(stream);
+        marker.StreamVersion.ShouldBe(3);
+        logger.Collector.GetSnapshot().ShouldContain(record => record.Level == LogLevel.Warning && record.Message.Contains(stream.ToString(), StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task A_test_pass_that_cannot_be_read_is_skipped_with_a_warning_and_the_others_are_announced()
+    {
+        var unreadable = Stored(streamVersion: 2, storedAt: Now.AddHours(-6));
+        var older = Stored(streamVersion: 6, storedAt: Now.AddHours(-5));
+        var newer = Stored(streamVersion: 11, storedAt: Now.AddMinutes(-10));
+        unannounced.Stored.AddRange([unreadable, older, newer]);
+        unannounced.Unreadable.Add(unreadable);
+
+        var passed = await PassAsync(Settings());
+
+        passed.IsSuccess.ShouldBeTrue();
+        unitOfWork.Published.ShouldBe([older.Passed.ToIntegrationEvent(), newer.Passed.ToIntegrationEvent()]);
+        announced.Added.Select(marker => (marker.StreamId, marker.StreamVersion))
+            .ShouldBe([(older.Passed.Examination.Value, 6L), (newer.Passed.Examination.Value, 11L)]);
+        unitOfWork.Commits.ShouldBe(2);
+        var skipped = logger.Collector.GetSnapshot()
+            .Where(record => record.Level == LogLevel.Warning && record.Message.Contains(unreadable.Passed.Examination.Value.ToString(), StringComparison.OrdinalIgnoreCase))
+            .ShouldHaveSingleItem();
+        skipped.Message.ShouldContain("2", Case.Sensitive);
+        skipped.Message.ShouldNotContain(unreadable.Passed.Learner.Value.ToString(), Case.Insensitive);
+        skipped.Exception.ShouldBeNull();
+    }
+
     private static StoredTestPass Stored(long streamVersion, DateTimeOffset storedAt)
     {
         var session = LearningSessionId.From(Guid.CreateVersion7());
