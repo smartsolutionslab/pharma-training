@@ -34,9 +34,11 @@ public class ReportProgressTests
     private readonly CourseId course = CourseId.From(Guid.CreateVersion7());
     private readonly CourseVersionId version = CourseVersionId.From(Guid.CreateVersion7());
     private readonly MemberCopy membership;
+    private readonly InMemoryAnnouncedEvents announced;
 
     public ReportProgressTests()
     {
+        announced = new InMemoryAnnouncedEvents(sessions.Steps);
         membership = MembershipCopyRows.Started(learner);
         memberships.Hold(membership);
         copies.Hold(CopyOf(version, CourseVersionCopies.VideoSeconds));
@@ -181,8 +183,67 @@ public class ReportProgressTests
         sessions.Commits.ShouldBe(1);
         sessions.Streams[session.Value].OfType<ContentCompleted>().ShouldHaveSingleItem();
 
-        // The session is stored before its announcement is published and committed.
-        sessions.Steps.ShouldBe([Saved, Saved, Saved, Queued, Committed]);
+        // The session is stored before its announcement is published, marked as announced and committed.
+        sessions.Steps.ShouldBe([Saved, Saved, Saved, Queued, InMemoryAnnouncedEvents.Marked, Committed]);
+    }
+
+    /// <summary>
+    /// The marker of the announced completion (#277) is added before the one commit that also carries its
+    /// ContentCompletedV1, so the two are stored together or not at all. It names the session's stream and the version
+    /// Marten stores the ContentCompleted at: the session's version before the save plus its place among the pending events.
+    /// </summary>
+    [Fact]
+    public async Task The_report_that_completes_the_content_records_its_announcement_in_the_same_commit()
+    {
+        var session = await StartedAsync();
+        await ReportAsync(session, Intro, 100);
+        await ReportAsync(session, Handbook, 100);
+        sessions.Steps.Clear();
+        time.Advance(FilmDuration);
+
+        var reported = await ReportAsync(session, Film, 95);
+
+        reported.IsSuccess.ShouldBeTrue();
+        var marker = announced.Added.ShouldHaveSingleItem();
+        marker.StreamId.ShouldBe(session.Value);
+        marker.StreamVersion.ShouldBe(StoredVersionOfContentCompleted(session));
+        marker.AnnouncedAt.ShouldBe(time.GetUtcNow());
+        sessions.Published.ShouldHaveSingleItem().ShouldBeOfType<ContentCompletedV1>();
+        sessions.Commits.ShouldBe(1);
+        sessions.Steps.ShouldBe([Saved, Queued, InMemoryAnnouncedEvents.Marked, Committed]);
+    }
+
+    [Fact]
+    public async Task A_report_that_does_not_complete_the_content_records_no_announcement()
+    {
+        var session = await StartedAsync();
+        await ReportAsync(session, Intro, 100);
+        time.Advance(FilmDuration);
+
+        var reported = await ReportAsync(session, Film, 95);
+
+        reported.IsSuccess.ShouldBeTrue();
+        CompletedChapters(session).ShouldBe([Intro, Film]);
+        announced.Added.ShouldBeEmpty();
+        sessions.Steps.ShouldNotContain(InMemoryAnnouncedEvents.Marked);
+    }
+
+    [Fact]
+    public async Task A_report_that_lost_the_race_records_no_announcement()
+    {
+        var session = await StartedAsync();
+        await ReportAsync(session, Intro, 100);
+        await ReportAsync(session, Handbook, 100);
+        sessions.Steps.Clear();
+        time.Advance(FilmDuration);
+        sessions.LoseNextSave();
+
+        var reported = await ReportAsync(session, Film, 95);
+
+        reported.IsFailure.ShouldBeTrue("the lost append was answered as a success");
+        reported.Error.Code.ShouldBe("learning.session-changed");
+        announced.Added.ShouldBeEmpty();
+        sessions.Steps.ShouldBeEmpty();
     }
 
     [Fact]
@@ -493,7 +554,7 @@ public class ReportProgressTests
     private static CourseVersionCopy CopyOf(CourseVersionId courseVersion, int? videoSeconds) =>
         CourseVersionCopies.Of(courseVersion.Value, videoSeconds, (Intro.Value, 1, ChapterKind.Text), (Handbook.Value, 2, ChapterKind.Pdf), (Film.Value, 3, ChapterKind.Video));
 
-    private ReportProgressHandler Handler() => new(memberships, sessions, sessions, copies, time);
+    private ReportProgressHandler Handler() => new(memberships, sessions, sessions, announced, copies, time);
 
     /// <summary>A session whose every chapter the learner completed through the use case, so its first ContentCompletedV1 is published.</summary>
     private async Task<LearningSessionId> CompletedAsync()
@@ -533,6 +594,10 @@ public class ReportProgressTests
         await sessions.SaveAsync(session, TestContext.Current.CancellationToken);
         sessions.Steps.Clear();
     }
+
+    /// <summary>The version Marten gives the stream's only ContentCompleted: its place in the stream, counted from 1.</summary>
+    private long StoredVersionOfContentCompleted(LearningSessionId session) =>
+        sessions.Streams[session.Value].FindIndex(stored => stored is ContentCompleted) + 1;
 
     private List<ChapterId> CompletedChapters(LearningSessionId session) =>
         [.. sessions.Streams[session.Value].OfType<ChapterCompleted>().Select(completed => completed.Chapter)];
