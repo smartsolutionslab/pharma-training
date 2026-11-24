@@ -501,6 +501,36 @@
         }
       }
     },
+    "/certification/certificates/{id}/pdf": {
+      "get": {
+        "tags": [
+          "CertificateDocumentEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificationDocumentUrlDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/certification/samples": {
       "post": {
         "tags": [
@@ -3428,6 +3458,23 @@
           }
         }
       },
+      "CertificationDocumentUrlDto": {
+        "required": [
+          "url",
+          "expiresAt"
+        ],
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "CertificationSampleDto": {
         "required": [
           "id",
@@ -3505,7 +3552,8 @@
           "changedAt",
           "previousDueDate",
           "newDueDate",
-          "reason"
+          "reason",
+          "bySelf"
         ],
         "type": "object",
         "properties": {
@@ -3539,6 +3587,9 @@
               "null",
               "string"
             ]
+          },
+          "bySelf": {
+            "type": "boolean"
           }
         }
       },
@@ -4567,6 +4618,7 @@
         "required": [
           "courseVersions",
           "testDefinitions",
+          "fileReleases",
           "retirements"
         ],
         "type": "object",
@@ -4580,6 +4632,14 @@
             "format": "int32"
           },
           "testDefinitions": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "fileReleases": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
               "integer",
@@ -5782,6 +5842,9 @@
     },
     {
       "name": "ExaminationEndpoints"
+    },
+    {
+      "name": "CertificateDocumentEndpoints"
     },
     {
       "name": "AssignmentChangeEndpoints"

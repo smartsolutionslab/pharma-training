@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.Net;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application;
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.InvitationRecipients;
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.InvitationSenders;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Tests.Pharmacies;
@@ -169,6 +171,28 @@ public class PharmacyFailuresTests
         tooSoon.Message.ShouldNotBeNullOrWhiteSpace();
         tooSoon.ShouldBeOfType<RetryLaterFailure>().RetryAt.ShouldBe(renewAt.Value);
         tooMany.Code.ShouldBe("organisation.too-many-invitations-today");
+        tooMany.Status.ShouldBe(HttpStatusCode.TooManyRequests);
+        tooMany.Message.ShouldNotBeNullOrWhiteSpace();
+        tooMany.ShouldBeOfType<RetryLaterFailure>().RetryAt.ShouldBe(tomorrow.Value);
+    }
+
+    [Fact]
+    public void The_recipient_cooldown_and_the_sender_cap_map_to_429_retry_later_with_their_instants()
+    {
+        var mailAgainAt = Timestamp.From(new DateTimeOffset(2027, 4, 1, 8, 10, 0, TimeSpan.Zero));
+        var tomorrow = Timestamp.From(new DateTimeOffset(2027, 4, 2, 0, 0, 0, TimeSpan.Zero));
+        var address = EmailAddress.From("anna@example.org");
+        var sender = PersonId.From(Guid.CreateVersion7());
+
+        var recently = PharmacyFailures.From(InvitationRecipientErrors.MailedRecently(InvitationRecipientId.For(address), mailAgainAt));
+        var tooMany = PharmacyFailures.From(InvitationSenderErrors.TooManyToday(sender, tomorrow));
+
+        recently.Code.ShouldBe("organisation.recipient-mailed-recently");
+        recently.Status.ShouldBe(HttpStatusCode.TooManyRequests);
+        recently.Message.ShouldNotBeNullOrWhiteSpace();
+        recently.Message.ShouldNotContain(address.Value);
+        recently.ShouldBeOfType<RetryLaterFailure>().RetryAt.ShouldBe(mailAgainAt.Value);
+        tooMany.Code.ShouldBe("organisation.too-many-invitations-sent-today");
         tooMany.Status.ShouldBe(HttpStatusCode.TooManyRequests);
         tooMany.Message.ShouldNotBeNullOrWhiteSpace();
         tooMany.ShouldBeOfType<RetryLaterFailure>().RetryAt.ShouldBe(tomorrow.Value);

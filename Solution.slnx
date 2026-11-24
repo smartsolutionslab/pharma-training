@@ -26,6 +26,7 @@
   <Project Path="tests/Integration.Tests/Integration.Tests.csproj" />
   <Project Path="src/Edge/Edge.csproj" />
   <Project Path="tests/Edge.Tests/Edge.Tests.csproj" />
+  <Project Path="tests/Host.Tests/Host.Tests.csproj" />
   <Project Path="src/Services/Organisation/Host/Host.csproj" />
   <Project Path="src/Services/Editorial/Host/Host.csproj" />
   <Project Path="src/Services/Certification/Host/Host.csproj" />

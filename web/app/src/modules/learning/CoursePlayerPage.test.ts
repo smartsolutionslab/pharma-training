@@ -397,3 +397,46 @@ test('the empty state speaks English once switched', async () => {
 
   expect(await screen.findByText('This course has no chapters.')).toBeInTheDocument();
 });
+
+// The entry to the test (#48): once the content is completed, the lasting panel links to the test of the session.
+test('the content-completed panel links to the test of the session', async () => {
+  hostAnswering(
+    courseVersion(),
+    session(
+      {
+        [introduction.chapterId]: { percent: 100, completed: true },
+        [handwashing.chapterId]: { percent: 100, completed: true },
+        [summary.chapterId]: { percent: 100, completed: true },
+      },
+      'ContentCompleted',
+    ),
+  );
+  await renderPage();
+  await heading();
+
+  const link = await screen.findByRole('link', { name: t('learning.player.toTest') });
+  expect(link).toHaveAttribute('href', `/assessment/sessions/${sessionId}`);
+  expect(link.closest('section')).toHaveTextContent(t('learning.player.contentCompleted'));
+});
+
+test('the link to the test speaks English once switched', async () => {
+  setLanguage('en-GB', { remember: false });
+  hostAnswering(
+    courseVersion(),
+    session(
+      {
+        [introduction.chapterId]: { percent: 100, completed: true },
+        [handwashing.chapterId]: { percent: 100, completed: true },
+        [summary.chapterId]: { percent: 100, completed: true },
+      },
+      'ContentCompleted',
+    ),
+  );
+  await renderPage();
+  await heading();
+
+  expect(await screen.findByRole('link', { name: 'Go to the test' })).toHaveAttribute(
+    'href',
+    `/assessment/sessions/${sessionId}`,
+  );
+});

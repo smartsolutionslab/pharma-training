@@ -33,6 +33,9 @@ public static class KeycloakPublishing
 
     private const string RealmImport = "/opt/keycloak/data/import";
 
+    // Where kcadm.sh is, and kcadm-otp.sh beside it: the administrator's sign-in with a one-time code (#278).
+    private const string AdminTools = "/opt/keycloak/bin";
+
     /// <summary>
     /// In run mode, <c>start-dev</c> with the development realm and a data volume; published, the built image, started
     /// optimized, logging in to <paramref name="server"/>'s Keycloak database as its own role.
@@ -93,7 +96,8 @@ public static class KeycloakPublishing
 
     /// <summary>
     /// The published image: built for PostgreSQL with health checks in one stage, run from another with the published realm
-    /// in Keycloak's import directory.
+    /// in Keycloak's import directory, and <c>kcadm-otp.sh</c> beside kcadm.sh, which signs the administrator in with a
+    /// one-time code kcadm.sh cannot send (#278). The script keeps its mode from the build context, executable.
     /// </summary>
     private static string Dockerfile() =>
         $"""
@@ -103,6 +107,7 @@ public static class KeycloakPublishing
         FROM {PinnedImage}
         COPY --from=builder /opt/keycloak/ /opt/keycloak/
         COPY realm.json {RealmImport}/realm.json
+        COPY KcadmOtp.java kcadm-otp.sh {AdminTools}/
 
         """;
 }
