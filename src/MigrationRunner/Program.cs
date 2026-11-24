@@ -45,7 +45,7 @@ foreach (var context in contexts)
 
 using var host = builder.Build();
 // Every replica's init container runs this; one at a time per database.
-await using (await MigrationGate.EnterAsync(administrator, host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("MigrationGate"), CancellationToken.None))
+await using (await MigrationGate.EnterAsync(administrator, host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("MigrationGate"), host.Services.GetRequiredService<TimeProvider>(), CancellationToken.None))
 {
     // Published, where a module role exists: the schema named after the administrator is the administrator's before the
     // role could take it, so no other administrator session (an operator's psql) runs what a role planted there either.

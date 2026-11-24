@@ -24,6 +24,8 @@
     <PackageReference Include="WolverineFx" />
     <!-- Builds the PDFs with and without text that EditorialChapterFilesTests uploads (#157). -->
     <PackageReference Include="PdfPig" />
+    <!-- FakeLogger: what a run waiting at the migration gate logs (SweptEventIndexTests, #351). -->
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
   </ItemGroup>
 
   <ItemGroup>

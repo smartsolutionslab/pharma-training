@@ -43,11 +43,19 @@ public sealed partial class MigrationGate : IAsyncDisposable
     public static Task<MigrationGate> EnterAsync(string administrator, CancellationToken cancellationToken) =>
         EnterAsync(administrator, NullLogger.Instance, cancellationToken);
 
-    /// <summary>As <see cref="EnterAsync(string, CancellationToken)"/>, logging to <paramref name="logger"/> an unlock that failed.</summary>
-    public static async Task<MigrationGate> EnterAsync(string administrator, ILogger logger, CancellationToken cancellationToken)
+    /// <summary>
+    /// As <see cref="EnterAsync(string, CancellationToken)"/>, logging to <paramref name="logger"/> once that it waits for
+    /// another run, and an unlock that failed.
+    /// </summary>
+    public static Task<MigrationGate> EnterAsync(string administrator, ILogger logger, CancellationToken cancellationToken) =>
+        EnterAsync(administrator, logger, TimeProvider.System, cancellationToken);
+
+    /// <summary>As <see cref="EnterAsync(string, ILogger, CancellationToken)"/>, waiting between tries on <paramref name="time"/>.</summary>
+    public static async Task<MigrationGate> EnterAsync(string administrator, ILogger logger, TimeProvider time, CancellationToken cancellationToken)
     {
         Ensure.That(administrator, nameof(administrator)).IsNotNullOrWhiteSpace();
         Ensure.That(logger, nameof(logger)).IsNotNull();
+        Ensure.That(time, nameof(time)).IsNotNull();
 
         // Unpooled: the lock belongs to the session, which must end with the gate.
         var connection = new NpgsqlConnection(new NpgsqlConnectionStringBuilder(AdministratorSession.Pinned(administrator)) { Pooling = false }.ConnectionString);
@@ -57,9 +65,17 @@ public sealed partial class MigrationGate : IAsyncDisposable
             // However long the other run migrates: each try returns at once, so the connection's command timeout never
             // ends the wait; cancellation may.
             await using var enter = new NpgsqlCommand(TryEnter, connection);
+            var waiting = false;
             while (await enter.ExecuteScalarAsync(cancellationToken) is not true)
             {
-                await Task.Delay(RetryDelay, cancellationToken);
+                // Once, not per try (#351): an init container's log then says why it has not finished.
+                if (!waiting)
+                {
+                    Waiting(logger);
+                    waiting = true;
+                }
+
+                await Task.Delay(RetryDelay, time, cancellationToken);
             }
 
             return new MigrationGate(connection, logger);
@@ -90,6 +106,9 @@ public sealed partial class MigrationGate : IAsyncDisposable
             await connection.DisposeAsync();
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Waiting for another run at the migration gate: another replica's MigrationRunner is changing this database; trying again every second until it is done.")]
+    private static partial void Waiting(ILogger logger);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Leaving the migration gate could not unlock it; closing the session releases the lock.")]
     private static partial void UnlockFailed(ILogger logger, Exception failure);

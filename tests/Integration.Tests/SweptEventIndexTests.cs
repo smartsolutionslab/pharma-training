@@ -1,4 +1,5 @@
 using Aspire.Hosting.Testing;
+using Microsoft.Extensions.Logging.Testing;
 using Npgsql;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.EventStore;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Persistence;
@@ -104,6 +105,51 @@ public sealed class SweptEventIndexTests(AspireFixture aspire) : IAsyncDisposabl
         exitCode.ShouldNotBe(0, $"The MigrationRunner built {index} although a session held an older snapshot:\n{output}");
         output.ShouldContain($"Building the index {index}", Case.Sensitive, $"The run did not log the build before it waited:\n{output}");
         output.ShouldContain("lock timeout", Case.Insensitive, $"The run did not fail on the lock timeout:\n{output}");
+    }
+
+    /// <summary>
+    /// A second run waits at the gate on the <see cref="TimeProvider"/> it is given (#351), so a test drives its tries, and
+    /// logs once, not per try, that it waits, so an init container's log says why it has not started yet.
+    /// </summary>
+    [Fact]
+    public async Task A_second_run_waits_at_the_migration_gate_on_its_time_provider_and_logs_it_once()
+    {
+        var administrator = await DatabaseAsync();
+        var time = new TimerCountingTimeProvider();
+        var logger = new FakeLogger();
+        var first = await MigrationGate.EnterAsync(administrator, TestContext.Current.CancellationToken);
+        Task<MigrationGate> second;
+        try
+        {
+            second = MigrationGate.EnterAsync(administrator, logger, time, TestContext.Current.CancellationToken);
+            for (var tries = 1; tries <= 3; tries++)
+            {
+                var timers = tries;
+                await AnnouncementSweeps.WaitUntilAsync(
+                    () => Task.FromResult(time.Timers >= timers),
+                    $"The second run did not wait for its try {timers + 1} on the time provider it was given",
+                    TestContext.Current.CancellationToken);
+                time.Advance(TimeSpan.FromSeconds(1));
+            }
+
+            second.IsCompleted.ShouldBeFalse("The second run entered the gate while the first held it.");
+        }
+        finally
+        {
+            await first.DisposeAsync();
+        }
+
+        await AnnouncementSweeps.WaitUntilAsync(
+            () =>
+            {
+                time.Advance(TimeSpan.FromSeconds(1));
+                return Task.FromResult(second.IsCompleted);
+            },
+            "The second run did not enter the gate once the first had left",
+            TestContext.Current.CancellationToken);
+        await using var entered = await second;
+        logger.Collector.GetSnapshot().Count(record => record.Message.Contains("Waiting for another run at the migration gate", StringComparison.Ordinal))
+            .ShouldBe(1, $"The second run must log once that it waits; it logged:\n{string.Join('\n', logger.Collector.GetSnapshot().Select(record => record.Message))}");
     }
 
     public async ValueTask DisposeAsync()
