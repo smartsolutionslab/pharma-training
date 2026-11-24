@@ -14,7 +14,7 @@ public class TestDraftAnswerTests
     public void A_sound_answer_maps_each_question_to_its_chapters_id_type_text_and_options()
     {
         var version = TestDraftVersions.WithTextChapters(3, "Händehygiene");
-        version.AddChapter(Chapter.OfPdf(ChapterId.New(), ChapterTitle.From("Merkblatt"), BlobReference.From("chapters/merkblatt.pdf"))).IsSuccess.ShouldBeTrue();
+        version.AddChapter(Chapter.OfPdf(ChapterId.New(), ChapterTitle.From("Merkblatt"), BlobReference.From("chapters/merkblatt.pdf"), PdfTextExtraction.NoText, null)).IsSuccess.ShouldBeTrue();
         var flaechen = ChapterId.New();
         version.AddChapter(Chapter.OfText(flaechen, ChapterTitle.From("Flächen"), MarkdownText.From("Rezepturtisch und Waage täglich."))).IsSuccess.ShouldBeTrue();
         var haende = TestDraftVersions.TextChapterIds(version)[0];

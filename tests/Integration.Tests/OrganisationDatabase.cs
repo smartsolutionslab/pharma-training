@@ -18,6 +18,9 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
     /// <summary>The link hashes of the membership aliased <c>m</c>, in hash order, as one array: empty when it keeps none.</summary>
     private const string LinkHashes = "array(SELECT l.token_hash FROM organisation.invitation_links l WHERE l.membership_id = m.id ORDER BY l.token_hash)";
 
+    // Organisation's namespace for derived recipient ids (#265); it must match InvitationRecipientId's.
+    private static readonly Guid RecipientNamespace = new("3f9c2a71-8d4e-4b06-a5e2-7c1d9b0f6e38");
+
     /// <summary>
     /// Seeds, fast and without the broker, the row accepting an invitation writes, for tests that are not about accepting;
     /// accepting itself is tested end to end in <see cref="OrganisationAcceptInvitationTests"/>. The row is the one the
@@ -122,18 +125,151 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
     }
 
     /// <summary>
+    /// Writes one more link of the membership's current version by hand, past the aggregate, as a run of the mail
+    /// consumer whose mail may be out leaves it: the hash alone, as the table keeps it.
+    /// </summary>
+    public async Task InsertInvitationLinkAsync(Guid membership, string tokenHash, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("INSERT INTO organisation.invitation_links (membership_id, token_hash) VALUES (@membership, @tokenHash)", connection);
+        command.Parameters.AddWithValue("membership", membership);
+        command.Parameters.AddWithValue("tokenHash", tokenHash);
+        (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1);
+    }
+
+    /// <summary>
     /// Time travel for the renew cooldown: moves the instant the membership's newest invitation mail was requested
-    /// back by the span given, as if that request had been made so much earlier.
+    /// back by the span given, as if that request had been made so much earlier. The recipient cooldown of the
+    /// membership's stored address (#265) moves back by the same span, since that mail was the address's too: its row,
+    /// if it has one (an invitation a test inserted directly has none).
     /// </summary>
     public async Task MoveInvitationRequestBackAsync(Guid membership, TimeSpan by, CancellationToken cancellationToken)
     {
         await using var connection = await OpenAsync(cancellationToken);
+        string email;
+        await using (var command = new NpgsqlCommand(
+            "UPDATE organisation.memberships SET invitation_requested_at = invitation_requested_at - @by WHERE id = @id AND invitation_requested_at IS NOT NULL RETURNING email",
+            connection))
+        {
+            command.Parameters.AddWithValue("id", membership);
+            command.Parameters.AddWithValue("by", by);
+            var returned = await command.ExecuteScalarAsync(cancellationToken);
+            returned.ShouldNotBeNull($"There is no membership {membership} whose invitation mail was requested.");
+            email = (string)returned;
+        }
+
+        await using var recipient = new NpgsqlCommand(
+            "UPDATE organisation.invitation_recipients SET last_mailed_at = last_mailed_at - @by WHERE id = @id",
+            connection);
+        recipient.Parameters.AddWithValue("id", RecipientIdOf(email));
+        recipient.Parameters.AddWithValue("by", by);
+        (await recipient.ExecuteNonQueryAsync(cancellationToken)).ShouldBeInRange(0, 1);
+    }
+
+    /// <summary>
+    /// Puts the instant the membership's newest invitation mail was requested the span given ahead of the database's
+    /// now (#294), as a hand-edited row or a database clock that moved back leaves it. The membership row only: the
+    /// recipient cooldown of its address is left as it is.
+    /// </summary>
+    public async Task SetInvitationRequestedAheadAsync(Guid membership, TimeSpan ahead, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand(
-            "UPDATE organisation.memberships SET invitation_requested_at = invitation_requested_at - @by WHERE id = @id AND invitation_requested_at IS NOT NULL",
+            "UPDATE organisation.memberships SET invitation_requested_at = now() + @ahead WHERE id = @id AND invitation_requested_at IS NOT NULL",
             connection);
         command.Parameters.AddWithValue("id", membership);
-        command.Parameters.AddWithValue("by", by);
+        command.Parameters.AddWithValue("ahead", ahead);
         (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1, $"There is no membership {membership} whose invitation mail was requested.");
+    }
+
+    /// <summary>
+    /// The id of an address's invitation recipient row (#265): a name-based UUID version 8 (RFC 9562), the first 16
+    /// bytes of the SHA-256 of Organisation's namespace and the address as the domain stores it (trimmed, lower-case),
+    /// with the version and variant set. A copy of <c>InvitationRecipientId.For</c>, which it must match; the
+    /// integration tests do not reference the module, as <c>HashOf</c> does not.
+    /// </summary>
+    public static Guid RecipientIdOf(string address)
+    {
+        var stored = Encoding.UTF8.GetBytes(address.Trim().ToLowerInvariant());
+        var name = new byte[16 + stored.Length];
+        RecipientNamespace.TryWriteBytes(name.AsSpan(0, 16), bigEndian: true, out _).ShouldBeTrue();
+        stored.CopyTo(name, 16);
+        var uuid = System.Security.Cryptography.SHA256.HashData(name).AsSpan(0, 16).ToArray();
+        uuid[6] = (byte)((uuid[6] & 0x0F) | 0x80);
+        uuid[8] = (byte)((uuid[8] & 0x3F) | 0x80);
+        return new Guid(uuid, bigEndian: true);
+    }
+
+    /// <summary>Time travel for the recipient cooldown (#265): moves the instant the address was last mailed an invitation back by the span given.</summary>
+    public async Task MoveRecipientMailBackAsync(string address, TimeSpan by, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            "UPDATE organisation.invitation_recipients SET last_mailed_at = last_mailed_at - @by WHERE id = @id",
+            connection);
+        command.Parameters.AddWithValue("id", RecipientIdOf(address));
+        command.Parameters.AddWithValue("by", by);
+        (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1, $"The address {address} was never mailed an invitation.");
+    }
+
+    /// <summary>
+    /// Forgets that the address was ever mailed an invitation (#265), so a test that mails it again is not refused by
+    /// its cooldown because another test of the class mailed it first. Nothing to forget is fine.
+    /// </summary>
+    public async Task ForgetRecipientMailAsync(string address, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("DELETE FROM organisation.invitation_recipients WHERE id = @id", connection);
+        command.Parameters.AddWithValue("id", RecipientIdOf(address));
+        (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBeLessThanOrEqualTo(1);
+    }
+
+    /// <summary>The instant the address was last mailed an invitation (#265), or null while it has no recipient row.</summary>
+    public async Task<DateTimeOffset?> RecipientLastMailedAtAsync(string address, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("SELECT last_mailed_at FROM organisation.invitation_recipients WHERE id = @id", connection);
+        command.Parameters.AddWithValue("id", RecipientIdOf(address));
+        return await command.ExecuteScalarAsync(cancellationToken) is DateTime stored ? new DateTimeOffset(stored, TimeSpan.Zero) : null;
+    }
+
+    /// <summary>
+    /// Sets the person's tally of invitation mails sent (#265) to the count given, all on the UTC day given, creating the
+    /// row when the person has sent none yet. Pass the day the module counts on, the database's (<see cref="TodayUtcAsync"/>).
+    /// </summary>
+    public async Task SetSenderMailsAsync(Guid person, DateOnly day, int count, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            """
+            INSERT INTO organisation.invitation_senders (person_id, mail_day, mails_that_day) VALUES (@person, @day, @count)
+            ON CONFLICT (person_id) DO UPDATE SET mail_day = excluded.mail_day, mails_that_day = excluded.mails_that_day
+            """,
+            connection);
+        command.Parameters.AddWithValue("person", person);
+        command.Parameters.Add(new NpgsqlParameter("day", NpgsqlDbType.Date) { Value = day });
+        command.Parameters.AddWithValue("count", count);
+        (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1);
+    }
+
+    /// <summary>Time travel for the sender cap (#265): moves the day of the person's tally back by one, as if their mails had been sent yesterday (UTC).</summary>
+    public async Task MoveSenderMailDayBackAsync(Guid person, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            "UPDATE organisation.invitation_senders SET mail_day = mail_day - 1 WHERE person_id = @person",
+            connection);
+        command.Parameters.AddWithValue("person", person);
+        (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1, $"The person {person} has sent no invitation mail.");
+    }
+
+    /// <summary>The person's stored tally of invitation mails sent on its counted day (#265).</summary>
+    public async Task<int> SenderMailsThatDayAsync(Guid person, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("SELECT mails_that_day FROM organisation.invitation_senders WHERE person_id = @person", connection);
+        command.Parameters.AddWithValue("person", person);
+        return (int)(await command.ExecuteScalarAsync(cancellationToken) ?? throw new InvalidOperationException($"The person {person} has sent no invitation mail."));
     }
 
     /// <summary>
@@ -178,6 +314,16 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         await using var command = new NpgsqlCommand("SELECT invitation_mails_that_day FROM organisation.pharmacies WHERE id = @id", connection);
         command.Parameters.AddWithValue("id", pharmacy);
         return (int)(await command.ExecuteScalarAsync(cancellationToken) ?? throw new InvalidOperationException($"There is no pharmacy {pharmacy}."));
+    }
+
+    /// <summary>The UTC day the pharmacy's stored tally of invitation mails counts (#294), or null while it has counted none.</summary>
+    public async Task<DateOnly?> InvitationMailDayAsync(Guid pharmacy, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("SELECT invitation_mail_day FROM organisation.pharmacies WHERE id = @id", connection);
+        command.Parameters.AddWithValue("id", pharmacy);
+        var day = await command.ExecuteScalarAsync(cancellationToken) ?? throw new InvalidOperationException($"There is no pharmacy {pharmacy}.");
+        return day is DBNull ? null : (DateOnly)day;
     }
 
     /// <summary>The number of the pharmacy's memberships, whatever their status.</summary>
@@ -354,16 +500,44 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
     }
 
     /// <summary>
+    /// Opens a transaction that holds the invitation recipients' table (#265) in SHARE mode, so every request that inserts
+    /// or updates a recipient waits, as it commits, until the transaction ends. Disposing the lock closes its connection.
+    /// </summary>
+    public async Task<PharmacyLock> LockInvitationRecipientsAsync(CancellationToken cancellationToken)
+    {
+        var connection = await OpenAsync(cancellationToken);
+        try
+        {
+            var transaction = await connection.BeginTransactionAsync(cancellationToken);
+            await using (var table = new NpgsqlCommand("LOCK TABLE organisation.invitation_recipients IN SHARE MODE", connection, transaction))
+            {
+                await table.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            return new PharmacyLock(connection, transaction);
+        }
+        catch
+        {
+            await connection.DisposeAsync();
+            throw;
+        }
+    }
+
+    /// <summary>
     /// Polls the organisation database until the given number of backends wait for the gate, directly or behind each
     /// other, and fails the test when they do not within 30 seconds. Other tests run against the same database at the
     /// same time, so a backend counts only when its wait leads back to the gate's own backend: a second request that
     /// waits for a row behind the first is blocked by the first, not by the gate.
     /// </summary>
-    public async Task WaitUntilBlockedAsync(PharmacyLock gate, int expected, CancellationToken cancellationToken)
+    public Task WaitUntilBlockedAsync(PharmacyLock gate, int expected, CancellationToken cancellationToken) =>
+        WaitUntilBlockedAsync(gate, expected, TimeSpan.FromSeconds(30), cancellationToken);
+
+    /// <summary>As above, failing the test when they do not within <paramref name="within"/>.</summary>
+    public async Task WaitUntilBlockedAsync(PharmacyLock gate, int expected, TimeSpan within, CancellationToken cancellationToken)
     {
         Ensure.That(gate).IsNotNull();
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+        timeout.CancelAfter(within);
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand(
             """
@@ -531,6 +705,35 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
     }
 
     /// <summary>
+    /// Polls the stored envelope that <see cref="RedeliverAsync"/> handed back until Wolverine has taken it again: a node
+    /// owns it, it was tried, its status moved on, or it left the inbox (dead-lettered or handled and dropped). Fails the
+    /// test when it is still waiting after <paramref name="within"/>.
+    /// </summary>
+    public async Task WaitUntilTakenAsync(Guid envelope, TimeSpan within, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        var started = TimeProvider.System.GetTimestamp();
+        while (true)
+        {
+            await using var command = new NpgsqlCommand(
+                "SELECT count(*) FROM wolverine.wolverine_incoming_envelopes WHERE id = @id AND status = 'Incoming' AND owner_id = 0 AND attempts = 0",
+                connection);
+            command.Parameters.AddWithValue("id", envelope);
+            if ((long)(await command.ExecuteScalarAsync(cancellationToken) ?? 0L) == 0)
+            {
+                return;
+            }
+
+            if (TimeProvider.System.GetElapsedTime(started) >= within)
+            {
+                throw new TimeoutException($"Wolverine had not taken the handed-back envelope {envelope} again after {within.TotalSeconds:0} s");
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
+        }
+    }
+
+    /// <summary>
     /// Polls the service's dead letters (<c>wolverine.wolverine_dead_letters</c>) until it holds the mail request of the
     /// membership, and answers the row: its id, its exception message, its message's JSON and the whole row as JSON text
     /// with the body escaped. Fails the test when there is none within <paramref name="within"/>.
@@ -544,7 +747,8 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
             await using var command = new NpgsqlCommand(
                 """
                 SELECT id, exception_message, body,
-                       (to_jsonb(dead_letter) - 'body' || jsonb_build_object('body', encode(dead_letter.body, 'escape')))::text
+                       (to_jsonb(dead_letter) - 'body' || jsonb_build_object('body', encode(dead_letter.body, 'escape')))::text,
+                       coalesce(exception_type, '')
                 FROM wolverine.wolverine_dead_letters dead_letter
                 WHERE message_type = @type AND position(convert_to(@membership, 'UTF8') in body) > 0
                 """,
@@ -555,11 +759,14 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
             {
                 if (await reader.ReadAsync(cancellationToken))
                 {
+                    var body = reader.GetFieldValue<byte[]>(2);
                     return new MailRequestDeadLetter(
                         reader.GetGuid(0),
                         await reader.IsDBNullAsync(1, cancellationToken) ? string.Empty : reader.GetString(1),
-                        MessageJson(reader.GetFieldValue<byte[]>(2)),
-                        reader.GetString(3));
+                        MessageJson(body),
+                        reader.GetString(3),
+                        reader.GetString(4),
+                        AttemptsIn(body));
                 }
             }
 
@@ -589,6 +796,21 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         command.Parameters.AddWithValue("type", MailRequestType);
         command.Parameters.AddWithValue("membership", membership.ToString());
         return (string?)await command.ExecuteScalarAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Hands a stored envelope of the durable inbox back to Wolverine as one no node has taken yet (<c>Incoming</c>,
+    /// owner 0, no attempts), as a node that died while handling it leaves it; the durability agent recovers it and
+    /// delivers it again. Used on a handled mail request, it delivers that request a second time.
+    /// </summary>
+    public async Task RedeliverAsync(Guid envelope, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            "UPDATE wolverine.wolverine_incoming_envelopes SET status = 'Incoming', owner_id = 0, attempts = 0, keep_until = NULL WHERE id = @id",
+            connection);
+        command.Parameters.AddWithValue("id", envelope);
+        (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1, $"There is no stored envelope {envelope}.");
     }
 
     /// <summary>Marks the dead letter replayable, so Wolverine delivers it again.</summary>
@@ -632,6 +854,26 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         throw new ShouldAssertException("the stored envelope holds no JSON message");
     }
 
+    /// <summary>
+    /// The envelope's <c>attempts</c> header: how often it had been tried when it was stored. <c>EnvelopeSerializer</c>
+    /// writes each header as two length-prefixed strings, key then value, and leaves the header out while it is 0.
+    /// </summary>
+    private static int AttemptsIn(byte[] envelope)
+    {
+        // The key's length, 8, then the key.
+        byte[] key = [8, .. "attempts"u8];
+        var at = envelope.AsSpan().IndexOf(key);
+        if (at < 0)
+        {
+            return 0;
+        }
+
+        var length = envelope[at + key.Length];
+        var value = Encoding.UTF8.GetString(envelope, at + key.Length + 1, length);
+        int.TryParse(value, System.Globalization.CultureInfo.InvariantCulture, out var attempts).ShouldBeTrue($"the envelope's attempts header is no number: {value}");
+        return attempts;
+    }
+
     private async Task<JsonDocument> ClaimsOfAsync(string user)
     {
         var token = await aspire.RequestAccessTokenAsync(user);
@@ -659,8 +901,11 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
     /// <summary>An envelope of the service's durable inbox as the tests read it: its message's JSON.</summary>
     internal sealed record MailRequestEnvelope(Guid Id, string ReceivedAt, int Attempts, string Body);
 
-    /// <summary>A dead letter as the tests read it: its message's JSON, and the whole row as JSON text with the body escaped.</summary>
-    internal sealed record MailRequestDeadLetter(Guid Id, string ExceptionMessage, string Body, string Row);
+    /// <summary>
+    /// A dead letter as the tests read it: its message's JSON, the whole row as JSON text with the body escaped, its
+    /// exception's type and the attempts its envelope had been tried when it was dead-lettered.
+    /// </summary>
+    internal sealed record MailRequestDeadLetter(Guid Id, string ExceptionMessage, string Body, string Row, string ExceptionType, int Attempts);
 
     /// <summary>An active membership as the tests read it back: its id and its pharmacy.</summary>
     internal sealed record ActiveMembership(Guid Id, Guid PharmacyId);

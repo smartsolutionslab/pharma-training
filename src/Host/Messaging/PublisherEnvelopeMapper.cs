@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using RabbitMQ.Client;
 using Wolverine;
 using Wolverine.RabbitMQ.Internal;
@@ -77,6 +79,14 @@ public sealed class PublisherEnvelopeMapper(IRabbitMqEnvelopeMapper inner, strin
             Refuse(envelope, incoming, "no integration event of a module in " + Json);
         }
 
+        // The publisher's source header becomes the dead letter's source column, text, which PostgreSQL refuses with a NUL
+        // (22021): the event could then never be dead-lettered (#338). The other fields a publisher chooses reach no text
+        // column (BrokerPublisherIntegrityTests).
+        if (envelope.Source is not null)
+        {
+            envelope.Source = Printable(envelope.Source);
+        }
+
         if (string.IsNullOrEmpty(incoming.UserId))
         {
             envelope.Headers.Remove(PublisherHeader);
@@ -90,7 +100,35 @@ public sealed class PublisherEnvelopeMapper(IRabbitMqEnvelopeMapper inner, strin
     /// <summary>Gives the envelope a type no handler has, keeping what it came with and why it was refused.</summary>
     private static void Refuse(Envelope envelope, IReadOnlyBasicProperties incoming, string reason)
     {
-        envelope.Headers[RefusedTypeHeader] = $"{incoming.Type ?? "(none)"} in {incoming.ContentType ?? "(no content type)"}: {reason}";
+        envelope.Headers[RefusedTypeHeader] = Printable($"{incoming.Type ?? "(none)"} in {incoming.ContentType ?? "(no content type)"}: {reason}");
         envelope.MessageType = RefusedMessageType;
+    }
+
+    /// <summary>
+    /// The text with every control character written as <c>\uXXXX</c>: what a publisher chose reaches the dead letters in
+    /// PostgreSQL, whose text columns refuse a NUL (22021), which would stop the listener instead (#230), or leave the
+    /// message neither handled nor dead-lettered (#338).
+    /// </summary>
+    private static string Printable(string text)
+    {
+        if (!text.Any(char.IsControl))
+        {
+            return text;
+        }
+
+        var printable = new StringBuilder(text.Length + 16);
+        foreach (var character in text)
+        {
+            if (char.IsControl(character))
+            {
+                printable.Append(CultureInfo.InvariantCulture, $"\\u{(int)character:x4}");
+            }
+            else
+            {
+                printable.Append(character);
+            }
+        }
+
+        return printable.ToString();
     }
 }

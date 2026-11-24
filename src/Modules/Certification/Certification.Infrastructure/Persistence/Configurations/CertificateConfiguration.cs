@@ -22,6 +22,7 @@ public sealed class CertificateConfiguration : IEntityTypeConfiguration<Certific
         builder.Property(certificate => certificate.Course).HasColumnName("course_id").IsRequired();
         builder.Property(certificate => certificate.CourseVersion).HasColumnName("course_version_id").IsRequired();
         builder.Property(certificate => certificate.CourseTitle).HasColumnName("course_title").HasMaxLength(CourseTitle.MaxLength).IsRequired();
+        builder.Property(certificate => certificate.CourseVersionNumber).HasColumnName("course_version_number").IsRequired();
         builder.Property(certificate => certificate.Score).HasColumnName("score_percent").IsRequired();
         builder.Property(certificate => certificate.IssuedAt).HasColumnName("issued_at").IsRequired();
         builder.Property(certificate => certificate.ValidUntil).HasColumnName("valid_until").IsRequired();
@@ -34,5 +35,7 @@ public sealed class CertificateConfiguration : IEntityTypeConfiguration<Certific
         builder.HasIndex(certificate => certificate.Attempt).IsUnique().HasDatabaseName("ix_certificates_attempt_id");
         // A verification code names one certificate; a collision is refused, and the retry draws another code.
         builder.HasIndex(certificate => certificate.VerificationCode).IsUnique().HasDatabaseName("ix_certificates_verification_code");
+        // A person lists their own certificates (#295), filtered by holder.
+        builder.HasIndex(certificate => certificate.Holder).HasDatabaseName("ix_certificates_holder_id");
     }
 }

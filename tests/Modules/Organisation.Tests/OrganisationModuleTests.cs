@@ -2,6 +2,7 @@ using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Api;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Mail;
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Tests;
@@ -32,6 +33,24 @@ public class OrganisationModuleTests
         using var provider = Provider();
 
         provider.GetService<InvitationMailLimits>().ShouldBe(InvitationMailLimits.Default);
+    }
+
+    [Fact]
+    public void The_module_registers_its_recipient_and_sender_mail_limits()
+    {
+        using var provider = Provider();
+
+        provider.GetService<RecipientAndSenderMailLimits>().ShouldBe(RecipientAndSenderMailLimits.Default);
+    }
+
+    [Fact]
+    public void The_module_registers_its_invitation_recipient_and_sender_stores()
+    {
+        using var provider = Provider();
+        using var scope = provider.CreateScope();
+
+        scope.ServiceProvider.GetService<IInvitationRecipientStore>().ShouldNotBeNull("the module registered no store of invitation recipients");
+        scope.ServiceProvider.GetService<IInvitationSenderStore>().ShouldNotBeNull("the module registered no store of invitation senders");
     }
 
     /// <summary>Organisation mails its invitations, so it registers the mail sender and the links into the web app itself.</summary>

@@ -17,7 +17,8 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// <summary>
 /// The URLs AzureBlobUrls signs, sent to the storage emulator the AppHost runs: an upload URL creates its own blob and does
 /// nothing else, a read URL reads its own blob and does nothing else, neither works once its lifetime ends, and the web
-/// app's origin, alone, may use them from a browser. AzureStoredBlobs reads what was uploaded.
+/// app's origin, alone, may use them from a browser. AzureStoredBlobs reads what was uploaded, and AzureBlobWrites
+/// creates a blob once and never overwrites it.
 /// </summary>
 public class BlobStorageTests(AspireFixture aspire)
 {
@@ -453,6 +454,100 @@ public class BlobStorageTests(AspireFixture aspire)
     }
 
     /// <summary>
+    /// A release that arrives again after its read URL expired (a retry, a republish read late), or with a source the
+    /// storage service would refuse, finds the copy Learning already made: it neither throws nor writes the blob again.
+    /// </summary>
+    [Theory]
+    [InlineData("expired")]
+    [InlineData("tampered")]
+    public async Task A_copy_to_a_name_already_there_with_an_unusable_source_changes_nothing(string unusable)
+    {
+        var now = TimeProvider.System.GetUtcNow();
+        var editorial = await UrlsAsync("editorial", now);
+        var expired = await UrlsAsync("editorial", now.AddMinutes(-16));
+        var copies = await CopiesAsync("learning");
+        var learning = await StoredBlobsAsync("learning");
+        var source = NewName();
+        var target = NewName();
+        var content = RandomNumberGenerator.GetBytes(64);
+
+        using var put = await PutAsync((await editorial.CreateUploadUrlAsync(source, FiveMinutes, TestContext.Current.CancellationToken)).Url, content, "application/pdf");
+        var read = await editorial.CreateReadUrlAsync(source, FifteenMinutes, InlinePdf, TestContext.Current.CancellationToken);
+        var first = await copies.CopyFromAsync(read, target, TestContext.Current.CancellationToken);
+        var before = await learning.FindAsync(target, TestContext.Current.CancellationToken);
+        var unusableSource = unusable == "expired"
+            ? await expired.CreateReadUrlAsync(source, FifteenMinutes, InlinePdf, TestContext.Current.CancellationToken)
+            : read with { Url = new Uri(read.Url.AbsoluteUri.Replace("sig=", "sig=AAAA", StringComparison.Ordinal)) };
+        var again = await copies.CopyFromAsync(unusableSource, target, TestContext.Current.CancellationToken);
+        var after = await learning.FindAsync(target, TestContext.Current.CancellationToken);
+
+        put.StatusCode.ShouldBe(HttpStatusCode.Created);
+        first.ShouldBe(BlobCopyOutcome.Copied);
+        again.ShouldBe(BlobCopyOutcome.AlreadyThere);
+        before.HasValue.ShouldBeTrue("the first copy lies in Learning's container");
+        after.HasValue.ShouldBeTrue("the copy is still there");
+        after.Value.ETag.ShouldBe(before.Value.ETag, "a blob already there is not written again");
+        (await learning.ReadStartAsync(after.Value, content.Length, TestContext.Current.CancellationToken)).ToArray().ShouldBe(content);
+    }
+
+    [Fact]
+    public async Task A_write_creates_the_blob_in_the_own_container_with_its_content_type()
+    {
+        var writes = await WritesAsync("certification");
+        var blobs = await StoredBlobsAsync("certification");
+        var name = NewName();
+        var content = RandomNumberGenerator.GetBytes(300);
+
+        var outcome = await writes.CreateAsync(name, BinaryData.FromBytes(content), "application/pdf", TestContext.Current.CancellationToken);
+        var written = await blobs.FindAsync(name, TestContext.Current.CancellationToken);
+
+        outcome.ShouldBe(BlobWriteOutcome.Created);
+        written.HasValue.ShouldBeTrue("the blob lies in Certification's own container");
+        written.Value.ShouldBe(new StoredBlob(name, "application/pdf", 300, IsBlockBlob: true, ETag: written.Value.ETag));
+        (await blobs.ReadStartAsync(written.Value, content.Length, TestContext.Current.CancellationToken)).ToArray().ShouldBe(content);
+    }
+
+    [Fact]
+    public async Task A_second_write_to_the_same_name_is_already_there_and_leaves_the_first_bytes()
+    {
+        var writes = await WritesAsync("certification");
+        var blobs = await StoredBlobsAsync("certification");
+        var name = NewName();
+        var first = RandomNumberGenerator.GetBytes(64);
+
+        var created = await writes.CreateAsync(name, BinaryData.FromBytes(first), "application/pdf", TestContext.Current.CancellationToken);
+        var afterFirst = await blobs.FindAsync(name, TestContext.Current.CancellationToken);
+        var again = await writes.CreateAsync(name, BinaryData.FromBytes(RandomNumberGenerator.GetBytes(128)), "application/octet-stream", TestContext.Current.CancellationToken);
+        var afterSecond = await blobs.FindAsync(name, TestContext.Current.CancellationToken);
+
+        created.ShouldBe(BlobWriteOutcome.Created);
+        again.ShouldBe(BlobWriteOutcome.AlreadyThere);
+        afterFirst.HasValue.ShouldBeTrue("the first write lies in the container");
+        afterSecond.HasValue.ShouldBeTrue("the second write removed nothing");
+        afterSecond.Value.ETag.ShouldBe(afterFirst.Value.ETag, "a blob already there is not written again");
+        afterSecond.Value.ContentType.ShouldBe("application/pdf");
+        (await blobs.ReadStartAsync(afterSecond.Value, 256, TestContext.Current.CancellationToken)).ToArray().ShouldBe(first, "the first bytes stored win");
+    }
+
+    [Fact]
+    public async Task A_read_url_on_a_written_blob_serves_its_bytes()
+    {
+        var writes = await WritesAsync("certification");
+        var urls = await UrlsAsync("certification", TimeProvider.System.GetUtcNow());
+        var name = NewName();
+        var content = RandomNumberGenerator.GetBytes(256);
+
+        var outcome = await writes.CreateAsync(name, BinaryData.FromBytes(content), "application/pdf", TestContext.Current.CancellationToken);
+        var read = await urls.CreateReadUrlAsync(name, FiveMinutes, InlinePdf, TestContext.Current.CancellationToken);
+        using var get = await Http.GetAsync(read.Url, TestContext.Current.CancellationToken);
+
+        outcome.ShouldBe(BlobWriteOutcome.Created);
+        get.StatusCode.ShouldBe(HttpStatusCode.OK);
+        get.Content.Headers.ContentType.ShouldNotBeNull().MediaType.ShouldBe("application/pdf");
+        (await get.Content.ReadAsByteArrayAsync(TestContext.Current.CancellationToken)).ShouldBe(content);
+    }
+
+    /// <summary>
     /// The modules whose containers the running AppHost created, read from its application model rather than listed, so a
     /// module added or removed with <c>fabric add-module</c> is covered without touching this file.
     /// </summary>
@@ -508,6 +603,15 @@ public class BlobStorageTests(AspireFixture aspire)
             .AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:blobs"] = await ConnectionStringAsync(module) })
             .Build();
         return new AzureBlobCopies(configuration);
+    }
+
+    /// <summary>Writes into a module's container, made as the service makes them.</summary>
+    private async Task<AzureBlobWrites> WritesAsync(string module)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:blobs"] = await ConnectionStringAsync(module) })
+            .Build();
+        return new AzureBlobWrites(configuration);
     }
 
     /// <summary>The blobs of a module's container, read as the service reads them.</summary>

@@ -16,6 +16,7 @@ public sealed class CourseVersionConfiguration : IEntityTypeConfiguration<Course
         // The identifiers and the value objects map to their backing values by convention (module.ddd-depth: strict).
         builder.Property(version => version.Id).HasColumnName("id").ValueGeneratedNever();
         builder.Property(version => version.Course).HasColumnName("course_id").IsRequired();
+        builder.Property(version => version.Number).HasColumnName("version_number").IsRequired();
         // As long as Editorial allows a course title to be.
         builder.Property(version => version.Title).HasColumnName("title").HasMaxLength(CourseTitle.MaxLength).IsRequired();
         builder.Property(version => version.Validity).HasColumnName("validity_months").IsRequired();

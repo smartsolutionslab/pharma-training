@@ -4,11 +4,11 @@ import { setLanguage, t } from '@/i18n';
 import { type WorkflowAction, workflowFailure, workflowFailureText } from './workflowErrors';
 
 // What the course version page says when a step of the workflow (#26: submit, publish, return, retire) is refused or
-// fails: a key of the catalogs chosen by the module's code where the page knows the code. The three defects of a
-// question publishing finds (422) say one thing; a policy's 403 without a code says the editor may not take the step;
-// a return's refused reason (400 invalid-return-reason) is the reason field's message stating the host's whole rule. A module's refusal with a
-// code the page does not know says the host's words (ADR 0007: ApiError.serverMessage, until #147 translates them);
-// anything else, a network failure included, says the step failed.
+// fails, as an ErrorMessage of src/i18n/errorText.ts (#147): the page's own key where its words depend on the step
+// (not-a-draft, not-published, course-version-changed, the three defects of a question publishing finds, a return's
+// refused reason, which states the host's whole rule for a reason), else the catalog's errors.<code>; a policy's 403
+// without a code says the editor may not take the step. Only a module code the catalog does not know says the host's words; anything else, a network failure
+// included, says the step failed.
 
 /** Problem details as the host sends them, with a code where it has one. */
 const problem = (status: number, code?: string) =>
@@ -21,7 +21,7 @@ const answers: [string, WorkflowAction, () => unknown, string, string, string][]
     '403 identity-incomplete',
     'submit',
     refusal(403, 'editorial.identity-incomplete'),
-    'editorial.workflow.errors.identityIncomplete',
+    'errors.editorial.identity-incomplete',
     'Ihre Anmeldung nennt keine Person. Melden Sie sich erneut an.',
     'Your sign-in names no person. Please sign in again.',
   ],
@@ -29,7 +29,7 @@ const answers: [string, WorkflowAction, () => unknown, string, string, string][]
     '404 course-version-not-found',
     'retire',
     refusal(404, 'editorial.course-version-not-found'),
-    'editorial.workflow.errors.notFound',
+    'errors.editorial.course-version-not-found',
     'Diese Version gibt es nicht mehr.',
     'This version no longer exists.',
   ],
@@ -53,7 +53,7 @@ const answers: [string, WorkflowAction, () => unknown, string, string, string][]
     '409 no-chapters',
     'submit',
     refusal(409, 'editorial.no-chapters'),
-    'editorial.workflow.errors.noChapters',
+    'errors.editorial.no-chapters',
     'Die Version braucht mindestens ein Kapitel.',
     'The version needs at least one chapter.',
   ],
@@ -61,15 +61,15 @@ const answers: [string, WorkflowAction, () => unknown, string, string, string][]
     '409 too-many-questions',
     'submit',
     refusal(409, 'editorial.too-many-questions'),
-    'editorial.workflow.errors.tooManyQuestions',
-    'Der Test hat mehr Fragen als erlaubt.',
-    'The test has more questions than allowed.',
+    'errors.editorial.too-many-questions',
+    'Ein Test hat höchstens 50 Fragen.',
+    'A test has at most 50 questions.',
   ],
   [
     '409 test-incomplete',
     'publish',
     refusal(409, 'editorial.test-incomplete'),
-    'editorial.workflow.errors.testIncomplete',
+    'errors.editorial.test-incomplete',
     'Der Test hat nicht die vorgegebene Anzahl Fragen.',
     'The test does not have the number of questions its blueprint asks for.',
   ],
@@ -77,7 +77,7 @@ const answers: [string, WorkflowAction, () => unknown, string, string, string][]
     '409 not-in-review on a return',
     'return',
     refusal(409, 'editorial.not-in-review'),
-    'editorial.workflow.errors.notInReview',
+    'errors.editorial.not-in-review',
     'Die Version ist nicht mehr in Prüfung.',
     'The version is no longer in review.',
   ],
@@ -85,7 +85,7 @@ const answers: [string, WorkflowAction, () => unknown, string, string, string][]
     '409 not-in-review on a publish',
     'publish',
     refusal(409, 'editorial.not-in-review'),
-    'editorial.workflow.errors.notInReview',
+    'errors.editorial.not-in-review',
     'Die Version ist nicht mehr in Prüfung.',
     'The version is no longer in review.',
   ],
@@ -93,7 +93,7 @@ const answers: [string, WorkflowAction, () => unknown, string, string, string][]
     '403 four-eyes',
     'publish',
     refusal(403, 'editorial.four-eyes'),
-    'editorial.workflow.errors.fourEyes',
+    'errors.editorial.four-eyes',
     'Mit Vier-Augen-Freigabe darf nicht veröffentlichen, wer die Version eingereicht hat. Bitten Sie eine andere Person aus der Redaktion.',
     'Four-eyes approval does not let whoever submitted the version publish it. Ask another editor.',
   ],
@@ -101,7 +101,7 @@ const answers: [string, WorkflowAction, () => unknown, string, string, string][]
     '403 publisher-approved-questions',
     'publish',
     refusal(403, 'editorial.publisher-approved-questions'),
-    'editorial.workflow.errors.publisherApprovedQuestions',
+    'errors.editorial.publisher-approved-questions',
     'Mit Vier-Augen-Freigabe darf nicht veröffentlichen, wer Fragen dieser Version freigegeben hat. Bitten Sie eine andere Person aus der Redaktion.',
     'Four-eyes approval does not let whoever approved questions of this version publish it. Ask another editor.',
   ],
@@ -109,7 +109,7 @@ const answers: [string, WorkflowAction, () => unknown, string, string, string][]
     '409 question-not-approved',
     'publish',
     refusal(409, 'editorial.question-not-approved'),
-    'editorial.workflow.errors.questionNotApproved',
+    'errors.editorial.question-not-approved',
     'Jede Frage muss vor der Veröffentlichung freigegeben sein.',
     'Every question must be approved before publishing.',
   ],
@@ -130,6 +130,30 @@ const answers: [string, WorkflowAction, () => unknown, string, string, string][]
     'editorial.workflow.errors.notPublished',
     'Nur eine veröffentlichte Version kann zurückgezogen werden.',
     'Only a published version can be retired.',
+  ],
+  [
+    '400 invalid-return-reason, the reason field’s message stating the host’s whole rule',
+    'return',
+    refusal(400, 'editorial.invalid-return-reason'),
+    'editorial.workflow.returnForm.reasonRefused',
+    'Der Grund muss ohne Leerraum am Anfang und Ende 1 bis 1.000 Zeichen lang sein und darf außer Zeilenumbrüchen und Tabulatoren keine Steuer- oder Formatzeichen enthalten.',
+    'The reason must be 1 to 1,000 characters long without leading or trailing spaces, and may contain no control or format characters other than line breaks and tabs.',
+  ],
+  [
+    '403 reviewer-name-missing, a code the page has no words of its own for',
+    'publish',
+    refusal(403, 'editorial.reviewer-name-missing'),
+    'errors.editorial.reviewer-name-missing',
+    'Ihr Konto nennt keinen anzeigbaren Namen. Ergänzen Sie Ihr Profil und melden Sie sich erneut an.',
+    'Your account gives no name that can be shown. Complete your profile and sign in again.',
+  ],
+  [
+    '400 invalid-status',
+    'retire',
+    refusal(400, 'editorial.invalid-status'),
+    'errors.editorial.invalid-status',
+    'Diesen Status gibt es nicht.',
+    'This status does not exist.',
   ],
   ...(['submit', 'publish', 'return', 'retire'] as const).map(
     (action): [string, WorkflowAction, () => unknown, string, string, string] => [
@@ -178,11 +202,12 @@ const fallbacks: [string, () => unknown][] = [
   ['a 401', () => new ApiError(401, '')],
   ['a 413 without a code', () => new ApiError(413, '')],
   ['a 502 with a module code', refusal(502, 'editorial.something-else')],
+  // A step creates nothing: the catalog's already-exists text, that something was created, would be wrong here.
+  ["the unique index's 409 already-exists", refusal(409, 'already-exists')],
   [
     'a 409 with a module code the page does not know but no words',
     () => new ApiError(409, JSON.stringify({ status: 409, code: 'editorial.something-new' })),
   ],
-  ["the unique index's 409 already-exists", refusal(409, 'already-exists')],
   ['an error that is no error at all', () => 'nothing'],
 ];
 
@@ -199,12 +224,12 @@ const fallbackCases = failed.flatMap(([action, key, german, english]) =>
 
 describe('in German', () => {
   test.each(answers)('%s on %s says its own text', (_answer, action, error, key, german) => {
-    expect(workflowFailure(action, error())).toEqual({ key });
+    expect(workflowFailure(action, error())).toMatchObject({ key });
     expect(workflowFailureText(workflowFailure(action, error()))).toBe(german);
   });
 
   test.each(fallbackCases)('%s on %s says the step failed', (_answer, action, error, key, german) => {
-    expect(workflowFailure(action, error())).toEqual({ key });
+    expect(workflowFailure(action, error())).toMatchObject({ key });
     expect(workflowFailureText(workflowFailure(action, error()))).toBe(german);
   });
 });
@@ -213,14 +238,14 @@ describe('in English', () => {
   test.each(answers)('%s on %s says its own text', (_answer, action, error, key, _german, english) => {
     setLanguage('en-GB', { remember: false });
 
-    expect(workflowFailure(action, error())).toEqual({ key });
+    expect(workflowFailure(action, error())).toMatchObject({ key });
     expect(workflowFailureText(workflowFailure(action, error()))).toBe(english);
   });
 
   test.each(fallbackCases)('%s on %s says the step failed', (_answer, action, error, key, _german, english) => {
     setLanguage('en-GB', { remember: false });
 
-    expect(workflowFailure(action, error())).toEqual({ key });
+    expect(workflowFailure(action, error())).toMatchObject({ key });
     expect(workflowFailureText(workflowFailure(action, error()))).toBe(english);
   });
 });
@@ -278,9 +303,9 @@ test("the host's words are never what the page says for a code it knows or a fai
   }
 });
 
-// noChapters is a key of its own, with the checklist's text.
+// no-chapters folds into the catalog's errors.editorial.no-chapters, with the checklist's text.
 test('a refused submit without chapters says what the checklist says', () => {
-  expect(t('editorial.workflow.errors.noChapters')).toBe(t('editorial.workflow.checklist.chaptersMissing'));
+  expect(t('errors.editorial.no-chapters')).toBe(t('editorial.workflow.checklist.chaptersMissing'));
 });
 
 // The host refuses a reason for more than a control character (ADR 0013): missing, empty or over 1000 characters once
@@ -296,6 +321,7 @@ describe('a return refused for its reason (400 invalid-return-reason)', () => {
   test("is the reason field's message stating the host's whole rule", () => {
     expect(workflowFailure('return', refusal(400, 'editorial.invalid-return-reason')())).toEqual({
       key: reasonRefused,
+      values: { max: 1000 },
     });
   });
 
@@ -318,3 +344,33 @@ describe('a return refused for its reason (400 invalid-return-reason)', () => {
     expect(t(key)).toBe('Der Grund enthält unzulässige Steuer- oder Formatzeichen.');
   });
 });
+
+// A failure is an ErrorMessage of src/i18n/errorText.ts: its key with the values errorValues has for the code.
+test('a refused step is the catalog key of its code with the limit it names', () => {
+  expect(workflowFailure('submit', refusal(409, 'editorial.too-many-questions')())).toEqual({
+    key: 'errors.editorial.too-many-questions',
+    values: { max: 50 },
+  });
+});
+
+// The host's words of a code the catalog knows never show, in either language (#147).
+test.each(['de-DE', 'en-GB'] as const)(
+  'a 403 reviewer-name-missing with the host words says the catalog text in %s, never the host words',
+  (language) => {
+    setLanguage(language, { remember: false });
+    const error = new ApiError(
+      403,
+      JSON.stringify({
+        title: 'Forbidden',
+        status: 403,
+        detail: 'SERVER WORDS',
+        code: 'editorial.reviewer-name-missing',
+      }),
+    );
+
+    const text = workflowFailureText(workflowFailure('publish', error));
+
+    expect(text).toBe(t('errors.editorial.reviewer-name-missing'));
+    expect(text).not.toContain('SERVER WORDS');
+  },
+);

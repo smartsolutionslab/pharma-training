@@ -16,7 +16,7 @@ partial class AssessmentModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261123040211_AddHandledContentCompletions";
+    public override string LastMigrationId => "20261124080344_AddAnnouncedEvents";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -27,6 +27,26 @@ partial class AssessmentModelSnapshot : ModelSnapshot
             .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
         NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Assessment.Application.ReadModels.AnnouncedEvent", b =>
+            {
+                b.Property<Guid>("StreamId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("stream_id");
+
+                b.Property<long>("StreamVersion")
+                    .HasColumnType("bigint")
+                    .HasColumnName("stream_version");
+
+                b.Property<DateTimeOffset>("AnnouncedAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("announced_at");
+
+                b.HasKey("StreamId", "StreamVersion")
+                    .HasName("pk_announced_events");
+
+                b.ToTable("announced_events", "assessment");
+            });
 
         modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Assessment.Application.ReadModels.HandledContentCompletion", b =>
             {

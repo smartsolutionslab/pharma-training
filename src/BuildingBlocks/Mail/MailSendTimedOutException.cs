@@ -26,8 +26,13 @@ public sealed class MailSendTimedOutException : OperationCanceledException
         : base(bound) => MayHaveBeenDelivered = mayHaveBeenDelivered;
 
     /// <summary>
-    /// Whether the server may hold the mail after all: <see langword="false"/> only when the bound fired before the mail
-    /// was handed over. One that does not say is <see langword="true"/>.
+    /// Whether the server may hold the mail after all: <see langword="false"/> only when the bound fired, or the caller
+    /// had cancelled, before the mail was handed over; one made without saying is <see langword="true"/>. Only
+    /// <see langword="true"/> counts as possibly delivered: a plain <see cref="OperationCanceledException"/>, like every
+    /// exception from an <see cref="IMailSender"/> other than this one or a <see cref="MailNotSentException"/> with
+    /// <c>MayHaveBeenDelivered</c> set, counts as not delivered. A sender that cannot rule out delivery must throw
+    /// <c>new MailNotSentException(message, true)</c>, or this exception with <see langword="true"/> when its own bound
+    /// fired.
     /// </summary>
     public bool MayHaveBeenDelivered { get; } = true;
 }

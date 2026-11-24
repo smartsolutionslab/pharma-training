@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.RateLimits;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Api;
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Tests;
@@ -16,6 +17,8 @@ public class OrganisationLimitsTests
 {
     private const string CooldownKey = "Organisation:InvitationLimits:RenewCooldownMinutes";
     private const string CapKey = "Organisation:InvitationLimits:MailsPerPharmacyPerDay";
+    private const string RecipientCooldownKey = "Organisation:InvitationLimits:RecipientCooldownMinutes";
+    private const string SenderCapKey = "Organisation:InvitationLimits:MailsPerSenderPerDay";
     private const string AcceptPerMinuteKey = "Organisation:AcceptLimit:PerMinute";
     private const string AcceptPerDayKey = "Organisation:AcceptLimit:PerDay";
     private const string AcceptLimit = "organisation.accept-invitation";
@@ -85,6 +88,55 @@ public class OrganisationLimitsTests
         var stopped = Should.Throw<Exception>(() => AcceptLimitWith((key, value)), $"{key} = \"{value}\" started the host");
 
         stopped.Message.ShouldContain(key);
+    }
+
+    // #265: an address is mailed at most once per cooldown and a sender mails at most so many a UTC day.
+    [Fact]
+    public void Without_configuration_an_address_is_mailed_at_most_every_10_minutes_and_a_sender_sends_at_most_100_a_day()
+    {
+        var limits = RecipientAndSenderLimitsWith();
+
+        limits.RecipientCooldown.Value.ShouldBe(TimeSpan.FromMinutes(10));
+        limits.MailsPerSenderPerDay.Value.ShouldBe(100);
+        limits.ShouldBe(RecipientAndSenderMailLimits.Default);
+    }
+
+    [Fact]
+    public void Configured_recipient_and_sender_limits_win()
+    {
+        var limits = RecipientAndSenderLimitsWith((RecipientCooldownKey, "30"), (SenderCapKey, "1000"));
+
+        limits.RecipientCooldown.Value.ShouldBe(TimeSpan.FromMinutes(30));
+        limits.MailsPerSenderPerDay.Value.ShouldBe(1000);
+    }
+
+    [Theory]
+    [InlineData(RecipientCooldownKey, "0")]
+    [InlineData(RecipientCooldownKey, "-1")]
+    [InlineData(RecipientCooldownKey, "abc")]
+    [InlineData(RecipientCooldownKey, "1441")]
+    [InlineData(RecipientCooldownKey, "2.5")]
+    [InlineData(SenderCapKey, "0")]
+    [InlineData(SenderCapKey, "abc")]
+    [InlineData(SenderCapKey, "10001")]
+    public void A_recipient_or_sender_limit_that_is_no_whole_number_in_range_stops_the_host_naming_the_key(string key, string value)
+    {
+        var stopped = Should.Throw<Exception>(() => RecipientAndSenderLimitsWith((key, value)), $"{key} = \"{value}\" started the host");
+
+        stopped.Message.ShouldContain(key);
+    }
+
+    [Fact]
+    public void The_keys_are_the_ones_the_host_is_configured_with()
+    {
+        OrganisationLimits.RecipientCooldownMinutesKey.ShouldBe(RecipientCooldownKey);
+        OrganisationLimits.MailsPerSenderPerDayKey.ShouldBe(SenderCapKey);
+    }
+
+    private static RecipientAndSenderMailLimits RecipientAndSenderLimitsWith(params (string Key, string Value)[] settings)
+    {
+        using var provider = ServicesWith(settings);
+        return provider.GetRequiredService<RecipientAndSenderMailLimits>();
     }
 
     private static UserRateLimit AcceptLimitWith(params (string Key, string Value)[] settings)

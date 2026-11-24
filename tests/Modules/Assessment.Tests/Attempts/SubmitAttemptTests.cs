@@ -10,8 +10,9 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Assessment.Tests.Attempts;
 
 /// <summary>
 /// The learner submits their open attempt and the server scores it against the version's copy, without partial
-/// credit. A pass is stored, then announced as TestPassedV1 for Learning's session; the result shows the score, the
-/// outcome, the chapters to repeat and the attempts left, never which answer was right.
+/// credit. A pass is stored, then announced as TestPassedV1 for Learning's session; a failure as TestFailedV1, and the
+/// last allowed failure also as AttemptsExhaustedV1 with every chapter failed since the last unlock. The result shows
+/// the score, the outcome, the chapters to repeat and the attempts left, never which answer was right.
 /// </summary>
 public class SubmitAttemptTests
 {
@@ -33,7 +34,7 @@ public class SubmitAttemptTests
         fixture.UnitOfWork.Published.ShouldHaveSingleItem().ShouldBeOfType<TestPassedV1>();
         fixture.UnitOfWork.Commits.ShouldBe(1);
         fixture.Stream()[^1].ShouldBeOfType<ExaminationPassed>();
-        fixture.Steps.ShouldBe([InMemoryAssessmentAggregateStore.Saved, RecordingAssessmentUnitOfWork.Queued, RecordingAssessmentUnitOfWork.Committed]);
+        fixture.Steps.ShouldBe([InMemoryAssessmentAggregateStore.Saved, RecordingAssessmentUnitOfWork.Queued, InMemoryAnnouncedEvents.Marked, RecordingAssessmentUnitOfWork.Committed]);
 
         var result = (await fixture.ResultAsync(submitted.Value)).Value;
         (result.AttemptId, result.Number, result.ScorePercent, result.PassingScorePercent, result.Outcome, result.AttemptsLeft)
@@ -72,7 +73,7 @@ public class SubmitAttemptTests
         result.ScorePercent.ShouldBe(50);
         result.Outcome.ShouldBe(AssessmentAttemptOutcome.Failed);
         result.ChaptersToRepeat.ShouldBe([Gloves.Value]);
-        fixture.UnitOfWork.Published.ShouldBeEmpty();
+        fixture.UnitOfWork.Published.ShouldHaveSingleItem().ShouldBeOfType<TestFailedV1>();
     }
 
     [Fact]
@@ -91,15 +92,20 @@ public class SubmitAttemptTests
     }
 
     [Fact]
-    public async Task A_failed_attempt_publishes_nothing_and_names_its_chapters_to_repeat()
+    public async Task A_failed_attempt_publishes_one_TestFailedV1_after_saving_and_names_its_chapters_to_repeat()
     {
         await fixture.OpenAsync();
+        (await fixture.StartAsync()).IsSuccess.ShouldBeTrue();
+        await fixture.AnswerAsync(Q1, D);
+        await fixture.AnswerAsync(Q2, B, C);
+        fixture.Steps.Clear();
 
-        var submitted = await fixture.AttemptAsync([D], [B, C]);
+        var submitted = await fixture.SubmitAsync();
 
         submitted.IsSuccess.ShouldBeTrue();
-        fixture.UnitOfWork.Published.ShouldBeEmpty();
-        fixture.UnitOfWork.Commits.ShouldBe(0);
+        fixture.UnitOfWork.Published.ShouldHaveSingleItem().ShouldBeOfType<TestFailedV1>();
+        fixture.UnitOfWork.Commits.ShouldBe(1);
+        fixture.Steps.ShouldBe([InMemoryAssessmentAggregateStore.Saved, RecordingAssessmentUnitOfWork.Queued, RecordingAssessmentUnitOfWork.Committed]);
         fixture.Stream()[^1].ShouldBeOfType<AttemptSubmitted>().Outcome.ShouldBe(AttemptOutcome.Failed);
         var result = (await fixture.ResultAsync(submitted.Value)).Value;
         (result.Number, result.ScorePercent, result.PassingScorePercent, result.Outcome, result.AttemptsLeft)
@@ -123,7 +129,91 @@ public class SubmitAttemptTests
         (result.Number, result.Outcome, result.AttemptsLeft).ShouldBe((3, AssessmentAttemptOutcome.Failed, 0));
         result.ChaptersToRepeat.ShouldBe([Hygiene.Value, Gloves.Value], ignoreOrder: true);
         (await fixture.BySessionAsync()).Value.Status.ShouldBe(AssessmentExaminationStatus.Exhausted);
+    }
+
+    [Fact]
+    public async Task TestFailedV1_names_learnings_session_the_attempt_and_its_number()
+    {
+        await fixture.OpenAsync();
+        await fixture.AttemptAsync([D], [B, C]);
+
+        var second = await fixture.AttemptAsync([A], [B]);
+
+        var failures = fixture.UnitOfWork.Published.Cast<TestFailedV1>().ToList();
+        failures.Select(failure => failure.AttemptNumber).ShouldBe([1, 2]);
+        var failed = failures[^1];
+        failed.AttemptId.ShouldBe(second.Value.Value);
+        failed.SessionId.ShouldBe(fixture.Session.Value);
+        failed.SessionId.ShouldNotBe(fixture.Examination.Value);
+        failed.PersonId.ShouldBe(fixture.Learner.Value);
+        failed.CourseId.ShouldBe(fixture.Course.Value);
+        failed.CourseVersionId.ShouldBe(fixture.Version.Value);
+    }
+
+    [Fact]
+    public async Task The_third_failure_publishes_TestFailedV1_then_AttemptsExhaustedV1_with_every_failed_chapter_once()
+    {
+        await fixture.OpenAsync();
+        await fixture.AttemptAsync([A], [B, E]);
+        await fixture.AttemptAsync([D], [B, C]);
+        fixture.Steps.Clear();
+        fixture.UnitOfWork.Published.Clear();
+
+        var third = await fixture.AttemptAsync([D], [B]);
+
+        third.IsSuccess.ShouldBeTrue();
+        fixture.UnitOfWork.Published.Count.ShouldBe(2);
+        fixture.UnitOfWork.Published[0].ShouldBeOfType<TestFailedV1>().AttemptNumber.ShouldBe(3);
+        var exhausted = fixture.UnitOfWork.Published[1].ShouldBeOfType<AttemptsExhaustedV1>();
+        exhausted.SessionId.ShouldBe(fixture.Session.Value);
+        exhausted.PersonId.ShouldBe(fixture.Learner.Value);
+        exhausted.CourseId.ShouldBe(fixture.Course.Value);
+        exhausted.CourseVersionId.ShouldBe(fixture.Version.Value);
+        exhausted.FailedChapterIds.ShouldBe([Gloves.Value, Hygiene.Value]);
+        fixture.UnitOfWork.Commits.ShouldBe(3);
+        fixture.Steps.Count(step => step == RecordingAssessmentUnitOfWork.Committed).ShouldBe(1);
+        fixture.Steps[^1].ShouldBe(RecordingAssessmentUnitOfWork.Committed);
+        fixture.Stream()[^1].ShouldBeOfType<ExaminationExhausted>();
+    }
+
+    [Fact]
+    public async Task An_exhaustion_after_an_unlock_names_only_the_chapters_failed_since_the_unlock()
+    {
+        await fixture.OpenAsync();
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            await fixture.AttemptThroughTheDomainAsync([D], [B, C]);
+        }
+
+        await fixture.ChangeAsync(examination => examination.Unlock(Timestamp.From(Now.AddDays(1))));
+
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            await fixture.AttemptAsync([A], [E]);
+        }
+
+        fixture.UnitOfWork.Published.OfType<TestFailedV1>().Select(failure => failure.AttemptNumber).ShouldBe([1, 2, 3]);
+        fixture.UnitOfWork.Published.OfType<AttemptsExhaustedV1>().ShouldHaveSingleItem().FailedChapterIds.ShouldBe([Gloves.Value]);
+    }
+
+    [Fact]
+    public async Task A_last_failure_that_lost_the_race_stores_and_publishes_nothing()
+    {
+        await fixture.OpenAsync();
+        await fixture.AttemptThroughTheDomainAsync([D], [B, C]);
+        await fixture.AttemptThroughTheDomainAsync([D], [B, C]);
+        (await fixture.StartAsync()).IsSuccess.ShouldBeTrue();
+        await fixture.AnswerAsync(Q1, D);
+        fixture.Steps.Clear();
+        fixture.Store.LoseNextSave();
+
+        var submitted = await fixture.SubmitAsync();
+
+        submitted.Error.Code.ShouldBe("assessment.examination-changed");
+        fixture.Stream().OfType<ExaminationExhausted>().ShouldBeEmpty();
         fixture.UnitOfWork.Published.ShouldBeEmpty();
+        fixture.UnitOfWork.Commits.ShouldBe(0);
+        fixture.Steps.ShouldBeEmpty();
     }
 
     [Fact]
@@ -173,6 +263,64 @@ public class SubmitAttemptTests
         fixture.Stream().OfType<ExaminationPassed>().ShouldBeEmpty();
         fixture.UnitOfWork.Published.ShouldBeEmpty();
         fixture.UnitOfWork.Commits.ShouldBe(0);
+        fixture.Steps.ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// The marker of the announced pass (#277) is added before the one commit that also carries its TestPassedV1, so the
+    /// two are stored together or not at all. It names the examination's stream and the version Marten stores the
+    /// ExaminationPassed at: the examination's version before the save plus its place among the pending events.
+    /// </summary>
+    [Fact]
+    public async Task A_passing_submit_records_its_announcement_in_the_same_commit()
+    {
+        await fixture.OpenAsync();
+        (await fixture.StartAsync()).IsSuccess.ShouldBeTrue();
+        await fixture.AnswerAsync(Q1, A);
+        await fixture.AnswerAsync(Q2, B, C);
+        fixture.Steps.Clear();
+        fixture.Time.Advance(TimeSpan.FromMinutes(20));
+
+        var submitted = await fixture.SubmitAsync();
+
+        submitted.IsSuccess.ShouldBeTrue();
+        var marker = fixture.Announced.Added.ShouldHaveSingleItem();
+        marker.StreamId.ShouldBe(fixture.Examination.Value);
+        marker.StreamVersion.ShouldBe(fixture.Stream().ToList().FindIndex(stored => stored is ExaminationPassed) + 1L);
+        marker.AnnouncedAt.ShouldBe(fixture.Time.GetUtcNow());
+        fixture.UnitOfWork.Published.ShouldHaveSingleItem().ShouldBeOfType<TestPassedV1>();
+        fixture.Steps.IndexOf(InMemoryAnnouncedEvents.Marked).ShouldBeLessThan(fixture.Steps.IndexOf(RecordingAssessmentUnitOfWork.Committed));
+        fixture.Steps.Count(step => step == RecordingAssessmentUnitOfWork.Committed).ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task A_failing_submit_records_no_announcement()
+    {
+        await fixture.OpenAsync();
+
+        var submitted = await fixture.AttemptAsync([D], [B, C]);
+
+        submitted.IsSuccess.ShouldBeTrue();
+        fixture.Stream()[^1].ShouldBeOfType<AttemptSubmitted>().Outcome.ShouldBe(AttemptOutcome.Failed);
+        fixture.Announced.Added.ShouldBeEmpty();
+        fixture.Steps.ShouldNotContain(InMemoryAnnouncedEvents.Marked);
+    }
+
+    [Fact]
+    public async Task A_submit_that_lost_the_race_records_no_announcement()
+    {
+        await fixture.OpenAsync();
+        (await fixture.StartAsync()).IsSuccess.ShouldBeTrue();
+        await fixture.AnswerAsync(Q1, A);
+        await fixture.AnswerAsync(Q2, B, C);
+        fixture.Steps.Clear();
+        fixture.Store.LoseNextSave();
+
+        var submitted = await fixture.SubmitAsync();
+
+        submitted.IsFailure.ShouldBeTrue("the lost append was answered as a success");
+        submitted.Error.Code.ShouldBe("assessment.examination-changed");
+        fixture.Announced.Added.ShouldBeEmpty();
         fixture.Steps.ShouldBeEmpty();
     }
 

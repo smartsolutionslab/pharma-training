@@ -5,10 +5,9 @@ import {
   getGetEditorialCourseVersionsQueryKey,
   usePostEditorialCourseVersionsIdNext,
 } from '@/api/generated';
-import { ApiError } from '@/api/baseApi';
 
-/** What drafting the next version came to: the new draft's id, or a failure with a module's words where it sent some. */
-export type DraftNextResult = { ok: true; id: string } | { ok: false; serverMessage?: string };
+/** What drafting the next version came to: the new draft's id, or a failure carrying what the call rejected with. */
+export type DraftNextResult = { ok: true; id: string } | { ok: false; error: unknown };
 
 /**
  * Drafts the successor of a published version (POST /editorial/course-versions/{id}/next). Afterwards every cached
@@ -32,9 +31,7 @@ export function useDraftNextVersion(versionId: MaybeRefOrGetter<string>) {
     try {
       return { ok: true, id: z.uuid().parse(await mutateAsync({ id: toValue(versionId) })) };
     } catch (error) {
-      return error instanceof ApiError && error.serverMessage !== undefined
-        ? { ok: false, serverMessage: error.serverMessage }
-        : { ok: false };
+      return { ok: false, error };
     }
   };
   return { draftNext, isDrafting: isPending };

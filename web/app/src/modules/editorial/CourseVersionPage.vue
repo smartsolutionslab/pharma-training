@@ -15,6 +15,7 @@ import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from '@
 import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { t as translate } from '@/i18n';
+import { type ErrorMessage, errorText } from '@/i18n/errorText';
 import { notify } from '@/lib/notify';
 import ChapterForm from './ChapterForm.vue';
 import ChapterList from './ChapterList.vue';
@@ -29,7 +30,7 @@ import { useChapterMutations } from './useChapterMutations';
 import { useCourseVersionWorkflow, type WorkflowResult } from './useCourseVersionWorkflow';
 import { useDraftNextVersion } from './useDraftNextVersion';
 import { useReorderChapters } from './useReorderChapters';
-import { type WorkflowAction, type WorkflowFailure, workflowFailure, workflowFailureText } from './workflowErrors';
+import { type WorkflowAction, workflowFailure, workflowFailureText } from './workflowErrors';
 
 // A course version (/editorial/versions/:id): its title, number and status, the way back to its inbox tab, and its
 // chapters. Only a draft can be changed; any other status says why not and shows its chapters read-only.
@@ -120,7 +121,7 @@ async function save(request: EditorialChapterRequest) {
   const chapter = form.value?.chapter;
   const result = chapter === undefined ? await add(request) : await replace(chapter.id, request);
   if (!result.ok) {
-    notify.failure(result.serverMessage ?? translate('editorial.chapters.saveFailed', { title: request.title }));
+    notify.failure(errorText(result.error, 'editorial.chapters.saveFailed', { values: { title: request.title } }));
     return false;
   }
   notify.success(translate('editorial.chapters.saved', { title: request.title }));
@@ -156,7 +157,7 @@ async function draftNextVersion() {
     return;
   }
   draftingNext.value = false;
-  notify.failure(result.serverMessage ?? translate('editorial.version.newVersionFailed'));
+  notify.failure(errorText(result.error, 'editorial.version.newVersionFailed'));
   await nextTick();
   (document.getElementById(newVersionId) ?? document.getElementById(headingId))?.focus();
 }
@@ -236,8 +237,8 @@ function closeDialogs() {
 async function take(
   action: WorkflowAction,
   step: () => Promise<WorkflowResult>,
-  keepOpen?: (failure: WorkflowFailure) => boolean,
-): Promise<'done' | WorkflowFailure> {
+  keepOpen?: (failure: ErrorMessage) => boolean,
+): Promise<'done' | ErrorMessage> {
   const before = version.value;
   if (stepping.value !== undefined || draftingNext.value || before === undefined) {
     return 'done';
@@ -256,8 +257,8 @@ async function take(
     return failure;
   }
   const key = 'key' in failure ? failure.key : undefined;
-  if (key === 'editorial.workflow.errors.fourEyes' || key === 'editorial.workflow.errors.publisherApprovedQuestions') {
-    fourEyesRefusal.value = key === 'editorial.workflow.errors.fourEyes' ? 'fourEyes' : 'publisherApproved';
+  if (key === 'errors.editorial.four-eyes' || key === 'errors.editorial.publisher-approved-questions') {
+    fourEyesRefusal.value = key === 'errors.editorial.four-eyes' ? 'fourEyes' : 'publisherApproved';
   }
   closeDialogs();
   focusWhenReady.value = [stepButtonId(action), headingId];
@@ -292,7 +293,7 @@ function cancelDialog() {
   }
 }
 
-const isKey = (failure: WorkflowFailure, key: string) => 'key' in failure && failure.key === key;
+const isKey = (failure: ErrorMessage, key: string) => 'key' in failure && failure.key === key;
 
 /**
  * Returns the version with the reason. The dialog stays open with the reason when the host refused the reason itself
@@ -326,7 +327,7 @@ async function confirmRemove(chapter: EditorialChapterDto) {
   if (result.ok) {
     notify.success(translate('editorial.chapters.removed', { title: chapter.title }));
   } else {
-    notify.failure(result.serverMessage ?? translate('editorial.chapters.removeFailed', { title: chapter.title }));
+    notify.failure(errorText(result.error, 'editorial.chapters.removeFailed', { values: { title: chapter.title } }));
   }
 }
 </script>

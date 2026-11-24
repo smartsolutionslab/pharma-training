@@ -23,6 +23,24 @@ public class CourseVersionFailuresTests
         CourseVersionFailures.InvalidCourseVersionStatus().Status.ShouldBe(HttpStatusCode.BadRequest);
     }
 
+    /// <summary>
+    /// A draft reads the chapters with text, a PDF's extracted text as much as a text chapter's Markdown (#157): the
+    /// refusals say "chapters with text", one fixed English message per code.
+    /// </summary>
+    [Fact]
+    public void The_test_draft_refusals_speak_of_chapters_with_text_in_one_fixed_message()
+    {
+        var noText = CourseVersionFailures.NoTextChapters();
+        var tooMuch = CourseVersionFailures.TooMuchContentToDraft();
+
+        noText.Code.ShouldBe("editorial.no-text-chapters");
+        noText.Status.ShouldBe(HttpStatusCode.Conflict);
+        noText.Message.ShouldBe("The version has no chapter with text to draft test questions from.");
+        tooMuch.Code.ShouldBe("editorial.too-much-content-to-draft");
+        tooMuch.Status.ShouldBe(HttpStatusCode.UnprocessableEntity);
+        tooMuch.Message.ShouldBe("The version's chapters are too long to draft a test from in one request.");
+    }
+
     [Fact]
     public void What_a_caller_gets_wrong_about_a_chapters_file_is_a_bad_request_with_its_own_code()
     {

@@ -84,7 +84,7 @@ Stand der Diskussion vom 17.11.2026.
 | Matrix und Startversion | Matrix zeigt nur in der Apotheke zugewiesene Schulungen; begonnene Session bleibt auf ihrer Version, sonst aktuelle Version (Compliance hält sie) | Übersichtlich; konsistent mit Runde 9 |
 | Nachweis-Export | In Certification als ZIP mit PDFs und CSV, nur Bestätigungen aus der Beschäftigungszeit | PDFs liegen dort; kein synchroner Aufruf zwischen Services |
 | Zuweisungen bei Austritt | Austritt storniert offene und begonnene Zuweisungen der Person in dieser Apotheke, nicht abgeschlossene und nicht die anderer Apotheken; die Historie nennt die ausgetretene Person und „Mitgliedschaft beendet“; nichts wird storniert, solange sie dort eine weitere aktive Mitgliedschaft hat | Das Event nennt niemanden sonst; eine erneut eingeladene Person hat eine neue Mitgliedschaft (#30) |
-| Eigene Zuweisungen | Eine Leitung ändert oder zieht keine Zuweisung zurück, deren Lernende sie selbst ist (403 `compliance.own-assignment`); das tut eine andere Leitung der Apotheke | Vorgabe des Orchestrators bei #269, die der Owner überstimmen kann |
+| Eigene Zuweisungen | Eine Leitung ändert oder zieht keine Zuweisung zurück, deren Lernende sie selbst ist, solange eine andere aktive Leitung der Apotheke es tun kann (403 `compliance.own-assignment`); ist sie die einzige, tut sie es selbst, und die Historie kennzeichnet den Eintrag als Selbständerung (`bySelf`) | Vorgaben des Orchestrators bei #269 und #284, die der Owner überstimmen kann |
 
 ## Glossar (Ubiquitous Language)
 
@@ -169,7 +169,7 @@ Regeln:
 | `LearningSessionStarted` | Learning | Compliance | SessionId, PersonId, CourseId, CourseVersionId |
 | `ContentCompleted` | Learning | Assessment, Compliance | SessionId, PersonId, CourseId, CourseVersionId |
 | `TestPassed` | Assessment | Certification, Learning | AttemptId, SessionId, PersonId, CourseId, CourseVersionId, ScorePercent, PassedAt |
-| `TestFailed` | Assessment | (keiner in MVP 1) | AttemptId, SessionId, PersonId, AttemptNumber |
+| `TestFailed` | Assessment | (keiner in MVP 1) | AttemptId, SessionId, PersonId, CourseId, CourseVersionId, AttemptNumber |
 | `AttemptsExhausted` | Assessment | Learning, Compliance | SessionId, PersonId, CourseId, CourseVersionId, FailedChapterIds |
 | `CertificateIssued` | Certification | Compliance | CertificateId, PersonId, CourseId, CourseVersionId, IssuedAt, ValidUntil |
 
@@ -226,9 +226,9 @@ Aggregatgrenze ist die Prüfung pro LearningSession, nicht der einzelne Versuch:
 | --- | --- |
 | `ExaminationUnlocked` | Nach `ContentCompleted` |
 | `AttemptStarted` | Gestellte Fragenversionen in fester Reihenfolge; Antwortoptionen in einer aus der AttemptId abgeleiteten Reihenfolge (ADR 0022) |
-| `AttemptSubmitted` | Antworten, Punktzahl, bestanden ja/nein |
+| `AttemptSubmitted` | Antworten, Punktzahl, bestanden ja/nein; ein Fehlversuch führt zu `TestFailed` |
 | `ExaminationPassed` | Führt zu `TestPassed`; terminal |
-| `ExaminationLocked` | Nach dem 3. Fehlversuch; führt zu `AttemptsExhausted` |
+| `ExaminationExhausted` | Nach dem letzten erlaubten Fehlversuch (`MaxAttempts` der Testvorgaben); nennt jedes seit der letzten Freischaltung nicht bestandene Kapitel einmal, in der Reihenfolge des ersten Fehlers; führt zu `AttemptsExhausted` |
 
 Invarianten: Versuch nur, wenn freigeschaltet und kein Versuch offen; Antworten nur auf Fragen und Optionen des offenen Versuchs; bei Einfachauswahl genau eine Option; Bewertung serverseitig gegen die Testdefinition der Version; nach Bestehen keine weiteren Versuche; nach Sperre erst wieder nach erneutem `ContentCompleted`.
 
@@ -275,7 +275,7 @@ Status: `Draft` → `InReview` → `Published` → `Superseded` bzw. `Retired`.
 
 Entsteht aus `TestPassed`; pro bestandenem Versuch genau eine Bestätigung (AttemptId eindeutig, damit idempotent).
 
-Inhalt: `CertificateId`, `PersonId`, `HolderName` und `CourseTitle` als Momentaufnahme beim Ausstellen, `CourseVersionId`, `Score`, `IssuedAt`, `ValidUntil` (Ausstellung + Gültigkeit der Version), `VerificationCode` (zufällig, nicht die Id, für den QR-Code). Das PDF wird beim Ausstellen erzeugt und unverändert gespeichert.
+Inhalt: `CertificateId`, `PersonId`, `HolderName`, `CourseTitle` und `CourseVersionNumber` (die Versionsnummer der Redaktion, ab 1) als Momentaufnahme beim Ausstellen, `CourseVersionId`, `Score`, `IssuedAt`, `ValidUntil` (Ausstellung + Gültigkeit der Version), `VerificationCode` (zufällig, nicht die Id, für den QR-Code). Das PDF wird im selben Commit wie die Ausstellung angefordert (`CertificateDocumentRequestedV1`, bleibt im Certification-Host), einmal aus der Momentaufnahme erzeugt, unter `certificates/{id}.pdf` im eigenen Container nur angelegt, nie überschrieben, und danach nie neu erzeugt (#50).
 
 QR-Prüfung (`GET /certification/verify/{code}`, öffentlich, Z2): zeigt nur Name, Schulung, Ausstellungs- und Gültig-bis-Datum sowie gültig/abgelaufen. Unbekannte, falsch geformte Codes und Ids bekommen dieselbe Antwort (404, `certification.certificate-not-verifiable`). Begrenzt auf 30 pro Minute und 500 pro Tag je Client-Adresse (ADR 0029).
 
@@ -306,8 +306,8 @@ Alle Pfade beginnen mit dem Modulnamen; der Edge leitet danach weiter. Kein Serv
 | compliance | `GET /compliance/pharmacies/{id}/members?jobFunction=` | Leitung | Aktive Mitglieder für den Zuweisungsassistenten, nach Name, filterbar nach Tätigkeit |
 | compliance | `GET …/assignments/{aid}` | Leitung | Zuweisung mit Historie (wer, was, wann) |
 | compliance | `PATCH …/assignments/{aid}`, `DELETE …/assignments/{aid}` | Leitung | Frist ändern, zurückziehen |
-| compliance | `GET /compliance/pharmacies/{id}/matrix?jobFunction=` | Leitung | Matrix Mitarbeiter × Schulung mit Status und Quote (C3); Zeilen = aktive Mitglieder, seitenweise; Spalten = Schulungen mit mindestens einer nicht stornierten Zuweisung in der Apotheke; Quote = konforme unter allen Zellen (je Person und Schulung die neueste nicht stornierte Zuweisung): offen, in Bearbeitung oder gesperrt ist konform, überfällig nicht, abgeschlossen (auch verspätet) bis einschließlich „gültig bis“ = deutscher Abschlusstag + Gültigkeitsmonate der neuesten Version; für alle Zeilen des Filters, je Schulung und gesamt; ohne Zelle keine Quote |
-| compliance | `GET /compliance/me/assignments` | Mitglied | Mein Dashboard, Überfällige zuerst (C4) |
+| compliance | `GET /compliance/pharmacies/{id}/matrix?jobFunction=` | Leitung | Matrix Mitarbeiter × Schulung mit Status und Quote (C3); Zeilen = aktive Mitglieder, seitenweise; Spalten = Schulungen mit mindestens einer nicht stornierten Zuweisung in der Apotheke; Quote = konforme unter allen Zellen (je Person und Schulung die neueste nicht stornierte Zuweisung): offen, in Bearbeitung oder gesperrt ist konform, überfällig nicht, abgeschlossen (auch verspätet) bis einschließlich „gültig bis“ = deutscher Abschlusstag + Gültigkeitsmonate der Version, für die das Zertifikat der Zuweisung ausgestellt wurde (Compliance' Kopie aus `CertificateIssued`), ohne diese Kopie oder wenn Compliance die Version nicht kennt der neuesten Version (#287); für alle Zeilen des Filters, je Schulung und gesamt; ohne Zelle keine Quote |
+| compliance | `GET /compliance/me/assignments?pharmacyId=` | Mitglied | Mein Dashboard: aktive Zuweisungen in der gewählten Apotheke, Überfällige zuerst, mit Startversion (C4) |
 | learning | `POST /learning/sessions` | Mitglied | Starten oder fortsetzen (idempotent) |
 | learning | `GET /learning/sessions/{id}`, `POST …/{id}/progress` | Mitglied | Fortschritt lesen und melden (L1, L2) |
 | learning | `GET /learning/media/{chapterId}` | Mitglied | Kurzlebige Lese-URL für PDF/Video |
@@ -320,6 +320,7 @@ Alle Pfade beginnen mit dem Modulnamen; der Edge leitet danach weiter. Kein Serv
 Lokale Kopien, die daraus folgen:
 
 - **Compliance** hält Namen der Mitglieder (`MembershipStarted`) und Titel der Schulungen (`CourseVersionPublished`) für Matrix und Dashboard. Der Status kommt aus der Zuweisung selbst; Learning wird nicht abgefragt.
+- **Compliance** hält außerdem gestartete Sitzungen (`LearningSessionStarted`) und ausgestellte Bestätigungen (`CertificateIssued`), ohne Namen; daraus leitet es die Version der laufenden Sitzung ab, die das Dashboard fortsetzt (ADR 0028).
 - **Certification** hält Mitgliedschaften mit Beginn und Ende, damit der Export nur Bestätigungen aus der Beschäftigungszeit bei dieser Apotheke enthält.
 - **Learning** und **Assessment** halten Kapitelstruktur bzw. Testdefinition der Version.
 - **Learning** hält Mitgliedschaften ohne Namen, Rolle und Tätigkeit (Beginn, Änderungen, Ende), um nur aktive Mitglieder lernen zu lassen; nach dem Ende bleibt die eigene Sitzung lesbar.

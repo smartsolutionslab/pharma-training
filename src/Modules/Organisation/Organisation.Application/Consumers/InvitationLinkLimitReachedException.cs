@@ -1,13 +1,16 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Consumers;
 
 /// <summary>
 /// The invitation's version holds the most links whose mails may be out, so no further mail is sent for it. Thrown so the
-/// mail request dead-letters and stays visible until a manager renews the invitation. Its message names only the
+/// mail request dead-letters and stays visible until a manager renews the invitation. As an
+/// <see cref="IPermanentMessageFailure"/> it is dead-lettered on its first failure, without walking the retry ladder: no
+/// retry can succeed before a renewal clears the links. Its message names only the
 /// membership id and the code, never an address or a pharmacy's name, and it keeps no inner exception.
 /// </summary>
-public sealed class InvitationLinkLimitReachedException : InvalidOperationException
+public sealed class InvitationLinkLimitReachedException : InvalidOperationException, IPermanentMessageFailure
 {
     public InvitationLinkLimitReachedException()
     {

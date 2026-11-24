@@ -11,6 +11,10 @@ namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Persistence;
 /// ensured the module's role, and then finds nothing left to do, however long that takes. Disposing it lets the next one in;
 /// when the session is gone already (the server ended it, the network dropped), the server has released the lock with it,
 /// and leaving logs that and never throws over the run's own failure.
+/// The second asks for the lock once a second with <c>pg_try_advisory_lock</c> rather than waiting in
+/// <c>pg_advisory_lock</c> (#337): a statement waiting for the lock holds a snapshot, and a concurrent index build of the
+/// first run (<c>SweptEventIndex</c>) waits for every older snapshot of the database, so the two runs would wait for each
+/// other for good. Between its tries the second's session holds nothing.
 /// </summary>
 public sealed partial class MigrationGate : IAsyncDisposable
 {
@@ -19,9 +23,11 @@ public sealed partial class MigrationGate : IAsyncDisposable
     // an integer literal that would win over pg_catalog's and run as the administrator (CVE-2018-1058, AdministratorSession).
     private const string Key = "pg_catalog.hashtextextended('pharma-training:migrations:' || pg_catalog.current_database(), 0::bigint)";
 
-    private const string Enter = $"SELECT pg_catalog.pg_advisory_lock({Key})";
+    private const string TryEnter = $"SELECT pg_catalog.pg_try_advisory_lock({Key})";
 
     private const string Leave = $"SELECT pg_catalog.pg_advisory_unlock({Key})";
+
+    private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(1);
 
     private readonly NpgsqlConnection connection;
 
@@ -48,9 +54,14 @@ public sealed partial class MigrationGate : IAsyncDisposable
         try
         {
             await connection.OpenAsync(cancellationToken);
-            // However long the other run migrates: the connection's command timeout must not end the wait, cancellation may.
-            await using var enter = new NpgsqlCommand(Enter, connection) { CommandTimeout = 0 };
-            await enter.ExecuteNonQueryAsync(cancellationToken);
+            // However long the other run migrates: each try returns at once, so the connection's command timeout never
+            // ends the wait; cancellation may.
+            await using var enter = new NpgsqlCommand(TryEnter, connection);
+            while (await enter.ExecuteScalarAsync(cancellationToken) is not true)
+            {
+                await Task.Delay(RetryDelay, cancellationToken);
+            }
+
             return new MigrationGate(connection, logger);
         }
         catch

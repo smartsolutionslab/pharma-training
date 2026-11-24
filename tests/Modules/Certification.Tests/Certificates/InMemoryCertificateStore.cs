@@ -6,7 +6,8 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Tests.Certifica
 
 /// <summary>
 /// The certificates table in memory, and the module's unit of work over it: what is added is stored, and what is
-/// published is sent, only once committed, as the outbox sends it in the same transaction.
+/// published is sent, only once committed, as the outbox sends it in the same transaction. A certificate loaded is the
+/// stored one itself, as EF Core tracks it, so what is changed on it is what a commit saves.
 /// </summary>
 internal sealed class InMemoryCertificateStore : ICertificateStore, ICertificationUnitOfWork
 {
@@ -25,6 +26,13 @@ internal sealed class InMemoryCertificateStore : ICertificateStore, ICertificati
     public Task<bool> ExistsForAttemptAsync(AttemptId attempt, CancellationToken cancellationToken) =>
         Task.FromResult(Stored.Any(certificate => certificate.Attempt == attempt));
 
+    public Task<Option<Certificate>> LoadAsync(CertificateId id, CancellationToken cancellationToken) =>
+        Task.FromResult(Stored.FirstOrDefault(certificate => certificate.Id == id) is { } found
+            ? Option<Certificate>.Some(found)
+            : Option<Certificate>.None);
+
+    public Task<Option<Certificate>> FindAsync(CertificateId id, CancellationToken cancellationToken) => LoadAsync(id, cancellationToken);
+
     public Task<Option<Certificate>> FindByVerificationCodeAsync(VerificationCode code, CancellationToken cancellationToken)
     {
         VerificationLookups++;
@@ -35,6 +43,21 @@ internal sealed class InMemoryCertificateStore : ICertificateStore, ICertificati
         }
 
         return Task.FromResult(Option<Certificate>.Some(found));
+    }
+
+    /// <summary>
+    /// A page of the holder's stored certificates, newest first (issued later, then the larger id), and how many the
+    /// holder has in all, as the database orders, skips and counts them.
+    /// </summary>
+    public Task<(IReadOnlyList<Certificate> Items, int TotalCount)> ListForHolderAsync(PersonId holder, Page page, PageSize pageSize, CancellationToken cancellationToken)
+    {
+        var holders = Stored
+            .Where(certificate => certificate.Holder == holder)
+            .OrderByDescending(certificate => certificate.IssuedAt)
+            .ThenByDescending(certificate => certificate.Id.Value.ToString("N"), StringComparer.Ordinal)
+            .ToList();
+        IReadOnlyList<Certificate> items = [.. holders.Skip(page.Skip(pageSize)).Take(pageSize.Value)];
+        return Task.FromResult((items, holders.Count));
     }
 
     public void Add(Certificate certificate) => added.Add(certificate);

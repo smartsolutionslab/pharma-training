@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using SmartSolutionsLab.PharmaTraining.Contracts;
 using Wolverine;
 
@@ -10,7 +11,7 @@ namespace SmartSolutionsLab.PharmaTraining.Host.Messaging;
 /// <c>user_id</c> (<see cref="PublisherEnvelopeMapper"/>), but the publisher chooses its <c>message-type</c>, which
 /// Wolverine dispatches by, whatever exchange the message came through.
 /// </summary>
-public sealed class BrokerPublishers
+public sealed partial class BrokerPublishers
 {
     private const string Local = "local";
 
@@ -64,7 +65,9 @@ public sealed class BrokerPublishers
 
     /// <summary>
     /// The module of a type named <c>SmartSolutionsLab.PharmaTraining.Contracts.&lt;Module&gt;.&lt;Event&gt;</c>, as its full
-    /// name or as Wolverine's <c>message-type</c> spells it, or nothing for any other name.
+    /// name or as Wolverine's <c>message-type</c> spells it, or nothing for any other name. Both segments are ASCII
+    /// letters, digits and underscores only: a control character (a NUL), a space, punctuation or a non-ASCII letter names
+    /// no module, so a type no C# event of a module can have is refused before it reaches the inbox (#230).
     /// </summary>
     public static string? ModuleOf(string? typeName)
     {
@@ -73,7 +76,11 @@ public sealed class BrokerPublishers
             return null;
         }
 
-        var parts = typeName[(ContractsNamespace.Length + 1)..].Split('.');
-        return parts is [{ Length: > 0 } module, { Length: > 0 }] ? module : null;
+        var match = ModuleAndEvent().Match(typeName, ContractsNamespace.Length + 1);
+        return match.Success ? match.Groups["module"].Value : null;
     }
+
+    // \z, not $: $ also matches before a final newline. The match starts after the namespace, so \G anchors it there.
+    [GeneratedRegex(@"\G(?<module>[A-Za-z0-9_]+)\.[A-Za-z0-9_]+\z", RegexOptions.CultureInvariant)]
+    private static partial Regex ModuleAndEvent();
 }
