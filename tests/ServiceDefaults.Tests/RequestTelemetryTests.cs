@@ -37,6 +37,27 @@ public partial class RequestTelemetryTests
         hosts.Where(activity => activity.DisplayName.Contains(code, StringComparison.Ordinal)).ShouldBeEmpty();
     }
 
+    /// <summary>
+    /// The review of #394: a request the marked route does not take (another method, answered 405; an extra segment,
+    /// answered 404) still carries the code in its path. A request no route took records its first segment alone.
+    /// </summary>
+    [Theory]
+    [InlineData("HEAD", "")]
+    [InlineData("POST", "")]
+    [InlineData("GET", "/extra")]
+    public async Task A_request_no_route_took_records_only_its_first_segment(string method, string suffix)
+    {
+        var code = Guid.CreateVersion7().ToString("N");
+        using var activities = new RecordedActivities();
+
+        await RequestAsync($"/certification/verify/{code}{suffix}", method: new HttpMethod(method));
+
+        var hosts = activities.Stopped.Where(activity => activity.Kind == System.Diagnostics.ActivityKind.Server).ToList();
+        hosts.ShouldContain(activity => (string?)activity.GetTagItem("url.path") == "/certification/…", $"No server span recorded /certification/… for {method} with '{suffix}'.");
+        hosts.SelectMany(activity => activity.TagObjects).Where(tag => tag.Value != null && tag.Value.ToString()!.Contains(code, StringComparison.Ordinal))
+            .ShouldBeEmpty($"A span of the host carries the verification code for {method} with '{suffix}'.");
+    }
+
     [Fact]
     public async Task A_route_not_marked_keeps_its_path_in_its_span()
     {
@@ -80,7 +101,7 @@ public partial class RequestTelemetryTests
     private static partial void LogReading(ILogger logger);
 
     /// <summary>Serves the request with a host as every service builds it: the service defaults, then its endpoints.</summary>
-    private static async Task RequestAsync(string path, CapturingLoggerProvider? logs = null)
+    private static async Task RequestAsync(string path, CapturingLoggerProvider? logs = null, HttpMethod? method = null)
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
@@ -106,8 +127,13 @@ public partial class RequestTelemetryTests
         var address = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.First();
 
         using var client = new HttpClient { BaseAddress = new Uri(address) };
-        using var response = await client.GetAsync(path, TestContext.Current.CancellationToken);
-        response.EnsureSuccessStatusCode();
+        using var request = new HttpRequestMessage(method ?? HttpMethod.Get, path);
+        using var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
+        if (method is null)
+        {
+            response.EnsureSuccessStatusCode();
+        }
+
         await app.StopAsync(TestContext.Current.CancellationToken);
     }
 }
