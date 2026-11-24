@@ -11,7 +11,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- FakeLogger: what the periodic command service logs of a pass that throws. -->
+    <!-- FakeLogger: what the periodic command service logs of a pass that throws, and the one Warning of a pass
+         that skipped unreadable events. -->
     <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
   </ItemGroup>
 

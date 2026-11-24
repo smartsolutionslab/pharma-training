@@ -48,7 +48,7 @@ public sealed record ContentReviewAnswer(IReadOnlyList<ContentReviewAnswerHint> 
                 .Select(hint => new ContentHint(request.Chapters[hint.Chapter - 1].Id, Kind(hint.Kind), hint.Text.Trim())),
         ];
 
-        return Success(new ContentReview([.. request.Chapters.Select(chapter => chapter.Id)], hints));
+        return Success(new ContentReview([.. request.Chapters.Select(chapter => chapter.Id)], hints, request.LeftOutChapters, request.TruncatedChapters));
     }
 
     /// <summary>

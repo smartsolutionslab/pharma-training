@@ -84,7 +84,7 @@ export const en: MessageSchema = {
       },
     },
     certification: {
-      title: 'Certificates',
+      title: 'My certificates',
       entries: {
         verify: { title: 'Verify a certificate' },
       },
@@ -150,6 +150,24 @@ export const en: MessageSchema = {
       preparing: 'Preparing…',
       done: 'The export has been downloaded.',
       failed: 'The export could not be created. Try again.',
+    },
+    mine: {
+      columns: {
+        course: 'Course',
+        issuedOn: 'Issued on',
+        validUntil: 'Valid until',
+        validity: 'Status',
+        document: 'PDF',
+      },
+      documentReady: 'Ready',
+      documentPending: 'Being prepared',
+      open: 'Open PDF',
+      openFor: 'Open PDF for {course}',
+      documentNotReady: 'The certificate for {course} is still being prepared. Please try again in a moment.',
+      documentFailed: 'The PDF for {course} could not be opened.',
+      empty: 'You have no certificates yet.',
+      toCourses: 'Go to my courses',
+      loadFailed: 'Your certificates could not be loaded.',
     },
   },
   compliance: {
@@ -1075,7 +1093,7 @@ export const en: MessageSchema = {
       'no-chapters': 'The version needs at least one chapter.',
       'no-text-chapters':
         'The AI drafts only from chapters with text: text chapters and PDF chapters whose text can be read. Add such a chapter first.',
-      'no-text-chapters-to-review': 'The version has no text chapter for the AI to review.',
+      'no-text-chapters-to-review': 'The version has no chapter with text for the AI to review.',
       'not-a-draft': 'Only a draft can be edited.',
       'not-in-review': 'The version is no longer in review.',
       'not-published': 'The version is not published.',

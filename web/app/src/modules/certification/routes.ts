@@ -7,7 +7,8 @@ import VerifyCertificatePage from './VerifyCertificatePage.vue';
 export const route: ModuleRoute = {
   path: 'certification',
   titleKey,
-  audience: 'employee',
+  // A certificate is the person's, whatever their pharmacy (docs/domain/README.md, Z1): every signed-in user's page.
+  audience: 'signed-in',
   component: CertificationPage,
   pages: [
     // The certificates of the current pharmacy's members as a ZIP (#297), for a member who may manage it; whether they

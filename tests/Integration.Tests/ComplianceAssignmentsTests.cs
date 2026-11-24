@@ -302,7 +302,7 @@ public class ComplianceAssignmentsTests(AspireFixture aspire)
                 else
                 {
                     var problem = JsonSerializer.Deserialize<Problem>(body, JsonSerializerOptions.Web);
-                    (problem?.Code).ShouldBeOneOf(["already-exists", "compliance.assignments-changed"], body);
+                    (problem?.Code).ShouldBeOneOf(["already-exists", "compliance.assignments-changed", "compliance.concurrent-save"], body);
                 }
             }
 

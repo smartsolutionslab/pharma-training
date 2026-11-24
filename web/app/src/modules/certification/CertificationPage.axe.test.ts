@@ -1,5 +1,6 @@
 import { cleanup, render, screen } from '@testing-library/vue';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { createPinia } from 'pinia';
 import { axe } from 'vitest-axe';
 import { createMemoryHistory } from 'vue-router';
 import { signedInAsDeveloper } from '@/auth/signedInAsDeveloper';
@@ -98,8 +99,9 @@ async function renderPage() {
   const router = createAppRouter(createMemoryHistory());
   await router.push('/certification');
 
+  // The page reads which pages the user may see (the shell's store of the chosen pharmacy) for its empty state's link.
   const { container } = render(CertificationPage, {
-    global: { plugins: [router, signedInAsDeveloper] },
+    global: { plugins: [router, createPinia(), signedInAsDeveloper] },
   });
   // The screen speaks the language of the moment: axe checks what that language's user hears.
   expect(screen.getByRole('heading', { level: 1, name: t(route.titleKey) })).toBeInTheDocument();
