@@ -16,7 +16,7 @@ partial class CertificationModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261123135451_IssueCertificates";
+    public override string LastMigrationId => "20261124012644_KeepCourseVersionNumbers";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -51,6 +51,10 @@ partial class CertificationModelSnapshot : ModelSnapshot
                 b.Property<Guid>("CourseVersion")
                     .HasColumnType("uuid")
                     .HasColumnName("course_version_id");
+
+                b.Property<int>("CourseVersionNumber")
+                    .HasColumnType("integer")
+                    .HasColumnName("course_version_number");
 
                 b.Property<string>("Document")
                     .IsRequired()
@@ -114,6 +118,10 @@ partial class CertificationModelSnapshot : ModelSnapshot
                 b.Property<Guid>("Course")
                     .HasColumnType("uuid")
                     .HasColumnName("course_id");
+
+                b.Property<int>("Number")
+                    .HasColumnType("integer")
+                    .HasColumnName("version_number");
 
                 b.Property<string>("Title")
                     .IsRequired()

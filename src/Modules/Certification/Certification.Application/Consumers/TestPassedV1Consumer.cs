@@ -67,6 +67,7 @@ public sealed class TestPassedV1Consumer(
             course,
             versionId,
             version.Title,
+            version.Number,
             version.Validity,
             ScorePercent.From(message.ScorePercent),
             VerificationCodes.Next(),
