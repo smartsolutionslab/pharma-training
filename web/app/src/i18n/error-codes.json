@@ -1,0 +1,692 @@
+[
+  {
+    "code": "already-exists",
+    "status": 409,
+    "message": "Something with that name or key already exists."
+  },
+  {
+    "code": "assessment.examination-changed",
+    "status": 409,
+    "message": "The examination changed in the meantime; try again."
+  },
+  {
+    "code": "assessment.examination-not-found",
+    "status": 404,
+    "message": "There is no such examination of yours."
+  },
+  {
+    "code": "assessment.examination-not-unlocked",
+    "status": 409,
+    "message": "The test is not unlocked at the moment."
+  },
+  {
+    "code": "assessment.identity-incomplete",
+    "status": 403,
+    "message": "The access token names no person (its subject is missing or no Guid)."
+  },
+  {
+    "code": "assessment.invalid-sample-name",
+    "status": 400,
+    "message": "A sample's name is 1 to 100 characters and not blank."
+  },
+  {
+    "code": "assessment.no-open-attempt",
+    "status": 409,
+    "message": "No test attempt is running at the moment."
+  },
+  {
+    "code": "assessment.option-not-in-question",
+    "status": 422,
+    "message": "The option is not one of the question's options."
+  },
+  {
+    "code": "assessment.question-not-in-attempt",
+    "status": 404,
+    "message": "This question does not belong to this attempt."
+  },
+  {
+    "code": "assessment.sample-not-found",
+    "status": 404,
+    "message": "There is no such sample."
+  },
+  {
+    "code": "assessment.single-choice-takes-one-option",
+    "status": 422,
+    "message": "The question is single choice: choose exactly one option."
+  },
+  {
+    "code": "assessment.test-definition-missing",
+    "status": 409,
+    "message": "The test of this course version has not arrived yet; try again later."
+  },
+  {
+    "code": "catalog.course-version-not-found",
+    "status": 404,
+    "message": "There is no such course version."
+  },
+  {
+    "code": "catalog.invalid-sample-name",
+    "status": 400,
+    "message": "A sample's name is 1 to 100 characters and not blank."
+  },
+  {
+    "code": "catalog.sample-not-found",
+    "status": 404,
+    "message": "There is no such sample."
+  },
+  {
+    "code": "certification.certificate-not-verifiable",
+    "status": 404,
+    "message": "No certificate matches this code."
+  },
+  {
+    "code": "certification.invalid-sample-name",
+    "status": 400,
+    "message": "A sample's name is 1 to 100 characters and not blank."
+  },
+  {
+    "code": "certification.sample-not-found",
+    "status": 404,
+    "message": "There is no such sample."
+  },
+  {
+    "code": "certification.verification-limit-reached",
+    "status": 429,
+    "message": "Too many verifications from this address; try again later."
+  },
+  {
+    "code": "compliance.assignment-already-active",
+    "status": 409,
+    "message": "The person already has an open assignment of this course."
+  },
+  {
+    "code": "compliance.assignment-not-active",
+    "status": 409,
+    "message": "The assignment is no longer open."
+  },
+  {
+    "code": "compliance.assignment-not-found",
+    "status": 404,
+    "message": "This pharmacy has no such assignment."
+  },
+  {
+    "code": "compliance.assignments-changed",
+    "status": 409,
+    "message": "Assignments were changed at the same time; try again."
+  },
+  {
+    "code": "compliance.capability-missing",
+    "status": 403,
+    "message": "Your role in this pharmacy does not allow this."
+  },
+  {
+    "code": "compliance.certificate-predates-assignment",
+    "status": 409,
+    "message": "A certificate from before the assignment does not fulfil it."
+  },
+  {
+    "code": "compliance.course-missing",
+    "status": 400,
+    "message": "The course is missing."
+  },
+  {
+    "code": "compliance.course-not-found",
+    "status": 404,
+    "message": "There is no such course."
+  },
+  {
+    "code": "compliance.course-retired",
+    "status": 409,
+    "message": "The course is retired and cannot be assigned."
+  },
+  {
+    "code": "compliance.due-date-in-the-past",
+    "status": 422,
+    "message": "The due date is in the past."
+  },
+  {
+    "code": "compliance.due-date-missing",
+    "status": 400,
+    "message": "The due date is missing."
+  },
+  {
+    "code": "compliance.due-date-too-far",
+    "status": 400,
+    "message": "The due date is more than 10 years in the future."
+  },
+  {
+    "code": "compliance.identity-incomplete",
+    "status": 403,
+    "message": "The account names no valid person."
+  },
+  {
+    "code": "compliance.invalid-change-reason",
+    "status": 400,
+    "message": "A reason is at most 500 characters and holds no control or format characters."
+  },
+  {
+    "code": "compliance.invalid-job-function",
+    "status": 400,
+    "message": "There is no such job function."
+  },
+  {
+    "code": "compliance.invalid-person",
+    "status": 400,
+    "message": "One of the persons has no valid identifier."
+  },
+  {
+    "code": "compliance.invalid-recurrence",
+    "status": 400,
+    "message": "A recurrence is 1 to 60 months."
+  },
+  {
+    "code": "compliance.invalid-sample-name",
+    "status": 400,
+    "message": "A sample's name is 1 to 100 characters and not blank."
+  },
+  {
+    "code": "compliance.learner-not-a-member",
+    "status": 422,
+    "message": "A person to assign is not a member of this pharmacy."
+  },
+  {
+    "code": "compliance.no-learners",
+    "status": 400,
+    "message": "Choose at least one person."
+  },
+  {
+    "code": "compliance.own-assignment",
+    "status": 403,
+    "message": "Only another manager of the pharmacy can change or withdraw your own assignment."
+  },
+  {
+    "code": "compliance.pharmacy-not-found",
+    "status": 404,
+    "message": "There is no pharmacy of yours with this id."
+  },
+  {
+    "code": "compliance.sample-not-found",
+    "status": 404,
+    "message": "There is no such sample."
+  },
+  {
+    "code": "compliance.too-many-learners",
+    "status": 400,
+    "message": "Assign at most 100 persons at once."
+  },
+  {
+    "code": "editorial.ai-draft-malformed",
+    "status": 502,
+    "message": "The AI draft could not be used because the model's answer broke the test's rules. Nothing was changed; try again."
+  },
+  {
+    "code": "editorial.ai-review-malformed",
+    "status": 502,
+    "message": "The AI review could not be used because the model's answer broke the review's rules. Nothing was changed; try again."
+  },
+  {
+    "code": "editorial.chapter-content-does-not-match-kind",
+    "status": 400,
+    "message": "A text chapter has text and no file or duration, a PDF a file and no text or duration, a video a file and a duration and no text."
+  },
+  {
+    "code": "editorial.chapter-not-found",
+    "status": 404,
+    "message": "The course version has no such chapter."
+  },
+  {
+    "code": "editorial.course-version-changed",
+    "status": 409,
+    "message": "The course version changed in the meantime; load it again and repeat the change."
+  },
+  {
+    "code": "editorial.course-version-not-found",
+    "status": 404,
+    "message": "There is no such course version."
+  },
+  {
+    "code": "editorial.file-in-use",
+    "status": 409,
+    "message": "This file already belongs to another chapter of the version."
+  },
+  {
+    "code": "editorial.four-eyes",
+    "status": 403,
+    "message": "Under four eyes, the editor who submitted this version cannot publish it."
+  },
+  {
+    "code": "editorial.identity-incomplete",
+    "status": 403,
+    "message": "The access token names no subject that identifies a person."
+  },
+  {
+    "code": "editorial.invalid-answer-options",
+    "status": 400,
+    "message": "A question's answer options are a list of at most 10, and none of them is null."
+  },
+  {
+    "code": "editorial.invalid-answer-text",
+    "status": 400,
+    "message": "An answer option's text is 1 to 400 characters, not blank and without a nul character."
+  },
+  {
+    "code": "editorial.invalid-chapter-file",
+    "status": 400,
+    "message": "A PDF or video chapter's file is the blob name an upload for this version and kind answered, never a URL, or the file the chapter already has."
+  },
+  {
+    "code": "editorial.invalid-chapter-kind",
+    "status": 400,
+    "message": "A chapter is of kind Text, Pdf or Video; without a kind it is Text."
+  },
+  {
+    "code": "editorial.invalid-chapter-order",
+    "status": 400,
+    "message": "The order names every chapter of the version by its id, none of them empty."
+  },
+  {
+    "code": "editorial.invalid-chapter-text",
+    "status": 400,
+    "message": "A text chapter's Markdown is 1 to 200000 characters and not blank."
+  },
+  {
+    "code": "editorial.invalid-chapter-title",
+    "status": 400,
+    "message": "A chapter's title is 1 to 150 characters and not blank."
+  },
+  {
+    "code": "editorial.invalid-course-title",
+    "status": 400,
+    "message": "A course's title is 1 to 150 characters and not blank."
+  },
+  {
+    "code": "editorial.invalid-passing-score",
+    "status": 400,
+    "message": "A passing score is 0 to 100 percent."
+  },
+  {
+    "code": "editorial.invalid-question-count",
+    "status": 400,
+    "message": "A test has 1 to 50 questions."
+  },
+  {
+    "code": "editorial.invalid-question-text",
+    "status": 400,
+    "message": "A question's text is 1 to 1000 characters, not blank and without a nul character."
+  },
+  {
+    "code": "editorial.invalid-question-type",
+    "status": 400,
+    "message": "A question's type is SingleChoice or MultipleChoice."
+  },
+  {
+    "code": "editorial.invalid-return-reason",
+    "status": 400,
+    "message": "A return's reason is 1 to 1000 characters after trimming, and holds no control or format characters but line breaks and tabs."
+  },
+  {
+    "code": "editorial.invalid-sample-name",
+    "status": 400,
+    "message": "A sample's name is 1 to 100 characters and not blank."
+  },
+  {
+    "code": "editorial.invalid-status",
+    "status": 400,
+    "message": "The status is one of Draft, InReview, Published, Superseded and Retired."
+  },
+  {
+    "code": "editorial.invalid-upload-kind",
+    "status": 400,
+    "message": "An upload is for a chapter of kind Pdf or Video."
+  },
+  {
+    "code": "editorial.invalid-validity",
+    "status": 400,
+    "message": "A certificate is valid for 1 to 60 months."
+  },
+  {
+    "code": "editorial.invalid-video-duration",
+    "status": 400,
+    "message": "A video chapter lasts 1 to 14400 seconds."
+  },
+  {
+    "code": "editorial.model-limit-reached",
+    "status": 429,
+    "message": "You have reached your limit of AI requests; try again later."
+  },
+  {
+    "code": "editorial.multiple-choice-a-correct",
+    "status": 422,
+    "message": "A multiple-choice question has at least one correct answer."
+  },
+  {
+    "code": "editorial.next-version-exists",
+    "status": 409,
+    "message": "The next version of this course already exists; continue that one instead of drafting another."
+  },
+  {
+    "code": "editorial.no-chapters",
+    "status": 409,
+    "message": "A course needs at least one chapter."
+  },
+  {
+    "code": "editorial.no-text-chapters",
+    "status": 409,
+    "message": "The version has no text chapter to draft test questions from."
+  },
+  {
+    "code": "editorial.no-text-chapters-to-review",
+    "status": 409,
+    "message": "The version has no text chapter to review."
+  },
+  {
+    "code": "editorial.not-a-draft",
+    "status": 409,
+    "message": "Only a draft can be changed."
+  },
+  {
+    "code": "editorial.not-in-review",
+    "status": 409,
+    "message": "The version is not in review."
+  },
+  {
+    "code": "editorial.not-published",
+    "status": 409,
+    "message": "The version is not published."
+  },
+  {
+    "code": "editorial.nothing-to-draft",
+    "status": 409,
+    "message": "The approved questions already fill the test's blueprint."
+  },
+  {
+    "code": "editorial.order-does-not-match",
+    "status": 409,
+    "message": "The order must name every chapter exactly once."
+  },
+  {
+    "code": "editorial.publisher-approved-questions",
+    "status": 403,
+    "message": "Under four eyes, an editor who approved a question of this version cannot publish it."
+  },
+  {
+    "code": "editorial.question-already-approved",
+    "status": 409,
+    "message": "This question is already approved; edit it to have it approved again."
+  },
+  {
+    "code": "editorial.question-not-approved",
+    "status": 409,
+    "message": "Every question must be approved before publishing."
+  },
+  {
+    "code": "editorial.question-not-found",
+    "status": 404,
+    "message": "The course version has no such question."
+  },
+  {
+    "code": "editorial.reviewer-name-missing",
+    "status": 403,
+    "message": "The access token names no usable display name (claim `name`): it is missing, longer than 100 characters, or holds characters that cannot be shown."
+  },
+  {
+    "code": "editorial.sample-not-found",
+    "status": 404,
+    "message": "There is no such sample."
+  },
+  {
+    "code": "editorial.single-choice-one-correct",
+    "status": 422,
+    "message": "A single-choice question has exactly one correct answer."
+  },
+  {
+    "code": "editorial.test-incomplete",
+    "status": 409,
+    "message": "The test does not have the number of questions its blueprint asks for."
+  },
+  {
+    "code": "editorial.too-few-options",
+    "status": 422,
+    "message": "A question needs at least two answer options."
+  },
+  {
+    "code": "editorial.too-many-questions",
+    "status": 409,
+    "message": "A test has at most 50 questions."
+  },
+  {
+    "code": "editorial.too-much-content-to-draft",
+    "status": 422,
+    "message": "The version's text chapters are too long to draft a test from in one request."
+  },
+  {
+    "code": "editorial.too-much-content-to-review",
+    "status": 422,
+    "message": "The version's text chapters are too long to review in one request."
+  },
+  {
+    "code": "editorial.upload-not-accepted",
+    "status": 400,
+    "message": "The file is not a PDF or MP4 video."
+  },
+  {
+    "code": "editorial.upload-not-found",
+    "status": 409,
+    "message": "Nothing was uploaded under this file's name yet; upload it, then repeat the change."
+  },
+  {
+    "code": "invalid-argument",
+    "status": 400,
+    "message": "The request is invalid."
+  },
+  {
+    "code": "learning.chapter-has-no-media",
+    "status": 404,
+    "message": "The chapter is a text chapter; it has no PDF or video."
+  },
+  {
+    "code": "learning.chapter-not-found",
+    "status": 404,
+    "message": "Learning holds no such chapter."
+  },
+  {
+    "code": "learning.chapter-not-in-course",
+    "status": 422,
+    "message": "This chapter does not belong to this course version."
+  },
+  {
+    "code": "learning.course-version-not-found",
+    "status": 404,
+    "message": "Learning holds no such course version; a version just published may not have reached it yet."
+  },
+  {
+    "code": "learning.course-version-retired",
+    "status": 409,
+    "message": "The course version is retired; a new learning session cannot start on it. A session already started on it can still be resumed."
+  },
+  {
+    "code": "learning.identity-incomplete",
+    "status": 403,
+    "message": "The access token names no person (its subject is missing or no Guid)."
+  },
+  {
+    "code": "learning.invalid-sample-name",
+    "status": 400,
+    "message": "A sample's name is 1 to 100 characters and not blank."
+  },
+  {
+    "code": "learning.media-not-ready",
+    "status": 409,
+    "message": "The chapter's file has not been copied into Learning yet; ask again shortly."
+  },
+  {
+    "code": "learning.membership-missing",
+    "status": 403,
+    "message": "You are not an active member of any pharmacy; a membership that just started may not have reached Learning yet."
+  },
+  {
+    "code": "learning.no-session-on-version",
+    "status": 403,
+    "message": "You have no learning session on a course version that holds this chapter."
+  },
+  {
+    "code": "learning.progress-too-fast",
+    "status": 422,
+    "message": "The reported progress grows faster than the video can be played."
+  },
+  {
+    "code": "learning.sample-not-found",
+    "status": 404,
+    "message": "There is no such sample."
+  },
+  {
+    "code": "learning.session-changed",
+    "status": 409,
+    "message": "The learning session changed in the meantime; report again."
+  },
+  {
+    "code": "learning.session-finished",
+    "status": 409,
+    "message": "This learning session is already finished."
+  },
+  {
+    "code": "learning.session-not-found",
+    "status": 404,
+    "message": "You have no such learning session."
+  },
+  {
+    "code": "model-not-configured",
+    "status": 503,
+    "message": "The AI model is not configured."
+  },
+  {
+    "code": "organisation.accept-limit-reached",
+    "status": 429,
+    "message": "You have tried to accept invitations too often; try again later."
+  },
+  {
+    "code": "organisation.already-member-or-invited",
+    "status": 409,
+    "message": "This address is already a member or invited."
+  },
+  {
+    "code": "organisation.capability-missing",
+    "status": 403,
+    "message": "Your role in this pharmacy does not allow this."
+  },
+  {
+    "code": "organisation.email-not-verified",
+    "status": 403,
+    "message": "Your e-mail address has not been verified. Verify it, then try again."
+  },
+  {
+    "code": "organisation.identity-incomplete",
+    "status": 403,
+    "message": "The account names no person, no name or no valid e-mail address."
+  },
+  {
+    "code": "organisation.invalid-email",
+    "status": 400,
+    "message": "The e-mail address is missing, too long or not an e-mail address."
+  },
+  {
+    "code": "organisation.invalid-invitation-token",
+    "status": 400,
+    "message": "This is not an invitation link."
+  },
+  {
+    "code": "organisation.invalid-job-function",
+    "status": 400,
+    "message": "The job function is missing or unknown."
+  },
+  {
+    "code": "organisation.invalid-membership-role",
+    "status": 400,
+    "message": "The role is missing or unknown."
+  },
+  {
+    "code": "organisation.invalid-pharmacy-name",
+    "status": 400,
+    "message": "A pharmacy's name is 1 to 120 characters and not blank."
+  },
+  {
+    "code": "organisation.invalid-sample-name",
+    "status": 400,
+    "message": "A sample's name is 1 to 100 characters and not blank."
+  },
+  {
+    "code": "organisation.invitation-changed",
+    "status": 409,
+    "message": "The invitation was changed while you accepted it. Open the link again."
+  },
+  {
+    "code": "organisation.invitation-expired",
+    "status": 410,
+    "message": "The invitation has expired; ask for a new one."
+  },
+  {
+    "code": "organisation.invitation-for-another-address",
+    "status": 403,
+    "message": "The invitation is for another e-mail address."
+  },
+  {
+    "code": "organisation.invitation-not-found",
+    "status": 404,
+    "message": "The invitation link is invalid or has already been used."
+  },
+  {
+    "code": "organisation.invitation-renewed-too-soon",
+    "status": 429,
+    "message": "The invitation was mailed a moment ago; renew it once the waiting time has passed."
+  },
+  {
+    "code": "organisation.last-manager",
+    "status": 409,
+    "message": "The last manager of a pharmacy cannot be removed or demoted."
+  },
+  {
+    "code": "organisation.no-active-membership",
+    "status": 404,
+    "message": "This pharmacy has no such active membership."
+  },
+  {
+    "code": "organisation.no-open-invitation",
+    "status": 404,
+    "message": "This pharmacy has no such open invitation."
+  },
+  {
+    "code": "organisation.person-already-member",
+    "status": 409,
+    "message": "This person is already a member of the pharmacy."
+  },
+  {
+    "code": "organisation.pharmacy-changed",
+    "status": 409,
+    "message": "The pharmacy changed in the meantime; load it again and repeat the change."
+  },
+  {
+    "code": "organisation.pharmacy-not-found",
+    "status": 404,
+    "message": "There is no pharmacy of yours with this id."
+  },
+  {
+    "code": "organisation.recipient-mailed-recently",
+    "status": 429,
+    "message": "This address was sent an invitation mail a moment ago; invite it once the waiting time has passed."
+  },
+  {
+    "code": "organisation.sample-not-found",
+    "status": 404,
+    "message": "There is no such sample."
+  },
+  {
+    "code": "organisation.too-many-invitations-sent-today",
+    "status": 429,
+    "message": "You have sent as many invitation mails today as you may; try again later."
+  },
+  {
+    "code": "organisation.too-many-invitations-today",
+    "status": 429,
+    "message": "The pharmacy has sent as many invitation mails today as it may; try again later."
+  }
+]

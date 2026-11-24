@@ -257,7 +257,7 @@ public class LearningSessionsTests(AspireFixture aspire)
         var cancellationToken = TestContext.Current.CancellationToken;
         var published = await PublishedToLearningAsync(cancellationToken);
         using var employeeA = await LearnerAsync("employee-a", cancellationToken);
-        using var employeeB = await aspire.CreateHostClientAsync("employee-b");
+        using var employeeB = await LearnerAsync("employee-b", cancellationToken);
         var session = await StartedAsync(employeeA, published, cancellationToken);
         var stored = await EventsInAsync(session.Id, cancellationToken);
 
@@ -272,7 +272,7 @@ public class LearningSessionsTests(AspireFixture aspire)
     public async Task Reporting_on_an_unknown_or_empty_session_answers_404()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        using var client = await aspire.CreateHostClientAsync("employee-a");
+        using var client = await LearnerAsync("employee-a", cancellationToken);
 
         using var unknown = await ReportProgressAsync(client, Guid.CreateVersion7(), Guid.CreateVersion7(), 50, cancellationToken);
         using var empty = await ReportProgressAsync(client, Guid.Empty, Guid.CreateVersion7(), 50, cancellationToken);

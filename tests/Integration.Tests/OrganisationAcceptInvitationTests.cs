@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Aspire.Hosting.Testing;
 using Npgsql;
@@ -14,6 +15,7 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// The invited person accepts an invitation through the running application, with the token from the link, as Keycloak
 /// knows them; and the database backs the rule the aggregate checks: a person is active at most once per pharmacy.
 /// </summary>
+[Collection(InvitationSenders.Name)]
 public partial class OrganisationAcceptInvitationTests(AspireFixture aspire)
 {
     private const string UniqueViolation = "23505";
@@ -149,7 +151,10 @@ public partial class OrganisationAcceptInvitationTests(AspireFixture aspire)
         await ShouldBeRefusedAsync(unknown, HttpStatusCode.NotFound, "organisation.invitation-not-found", cancellationToken);
         var againBody = await again.Content.ReadAsStringAsync(cancellationToken);
         var unknownBody = await unknown.Content.ReadAsStringAsync(cancellationToken);
-        Detail(againBody).ShouldBe(Detail(unknownBody));
+        var expected = ErrorCodeCatalog.MessageOf("organisation.invitation-not-found");
+        Title(againBody).ShouldBe(expected);
+        Title(unknownBody).ShouldBe(expected);
+        WithoutTraceId(againBody).ShouldBe(WithoutTraceId(unknownBody), "a used link answers otherwise than an unknown one");
         againBody.ShouldNotContain(pharmacy.ToString(), Case.Insensitive);
     }
 
@@ -228,6 +233,8 @@ public partial class OrganisationAcceptInvitationTests(AspireFixture aspire)
         var pharmacy = await RegisterAsync(owner, cancellationToken);
         var token = Token();
         var membership = await database.InsertInvitationAsync(pharmacy, "employee-a@example.com", HashOf(token), "Invited", cancellationToken);
+        // The other renewal of this class may have mailed employee-a within the address's cooldown (#265).
+        await database.ForgetRecipientMailAsync("employee-a@example.com", cancellationToken);
         using (var renewed = await owner.PostAsync(RenewUri(pharmacy, membership), content: null, cancellationToken))
         {
             await ShouldAnswerAsync(renewed, HttpStatusCode.OK, cancellationToken);
@@ -369,6 +376,8 @@ public partial class OrganisationAcceptInvitationTests(AspireFixture aspire)
         var (pharmacy, membership, token) = await InvitedAsync("employee-a", cancellationToken);
         using var owner = await aspire.CreateHostClientAsync("owner");
         using var employee = await aspire.CreateHostClientAsync("employee-a");
+        // The other renewal of this class may have mailed employee-a within the address's cooldown (#265).
+        await database.ForgetRecipientMailAsync("employee-a@example.com", cancellationToken);
 
         var (firstResponse, secondResponse) = await FirstThenSecondAsync(
             pharmacy,
@@ -447,10 +456,18 @@ public partial class OrganisationAcceptInvitationTests(AspireFixture aspire)
 
     private static Uri PharmacyUri(Guid pharmacy) => new($"/organisation/pharmacies/{pharmacy}", UriKind.Relative);
 
-    private static string? Detail(string body)
+    /// <summary>The problem as sent, without its <c>traceId</c>, which differs on every request.</summary>
+    private static string WithoutTraceId(string body)
+    {
+        var problem = JsonNode.Parse(body).ShouldBeOfType<JsonObject>();
+        problem.Remove("traceId");
+        return problem.ToJsonString();
+    }
+
+    private static string? Title(string body)
     {
         using var problem = JsonDocument.Parse(body);
-        return problem.RootElement.TryGetProperty("detail", out var detail) ? detail.GetString() : null;
+        return problem.RootElement.TryGetProperty("title", out var title) ? title.GetString() : null;
     }
 
     private static async Task<string> DescribeAsync(HttpResponseMessage[] responses, CancellationToken cancellationToken)

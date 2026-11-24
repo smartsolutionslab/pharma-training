@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import type { MyPharmacyDto } from '@/api/generated';
-import { canReach, moduleOf, pageOf } from './audience';
+import { canReach, isPublicAddress, moduleOf, pageOf } from './audience';
 
 // Memberships as GET /organisation/pharmacies/mine answers them: rights come from the capabilities, not the role's name.
 const membership = (overrides: Partial<MyPharmacyDto>): MyPharmacyDto => ({
@@ -44,6 +44,11 @@ test.each([
   ['signed-in', undefined, true, true],
   ['signed-in', employee, false, true],
   ['signed-in', manager, true, true],
+  // public: anyone, signed in or not, with or without a pharmacy or a role (#54: a certificate's QR code)
+  ['public', undefined, false, true],
+  ['public', undefined, true, true],
+  ['public', employee, false, true],
+  ['public', manager, true, true],
 ] as const)(
   'the %s audience with membership %o and editor %s is reachable: %s',
   (audience, current, isEditor, reachable) => {
@@ -125,4 +130,44 @@ test('pageOf finds an entry page by its exact address, governed by its own audie
     titleKey: 'modules.organisation.entries.acceptInvitation.title',
     audience: 'signed-in',
   });
+});
+
+// The verification page (#54) is an entry with a parameter, /verify/:code, the address a certificate's QR code opens. An
+// entry's path is matched by its segments, as a detail's is: a static segment is equal, a parameter matches any one
+// segment, and no more and no fewer segments than the pattern has.
+const code = 'AbCdEfGhIjKlMnOpQrStUvWxYz012-_9';
+
+test('pageOf finds the verification entry by its pattern, for the public', () => {
+  expect(pageOf(`/verify/${code}`)).toMatchObject({
+    path: '/verify/:code',
+    titleKey: 'modules.certification.entries.verify.title',
+    audience: 'public',
+  });
+});
+
+test('pageOf finds no entry for an address with fewer or more segments than its pattern', () => {
+  expect(pageOf('/verify')).toBeUndefined();
+  expect(pageOf('/verify/')).toBeUndefined();
+  expect(pageOf(`/verify/${code}/more`)).toBeUndefined();
+  expect(pageOf('/verify/a/b')).toBeUndefined();
+});
+
+test('an entry without a parameter is still found at exactly its address', () => {
+  expect(pageOf('/invitations/accept')).toMatchObject({ path: '/invitations/accept', audience: 'signed-in' });
+  expect(pageOf('/invitations/accept/more')).toBeUndefined();
+  expect(pageOf('/invitations')).toBeUndefined();
+});
+
+// SignedIn and App.vue ask it once the router has settled: a public address renders without a sign-in and without the
+// shell.
+test('isPublicAddress is true for the verification entry only', () => {
+  expect(isPublicAddress(`/verify/${code}`)).toBe(true);
+
+  expect(isPublicAddress('/verify')).toBe(false);
+  expect(isPublicAddress('/verify/a/b')).toBe(false);
+  expect(isPublicAddress('/')).toBe(false);
+  expect(isPublicAddress('/invitations/accept')).toBe(false);
+  expect(isPublicAddress('/certification')).toBe(false);
+  expect(isPublicAddress('/organisation/register')).toBe(false);
+  expect(isPublicAddress('/nowhere')).toBe(false);
 });

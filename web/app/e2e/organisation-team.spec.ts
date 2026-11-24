@@ -4,14 +4,16 @@ import { acceptOn, invitationLink, mailText, recordAcceptances, signInAs, unique
 // The members and invitations page (#12) against the AppHost, with no route mocked. The developer registers a pharmacy
 // of their own through the UI and works in it: invites an address, is refused inviting it twice and resending it at
 // once (the cooldown of #158), revokes the invitation, is refused ending or demoting themself as its last manager, then
-// invites employee-a, who accepts through the mail in Mailpit, and changes and ends her membership. Each run registers
+// invites employee-b, who accepts through the mail in Mailpit, and changes and ends their membership. Each run registers
 // a pharmacy and invites an address of its own, so what earlier runs left (the developer may belong to many
 // pharmacies) changes nothing.
 
-/** The developer's and employee-a's names, as the realm's local users have them. */
+/** The developer's and employee-b's names, as the realm's local users have them. */
 const developer = 'Local Developer';
-const employee = 'Anna Employee';
-const employeeAddress = 'employee-a@example.com';
+const employee = 'Ben Employee';
+// employee-b, not employee-a: accept-invitation.spec.ts mails employee-a, and an address is mailed at most every 10
+// minutes (#265).
+const employeeAddress = 'employee-b@example.com';
 
 const lastManager = 'Die letzte Apothekenleitung kann nicht ausgetragen oder zum Mitarbeiter gemacht werden.';
 
@@ -149,7 +151,7 @@ test('a manager invites, resends and revokes, cannot leave as the last manager, 
   await expect(members.getByRole('button', { name: `Tätigkeit und Rolle von ${developer} ändern` })).toBeFocused();
   await expect(row(members, `${developer} (Sie)`)).toContainText('Apothekenleiter');
 
-  // employee-a accepts an invitation through its mail, in a browser of her own.
+  // employee-b accepts an invitation through its mail, in a browser of their own.
   await invite(page, employeeAddress);
   await expect(toast(page, `Die Einladung an ${employeeAddress} wurde gesendet.`)).toBeVisible();
   await expect(row(invitations, employeeAddress)).toContainText('Offen');
@@ -159,7 +161,7 @@ test('a manager invites, resends and revokes, cannot leave as the last manager, 
     const invitee = await context.newPage();
     const accepted = recordAcceptances(invitee);
     await invitee.goto(link);
-    await signInAs(invitee, 'employee-a');
+    await signInAs(invitee, 'employee-b');
     await acceptOn(invitee, pharmacy, link.slice(link.indexOf('#token=') + '#token='.length), accepted);
     await expect(toast(invitee, `Sie sind jetzt Mitglied der Apotheke ${pharmacy}.`)).toBeVisible({
       timeout: 15_000,
@@ -168,7 +170,7 @@ test('a manager invites, resends and revokes, cannot leave as the last manager, 
     await context.close();
   }
 
-  // Back as the developer: she is a member and her invitation is gone; her job function changes, then she leaves.
+  // Back as the developer: they are a member and their invitation is gone; their job function changes, then they leave.
   await page.reload();
   const member = row(members, employee);
   await expect(member).toContainText('PTA');
