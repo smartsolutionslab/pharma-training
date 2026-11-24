@@ -22,6 +22,7 @@ public sealed class CertificateConfiguration : IEntityTypeConfiguration<Certific
         builder.Property(certificate => certificate.Course).HasColumnName("course_id").IsRequired();
         builder.Property(certificate => certificate.CourseVersion).HasColumnName("course_version_id").IsRequired();
         builder.Property(certificate => certificate.CourseTitle).HasColumnName("course_title").HasMaxLength(CourseTitle.MaxLength).IsRequired();
+        builder.Property(certificate => certificate.CourseVersionNumber).HasColumnName("course_version_number").IsRequired();
         builder.Property(certificate => certificate.Score).HasColumnName("score_percent").IsRequired();
         builder.Property(certificate => certificate.IssuedAt).HasColumnName("issued_at").IsRequired();
         builder.Property(certificate => certificate.ValidUntil).HasColumnName("valid_until").IsRequired();

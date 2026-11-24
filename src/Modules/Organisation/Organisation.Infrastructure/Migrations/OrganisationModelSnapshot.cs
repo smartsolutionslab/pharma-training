@@ -16,7 +16,7 @@ partial class OrganisationModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261123185814_AddInvitationMailLimits";
+    public override string LastMigrationId => "20261124010310_AddInvitationRecipientsAndSenders";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -27,6 +27,52 @@ partial class OrganisationModelSnapshot : ModelSnapshot
             .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
         NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.InvitationRecipients.InvitationRecipient", b =>
+            {
+                b.Property<Guid>("Id")
+                    .HasColumnType("uuid")
+                    .HasColumnName("id");
+
+                b.Property<DateTimeOffset>("LastMailedAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("last_mailed_at");
+
+                b.Property<uint>("RowVersion")
+                    .IsConcurrencyToken()
+                    .ValueGeneratedOnAddOrUpdate()
+                    .HasColumnType("xid")
+                    .HasColumnName("xmin");
+
+                b.HasKey("Id");
+
+                b.ToTable("invitation_recipients", "organisation");
+            });
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.InvitationSenders.InvitationSender", b =>
+            {
+                b.Property<Guid>("Id")
+                    .HasColumnType("uuid")
+                    .HasColumnName("person_id");
+
+                b.Property<DateOnly>("MailDay")
+                    .HasColumnType("date")
+                    .HasColumnName("mail_day");
+
+                b.Property<int>("MailsThatDay")
+                    .HasColumnType("integer")
+                    .HasColumnName("mails_that_day");
+
+                b.Property<uint>("RowVersion")
+                    .IsConcurrencyToken()
+                    .ValueGeneratedOnAddOrUpdate()
+                    .HasColumnType("xid")
+                    .HasColumnName("xmin");
+
+                b.HasKey("Id");
+
+                b.ToTable("invitation_senders", "organisation");
+            });
 
         modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies.Membership", b =>
             {

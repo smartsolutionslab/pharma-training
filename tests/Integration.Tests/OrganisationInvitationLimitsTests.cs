@@ -10,6 +10,7 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// 429 with the limit's code, a <c>Retry-After</c> and <c>retryAt</c>, and nothing is stored or mailed. The tests
 /// travel in time by moving the stored instants back, never by waiting.
 /// </summary>
+[Collection(InvitationSenders.Name)]
 public class OrganisationInvitationLimitsTests(AspireFixture aspire)
 {
     private static readonly Uri Pharmacies = new("/organisation/pharmacies", UriKind.Relative);
@@ -124,7 +125,8 @@ public class OrganisationInvitationLimitsTests(AspireFixture aspire)
             responses.Select(response => response.StatusCode).ShouldBe([HttpStatusCode.Created, HttpStatusCode.Conflict], ignoreOrder: true, described);
             var lost = responses.Single(response => response.StatusCode == HttpStatusCode.Conflict);
             using var problem = JsonDocument.Parse(await lost.Content.ReadAsStringAsync(cancellationToken));
-            problem.RootElement.GetProperty("code").GetString().ShouldBe("organisation.pharmacy-changed", described);
+            // The loser may also lose on the sender's row (#265): its first insert answers already-exists.
+            problem.RootElement.GetProperty("code").GetString().ShouldBeOneOf(["organisation.pharmacy-changed", "already-exists"], described);
             (await database.InvitationMailsThatDayAsync(pharmacy, cancellationToken)).ShouldBe(50, described);
         }
         finally

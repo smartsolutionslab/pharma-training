@@ -169,7 +169,7 @@ Regeln:
 | `LearningSessionStarted` | Learning | Compliance | SessionId, PersonId, CourseId, CourseVersionId |
 | `ContentCompleted` | Learning | Assessment, Compliance | SessionId, PersonId, CourseId, CourseVersionId |
 | `TestPassed` | Assessment | Certification, Learning | AttemptId, SessionId, PersonId, CourseId, CourseVersionId, ScorePercent, PassedAt |
-| `TestFailed` | Assessment | (keiner in MVP 1) | AttemptId, SessionId, PersonId, AttemptNumber |
+| `TestFailed` | Assessment | (keiner in MVP 1) | AttemptId, SessionId, PersonId, CourseId, CourseVersionId, AttemptNumber |
 | `AttemptsExhausted` | Assessment | Learning, Compliance | SessionId, PersonId, CourseId, CourseVersionId, FailedChapterIds |
 | `CertificateIssued` | Certification | Compliance | CertificateId, PersonId, CourseId, CourseVersionId, IssuedAt, ValidUntil |
 
@@ -226,9 +226,9 @@ Aggregatgrenze ist die Prüfung pro LearningSession, nicht der einzelne Versuch:
 | --- | --- |
 | `ExaminationUnlocked` | Nach `ContentCompleted` |
 | `AttemptStarted` | Gestellte Fragenversionen in fester Reihenfolge; Antwortoptionen in einer aus der AttemptId abgeleiteten Reihenfolge (ADR 0022) |
-| `AttemptSubmitted` | Antworten, Punktzahl, bestanden ja/nein |
+| `AttemptSubmitted` | Antworten, Punktzahl, bestanden ja/nein; ein Fehlversuch führt zu `TestFailed` |
 | `ExaminationPassed` | Führt zu `TestPassed`; terminal |
-| `ExaminationLocked` | Nach dem 3. Fehlversuch; führt zu `AttemptsExhausted` |
+| `ExaminationExhausted` | Nach dem letzten erlaubten Fehlversuch (`MaxAttempts` der Testvorgaben); nennt jedes seit der letzten Freischaltung nicht bestandene Kapitel einmal, in der Reihenfolge des ersten Fehlers; führt zu `AttemptsExhausted` |
 
 Invarianten: Versuch nur, wenn freigeschaltet und kein Versuch offen; Antworten nur auf Fragen und Optionen des offenen Versuchs; bei Einfachauswahl genau eine Option; Bewertung serverseitig gegen die Testdefinition der Version; nach Bestehen keine weiteren Versuche; nach Sperre erst wieder nach erneutem `ContentCompleted`.
 
@@ -275,7 +275,7 @@ Status: `Draft` → `InReview` → `Published` → `Superseded` bzw. `Retired`.
 
 Entsteht aus `TestPassed`; pro bestandenem Versuch genau eine Bestätigung (AttemptId eindeutig, damit idempotent).
 
-Inhalt: `CertificateId`, `PersonId`, `HolderName` und `CourseTitle` als Momentaufnahme beim Ausstellen, `CourseVersionId`, `Score`, `IssuedAt`, `ValidUntil` (Ausstellung + Gültigkeit der Version), `VerificationCode` (zufällig, nicht die Id, für den QR-Code). Das PDF wird beim Ausstellen erzeugt und unverändert gespeichert.
+Inhalt: `CertificateId`, `PersonId`, `HolderName`, `CourseTitle` und `CourseVersionNumber` (die Versionsnummer der Redaktion, ab 1) als Momentaufnahme beim Ausstellen, `CourseVersionId`, `Score`, `IssuedAt`, `ValidUntil` (Ausstellung + Gültigkeit der Version), `VerificationCode` (zufällig, nicht die Id, für den QR-Code). Das PDF wird im selben Commit wie die Ausstellung angefordert (`CertificateDocumentRequestedV1`, bleibt im Certification-Host), einmal aus der Momentaufnahme erzeugt, unter `certificates/{id}.pdf` im eigenen Container nur angelegt, nie überschrieben, und danach nie neu erzeugt (#50).
 
 QR-Prüfung (`GET /certification/verify/{code}`, öffentlich, Z2): zeigt nur Name, Schulung, Ausstellungs- und Gültig-bis-Datum sowie gültig/abgelaufen. Unbekannte, falsch geformte Codes und Ids bekommen dieselbe Antwort (404, `certification.certificate-not-verifiable`). Begrenzt auf 30 pro Minute und 500 pro Tag je Client-Adresse (ADR 0029).
 

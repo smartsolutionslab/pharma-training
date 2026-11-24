@@ -36,7 +36,7 @@ internal static class CertificationIssuing
         new(
             Guid.CreateVersion7(),
             Guid.CreateVersion7(),
-            1,
+            3,
             $"Hygiene {Guid.CreateVersion7()}",
             validityMonths,
             [new SentChapter(Guid.CreateVersion7(), 1, "Grundlagen", "Text", null, "# Grundlagen", null)],
@@ -53,7 +53,7 @@ internal static class CertificationIssuing
         await using var connection = await CertificationDatabase.OpenAsync(aspire, cancellationToken);
         await using var command = new NpgsqlCommand(
             """
-            select id, holder_id, holder_name, course_id, course_version_id, course_title, score_percent, issued_at, valid_until, verification_code, document_state
+            select id, holder_id, holder_name, course_id, course_version_id, course_title, course_version_number, score_percent, issued_at, valid_until, verification_code, document_state, document_location
             from certification.certificates where attempt_id = @id
             """,
             connection);
@@ -70,10 +70,12 @@ internal static class CertificationIssuing
                 reader.GetGuid(4),
                 reader.GetString(5),
                 reader.GetInt32(6),
-                reader.GetFieldValue<DateTimeOffset>(7),
-                reader.GetFieldValue<DateOnly>(8),
-                reader.GetString(9),
-                reader.GetString(10)));
+                reader.GetInt32(7),
+                reader.GetFieldValue<DateTimeOffset>(8),
+                reader.GetFieldValue<DateOnly>(9),
+                reader.GetString(10),
+                reader.GetString(11),
+                reader.IsDBNull(12) ? null : reader.GetString(12)));
         }
 
         return rows;
@@ -98,9 +100,11 @@ internal static class CertificationIssuing
         Guid CourseId,
         Guid CourseVersionId,
         string CourseTitle,
+        int CourseVersionNumber,
         int ScorePercent,
         DateTimeOffset IssuedAt,
         DateOnly ValidUntil,
         string VerificationCode,
-        string DocumentState);
+        string DocumentState,
+        string? DocumentLocation);
 }
