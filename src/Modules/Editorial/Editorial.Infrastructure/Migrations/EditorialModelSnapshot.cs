@@ -17,7 +17,7 @@ partial class EditorialModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261124075543_RecordBlueprintChanger";
+    public override string LastMigrationId => "20261124161951_RecordFirstApproval";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -137,6 +137,10 @@ partial class EditorialModelSnapshot : ModelSnapshot
                 b.Property<Guid>("CreatedBy")
                     .HasColumnType("uuid")
                     .HasColumnName("created_by");
+
+                b.Property<DateTimeOffset?>("FirstApprovedAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("first_approved_at");
 
                 b.Property<int>("Number")
                     .HasColumnType("integer")

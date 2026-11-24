@@ -54,6 +54,13 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
     /// </summary>
     public PersonId? BlueprintChangedBy { get; private set; }
 
+    /// <summary>
+    /// When a question of the version was first approved; a next version takes its copied approvals' earliest. Once
+    /// set, every change of the test blueprint that takes effect records its editor (#246), whether or not an approval
+    /// is still there to reset, so clearing the approvals first does not hide a change from four eyes.
+    /// </summary>
+    public Timestamp? FirstApprovedAt { get; private set; }
+
     public PersonId? PublishedBy { get; private set; }
 
     public Timestamp? PublishedAt { get; private set; }
@@ -101,6 +108,11 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         }
 
         next.questions.AddRange(questions.Select(question => question.CopyFor(newQuestionId(), chapterIds[question.Chapter], newOptionId)));
+        next.FirstApprovedAt = next.questions
+            .Select(question => question.ReviewedAt)
+            .OfType<Timestamp>()
+            .OrderBy(reviewed => reviewed.Value)
+            .FirstOrDefault();
         return Success(next);
     }
 
@@ -241,9 +253,9 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
 
     /// <summary>
     /// Replaces a draft's test settings. Replacing them sends every question of the version back to review, copied
-    /// ones included, so reviewers sign off the changed test again. A change that reset an approval records the editor
-    /// as the one who last changed them, whom four eyes keeps from publishing; one with no approval to reset records no
-    /// one. The same settings again change nothing.
+    /// ones included, so reviewers sign off the changed test again. Once the version has had an approval, the change
+    /// records the editor as the one who last changed them, whom four eyes keeps from publishing; a change before any
+    /// approval records no one. The same settings again change nothing.
     /// </summary>
     public Result<Unit, DomainError> SetBlueprint(TestBlueprint blueprint, PersonId editor)
     {
@@ -261,7 +273,8 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         }
 
         Blueprint = blueprint;
-        if (ResetApprovals(questions, editor, ApprovalResetReason.TestSettingsChanged))
+        var approvalReset = ResetApprovals(questions, editor, ApprovalResetReason.TestSettingsChanged);
+        if (approvalReset || FirstApprovedAt is not null)
         {
             BlueprintChangedBy = editor;
         }
@@ -397,6 +410,7 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         }
 
         question.Approve(editor, name, now);
+        FirstApprovedAt ??= now;
         return Success(Unit.Value);
     }
 
