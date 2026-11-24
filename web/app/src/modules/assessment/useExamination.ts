@@ -1,13 +1,20 @@
 import { useQueryClient } from '@tanstack/vue-query';
-import { computed, type MaybeRefOrGetter, onBeforeUnmount, toValue, watch } from 'vue';
+import { computed, type MaybeRefOrGetter, toValue } from 'vue';
 import { z } from 'zod';
 import { ApiError } from '@/api/baseApi';
-import { useGetAssessmentExaminationsBySessionSessionId, useGetCatalogCourseVersionsId } from '@/api/generated';
+import {
+  type AssessmentExaminationDto,
+  useGetAssessmentExaminationsBySessionSessionId,
+  useGetCatalogCourseVersionsId,
+} from '@/api/generated';
 import { type AssessmentAction, type AssessmentFailure, assessmentFailure } from './assessmentErrors';
 
 const isId = (value: unknown): value is string => z.uuid().safeParse(value).success;
 
-/** How often the page asks again while the examination is not there yet: it opens seconds after ContentCompletedV1. */
+/**
+ * How often the page asks again while the examination is not there yet or still locked: it opens seconds after
+ * ContentCompletedV1.
+ */
 const pollEvery = 3_000;
 
 const notFoundCode = 'assessment.examination-not-found';
@@ -16,7 +23,8 @@ const isNotFound = (error: unknown) => error instanceof ApiError && error.code =
 /**
  * The learner's examination (#48), found by Learning's session id in the address (ADR 0010/0012), and the course
  * version it is on from the catalog, for the course's title and the chapters' titles. A session id that is no UUID names
- * no examination and is never sent. While there is no examination yet (404 not-found), it asks again every 3 s.
+ * no examination and is never sent. While there is no examination yet (404 not-found), or it is still Locked, it asks
+ * again every 3 s, for as long as a page reads it.
  */
 export function useExamination(session: MaybeRefOrGetter<string>) {
   const queryClient = useQueryClient();
@@ -36,8 +44,14 @@ export function useExamination(session: MaybeRefOrGetter<string>) {
     return typeof retryDefault === 'number' ? failureCount < retryDefault : retryDefault;
   }
 
+  // Asked again by the query itself, so leaving the page stops it.
+  function refetchInterval(read: { state: { data?: AssessmentExaminationDto; error: unknown } }): number | false {
+    const waiting = read.state.data === undefined ? isNotFound(read.state.error) : read.state.data.status === 'Locked';
+    return waiting ? pollEvery : false;
+  }
+
   const query = useGetAssessmentExaminationsBySessionSessionId(sessionId, {
-    query: { enabled: validSession, retry },
+    query: { enabled: validSession, retry, refetchInterval },
   });
   const examination = computed(() => query.data.value);
 
@@ -48,31 +62,11 @@ export function useExamination(session: MaybeRefOrGetter<string>) {
   const version = computed(() => catalog.data.value);
 
   /** Whether the examination is not there yet: the page says it is not unlocked and asks again. */
-  const notYetThere = computed(() => isNotFound(query.error.value));
-
-  let poll: ReturnType<typeof setInterval> | undefined;
-  function stopPolling() {
-    if (poll !== undefined) {
-      clearInterval(poll);
-      poll = undefined;
-    }
-  }
-  watch(
-    notYetThere,
-    (waiting) => {
-      if (waiting && poll === undefined) {
-        poll = setInterval(() => void query.refetch(), pollEvery);
-      } else if (!waiting) {
-        stopPolling();
-      }
-    },
-    { immediate: true },
-  );
-  onBeforeUnmount(stopPolling);
+  const notYetThere = computed(() => examination.value === undefined && isNotFound(query.error.value));
 
   /**
    * Why the page cannot show the examination, in the words of the page's action (the test's read or the result's):
-   * none while it loads or is shown, or while it is not there yet.
+   * none while it loads or is not there yet, and none while it is shown: a read again that fails keeps what is shown.
    */
   const failureOf = (action: Extract<AssessmentAction, 'read' | 'result'>) =>
     computed((): AssessmentFailure | undefined => {
@@ -80,7 +74,7 @@ export function useExamination(session: MaybeRefOrGetter<string>) {
         return { key: 'assessment.test.notFound' };
       }
       const error = query.error.value;
-      if (error === null || isNotFound(error)) {
+      if (error === null || examination.value !== undefined || isNotFound(error)) {
         return undefined;
       }
       return assessmentFailure(action, error);

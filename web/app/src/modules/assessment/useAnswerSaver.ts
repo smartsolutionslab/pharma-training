@@ -22,7 +22,8 @@ const idle: SaveState = { kind: 'idle' };
  * examination, since concurrent answers would race into examination-changed. Each choice is the question's draft (client
  * state) until the host has saved it; then it goes into the by-session query's cache and the draft is dropped. While a
  * request is on its way only each question's latest draft waits, so repeated clicks send once. An empty set is never
- * sent (an answer cannot be cleared); a 409 no-open-attempt closes the saver and reads the examination again.
+ * sent (an answer cannot be cleared); a 409 no-open-attempt closes the saver and reads the examination again, until
+ * reopen() starts afresh for the next attempt.
  */
 export function useAnswerSaver(
   sessionId: MaybeRefOrGetter<string>,
@@ -53,13 +54,18 @@ export function useAnswerSaver(
     void pump();
   }
 
-  /** Keeps the choice as the question's draft and saves it; an empty choice is never sent. */
+  /**
+   * Keeps the choice as the question's draft and saves it. An empty choice is never sent: it says one option must stay
+   * chosen, unless the question's draft failed to save, whose failure stays shown until it is saved.
+   */
   function choose(questionId: string, optionIds: string[]) {
     if (closed.value) {
       return;
     }
     if (optionIds.length === 0) {
-      states.set(questionId, { kind: 'keepOne' });
+      if (!(drafts.has(questionId) && stateOf(questionId).kind === 'failed')) {
+        states.set(questionId, { kind: 'keepOne' });
+      }
       return;
     }
     drafts.set(questionId, [...optionIds]);
@@ -110,6 +116,11 @@ export function useAnswerSaver(
         return;
       }
       // A draft changed while its save was on its way waits to be sent; the cache never takes the older choice.
+      if (drafts.get(questionId) !== draft) {
+        return;
+      }
+      // A read on its way left the host before this answer was saved: its answer must not take the answer back.
+      await queryClient.cancelQueries({ queryKey: examinationKey() });
       if (drafts.get(questionId) === draft) {
         remember(questionId, draft);
         drafts.delete(questionId);
@@ -150,9 +161,12 @@ export function useAnswerSaver(
     }
   }
 
-  const allSaved = () => [...states.values()].every((state) => state.kind !== 'failed');
+  const allSaved = () => drafts.size === 0 && [...states.values()].every((state) => state.kind !== 'failed');
 
-  /** Resolves once nothing waits or is on its way: true when every answer is saved, false when one failed. */
+  /**
+   * Resolves once nothing waits or is on its way: true when every answer is saved, false when one failed or a draft is
+   * left unsaved (as when the saver was closed).
+   */
   function settled(): Promise<boolean> {
     if (!busy && (waiting.length === 0 || closed.value)) {
       return Promise.resolve(allSaved());
@@ -162,5 +176,13 @@ export function useAnswerSaver(
     });
   }
 
-  return { choose, retry, draftOf, stateOf, settled, closed };
+  /** Starts afresh after the saver was closed, for the next attempt: no drafts, no states, nothing waiting. */
+  function reopen() {
+    closed.value = false;
+    waiting = [];
+    drafts.clear();
+    states.clear();
+  }
+
+  return { choose, retry, draftOf, stateOf, settled, closed, reopen };
 }

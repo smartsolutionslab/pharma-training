@@ -6,6 +6,8 @@ import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ApiError } from '@/api/baseApi';
 import {
   type AssessmentAttemptQuestionDto,
+  type AssessmentAttemptResultDto,
+  type AssessmentExaminationDto,
   getGetAssessmentExaminationsBySessionSessionIdQueryKey,
   getGetLearningSessionsIdQueryKey,
   usePostAssessmentExaminationsIdAttempts,
@@ -78,6 +80,14 @@ const state = computed((): PageState | undefined => {
   return read.currentAttempt === null ? 'unlocked' : 'inAttempt';
 });
 
+// After a no-open-attempt the saver is closed; once the examination read again shows a new attempt can start, the
+// next attempt's answers are saved again.
+watch([examination, saver.closed], ([read, closed]) => {
+  if (closed && read?.status === 'Unlocked' && read.currentAttempt === null) {
+    saver.reopen();
+  }
+});
+
 const heading = useTemplateRef<HTMLElement>('heading');
 const questionsHeading = useTemplateRef<HTMLElement>('questionsHeading');
 /** Set by Retry and by the start: the heading named takes the focus once it shows. */
@@ -114,27 +124,36 @@ const intro = computed(() => {
   return t('assessment.test.intro', { number: Number(read.attemptsUsed) + 1, max: Number(read.maxAttempts) });
 });
 
-// The start: posted once, the examination read again, the focus on the questions.
-const { mutateAsync: postStart, isPending: starting } = usePostAssessmentExaminationsIdAttempts();
+// The start: posted once, the examination read again, the focus on the questions. It counts as starting until the
+// examination is read again, so a second click meanwhile posts nothing.
+const { mutateAsync: postStart } = usePostAssessmentExaminationsIdAttempts();
+const starting = ref(false);
 const startFailure = ref<AssessmentFailure>();
 const startRetryable = ref(true);
 async function start() {
   if (starting.value || examinationId.value === '') {
     return;
   }
+  starting.value = true;
   startFailure.value = undefined;
   try {
-    await postStart({ id: examinationId.value });
-  } catch (error) {
-    // Not unlocked: an attempt was opened elsewhere, or the test is locked; the examination read again says which.
-    if (!(error instanceof ApiError && error.code === 'assessment.examination-not-unlocked')) {
-      startFailure.value = assessmentFailure('start', error);
-      startRetryable.value = !(error instanceof ApiError && error.code === 'assessment.identity-incomplete');
-      return;
+    try {
+      await postStart({ id: examinationId.value });
+      focusWanted.value = 'questions';
+    } catch (error) {
+      // Not unlocked: an attempt was opened elsewhere, or the test is locked; the examination read again says which,
+      // and the focus stays where it is.
+      if (!(error instanceof ApiError && error.code === 'assessment.examination-not-unlocked')) {
+        startFailure.value = assessmentFailure('start', error);
+        startRetryable.value = !(error instanceof ApiError && error.code === 'assessment.identity-incomplete');
+        return;
+      }
+      focusWanted.value = undefined;
     }
+    await queryClient.invalidateQueries({ queryKey: examinationKey.value });
+  } finally {
+    starting.value = false;
   }
-  focusWanted.value = 'questions';
-  await queryClient.invalidateQueries({ queryKey: examinationKey.value });
 }
 
 function choose(question: AssessmentAttemptQuestionDto, optionId: string, event: Event) {
@@ -159,7 +178,23 @@ function choose(question: AssessmentAttemptQuestionDto, optionId: string, event:
   );
 }
 
-// The submit: confirmed, every answer saved first, posted once, then the result.
+/**
+ * The examination as the submit's result leaves it, until it is read again: no attempt open, the result the last, and
+ * passed, exhausted or open for the next attempt. A read again that fails then still never shows an older result.
+ */
+function afterSubmit(read: AssessmentExaminationDto, submitted: AssessmentAttemptResultDto): AssessmentExaminationDto {
+  const exhausted = submitted.outcome === 'Failed' && Number(submitted.attemptsLeft) === 0;
+  return {
+    ...read,
+    status: submitted.outcome === 'Passed' ? 'Passed' : exhausted ? 'Exhausted' : 'Unlocked',
+    attemptsUsed: submitted.number,
+    currentAttempt: null,
+    lastResult: submitted,
+  };
+}
+
+// The submit: confirmed, every answer saved first, posted once, then the result once the examination is read again,
+// so the result page never shows the one before.
 const confirming = ref(false);
 const submitting = ref(false);
 const unsaved = ref(false);
@@ -174,23 +209,32 @@ async function submit() {
   unsaved.value = false;
   submitFailure.value = undefined;
   try {
-    if (!(await saver.settled())) {
-      confirming.value = false;
-      unsaved.value = true;
-      return;
-    }
-    try {
-      await postSubmit({ id: examinationId.value });
-    } catch (error) {
-      // Submitted elsewhere: the result is there all the same.
-      if (!(error instanceof ApiError && error.code === 'assessment.no-open-attempt')) {
+    const allSaved = await saver.settled();
+    // An answer refused as no-open-attempt meanwhile: submitted elsewhere, and the result is there all the same.
+    if (!saver.closed.value) {
+      if (!allSaved) {
         confirming.value = false;
-        submitFailure.value = assessmentFailure('submit', error);
+        unsaved.value = true;
         return;
       }
+      try {
+        const submitted = await postSubmit({ id: examinationId.value });
+        queryClient.setQueryData<AssessmentExaminationDto>(examinationKey.value, (read) =>
+          read === undefined ? read : afterSubmit(read, submitted),
+        );
+      } catch (error) {
+        // Submitted elsewhere: the result is there all the same.
+        if (!(error instanceof ApiError && error.code === 'assessment.no-open-attempt')) {
+          confirming.value = false;
+          submitFailure.value = assessmentFailure('submit', error);
+          return;
+        }
+      }
     }
-    void queryClient.invalidateQueries({ queryKey: examinationKey.value });
-    void queryClient.invalidateQueries({ queryKey: getGetLearningSessionsIdQueryKey(sessionId.value) });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: examinationKey.value }),
+      queryClient.invalidateQueries({ queryKey: getGetLearningSessionsIdQueryKey(sessionId.value) }),
+    ]);
     confirming.value = false;
     await router.push(resultAddress.value);
   } finally {
@@ -206,6 +250,11 @@ const saveFailureText = (question: AssessmentAttemptQuestionDto) => {
 const headingId = 'examination-title';
 const questionsHeadingId = 'examination-questions';
 const inputId = (question: AssessmentAttemptQuestionDto, optionId: string) => `answer-${question.id}-${optionId}`;
+const hintId = (question: AssessmentAttemptQuestionDto) => `hint-${question.id}`;
+const saveStatusId = (question: AssessmentAttemptQuestionDto) => `save-${question.id}`;
+/** A question is described by its type's hint, and by its save status while it has one. */
+const describedBy = (question: AssessmentAttemptQuestionDto) =>
+  saver.stateOf(question.id).kind === 'idle' ? hintId(question) : `${hintId(question)} ${saveStatusId(question)}`;
 </script>
 
 <template>
@@ -279,6 +328,7 @@ const inputId = (question: AssessmentAttemptQuestionDto, optionId: string) => `a
         <fieldset
           v-for="(question, index) in questions"
           :key="question.id"
+          :aria-describedby="describedBy(question)"
           class="bg-card shadow-elevation-1 flex flex-col gap-3 rounded-md border p-4"
         >
           <legend class="text-body float-left mb-1 w-full font-semibold">
@@ -287,7 +337,7 @@ const inputId = (question: AssessmentAttemptQuestionDto, optionId: string) => `a
             }}</span>
             <span class="block">{{ question.text }}</span>
           </legend>
-          <p class="text-caption text-muted-foreground">
+          <p :id="hintId(question)" class="text-caption text-muted-foreground">
             {{ t(question.type === 'SingleChoice' ? 'assessment.test.singleHint' : 'assessment.test.multipleHint') }}
           </p>
           <div class="flex flex-col gap-2">
@@ -310,21 +360,27 @@ const inputId = (question: AssessmentAttemptQuestionDto, optionId: string) => `a
               <span>{{ option.text }}</span>
             </label>
           </div>
-          <div v-if="saver.stateOf(question.id).kind === 'failed'" role="alert" class="flex flex-col items-start gap-2">
-            <p class="text-body">{{ saveFailureText(question) }}</p>
-            <Button variant="outline" size="sm" @click="saver.retry(question.id)">
-              {{ t('assessment.test.save.retry') }}
-            </Button>
+          <div :id="saveStatusId(question)">
+            <div
+              v-if="saver.stateOf(question.id).kind === 'failed'"
+              role="alert"
+              class="flex flex-col items-start gap-2"
+            >
+              <p class="text-body">{{ saveFailureText(question) }}</p>
+              <Button variant="outline" size="sm" @click="saver.retry(question.id)">
+                {{ t('assessment.test.save.retry') }}
+              </Button>
+            </div>
+            <p v-else-if="saver.stateOf(question.id).kind === 'keepOne'" class="text-caption">
+              {{ t('assessment.test.save.keepOne') }}
+            </p>
+            <p v-else-if="saver.stateOf(question.id).kind === 'saving'" class="text-caption text-muted-foreground">
+              {{ t('assessment.test.save.saving') }}
+            </p>
+            <p v-else-if="saver.stateOf(question.id).kind === 'saved'" class="text-caption text-muted-foreground">
+              {{ t('assessment.test.save.saved') }}
+            </p>
           </div>
-          <p v-else-if="saver.stateOf(question.id).kind === 'keepOne'" class="text-caption">
-            {{ t('assessment.test.save.keepOne') }}
-          </p>
-          <p v-else-if="saver.stateOf(question.id).kind === 'saving'" class="text-caption text-muted-foreground">
-            {{ t('assessment.test.save.saving') }}
-          </p>
-          <p v-else-if="saver.stateOf(question.id).kind === 'saved'" class="text-caption text-muted-foreground">
-            {{ t('assessment.test.save.saved') }}
-          </p>
         </fieldset>
 
         <div v-if="unsaved" role="alert" class="text-body">{{ t('assessment.test.unsaved') }}</div>
