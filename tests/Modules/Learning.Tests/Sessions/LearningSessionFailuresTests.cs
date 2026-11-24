@@ -1,3 +1,4 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using System.Net;
 using SmartSolutionsLab.PharmaTraining.Modules.Learning.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Learning.Domain.LearningSessions;
@@ -51,5 +52,22 @@ public class LearningSessionFailuresTests
         mapped.Status.ShouldBe(HttpStatusCode.Conflict);
         mapped.Message.ShouldBe("The learning session changed in the meantime; report again.");
         mapped.Message.ShouldNotContain(Session.Value.ToString());
+    }
+
+    [Theory]
+    [InlineData("40P01")]
+    [InlineData("40001")]
+    public void A_deadlocked_save_is_a_concurrent_save_to_try_again(string sqlState)
+    {
+        var error = LearningSessionFailures.LostRace(LostRaces.Deadlocked(sqlState), Guid.CreateVersion7());
+
+        error.Code.ShouldBe("learning.concurrent-save");
+        error.Status.ShouldBe(System.Net.HttpStatusCode.Conflict);
+    }
+
+    [Fact]
+    public void A_stream_that_moved_on_is_still_a_session_that_changed()
+    {
+        LearningSessionFailures.LostRace(LostRaces.VersionMovedOn(), Guid.CreateVersion7()).Code.ShouldBe("learning.session-changed");
     }
 }

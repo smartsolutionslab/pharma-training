@@ -1,3 +1,4 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using System.Net;
 using SmartSolutionsLab.PharmaTraining.Modules.Assessment.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Assessment.Domain.Examinations;
@@ -60,5 +61,22 @@ public class ExaminationFailuresTests
 
         mapped.Code.ShouldBe("assessment.identity-incomplete");
         mapped.Status.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    [Theory]
+    [InlineData("40P01")]
+    [InlineData("40001")]
+    public void A_deadlocked_save_is_a_concurrent_save_to_try_again(string sqlState)
+    {
+        var error = ExaminationFailures.LostRace(LostRaces.Deadlocked(sqlState), Guid.CreateVersion7());
+
+        error.Code.ShouldBe("assessment.concurrent-save");
+        error.Status.ShouldBe(System.Net.HttpStatusCode.Conflict);
+    }
+
+    [Fact]
+    public void A_stream_that_moved_on_is_still_an_examination_that_changed()
+    {
+        ExaminationFailures.LostRace(LostRaces.VersionMovedOn(), Guid.CreateVersion7()).Code.ShouldBe("assessment.examination-changed");
     }
 }

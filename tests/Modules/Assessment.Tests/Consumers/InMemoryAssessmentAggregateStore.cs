@@ -1,3 +1,4 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.EventSourcing;
 using SmartSolutionsLab.PharmaTraining.Modules.Assessment.Application;
 
@@ -16,6 +17,8 @@ internal sealed class InMemoryAssessmentAggregateStore(List<string>? steps = nul
 
     private readonly Dictionary<Guid, List<IDomainEvent>> streams = [];
     private bool loseNextSave;
+
+    private LostRace how = LostRaces.VersionMovedOn();
 
     public IReadOnlyDictionary<Guid, List<IDomainEvent>> Streams => streams;
 
@@ -49,20 +52,24 @@ internal sealed class InMemoryAssessmentAggregateStore(List<string>? steps = nul
     }
 
     /// <summary>What the module's store answers once it opts in to lost races (ADR 0016): <see langword="false"/> with nothing stored and the aggregate left unmarked.</summary>
-    public Task<bool> TrySaveAsync(IEventSourced aggregate, CancellationToken cancellationToken)
+    public Task<Result<Unit, LostRace>> TrySaveAsync(IEventSourced aggregate, CancellationToken cancellationToken)
     {
         if (loseNextSave)
         {
             loseNextSave = false;
-            return Task.FromResult(false);
+            return Task.FromResult<Result<Unit, LostRace>>(Failure(how));
         }
 
         Append(aggregate);
-        return Task.FromResult(true);
+        return Task.FromResult<Result<Unit, LostRace>>(Success(Unit.Value));
     }
 
     /// <summary>The next save, whichever way it is made, loses the race on its stream and stores nothing.</summary>
-    public void LoseNextSave() => loseNextSave = true;
+    public void LoseNextSave(LostRace? how = null)
+    {
+        loseNextSave = true;
+        this.how = how ?? LostRaces.VersionMovedOn();
+    }
 
     private void Append(IEventSourced aggregate)
     {
