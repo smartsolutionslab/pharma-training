@@ -2,7 +2,7 @@
 # Checks the GitHub environments deploy.yml deploys with, before the first deploy and before real data (#278, README
 # "Before the first deploy"): `staging` and `production` each deploy from the branch `main` and the tags `deploy/*` alone,
 # so a deploy.yml changed on another branch gets neither their secrets nor their Azure identity; neither lets an
-# administrator bypass those rules; `production` waits for reviewers, never the one who started the run; and an active tag
+# administrator bypass those rules; `main` takes pull requests alone and refuses force pushes; `production` waits for reviewers, never the one who started the run; and an active tag
 # ruleset restricts creating, moving and deleting `deploy/*` tags to its bypass list, since whoever can push such a tag
 # could otherwise deploy a deploy.yml of their own. Prints each problem and exits 1 if there is one.
 #
@@ -63,16 +63,24 @@ for environment in staging production; do
 done
 
 # An active tag ruleset whose conditions take in every deploy/* tag and exclude none, restricting creation, update and
-# deletion. Only those listed in the rulesets (not their details) are fetched one by one.
+# deletion. Only those listed in the rulesets (not their details) are fetched one by one. Who may bypass it is printed for
+# a person to confirm; a repository role below admin (anyone with write access) may not (#331).
 deploy_tags_protected=false
 for id in $(gh api "repos/$repository/rulesets" | jq -r '.[] | select(.target == "tag" and .enforcement == "active") | .id'); do
-  if gh api "repos/$repository/rulesets/$id" | jq -e '
+  ruleset=$(gh api "repos/$repository/rulesets/$id")
+  if jq -e '
       (.conditions.ref_name.include // []) as $include
       | (.conditions.ref_name.exclude // []) as $exclude
       | ($include | any(. == "refs/tags/deploy/*" or . == "~ALL"))
         and ($exclude | length == 0)
-        and ((["creation", "update", "deletion"] - [.rules[]?.type]) | length == 0)' >/dev/null; then
+        and ((["creation", "update", "deletion"] - [.rules[]?.type]) | length == 0)' >/dev/null <<<"$ruleset"; then
     deploy_tags_protected=true
+    # A repository role is named by its id; 5 is admin, and any other is a role below it.
+    roles=$(jq -r '[.bypass_actors[]? | select(.actor_type == "RepositoryRole" and .actor_id != 5) | .actor_id] | join(", ")' <<<"$ruleset")
+    if [ -n "$roles" ]; then
+      problem "deploy/* tags" "the ruleset \"$(jq -r .name <<<"$ruleset")\" lets a repository role below admin bypass it (role ids $roles; admin is 5), so anyone holding that role could move a deploy/* tag; leave admin and the people who deploy alone."
+    fi
+    echo "deploy/* tags: \"$(jq -r .name <<<"$ruleset")\" may be bypassed by: $(jq -r '[.bypass_actors[]? | "\(.actor_type) \(.actor_id // "") (\(.bypass_mode))"] | if length == 0 then "nobody" else join(", ") end' <<<"$ruleset"). Confirm these are the people who may deploy."
   fi
 done
 
@@ -80,8 +88,27 @@ if [ "$deploy_tags_protected" != true ]; then
   problem "deploy/* tags" "no active tag ruleset restricts creating, moving and deleting them (Settings, Rules, Rulesets; target refs/tags/deploy/*, no exclusions); whoever can push a deploy/* tag could deploy a deploy.yml of their own."
 fi
 
+# Both environments trust main, so main itself takes changes through pull requests alone and refuses force pushes, by a
+# ruleset (the rules that apply to main) or by classic branch protection (#331).
+main_rules=$(gh api "repos/$repository/rules/branches/main" | jq -r '[.[].type] | join(" ")')
+if classic=$(gh api "repos/$repository/branches/main/protection" 2>/dev/null); then
+  classic_pull_requests=$(jq -r '.required_pull_request_reviews != null' <<<"$classic")
+  classic_force_pushes=$(jq -r '.allow_force_pushes.enabled // false' <<<"$classic")
+else
+  classic_pull_requests=false
+  classic_force_pushes=true
+fi
+
+if [[ " $main_rules " != *" pull_request "* ]] && [ "$classic_pull_requests" != true ]; then
+  problem "main" "it takes pushes without a pull request; require one (a branch ruleset on main, or branch protection), or a deploy.yml pushed straight to main reaches both environments."
+fi
+
+if [[ " $main_rules " != *" non_fast_forward "* ]] && [ "$classic_force_pushes" != false ]; then
+  problem "main" "force pushes are allowed; block them (\"Block force pushes\" in a branch ruleset on main, or branch protection)."
+fi
+
 if [ "$problems" -gt 0 ]; then
   exit 1
 fi
 
-echo "Both environments deploy from main and deploy/* alone, without an administrator's bypass; production waits for a reviewer other than the one who started the run; and only the tag ruleset's bypass list may create, move or delete deploy/* tags."
+echo "Both environments deploy from main and deploy/* alone, without an administrator's bypass; production waits for a reviewer other than the one who started the run; only the tag ruleset's bypass list may create, move or delete deploy/* tags; and main takes pull requests alone, without force pushes."
