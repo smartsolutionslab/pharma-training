@@ -34,6 +34,29 @@ public static class ServiceHostProjects
             .Select(path => (ModuleName(path), path));
     }
 
+    /// <summary>
+    /// Whether the service host at <paramref name="projectPath"/> sends mail, as its project says beside its module's
+    /// name: <c>&lt;SendsMail&gt;true&lt;/SendsMail&gt;</c>, true or false in any letter case, absent for false
+    /// (docs/adr/0004). Only such a host is given the mail settings. Any other value stops the AppHost, naming the project.
+    /// </summary>
+    public static bool SendsMail(string projectPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(projectPath);
+
+        var value = XDocument.Load(projectPath).Descendants().LastOrDefault(element => element.Name.LocalName == "SendsMail")?.Value;
+        if (value is null)
+        {
+            return false;
+        }
+
+        if (bool.TryParse(value.Trim(), out var sends))
+        {
+            return sends;
+        }
+
+        throw new InvalidOperationException($"{projectPath} says <SendsMail> is \"{value}\"; it is true or false, or absent for false.");
+    }
+
     /// <summary>Adds the service host at <paramref name="projectPath"/> through its generated project metadata.</summary>
     public static IResourceBuilder<ProjectResource> AddServiceHost(this IDistributedApplicationBuilder builder, string name, string projectPath)
     {

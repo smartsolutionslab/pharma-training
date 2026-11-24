@@ -2,6 +2,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Modules;
+using SmartSolutionsLab.PharmaTraining.Modules.Catalog.Api;
 
 namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Mail.Tests;
 
@@ -79,6 +81,25 @@ public class MailRegistrationTests
     public async Task In_development_a_host_without_them_starts()
     {
         using var host = Host(Environments.Development);
+
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        await host.StopAsync(TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    /// Only a module that sends mail registers it (docs/adr/0004): the infrastructure every module gets registers no
+    /// mail sender, so outside Development a host whose module sends none starts without any mail setting.
+    /// </summary>
+    [Fact]
+    public async Task Outside_development_a_host_that_registers_no_mail_starts_without_mail_settings()
+    {
+        var builder = Microsoft.Extensions.Hosting.Host.CreateApplicationBuilder(new HostApplicationBuilderSettings { EnvironmentName = Environments.Production, DisableDefaults = true });
+        builder.Configuration.AddInMemoryCollection([new KeyValuePair<string, string?>("ConnectionStrings:database", "Host=localhost")]);
+        builder.Services.AddSingleton(TimeProvider.System);
+        builder.Services.AddModuleInfrastructure<CatalogModule>(builder.Configuration);
+        builder.Services.ShouldNotContain(service => service.ServiceType == typeof(IMailSender), "the infrastructure of a module that sends no mail registered a mail sender");
+        builder.Services.ShouldNotContain(service => service.ServiceType == typeof(IFrontendLinks), "the infrastructure of a module that sends no mail registered the links into the web app");
+        using var host = builder.Build();
 
         await host.StartAsync(TestContext.Current.CancellationToken);
         await host.StopAsync(TestContext.Current.CancellationToken);

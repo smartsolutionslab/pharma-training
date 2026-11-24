@@ -5,6 +5,8 @@
     <AssemblyName>SmartSolutionsLab.PharmaTraining.Services.Organisation.Host</AssemblyName>
     <!-- The AppHost names this service's resource after its module. -->
     <ModuleName>organisation</ModuleName>
+    <!-- The AppHost gives this service the mail settings; its module sends the invitation mail (docs/adr/0004). -->
+    <SendsMail>true</SendsMail>
   </PropertyGroup>
 
   <ItemGroup>

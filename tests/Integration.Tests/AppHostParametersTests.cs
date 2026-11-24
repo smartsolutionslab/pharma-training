@@ -57,7 +57,7 @@ public class AppHostParametersTests
     }
 
     [Fact]
-    public async Task The_mail_parameters_have_their_defaults_and_reach_every_service()
+    public async Task The_mail_parameters_have_their_defaults_and_reach_the_services_that_send_mail()
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         timeout.CancelAfter(Timeout);
@@ -73,21 +73,47 @@ public class AppHostParametersTests
         mail.ConnectionStringExpression.ValueExpression.ShouldContain("{mailpit.bindings.smtp.", Case.Sensitive);
 
         var services = Services(builder);
-        services.ShouldNotBeEmpty();
-        foreach (var service in services)
+        var senders = services.Where(SendsMail).ToList();
+        senders.ShouldNotBeEmpty("no service host's project says <SendsMail>true</SendsMail>");
+        services.Except(senders).ShouldNotBeEmpty("every service host's project says <SendsMail>true</SendsMail>");
+        foreach (var service in senders)
         {
-            var configuration = await ExecutionConfigurationBuilder.Create(service)
-                .WithEnvironmentVariablesConfig()
-                .BuildAsync(new DistributedApplicationExecutionContext(DistributedApplicationOperation.Publish), NullLogger.Instance, timeout.Token);
-            var environment = configuration.EnvironmentVariables.ToDictionary(variable => variable.Key, variable => variable.Value, StringComparer.Ordinal);
+            var environment = await EnvironmentAsync(service, timeout.Token);
 
-            environment.ShouldContainKey("ConnectionStrings__mail", $"{service.Name} does not read the connection string mail.");
+            environment.ShouldContainKey("ConnectionStrings__mail", $"{service.Name} sends mail but does not read the connection string mail.");
             environment["ConnectionStrings__mail"].ShouldBe("{mail.connectionString}");
-            environment.ShouldContainKey("Mail__From", $"{service.Name} does not read Mail:From.");
+            environment.ShouldContainKey("Mail__From", $"{service.Name} sends mail but does not read Mail:From.");
             environment["Mail__From"].ShouldBe("{mail-from.value}");
-            environment.ShouldContainKey("Frontend__BaseUrl", $"{service.Name} does not read Frontend:BaseUrl.");
+            environment.ShouldContainKey("Frontend__BaseUrl", $"{service.Name} sends mail but does not read Frontend:BaseUrl.");
             environment["Frontend__BaseUrl"].ShouldContain("{web.bindings.http.", Case.Sensitive);
         }
+    }
+
+    /// <summary>
+    /// The mail settings, and the web app's address that only mail links read, go only to a service host whose project
+    /// says it sends mail (docs/adr/0004); every other service has none of them.
+    /// </summary>
+    [Fact]
+    public async Task A_service_that_sends_no_mail_has_no_mail_connection_string_sender_or_frontend_url_in_run_mode()
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(Timeout);
+        await using var builder = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AppHost>(timeout.Token);
+        Unconfigured(builder);
+
+        var services = Services(builder);
+        var silent = services.Where(service => !SendsMail(service)).ToList();
+        silent.ShouldNotBeEmpty("every service host's project says <SendsMail>true</SendsMail>");
+        foreach (var service in silent)
+        {
+            var environment = await EnvironmentAsync(service, timeout.Token);
+
+            environment.ShouldNotContainKey("ConnectionStrings__mail", $"{service.Name} sends no mail but reads the connection string mail.");
+            environment.ShouldNotContainKey("Mail__From", $"{service.Name} sends no mail but reads Mail:From.");
+            environment.ShouldNotContainKey("Frontend__BaseUrl", $"{service.Name} sends no mail but reads Frontend:BaseUrl.");
+        }
+
+        services.Where(SendsMail).ShouldNotBeEmpty("no service host's project says <SendsMail>true</SendsMail>");
     }
 
     [Fact]
@@ -105,6 +131,17 @@ public class AppHostParametersTests
 
         frontendUrl.Default.ShouldBeNull("frontend-url publishes a default");
         sender.Default.ShouldBeNull("smtp-from publishes a default, so a deployment that forgot it sends from that address");
+    }
+
+    private static bool SendsMail(ProjectResource service) => ServiceHostMail.SendsMail(service.GetProjectMetadata().ProjectPath);
+
+    /// <summary>The service's environment as the model sets it, values unresolved.</summary>
+    private static async Task<Dictionary<string, string>> EnvironmentAsync(ProjectResource service, CancellationToken cancellationToken)
+    {
+        var configuration = await ExecutionConfigurationBuilder.Create(service)
+            .WithEnvironmentVariablesConfig()
+            .BuildAsync(new DistributedApplicationExecutionContext(DistributedApplicationOperation.Publish), NullLogger.Instance, cancellationToken);
+        return configuration.EnvironmentVariables.ToDictionary(variable => variable.Key, variable => variable.Value, StringComparer.Ordinal);
     }
 
     /// <summary>A developer's user secrets must not decide what these tests see.</summary>

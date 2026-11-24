@@ -9,6 +9,10 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Tests.LearningSessio
 public class LearningSessionTests
 {
     private static readonly Timestamp Now = Timestamp.From(new DateTimeOffset(2027, 3, 1, 9, 0, 0, TimeSpan.Zero));
+
+    // The film's whole length after the start: any gain on it is watched at a plausible pace by then (ADR 0024).
+    private static readonly Timestamp Later = Timestamp.From(Now.Value.AddSeconds(420));
+    private static readonly VideoDuration FilmDuration = VideoDuration.From(420);
     private static readonly ChapterId Intro = ChapterId.From(Guid.CreateVersion7());
     private static readonly ChapterId Handbook = ChapterId.From(Guid.CreateVersion7());
     private static readonly ChapterId Film = ChapterId.From(Guid.CreateVersion7());
@@ -27,10 +31,10 @@ public class LearningSessionTests
     {
         var session = Start();
 
-        session.RecordProgress(Intro, ProgressPercent.From(99), Now);
+        session.RecordProgress(Intro, ProgressPercent.From(99), DurationOf(Intro), Now);
         session.CompletedChapters.ShouldBeEmpty();
 
-        session.RecordProgress(Intro, ProgressPercent.Complete, Now);
+        session.RecordProgress(Intro, ProgressPercent.Complete, DurationOf(Intro), Now);
         session.CompletedChapters.ShouldBe([Intro]);
     }
 
@@ -39,7 +43,7 @@ public class LearningSessionTests
     {
         var session = Start();
 
-        session.RecordProgress(Film, ProgressPercent.From(95), Now);
+        session.RecordProgress(Film, ProgressPercent.From(95), DurationOf(Film), Later);
 
         session.CompletedChapters.ShouldContain(Film);
     }
@@ -48,11 +52,11 @@ public class LearningSessionTests
     public void Older_or_repeated_progress_stores_nothing()
     {
         var session = Start();
-        session.RecordProgress(Film, ProgressPercent.From(60), Now);
+        session.RecordProgress(Film, ProgressPercent.From(60), DurationOf(Film), Later);
         var stored = Pending(session).Count;
 
-        session.RecordProgress(Film, ProgressPercent.From(40), Now);
-        session.RecordProgress(Film, ProgressPercent.From(60), Now);
+        session.RecordProgress(Film, ProgressPercent.From(40), DurationOf(Film), Now);
+        session.RecordProgress(Film, ProgressPercent.From(60), DurationOf(Film), Now);
 
         Pending(session).Count.ShouldBe(stored);
     }
@@ -63,7 +67,7 @@ public class LearningSessionTests
         var session = Start();
 
         CompleteAll(session);
-        session.RecordProgress(Intro, ProgressPercent.Complete, Now); // a late duplicate
+        session.RecordProgress(Intro, ProgressPercent.Complete, DurationOf(Intro), Now); // a late duplicate
 
         session.Status.ShouldBe(SessionStatus.ContentCompleted);
         Pending(session).OfType<ContentCompleted>().ShouldHaveSingleItem();
@@ -74,7 +78,7 @@ public class LearningSessionTests
     {
         var session = Start();
 
-        session.RecordProgress(ChapterId.From(Guid.CreateVersion7()), ProgressPercent.Complete, Now)
+        session.RecordProgress(ChapterId.From(Guid.CreateVersion7()), ProgressPercent.Complete, Option<VideoDuration>.None, Now)
             .Error.Value.ShouldBeOfType<ChapterNotInCourse>();
     }
 
@@ -84,7 +88,7 @@ public class LearningSessionTests
         var session = Start();
         CompleteAll(session);
 
-        session.ReopenChapters([Handbook], Now);
+        session.ReopenChapters(Notice(), [Handbook], Now);
 
         session.Status.ShouldBe(SessionStatus.InProgress);
         session.CompletedChapters.ShouldBe([Intro, Film], ignoreOrder: true);
@@ -95,9 +99,9 @@ public class LearningSessionTests
     {
         var session = Start();
         CompleteAll(session);
-        session.ReopenChapters([Handbook], Now);
+        session.ReopenChapters(Notice(), [Handbook], Now);
 
-        session.RecordProgress(Handbook, ProgressPercent.Complete, Now);
+        session.RecordProgress(Handbook, ProgressPercent.Complete, DurationOf(Handbook), Now);
 
         session.Status.ShouldBe(SessionStatus.ContentCompleted);
         Pending(session).OfType<ContentCompleted>().Count().ShouldBe(2);
@@ -108,23 +112,129 @@ public class LearningSessionTests
     {
         var session = Start();
         CompleteAll(session);
-        session.ReopenChapters([Handbook], Now);
+        var notice = Notice();
+        session.ReopenChapters(notice, [Handbook], Now);
         var stored = Pending(session).Count;
 
-        session.ReopenChapters([Handbook], Now);
+        session.ReopenChapters(notice, [Handbook], Now);
 
         Pending(session).Count.ShouldBe(stored);
     }
 
     [Fact]
-    public void A_finished_session_accepts_no_progress_and_ignores_a_late_lock()
+    public void A_finished_session_ignores_a_late_lock_and_notes_nothing()
     {
         var session = Start();
         CompleteAll(session);
         session.Finish(Now);
+        var stored = Pending(session).Count;
 
-        session.RecordProgress(Intro, ProgressPercent.Complete, Now).Error.Value.ShouldBeOfType<SessionFinishedAlready>();
-        session.ReopenChapters([Intro], Now).IsSuccess.ShouldBeTrue();
+        session.RecordProgress(Intro, ProgressPercent.Complete, DurationOf(Intro), Now).Error.Value.ShouldBeOfType<SessionFinishedAlready>();
+        session.ReopenChapters(Notice(), [Intro], Now).IsSuccess.ShouldBeTrue();
+
+        Pending(session).Count.ShouldBe(stored);
+        session.Status.ShouldBe(SessionStatus.Finished);
+        session.CompletedChapters.ShouldBe([Intro, Handbook, Film], ignoreOrder: true);
+    }
+
+    [Fact]
+    public void A_lock_delivered_again_after_its_chapters_were_worked_through_reopens_nothing()
+    {
+        var session = Start();
+        CompleteAll(session);
+        var notice = Notice();
+        session.ReopenChapters(notice, [Handbook], Now);
+        session.RecordProgress(Handbook, ProgressPercent.Complete, DurationOf(Handbook), Now);
+        session.Status.ShouldBe(SessionStatus.ContentCompleted);
+        var stored = Pending(session).Count;
+
+        session.ReopenChapters(notice, [Handbook], Now).IsSuccess.ShouldBeTrue();
+
+        Pending(session).Count.ShouldBe(stored, "the same lock, delivered again, reopened the chapters a second time");
+        session.Status.ShouldBe(SessionStatus.ContentCompleted);
+        session.CompletedChapters.ShouldBe([Intro, Handbook, Film], ignoreOrder: true);
+    }
+
+    [Fact]
+    public void A_lock_reopens_its_chapters_and_notes_its_announcement_once()
+    {
+        var session = Start();
+        CompleteAll(session);
+        var stored = Pending(session).Count;
+        var notice = Notice();
+
+        session.ReopenChapters(notice, [Handbook, Handbook], Now).IsSuccess.ShouldBeTrue();
+
+        var raised = Pending(session).Skip(stored).ToList();
+        raised.Count.ShouldBe(2);
+        var reopened = raised[0].ShouldBeOfType<ChaptersReopened>();
+        reopened.Session.ShouldBe(session.Id);
+        reopened.Chapters.ShouldBe([Handbook]);
+        reopened.ReopenedAt.ShouldBe(Now);
+        var noted = raised[1].ShouldBeOfType<ExhaustionNoted>();
+        noted.Session.ShouldBe(session.Id);
+        noted.Notice.ShouldBe(notice);
+        noted.NotedAt.ShouldBe(Now);
+    }
+
+    [Fact]
+    public void A_replayed_session_still_knows_the_locks_it_noted()
+    {
+        var original = Start();
+        CompleteAll(original);
+        var notice = Notice();
+        original.ReopenChapters(notice, [Handbook], Now);
+        original.RecordProgress(Handbook, ProgressPercent.Complete, DurationOf(Handbook), Now);
+
+        var replayed = Replay(Pending(original));
+        replayed.ReopenChapters(notice, [Handbook], Now).IsSuccess.ShouldBeTrue();
+
+        Pending(replayed).ShouldBeEmpty("the replayed session forgot the lock it noted and reopened its chapters again");
+        replayed.Status.ShouldBe(SessionStatus.ContentCompleted);
+    }
+
+    [Fact]
+    public void A_new_lock_after_the_content_was_completed_again_reopens_its_chapters()
+    {
+        var session = Start();
+        CompleteAll(session);
+        session.ReopenChapters(Notice(), [Handbook], Now);
+        session.RecordProgress(Handbook, ProgressPercent.Complete, DurationOf(Handbook), Now);
+
+        session.ReopenChapters(Notice(), [Handbook], Now).IsSuccess.ShouldBeTrue();
+
+        session.Status.ShouldBe(SessionStatus.InProgress);
+        session.CompletedChapters.ShouldBe([Intro, Film], ignoreOrder: true);
+        Pending(session).OfType<ChaptersReopened>().Count().ShouldBe(2);
+    }
+
+    [Fact]
+    public void A_lock_naming_a_chapter_outside_the_session_is_refused_and_changes_nothing()
+    {
+        var session = Start();
+        CompleteAll(session);
+        var stored = Pending(session).Count;
+
+        var reopened = session.ReopenChapters(Notice(), [Handbook, ChapterId.From(Guid.CreateVersion7())], Now);
+
+        reopened.IsFailure.ShouldBeTrue("a lock naming a chapter the session does not have was accepted");
+        reopened.Error.ShouldBeOfType<ChapterNotInCourse>().Code.ShouldBe("learning.chapter-not-in-course");
+        Pending(session).Count.ShouldBe(stored);
+        session.Status.ShouldBe(SessionStatus.ContentCompleted);
+        session.CompletedChapters.ShouldBe([Intro, Handbook, Film], ignoreOrder: true);
+    }
+
+    [Fact]
+    public void A_finished_session_ignores_even_a_lock_naming_an_outside_chapter()
+    {
+        var session = Start();
+        CompleteAll(session);
+        session.Finish(Now);
+        var stored = Pending(session).Count;
+
+        session.ReopenChapters(Notice(), [Handbook, ChapterId.From(Guid.CreateVersion7())], Now).IsSuccess.ShouldBeTrue();
+
+        Pending(session).Count.ShouldBe(stored);
         session.Status.ShouldBe(SessionStatus.Finished);
     }
 
@@ -133,7 +243,7 @@ public class LearningSessionTests
     {
         var original = Start();
         CompleteAll(original);
-        original.ReopenChapters([Film], Now);
+        original.ReopenChapters(Notice(), [Film], Now);
 
         var replayed = Replay(Pending(original));
 
@@ -153,12 +263,18 @@ public class LearningSessionTests
             videoChapters: [Film],
             Now);
 
+    private static ExhaustionNotice Notice() => ExhaustionNotice.From(Guid.CreateVersion7());
+
     private static void CompleteAll(LearningSession session)
     {
-        session.RecordProgress(Intro, ProgressPercent.Complete, Now);
-        session.RecordProgress(Handbook, ProgressPercent.Complete, Now);
-        session.RecordProgress(Film, ProgressPercent.Complete, Now);
+        session.RecordProgress(Intro, ProgressPercent.Complete, DurationOf(Intro), Now);
+        session.RecordProgress(Handbook, ProgressPercent.Complete, DurationOf(Handbook), Now);
+        session.RecordProgress(Film, ProgressPercent.Complete, DurationOf(Film), Later);
     }
+
+    /// <summary>What the handler reads from Learning's copy: the film's length for the film, nothing for any other chapter.</summary>
+    private static Option<VideoDuration> DurationOf(ChapterId chapter) =>
+        chapter == Film ? Option<VideoDuration>.Some(FilmDuration) : Option<VideoDuration>.None;
 
     private static IReadOnlyList<IDomainEvent> Pending(LearningSession session) => ((IEventSourced)session).PendingEvents;
 

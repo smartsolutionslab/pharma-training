@@ -103,6 +103,21 @@ const known: Known[] = [
     'Ihr Konto nennt keinen Namen oder keine gültige E-Mail-Adresse. Ergänzen Sie Ihr Profil.',
     'Your account gives no name or valid email address. Complete your profile.',
   ],
+  // #158: the invitation-mail limits answer 429; the page keeps it simple and names no retry time.
+  [
+    'organisation.invitation-renewed-too-soon',
+    429,
+    'organisation.team.errors.invitationRenewedTooSoon',
+    'Diese Einladung wurde gerade erst gesendet. Sie können sie in einigen Minuten erneut senden.',
+    'This invitation was only just sent. You can send it again in a few minutes.',
+  ],
+  [
+    'organisation.too-many-invitations-today',
+    429,
+    'organisation.team.errors.tooManyInvitationsToday',
+    'Ihre Apotheke hat die Höchstzahl an Einladungs-E-Mails für heute erreicht. Versuchen Sie es später erneut.',
+    'Your pharmacy has reached the maximum number of invitation emails for today. Try again later.',
+  ],
 ];
 
 /** Every known code on every action: the code decides, not the action. */

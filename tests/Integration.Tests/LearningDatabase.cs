@@ -30,8 +30,21 @@ internal static class LearningDatabase
     private static readonly TimeSpan WaitTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(250);
 
-    /// <summary>A version of a new course with one text, one PDF and one video chapter, listed out of reading order.</summary>
-    public static PublishedEvent Published(Guid courseVersionId) =>
+    /// <summary>
+    /// The length of a video a test reports on at once: video progress may not outpace playback (#43, ADR 0024), and
+    /// a 1 s video is plausibly watched to 100 % once 800 ms have passed since the session's last recorded progress.
+    /// </summary>
+    public const int ShortVideoSeconds = 1;
+
+    /// <summary>
+    /// How long a test waits before reporting progress on a <see cref="ShortVideoSeconds"/> video. The wait is
+    /// deterministic, not a hope: the server recorded the session's last progress before it answered, and the next
+    /// report reaches it after the wait, on the same clock.
+    /// </summary>
+    public static readonly TimeSpan ShortVideoWatched = TimeSpan.FromSeconds(1);
+
+    /// <summary>A version of a new course with one text, one PDF and one video chapter of <paramref name="videoSeconds"/>, listed out of reading order.</summary>
+    public static PublishedEvent Published(Guid courseVersionId, int videoSeconds = 420) =>
         new(
             Guid.CreateVersion7(),
             courseVersionId,
@@ -39,7 +52,7 @@ internal static class LearningDatabase
             $"Kühlkette {Guid.CreateVersion7()}",
             24,
             [
-                new SentChapter(Guid.CreateVersion7(), 3, "Film", "Video", 420, null, "chapters/film.mp4"),
+                new SentChapter(Guid.CreateVersion7(), 3, "Film", "Video", videoSeconds, null, "chapters/film.mp4"),
                 new SentChapter(Guid.CreateVersion7(), 1, "Grundlagen", "Text", null, "# Grundlagen", null),
                 new SentChapter(Guid.CreateVersion7(), 2, "Handbuch", "Pdf", null, null, "chapters/handbuch.pdf"),
             ],

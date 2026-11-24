@@ -6,5 +6,10 @@
     "build": "pnpm --recursive build",
     "lint": "pnpm --recursive lint",
     "test": "pnpm --recursive test"
+  },
+  "pnpm": {
+    "ignoredOptionalDependencies": [
+      "@napi-rs/canvas"
+    ]
   }
 }

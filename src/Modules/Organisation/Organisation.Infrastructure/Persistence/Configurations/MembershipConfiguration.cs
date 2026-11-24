@@ -30,6 +30,9 @@ public sealed class MembershipConfiguration : IEntityTypeConfiguration<Membershi
         builder.Property(membership => membership.Version).HasColumnName("version").HasDefaultValue(MembershipVersion.First).IsRequired();
         builder.Property(membership => membership.InvitationMailedFor).HasColumnName("invitation_mailed_for");
         builder.Property(membership => membership.InvitationExpiresAt).HasColumnName("invitation_expires_at");
+        // When the newest invitation mail was requested, from which the renew cooldown runs; rows from before it was kept
+        // have none, and so no cooldown (docs/adr/0004).
+        builder.Property(membership => membership.InvitationRequestedAt).HasColumnName("invitation_requested_at");
         builder.Property(membership => membership.Person).HasColumnName("person_id");
         builder.Property(membership => membership.Name).HasColumnName("name").HasMaxLength(DisplayName.MaxLength);
         builder.Property(membership => membership.JobFunction).HasColumnName("job_function").HasConversion<string>().HasMaxLength(EnumLength).IsRequired();

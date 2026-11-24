@@ -69,7 +69,12 @@ export const en: MessageSchema = {
     },
   },
   modules: {
-    learning: { title: 'My courses' },
+    learning: {
+      title: 'My courses',
+      details: {
+        player: { title: 'Course' },
+      },
+    },
     assessment: { title: 'Tests' },
     certification: { title: 'Certificates' },
     compliance: {
@@ -400,6 +405,9 @@ export const en: MessageSchema = {
         invalidMembershipRole: 'The role is missing or unknown.',
         identityIncomplete: 'Your account gives no name or valid email address. Complete your profile.',
         inPharmacy: 'In {pharmacy}: {reason}',
+        invitationRenewedTooSoon: 'This invitation was only just sent. You can send it again in a few minutes.',
+        tooManyInvitationsToday:
+          'Your pharmacy has reached the maximum number of invitation emails for today. Try again later.',
       },
     },
   },
@@ -593,6 +601,7 @@ export const en: MessageSchema = {
         errors: {
           modelNotConfigured: "No language model is set up for AI drafts. Contact the platform's operators.",
           tooManyRequests: 'You have asked for too many AI drafts in a short time. Try again later.',
+          limitReached: 'You have reached your limit for AI drafts. Try again later.',
           malformed: "The AI's answer could not be used; nothing was changed. Try again.",
           tooMuchContent:
             'The text chapters are too long for an AI draft. Shorten them or write the questions by hand.',
@@ -702,6 +711,51 @@ export const en: MessageSchema = {
         publishFailed: 'The version could not be published. Please try again.',
         returnFailed: 'The version could not be returned. Please try again.',
         retireFailed: 'The version could not be retired. Please try again.',
+      },
+    },
+  },
+  learning: {
+    player: {
+      loadFailed: 'The course could not be loaded.',
+      notFound: 'This course does not exist.',
+      notReady: 'The course is being made available. Please try again in a moment.',
+      noIdentity: 'Your account is incomplete. Please sign in again.',
+      empty: 'This course has no chapters.',
+      chapters: 'Chapters',
+      state: {
+        done: 'Done',
+        progress: '{percent} done',
+        open: 'Not started',
+      },
+      next: 'Next chapter',
+      previous: 'Previous chapter',
+      chapterDone: 'Chapter “{title}” done.',
+      contentCompleted: 'You have worked through all chapters. The test is now unlocked.',
+      text: {
+        hint: 'Scroll to the end to complete the chapter.',
+      },
+      video: {
+        label: 'Video: {title}',
+        seekHint: 'You can only skip ahead to the point you have already watched.',
+        seekRefused: 'You can only skip ahead to {position}.',
+        resumed: 'Resumed at {position}.',
+        failed: 'The video could not be played.',
+      },
+      media: {
+        notReady: 'The file is still being prepared. Please try again in a moment.',
+      },
+      pdf: {
+        label: 'PDF: {title}',
+        page: 'Page {page} of {pages}',
+        hint: 'Go to the last page to complete the chapter.',
+        next: 'Next page',
+        previous: 'Previous page',
+        failed: 'The PDF could not be shown.',
+      },
+      progress: {
+        failed: 'Your progress could not be saved. It will be sent again.',
+        saveNow: 'Save now',
+        finished: 'This learning session is already finished. Further progress is not saved.',
       },
     },
   },

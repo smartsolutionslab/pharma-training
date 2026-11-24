@@ -153,4 +153,24 @@ public class PharmacyFailuresTests
         PharmacyFailures.InvalidMembershipRole().Code.ShouldBe("organisation.invalid-membership-role");
         PharmacyFailures.InvalidMembershipRole().Status.ShouldBe(HttpStatusCode.BadRequest);
     }
+
+    [Fact]
+    public void The_cooldown_and_the_daily_cap_map_to_429_retry_later_with_their_instants()
+    {
+        var renewAt = Timestamp.From(new DateTimeOffset(2027, 4, 1, 8, 10, 0, TimeSpan.Zero));
+        var tomorrow = Timestamp.From(new DateTimeOffset(2027, 4, 2, 0, 0, 0, TimeSpan.Zero));
+        var membership = MembershipId.New();
+
+        var tooSoon = PharmacyFailures.From(PharmacyErrors.InvitationRenewedTooSoon(Pharmacy, membership, renewAt));
+        var tooMany = PharmacyFailures.From(PharmacyErrors.TooManyInvitationsToday(Pharmacy, tomorrow));
+
+        tooSoon.Code.ShouldBe("organisation.invitation-renewed-too-soon");
+        tooSoon.Status.ShouldBe(HttpStatusCode.TooManyRequests);
+        tooSoon.Message.ShouldNotBeNullOrWhiteSpace();
+        tooSoon.ShouldBeOfType<RetryLaterFailure>().RetryAt.ShouldBe(renewAt.Value);
+        tooMany.Code.ShouldBe("organisation.too-many-invitations-today");
+        tooMany.Status.ShouldBe(HttpStatusCode.TooManyRequests);
+        tooMany.Message.ShouldNotBeNullOrWhiteSpace();
+        tooMany.ShouldBeOfType<RetryLaterFailure>().RetryAt.ShouldBe(tomorrow.Value);
+    }
 }
