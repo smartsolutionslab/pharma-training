@@ -1,12 +1,18 @@
+using System.Text;
 using System.Text.Json;
+using Aspire.Hosting.Testing;
+using Microsoft.Extensions.Configuration;
 using Npgsql;
+using RabbitMQ.Client.Exceptions;
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Storage;
 
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 
 /// <summary>
 /// Issuing through the running application: Organisation's memberships and Editorial's course versions reach
 /// Certification's local copies, and Assessment's passed test becomes exactly one certificate for its attempt, however
-/// often it arrives, announced once as <c>CertificateIssuedV1</c>. Certification answers none of it yet, so its tables
+/// often it arrives, announced once as <c>CertificateIssuedV1</c>. Its PDF is rendered once, from a message that stays on
+/// Certification's host, and stored at <c>certificates/{id}.pdf</c> in Certification's own container (#50). Its tables
 /// are read directly.
 /// </summary>
 public class CertificationCertificatesTests(AspireFixture aspire)
@@ -17,13 +23,15 @@ public class CertificationCertificatesTests(AspireFixture aspire)
     private const string PassedType = "SmartSolutionsLab.PharmaTraining.Contracts.Assessment.TestPassedV1";
     private const string CertificateIssuedExchange = "SmartSolutionsLab.PharmaTraining.Contracts.Certification.CertificateIssuedV1";
     private const string CertificatesByAttempt = "select count(*) from certification.certificates where attempt_id = @id";
+    private const string StoredByAttempt = "select count(*) from certification.certificates where attempt_id = @id and document_state = 'Stored'";
+    private const string DocumentRequestedExchange = "SmartSolutionsLab.PharmaTraining.Contracts.Certification.CertificateDocumentRequestedV1";
 
     // 23:30 UTC on 1 March 2027 is already 2 March in Germany; a yearly course is valid through 2 March 2028.
     private static readonly DateTimeOffset PassedAt = new(2027, 3, 1, 23, 30, 0, TimeSpan.Zero);
     private static readonly DateOnly LastValidDay = new(2028, 3, 2);
 
     [Fact]
-    public async Task A_passed_test_issues_one_certificate_with_the_holders_name_the_course_title_and_its_last_valid_day()
+    public async Task A_passed_test_issues_one_certificate_with_the_holders_name_the_course_title_its_version_number_and_its_last_valid_day()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var started = Started(Guid.CreateVersion7(), TimeProvider.System.GetUtcNow());
@@ -43,8 +51,59 @@ public class CertificationCertificatesTests(AspireFixture aspire)
         certificate.ScorePercent.ShouldBe(passed.ScorePercent);
         certificate.IssuedAt.ShouldBe(PassedAt);
         certificate.ValidUntil.ShouldBe(LastValidDay);
+        certificate.CourseVersionNumber.ShouldBe(published.VersionNumber);
         certificate.VerificationCode.Length.ShouldBe(32);
-        certificate.DocumentState.ShouldBe("Pending");
+        (await CountAsync("select count(*) from certification.course_versions where id = @id and version_number = 3", published.CourseVersionId, cancellationToken))
+            .ShouldBe(1, "Certification's copy of the course version keeps its number");
+    }
+
+    /// <summary>
+    /// Issuing requests the PDF in the same commit, so the certificate's document is soon stored: a PDF at
+    /// <c>certificates/{id}.pdf</c> in Certification's own container. Its state was asserted Pending here before #50; it
+    /// now moves on its own, so the test waits for Stored.
+    /// </summary>
+    [Fact]
+    public async Task A_passed_test_stores_the_certificates_pdf_in_certifications_container()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var started = Started(Guid.CreateVersion7(), TimeProvider.System.GetUtcNow());
+        var published = Published();
+        var passed = Passed(started, published);
+        await DeliverAsync(StartedType, started, cancellationToken);
+        await DeliverAsync(PublishedType, published, cancellationToken);
+        await DeliverAsync(PassedType, passed, cancellationToken);
+
+        await CertificationDatabase.WaitUntilCountAsync(aspire, StoredByAttempt, passed.AttemptId, 1, cancellationToken);
+
+        var certificate = (await CertificatesAsync(passed.AttemptId, cancellationToken)).ShouldHaveSingleItem();
+        certificate.DocumentState.ShouldBe("Stored");
+        certificate.DocumentLocation.ShouldBe($"certificates/{certificate.Id:D}.pdf");
+        var blobs = await CertificationBlobsAsync(cancellationToken);
+        var stored = await blobs.FindAsync(BlobName.From(certificate.DocumentLocation.ShouldNotBeNull()), cancellationToken);
+        stored.HasValue.ShouldBeTrue("the PDF lies in Certification's own container");
+        stored.Value.ContentType.ShouldBe("application/pdf");
+        var start = await blobs.ReadStartAsync(stored.Value, 5, cancellationToken);
+        Encoding.ASCII.GetString(start.Span).ShouldBe("%PDF-");
+    }
+
+    /// <summary>
+    /// Certification both publishes and consumes the request, so it travels on the host's durable local queue and the
+    /// broker never sees it: once a document is stored, the request was handled, and still there is no exchange for it.
+    /// </summary>
+    [Fact]
+    public async Task The_document_request_stays_off_the_broker()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var published = Published();
+        await DeliverAsync(PublishedType, published, cancellationToken);
+        var passed = await IssueAsync(published, cancellationToken);
+        await CertificationDatabase.WaitUntilCountAsync(aspire, StoredByAttempt, passed.AttemptId, 1, cancellationToken);
+
+        await using var connection = await Broker.ConnectAsync(aspire, cancellationToken);
+        await using var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
+        var missing = await Should.ThrowAsync<OperationInterruptedException>(() => channel.ExchangeDeclarePassiveAsync(DocumentRequestedExchange, cancellationToken));
+
+        missing.ShutdownReason.ShouldNotBeNull().ReplyCode.ShouldBe((ushort)404, "the broker holds an exchange for CertificateDocumentRequestedV1");
     }
 
     [Fact]
@@ -157,7 +216,7 @@ public class CertificationCertificatesTests(AspireFixture aspire)
         new(
             Guid.CreateVersion7(),
             Guid.CreateVersion7(),
-            1,
+            3,
             $"Hygiene {Guid.CreateVersion7()}",
             12,
             [new SentChapter(Guid.CreateVersion7(), 1, "Grundlagen", "Text", null, "# Grundlagen", null)],
@@ -194,7 +253,7 @@ public class CertificationCertificatesTests(AspireFixture aspire)
         await using var connection = await CertificationDatabase.OpenAsync(aspire, cancellationToken);
         await using var command = new NpgsqlCommand(
             """
-            select id, holder_id, holder_name, course_id, course_version_id, course_title, score_percent, issued_at, valid_until, verification_code, document_state
+            select id, holder_id, holder_name, course_id, course_version_id, course_title, course_version_number, score_percent, issued_at, valid_until, verification_code, document_state, document_location
             from certification.certificates where attempt_id = @id
             """,
             connection);
@@ -211,13 +270,26 @@ public class CertificationCertificatesTests(AspireFixture aspire)
                 reader.GetGuid(4),
                 reader.GetString(5),
                 reader.GetInt32(6),
-                reader.GetFieldValue<DateTimeOffset>(7),
-                reader.GetFieldValue<DateOnly>(8),
-                reader.GetString(9),
-                reader.GetString(10)));
+                reader.GetInt32(7),
+                reader.GetFieldValue<DateTimeOffset>(8),
+                reader.GetFieldValue<DateOnly>(9),
+                reader.GetString(10),
+                reader.GetString(11),
+                reader.IsDBNull(12) ? null : reader.GetString(12)));
         }
 
         return rows;
+    }
+
+    /// <summary>Certification's own container, read as its service reads it.</summary>
+    private async Task<AzureStoredBlobs> CertificationBlobsAsync(CancellationToken cancellationToken)
+    {
+        var connectionString = await aspire.App.GetConnectionStringAsync("certification-blobs", cancellationToken)
+            ?? throw new InvalidOperationException("Certification's container has no connection string.");
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:blobs"] = connectionString })
+            .Build();
+        return new AzureStoredBlobs(configuration);
     }
 
     private sealed record EventMetadata(Guid EventIdentifier, DateTimeOffset OccurredAt);
@@ -239,9 +311,11 @@ public class CertificationCertificatesTests(AspireFixture aspire)
         Guid CourseId,
         Guid CourseVersionId,
         string CourseTitle,
+        int CourseVersionNumber,
         int ScorePercent,
         DateTimeOffset IssuedAt,
         DateOnly ValidUntil,
         string VerificationCode,
-        string DocumentState);
+        string DocumentState,
+        string? DocumentLocation);
 }

@@ -55,6 +55,15 @@ public class CertificateTests
     }
 
     [Fact]
+    public void The_certificate_keeps_the_course_versions_number_beside_its_title()
+    {
+        var certificate = Issue(RecurrenceInterval.Yearly);
+
+        certificate.CourseTitle.ShouldBe(CourseTitle.From("Hygiene 2027"));
+        certificate.CourseVersionNumber.ShouldBe(CourseVersionNumber.From(3));
+    }
+
+    [Fact]
     public void A_verification_code_is_never_short()
     {
         Should.Throw<GuardException>(() => VerificationCode.From("abc"));
@@ -69,6 +78,7 @@ public class CertificateTests
             CourseId.From(Guid.CreateVersion7()),
             CourseVersionId.From(Guid.CreateVersion7()),
             CourseTitle.From("Hygiene 2027"),
+            CourseVersionNumber.From(3),
             validity,
             ScorePercent.From(90),
             VerificationCode.From("k7Qp2xV9mL4rT8wZ1nB6cY3h"),
