@@ -2,13 +2,19 @@
 import { useForm } from 'vee-validate';
 import { ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { getCertificationPharmaciesIdCertificatesExport } from '@/api/generated';
+import { useQueryClient } from '@tanstack/vue-query';
+import {
+  getCertificationPharmaciesIdCertificatesExport,
+  getGetOrganisationPharmaciesMineQueryKey,
+} from '@/api/generated';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toTypedSchema } from '@/forms/toTypedSchema';
 import { i18n, type MessageKey, t as translate } from '@/i18n';
+import { type ErrorMessage, messageText } from '@/i18n/errorText';
 import { notify } from '@/lib/notify';
 import { useCurrentPharmacy } from '@/shell/useCurrentPharmacy';
+import { exportRefusal } from './exportErrors';
 import { defaultPeriod, type ExportPeriod, exportSchema } from './exportSchema';
 
 // The managers' certificate export (#297, ADR 0032): the issue days from and to, the last twelve months in the German
@@ -22,8 +28,9 @@ const toField = 'export-to';
 
 const { t } = useI18n();
 const { current } = useCurrentPharmacy();
+const queryClient = useQueryClient();
 
-const { defineField, errors, handleSubmit, isSubmitting } = useForm({
+const { defineField, errors, handleSubmit, isSubmitting, setFieldError } = useForm({
   validationSchema: toTypedSchema(exportSchema(clock)),
   initialValues: defaultPeriod(clock),
 });
@@ -31,7 +38,7 @@ const [from, fromAttributes] = defineField('from');
 const [to, toAttributes] = defineField('to');
 
 /** Why the last export failed, under the form; the form stays, so submitting again retries. */
-const failure = ref<MessageKey>();
+const failure = ref<ErrorMessage>();
 /** The request is on its way: from the moment it is sent, after the range was checked, to its answer. */
 const sending = ref(false);
 
@@ -59,6 +66,20 @@ function save(blob: Blob, name: string) {
   URL.revokeObjectURL(url);
 }
 
+/** Shows the refusal by its code: the period's at to, any other in the alert under the form. */
+function refuse(error: unknown) {
+  const refusal = exportRefusal(error);
+  if (refusal.kind === 'period') {
+    setFieldError('to', messageText(refusal.message));
+    return;
+  }
+  failure.value = refusal.message;
+  if (refusal.pharmacyGone) {
+    // The membership is gone: the switcher and the audience catch up with the memberships read again.
+    void queryClient.invalidateQueries({ queryKey: getGetOrganisationPharmaciesMineQueryKey() });
+  }
+}
+
 /** Asks for the ZIP and saves it; whether it was saved. */
 async function send(period: ExportPeriod): Promise<boolean> {
   const pharmacy = current.value;
@@ -73,8 +94,8 @@ async function send(period: ExportPeriod): Promise<boolean> {
     const name = answer instanceof File ? answer.name : `teilnahmebestaetigungen_${period.from}_${period.to}.zip`;
     save(answer, name);
     return true;
-  } catch {
-    failure.value = 'certification.export.failed';
+  } catch (error) {
+    refuse(error);
     return false;
   } finally {
     sending.value = false;
@@ -142,7 +163,7 @@ async function submit(event: Event) {
           {{ sending ? t('certification.export.preparing') : t('certification.export.submit') }}
         </Button>
       </div>
-      <p v-if="failure !== undefined" role="alert" class="text-body text-destructive">{{ t(failure) }}</p>
+      <p v-if="failure !== undefined" role="alert" class="text-body text-destructive">{{ messageText(failure) }}</p>
     </form>
   </main>
 </template>
