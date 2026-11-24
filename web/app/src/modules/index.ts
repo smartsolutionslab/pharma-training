@@ -4,10 +4,11 @@ import type { MessageKey } from '@/i18n';
 
 /**
  * Who a page is for (docs/domain/README.md, "Vue-Seiten"): a member of the chosen pharmacy, a member who may manage it
- * (manage members or assign courses), the realm role editor, whatever the pharmacy, or every signed-in user, with or
- * without a pharmacy or a role.
+ * (manage members or assign courses), the realm role editor, whatever the pharmacy, every signed-in user, with or
+ * without a pharmacy or a role, or anyone, signed in or not (only an entry page may be public: a certificate's QR code
+ * opens /verify/:code).
  */
-export type Audience = 'employee' | 'manager' | 'editor' | 'signed-in';
+export type Audience = 'employee' | 'manager' | 'editor' | 'signed-in' | 'public';
 
 /**
  * A page of the app: its address segment, its title's key in the catalogs (shown in the language of the moment in the

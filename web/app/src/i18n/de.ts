@@ -88,7 +88,12 @@ export const de = {
       },
     },
     assessment: { title: 'Tests' },
-    certification: { title: 'Teilnahmebestätigungen' },
+    certification: {
+      title: 'Teilnahmebestätigungen',
+      entries: {
+        verify: { title: 'Bestätigung prüfen' },
+      },
+    },
     compliance: {
       title: 'Team-Matrix',
       pages: {

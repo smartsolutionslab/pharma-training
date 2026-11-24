@@ -77,7 +77,12 @@ export const en: MessageSchema = {
       },
     },
     assessment: { title: 'Tests' },
-    certification: { title: 'Certificates' },
+    certification: {
+      title: 'Certificates',
+      entries: {
+        verify: { title: 'Verify a certificate' },
+      },
+    },
     compliance: {
       title: 'Team matrix',
       pages: {

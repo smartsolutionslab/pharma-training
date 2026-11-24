@@ -29,7 +29,16 @@ export function canReach(audience: Audience, { current, isEditor }: Reach): bool
       return isEditor;
     case 'signed-in':
       return true;
+    case 'public':
+      // Stub for #54 (T2, red first): a public page is not reachable yet.
+      return false;
   }
+}
+
+/** Whether an address is a public page's, which anyone opens, signed in or not. Stub for #54 (T2, red first). */
+export function isPublicAddress(path: string): boolean {
+  void path;
+  return false;
 }
 
 /** The module an address is in, by its first segment; none for the start page or an address no module has. */
