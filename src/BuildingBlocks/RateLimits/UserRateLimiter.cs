@@ -19,6 +19,9 @@ public sealed class UserRateLimiter
         this.time = time;
     }
 
+    /// <summary>How many callers, under all limits, the limiter holds a counter for.</summary>
+    public int TrackedCallers => counters.Count;
+
     /// <summary>Admits and counts the caller's request under <paramref name="limit"/>, or refuses it uncounted.</summary>
     /// <param name="limit">The limit the endpoint names.</param>
     /// <param name="subject">The caller (<see cref="UserRateSubject"/>); empty for a principal without one.</param>
