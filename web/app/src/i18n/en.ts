@@ -935,12 +935,17 @@ export const en: MessageSchema = {
       'sample-not-found': 'This sample does not exist.',
     },
     certification: {
+      'capability-missing': 'Your role in this pharmacy does not allow this.',
       'certificate-not-found': 'This certificate does not exist, or it is not yours.',
       'certificate-not-verifiable':
         'There is no certificate for this code. Check that you opened the complete link from the QR code.',
       'document-not-ready': "The certificate's PDF is being created. Try again in a moment.",
+      'export-too-large': 'An export holds at most 2000 certificates. Choose a shorter period.',
       'identity-incomplete': 'Your sign-in names no person. Please sign in again.',
+      'invalid-export-period':
+        'Choose a start and an end date; the end may not be before the start and at most five years after it.',
       'invalid-sample-name': "A sample's name has 1 to {max} characters and must not be blank.",
+      'pharmacy-not-found': 'You are not a member of this pharmacy, or it does not exist.',
       'sample-not-found': 'This sample does not exist.',
       'verification-limit-reached': 'Too many checks are being requested right now. Try again in a minute.',
     },

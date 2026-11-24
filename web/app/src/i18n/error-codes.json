@@ -75,6 +75,11 @@
     "message": "There is no such sample."
   },
   {
+    "code": "certification.capability-missing",
+    "status": 403,
+    "message": "Your role in this pharmacy does not allow this."
+  },
+  {
     "code": "certification.certificate-not-found",
     "status": 404,
     "message": "You hold no certificate with this id."
@@ -90,14 +95,29 @@
     "message": "The certificate's PDF is being created; ask again shortly."
   },
   {
+    "code": "certification.export-too-large",
+    "status": 400,
+    "message": "An export holds at most 2000 certificates; choose a shorter period."
+  },
+  {
     "code": "certification.identity-incomplete",
     "status": 403,
     "message": "The access token names no person (its subject is missing or no Guid)."
   },
   {
+    "code": "certification.invalid-export-period",
+    "status": 400,
+    "message": "An export needs from and to, with to not before from and at most five years after it."
+  },
+  {
     "code": "certification.invalid-sample-name",
     "status": 400,
     "message": "A sample's name is 1 to 100 characters and not blank."
+  },
+  {
+    "code": "certification.pharmacy-not-found",
+    "status": 404,
+    "message": "You are not a member of this pharmacy, or it does not exist."
   },
   {
     "code": "certification.sample-not-found",
