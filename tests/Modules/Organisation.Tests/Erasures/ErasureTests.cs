@@ -90,6 +90,22 @@ public class ErasureTests
         ErasureModule.Organisation.ShouldBe(ErasureModule.From("organisation"));
     }
 
+    /// <summary>#115 slice 6: the Keycloak account's consumer asks whether its step is recorded before it calls Keycloak.</summary>
+    [Fact]
+    public void HasCompleted_is_true_once_the_step_is_recorded_and_false_before()
+    {
+        var erasure = Erasure.Request(ErasureId.New(), Support, RequestedAt);
+        erasure.CompleteStep(ErasureModule.Organisation, RequestedAt.PlusDays(1));
+
+        erasure.HasCompleted(ErasureModule.Keycloak).ShouldBeFalse("the keycloak step is not recorded yet");
+        erasure.HasCompleted(ErasureModule.Organisation).ShouldBeTrue("the organisation step is recorded");
+
+        erasure.CompleteStep(ErasureModule.Keycloak, RequestedAt.PlusDays(2));
+
+        erasure.HasCompleted(ErasureModule.Keycloak).ShouldBeTrue("the keycloak step is recorded");
+        erasure.HasCompleted(ErasureModule.From("keycloak")).ShouldBeTrue("a module is the same module by its name");
+    }
+
     [Fact]
     public void An_erasure_id_is_never_empty()
     {

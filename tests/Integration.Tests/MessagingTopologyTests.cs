@@ -56,6 +56,8 @@ public class MessagingTopologyTests
         published.ShouldNotContain(InvitationMailRequested);
         consumed.ShouldNotContain(Contracts + "Organisation.ErasureConfirmationMailRequestedV1");
         published.ShouldNotContain(Contracts + "Organisation.ErasureConfirmationMailRequestedV1");
+        consumed.ShouldNotContain(Contracts + "Organisation.AccountDeletionRequestedV1", "#115 slice 6: the account's deletion is Organisation's own work item");
+        published.ShouldNotContain(Contracts + "Organisation.AccountDeletionRequestedV1", "#115 slice 6: the account's deletion is Organisation's own work item");
         published.ShouldBe(
             [Contracts + "Organisation.MembershipChangedV1", Contracts + "Organisation.MembershipEndedV1", Contracts + "Organisation.MembershipStartedV1", PersonErasureRequested, Contracts + "Organisation.PharmacyRegisteredV1"],
             ignoreOrder: false);

@@ -172,14 +172,22 @@ async function submit(event: Event) {
   }
   const pressed = generation;
   const pressedFor = pharmacy.id;
+  /** The period the press saw: the toast says it changed only when another one is shown now (#454). */
+  const seen = shown.value === undefined ? undefined : `${shown.value.years}:${shown.value.isDefault}`;
   await handleSubmit(
     async (values) => {
       checked.value += 1;
       if (pressed === generation && pressedFor === pharmacy.id) {
         await send(values, pressedFor);
-      } else if (!gone && pressedFor === pharmacy.id) {
+      } else if (
+        !gone &&
+        pressedFor === pharmacy.id &&
+        shown.value !== undefined &&
+        `${shown.value.years}:${shown.value.isDefault}` !== seen
+      ) {
         // The period changed while the press was checked, and the field started again from it: the years typed were
-        // not sent, which is said, since the field now shows another value. Another pharmacy chosen says nothing.
+        // not sent, which is said, since the field now shows another value. Another pharmacy chosen, or the same one
+        // chosen again with its period as it was, says nothing.
         notify.failure(translate('certification.retention.changed'));
       }
     },

@@ -4,6 +4,7 @@
   "registrationAllowed": true,
   "verifyEmail": false,
   "eventsExpiration": 2592000,
+  "attributes": { "adminEventsExpiration": "2592000" },
   "requiredActions": [
     { "alias": "CONFIGURE_TOTP", "name": "Configure OTP", "providerId": "CONFIGURE_TOTP", "enabled": true, "defaultAction": false, "priority": 10 },
     { "alias": "TERMS_AND_CONDITIONS", "name": "Terms and Conditions", "providerId": "TERMS_AND_CONDITIONS", "enabled": false, "defaultAction": false, "priority": 20 },
@@ -76,6 +77,17 @@
           }
         }
       ]
+    },
+    {
+      "clientId": "pharma-training-erasure",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${KEYCLOAK_ERASURE_CLIENT_SECRET}",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false
     }
   ],
   "users": [
@@ -191,6 +203,12 @@
       "lastName": "Support",
       "credentials": [{ "type": "password", "value": "support", "temporary": false }],
       "realmRoles": ["support"]
+    },
+    {
+      "username": "service-account-pharma-training-erasure",
+      "enabled": true,
+      "serviceAccountClientId": "pharma-training-erasure",
+      "clientRoles": { "realm-management": ["manage-users"] }
     }
   ]
 }

@@ -29,6 +29,9 @@ var keycloak = builder.AddContainer("keycloak", KeycloakPublishing.Image, Keyclo
     .WithHttpHealthCheck("/health/ready", endpointName: "management")
     .WithSingleReplica()
     .WithRealmAndStore(postgres, migrations, secrets);
+// The confidential client pharma-training-erasure, whose secret Keycloak's realm import reads and the services that delete
+// an erased person's account alone (Wiring/AccountDeletion.cs, docs/adr/0040).
+var erasureClientSecret = keycloak.WithErasureClient(secrets);
 // Published, the browser reaches Keycloak through the auth proxy alone, at https://auth.<the environment's default domain>,
 // which forwards the realm pharma-training and the static resources (Wiring/AuthProxy.cs); in run mode, Keycloak's own
 // endpoint. That address is the issuer the edge and every service validate.
@@ -143,6 +146,13 @@ foreach (var (module, project) in builder.ServiceHosts())
         // A service that links into the web app without mailing, as its project says with <LinksToFrontend>true</LinksToFrontend>,
         // gets the web app's address alone: such a host prints links into the web app on documents it renders.
         service.WithEnvironment("Frontend__BaseUrl", frontendUrl);
+    }
+
+    // Only a service whose project says <ManagesAccounts>true</ManagesAccounts> gets Keycloak's admin API and the erasure
+    // client's secret, which administers every account; published, the others are not granted it (docs/adr/0040).
+    if (ServiceHostProjects.ManagesAccounts(project))
+    {
+        service.ManagesAccounts(keycloak, erasureClientSecret, secrets);
     }
 
     // The edge routes /<module>/... to the service it finds under the module's name, listed under Edge:Modules.

@@ -1,7 +1,5 @@
 using System.Net;
-using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using System.Text.Json.Serialization;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Testing;
 using Microsoft.Extensions.DependencyInjection;
@@ -85,8 +83,7 @@ public class HostTests(AspireFixture aspire)
     public async Task A_reset_password_email_from_the_realm_reaches_mailpit()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        using var identity = new HttpClient { BaseAddress = aspire.App.GetEndpoint("keycloak", "http") };
-        identity.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await AdminTokenAsync(identity, cancellationToken));
+        using var identity = await new KeycloakAdmin(aspire).AdministratorAsync(cancellationToken);
         var users = await identity.GetFromJsonAsync<RealmUser[]>(new Uri("/admin/realms/pharma-training/users?username=developer&exact=true", UriKind.Relative), cancellationToken) ?? [];
 
         using var sent = await identity.PutAsJsonAsync(new Uri($"/admin/realms/pharma-training/users/{users.Single().Id}/execute-actions-email", UriKind.Relative), UpdatePassword, cancellationToken);
@@ -94,23 +91,6 @@ public class HostTests(AspireFixture aspire)
         sent.StatusCode.ShouldBe(HttpStatusCode.NoContent);
         var recipient = await RecipientAsync("developer@example.com", cancellationToken);
         recipient.ShouldBe("developer@example.com");
-    }
-
-    /// <summary>A token of the master realm's administrator: "admin", with the password the AppHost generated for it.</summary>
-    private async Task<string> AdminTokenAsync(HttpClient identity, CancellationToken cancellationToken)
-    {
-        var password = aspire.App.Services.GetRequiredService<DistributedApplicationModel>().Resources.OfType<ParameterResource>().Single(parameter => parameter.Name == "keycloak-password");
-        using var form = new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["grant_type"] = "password",
-            ["client_id"] = "admin-cli",
-            ["username"] = "admin",
-            ["password"] = await password.GetValueAsync(cancellationToken) ?? string.Empty,
-        });
-        using var response = await identity.PostAsync(new Uri("/realms/master/protocol/openid-connect/token", UriKind.Relative), form, cancellationToken);
-        response.EnsureSuccessStatusCode();
-        var token = await response.Content.ReadFromJsonAsync<AdminToken>(cancellationToken);
-        return token?.AccessToken ?? throw new InvalidOperationException("The master realm returned no token.");
     }
 
     /// <summary>The recipient of the first email Mailpit caught for the address, or an empty string when none arrives.</summary>
@@ -135,8 +115,6 @@ public class HostTests(AspireFixture aspire)
     private sealed record Me(string? Name);
 
     private sealed record Tenant(string? TenantId);
-
-    private sealed record AdminToken([property: JsonPropertyName("access_token")] string AccessToken);
 
     private sealed record RealmUser(string Id);
 

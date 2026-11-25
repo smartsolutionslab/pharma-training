@@ -37,6 +37,7 @@ jobs:
       Parameters__messaging-username: placeholder
       Parameters__messaging-password: placeholder
       Parameters__keycloak-admin-password: placeholder
+      Parameters__keycloak-erasure-client-secret: placeholder
       Parameters__smtp-from: placeholder
       Parameters__frontend-url: https://placeholder.example
       Parameters__azure-openai-endpoint: https://eu.api.openai.com/v1
