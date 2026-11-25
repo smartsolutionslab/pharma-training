@@ -1,9 +1,11 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Headers;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Testing;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -76,6 +78,19 @@ public class AuthProxyPathTests(AspireFixture aspire)
         "/admin/realms/pharma-training/users/..%2F..%2F..%2F..%2Frealms/master/.well-known/openid-configuration",
     ];
 
+    // The paths the demo seeder and X1 send under the users route (src/DemoSeeder/KeycloakUsers.cs, web/app/e2e/x1Users.ts),
+    // with an id Keycloak does not hold: the proxy must forward each, whatever Keycloak answers.
+    private static readonly string[] UsersRoutePaths =
+    [
+        "/admin/realms/pharma-training/users",
+        "/admin/realms/pharma-training/users?username=nobody&exact=true",
+        "/admin/realms/pharma-training/users/count",
+        "/admin/realms/pharma-training/users/0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b",
+        "/admin/realms/pharma-training/users/0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b/reset-password",
+        "/admin/realms/pharma-training/users/0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b/role-mappings/realm",
+        "/admin/realms/pharma-training/users/0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b/role-mappings/realm/available",
+    ];
+
     // Where the escapes aim: each answers 200 to the administrator's token straight from Keycloak.
     private static readonly string[] EscapeTargets =
     [
@@ -146,14 +161,16 @@ public class AuthProxyPathTests(AspireFixture aspire)
 
     /// <summary>
     /// #469: the escapes aim at endpoints the administrator's token reads, so one that reached its target would answer 200.
-    /// Straight from Keycloak they do; through staging's proxy every escape must be refused with a 4xx, by the proxy or by
-    /// Keycloak reading it as a user under /users/ that does not exist.
+    /// Straight from Keycloak they do; through staging's proxy every escape must be refused with a 4xx by the proxy itself,
+    /// never forwarded. Keycloak reads an encoded slash or a backslash as part of one user's id today, but the proxy does not
+    /// lean on how a later Keycloak parses its paths.
     /// </summary>
     [Fact]
     public async Task Escapes_from_stagings_users_route_never_reach_another_admin_endpoint()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var proxy = await StartProxyAsync(PublishedAppHost.Staging, cancellationToken);
+        ConcurrentQueue<string> forwarded = [];
+        await using var proxy = await StartProxyAsync(PublishedAppHost.Staging, cancellationToken, forwarded);
         using var identity = keycloak.Identity();
         var token = new AuthenticationHeaderValue("Bearer", await keycloak.AdminTokenAsync(identity, cancellationToken));
         identity.DefaultRequestHeaders.Authorization = token;
@@ -170,20 +187,47 @@ public class AuthProxyPathTests(AspireFixture aspire)
         List<string> notRefused = [];
         foreach (var escape in UsersRouteEscapes)
         {
+            forwarded.Clear();
             using var response = await client.GetAsync(Raw(proxy, escape), cancellationToken);
-            var answer = $"{escape} answered {(int)response.StatusCode} {response.StatusCode}";
+            var answer = $"{escape} answered {(int)response.StatusCode} {response.StatusCode}{(forwarded.IsEmpty ? string.Empty : " from Keycloak")}";
             answers.Add(answer);
-            if ((int)response.StatusCode is < 400 or >= 500)
+            if ((int)response.StatusCode is < 400 or >= 500 || !forwarded.IsEmpty)
             {
                 notRefused.Add(answer);
             }
         }
 
-        notRefused.ShouldBeEmpty($"Every escape from staging's users route should be refused with a 4xx. Every answer: {string.Join("; ", answers)}");
+        notRefused.ShouldBeEmpty($"The proxy should refuse every escape from staging's users route itself, with a 4xx, and forward none. Every answer: {string.Join("; ", answers)}");
     }
 
-    /// <summary>The auth proxy as the environment publishes it, its cluster pointed at run mode's Keycloak; dispose it.</summary>
-    private async Task<WebApplication> StartProxyAsync(string environment, CancellationToken cancellationToken)
+    /// <summary>#469: confining the users route keeps every path the demo seeder and X1 send under it.</summary>
+    [Fact]
+    public async Task Stagings_users_route_forwards_every_path_the_seeder_and_x1_send()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        ConcurrentQueue<string> forwarded = [];
+        await using var proxy = await StartProxyAsync(PublishedAppHost.Staging, cancellationToken, forwarded);
+        using var client = Client();
+
+        List<string> refused = [];
+        foreach (var path in UsersRoutePaths)
+        {
+            forwarded.Clear();
+            using var response = await client.GetAsync(Raw(proxy, path), cancellationToken);
+            if (forwarded.IsEmpty)
+            {
+                refused.Add($"{path} answered {(int)response.StatusCode} {response.StatusCode} from the proxy");
+            }
+        }
+
+        refused.ShouldBeEmpty("Staging's proxy should forward every path the demo seeder and X1 send to Keycloak.");
+    }
+
+    /// <summary>
+    /// The auth proxy as the environment publishes it, its cluster pointed at run mode's Keycloak; dispose it. Each request
+    /// it forwards goes into <paramref name="forwarded"/>.
+    /// </summary>
+    private async Task<WebApplication> StartProxyAsync(string environment, CancellationToken cancellationToken, ConcurrentQueue<string>? forwarded = null)
     {
         var keycloakAddress = $"{aspire.App.GetEndpoint("keycloak", "http")}".TrimEnd('/');
         Dictionary<string, string?> settings;
@@ -212,6 +256,17 @@ public class AuthProxyPathTests(AspireFixture aspire)
         builder.Configuration.AddInMemoryCollection(settings);
         builder.Services.AddReverseProxy().LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
         var proxy = builder.Build();
+
+        // Every request one of the proxy's routes matched, so it goes on to Keycloak: the only endpoints here are YARP's.
+        proxy.Use((context, next) =>
+        {
+            if (context.GetEndpoint() is not null)
+            {
+                forwarded?.Enqueue($"{context.Request.Path}");
+            }
+
+            return next(context);
+        });
         proxy.MapReverseProxy();
         await proxy.StartAsync(cancellationToken);
         return proxy;
