@@ -19,7 +19,8 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Con
 /// An erasure (#115) deletes the certificates no pharmacy keeps, PDF first, so a request may find its certificate gone:
 /// it is logged and dropped. The certificate is loaded first and its holder then held, as the erasure holds them, so a
 /// render either commits before the erasure reads the holder's certificates (and its PDF is deleted there) or waits and
-/// finds the holder tombstoned, and is dropped before anything is written.
+/// finds the holder tombstoned: then it asks the database whether the certificate is still stored. A removed one is
+/// dropped before anything is written; a retained one keeps its name and PDF (docs/adr/0036), so it is rendered.
 /// </para>
 /// </summary>
 public sealed partial class CertificateDocumentRequestedV1Consumer(
@@ -47,8 +48,11 @@ public sealed partial class CertificateDocumentRequestedV1Consumer(
         }
 
         var certificate = found.Value;
+        // Held as the erasure holds the person, then asked again from the database: an erasure that committed while this
+        // waited removed the certificate unless a pharmacy keeps it. A retained certificate keeps its name and PDF
+        // (docs/adr/0036, decision 3), so its render goes on; only a removed one is dropped, and no PDF comes back.
         await erased.HoldAsync(certificate.Holder, cancellationToken);
-        if (await erased.IsErasedAsync(certificate.Holder, cancellationToken))
+        if (await erased.IsErasedAsync(certificate.Holder, cancellationToken) && !await certificates.ExistsAsync(id, cancellationToken))
         {
             HolderErased(logger, message.CertificateId);
             return;
@@ -77,7 +81,7 @@ public sealed partial class CertificateDocumentRequestedV1Consumer(
     [LoggerMessage(Level = LogLevel.Information, Message = "Certificate {Certificate} is no longer stored, an erasure removed it; its document request is dropped.")]
     private static partial void CertificateGone(ILogger logger, Guid certificate);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "The holder of certificate {Certificate} was erased; its document request is dropped.")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "The holder of certificate {Certificate} was erased and the certificate removed; its document request is dropped.")]
     private static partial void HolderErased(ILogger logger, Guid certificate);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "The document of certificate {Certificate} is stored already; it is not rendered again.")]
