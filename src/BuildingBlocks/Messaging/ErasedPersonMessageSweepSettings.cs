@@ -7,7 +7,7 @@ namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 /// How a module's sweep of erased persons' messages (#439, docs/adr/0036) runs, read once at startup from the module's
 /// own section, <c>&lt;Module&gt;:ErasedPersonMessageSweep</c>. A blank or absent interval takes the default; one that does
 /// not parse or lies outside one second to one hour stops the host, naming the key, the value and what it accepts. The
-/// interval is read in the invariant <c>c</c> format (<c>[d.]hh:mm:ss</c>).
+/// interval is read in exactly <c>hh:mm:ss</c> or <c>d.hh:mm:ss</c> (<see cref="SettingDuration"/>).
 /// </summary>
 public sealed record ErasedPersonMessageSweepSettings
 {
@@ -42,7 +42,7 @@ public sealed record ErasedPersonMessageSweepSettings
             return new ErasedPersonMessageSweepSettings(DefaultInterval);
         }
 
-        if (!TimeSpan.TryParse(value, CultureInfo.InvariantCulture, out var interval) || interval < LeastInterval || interval > MostInterval)
+        if (!SettingDuration.TryParse(value, out var interval) || interval < LeastInterval || interval > MostInterval)
         {
             throw new InvalidOperationException(
                 $"The setting {key} is '{value}'; it accepts a duration from {Render(LeastInterval)} to {Render(MostInterval)}, or nothing for {Render(DefaultInterval)}.");

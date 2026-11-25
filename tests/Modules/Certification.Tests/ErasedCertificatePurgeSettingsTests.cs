@@ -53,6 +53,12 @@ public class ErasedCertificatePurgeSettingsTests
     [InlineData("-00:00:05")]
     [InlineData("7.00:00:01")]
     [InlineData("abc")]
+    [InlineData("5")]
+    [InlineData("1:30")]
+    [InlineData("00:01")]
+    [InlineData(" 06:00:00 ")]
+    [InlineData("1.2:3:4")]
+    [InlineData("6.12:00")]
     public void An_interval_outside_its_range_or_unreadable_stops_the_host_naming_the_key(string value)
     {
         var refused = Should.Throw<InvalidOperationException>(() => ErasedCertificatePurgeSettings.From(Configured(value)));

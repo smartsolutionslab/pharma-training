@@ -1,14 +1,16 @@
 using System.Globalization;
 using Microsoft.Extensions.Configuration;
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Api;
 
 /// <summary>
 /// How often Certification purges the retained certificates of erased persons that no pharmacy keeps any longer (#115,
 /// slice 5), read once at startup from <c>Certification:ErasedCertificatePurge:Interval</c>. A blank or absent value
-/// takes the default, once an hour (the first pass comes one interval after the host starts, so a
-/// longer default might never run on a service restarted often); a value that does not parse in the invariant <c>c</c> format (<c>[d.]hh:mm:ss</c>) or
-/// lies outside one second to seven days stops the host, naming the key, the value and what it accepts.
+/// takes the default, once an hour (the first pass comes one interval after the host starts, so a longer default might
+/// never run on a service restarted often); a value that is not exactly <c>hh:mm:ss</c> or <c>d.hh:mm:ss</c>
+/// (<see cref="SettingDuration"/>) or lies outside one second to seven days stops the host, naming the key, the value and
+/// what it accepts.
 /// </summary>
 public sealed record ErasedCertificatePurgeSettings
 {
@@ -35,7 +37,7 @@ public sealed record ErasedCertificatePurgeSettings
             return new ErasedCertificatePurgeSettings(DefaultInterval);
         }
 
-        if (!TimeSpan.TryParse(value, CultureInfo.InvariantCulture, out var interval) || interval < LeastInterval || interval > MostInterval)
+        if (!SettingDuration.TryParse(value, out var interval) || interval < LeastInterval || interval > MostInterval)
         {
             throw new InvalidOperationException(
                 $"The setting {IntervalKey} is '{value}'; it accepts a duration from {Render(LeastInterval)} to {Render(MostInterval)}, or nothing for {Render(DefaultInterval)}.");
