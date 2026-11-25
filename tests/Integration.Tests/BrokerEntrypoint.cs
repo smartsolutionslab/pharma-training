@@ -8,7 +8,8 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// image's <c>docker-entrypoint.sh</c> is replaced by a stub on the <c>PATH</c> that prints its arguments, the definitions
 /// file, the names of the variables it was handed and the type, owner, group, mode and size of the two files and of what a
 /// run planted (<c>PLANT_LINKS</c>: <c>files</c> links each file to a target of its own, <c>conf.d</c> and <c>etc</c> link
-/// the directory to another), as <c>env</c> lists them (bash's own <c>compgen -e</c> leaves out a
+/// the directory to another, <c>acl</c> gives <c>conf.d</c> a default ACL of rw for owner, group and others through the
+/// <c>setxattr</c> syscall, as the image has no <c>setfacl</c>), and the umask RabbitMQ would start with, as <c>env</c> lists them (bash's own <c>compgen -e</c> leaves out a
 /// name that is not a shell identifier, which still reaches the process), and starts no RabbitMQ.
 /// </summary>
 public static class BrokerEntrypoint
@@ -29,6 +30,7 @@ public static class BrokerEntrypoint
         for file in /tmp/rabbitmq-definitions.json /etc/rabbitmq/conf.d/90-definitions.conf /tmp/planted-definitions /tmp/planted-config; do
           if [ -e "$file" ] || [ -L "$file" ]; then printf '%s %s\n' "$file" "$(stat -c '%F %U:%G %a %s' "$file")"; fi
         done
+        printf 'umask %s\n' "$(umask)"
         STUB
         chmod +x /stub/docker-entrypoint.sh
         case "${PLANT_LINKS-}" in
@@ -44,6 +46,8 @@ public static class BrokerEntrypoint
           etc)
             mv /etc/rabbitmq /tmp/etc-rabbitmq
             ln -s /tmp/etc-rabbitmq /etc/rabbitmq;;
+          acl)
+            perl -e 'my ($path, $name) = ("/etc/rabbitmq/conf.d", "system.posix_acl_default"); my $acl = pack("V", 2) . pack("vvV", 0x01, 6, 0xFFFFFFFF) . pack("vvV", 0x04, 6, 0xFFFFFFFF) . pack("vvV", 0x20, 6, 0xFFFFFFFF); syscall(188, $path, $name, $acl, length($acl), 0) == 0 or die "setxattr: $!\n";';;
         esac
         export PATH="/stub:$PATH"
         exec /bin/bash -c "$1"
