@@ -30,9 +30,13 @@ internal sealed class InMemoryErasedPersonStore : IErasedPersonStore
     /// <summary>A person erased before the test, stored as if committed earlier.</summary>
     public void Tombstone(PersonId person, DateTimeOffset erasedAt) => Stored.Add(ErasedPerson.Of(person, Timestamp.From(erasedAt)));
 
+    /// <summary>Runs while the hold is taken, as a concurrent erasure that committed just before it would.</summary>
+    public Action? WhileHolding { get; set; }
+
     public Task HoldAsync(PersonId person, CancellationToken cancellationToken)
     {
         Journal.Add("hold");
+        WhileHolding?.Invoke();
         return Task.CompletedTask;
     }
 
