@@ -545,6 +545,40 @@ describe('a period the form refuses', () => {
     expect(saves()).toEqual([]);
   });
 
+  test('a save pressed just before choosing a pharmacy whose period is not read yet never stores it for that pharmacy', async () => {
+    const user = userEvent.setup();
+    state.memberships = [markt, dom];
+    let releaseDom: () => void = () => undefined;
+    const domRead = new Promise<void>((resolve) => {
+      releaseDom = resolve;
+    });
+    const readPeriod = state.read;
+    state.read = async (pharmacyId) => {
+      if (pharmacyId === dom.id) {
+        await domRead;
+      }
+      return readPeriod(pharmacyId);
+    };
+    const pinia = createPinia();
+    useSelectedPharmacyStore(pinia).choose(markt.id);
+    await renderPage({ pinia });
+    await section();
+    await enterYears(user, '7');
+
+    await fireEvent.click(saveButton());
+    useSelectedPharmacyStore(pinia).choose(dom.id);
+    await waitFor(() => expect(retentionReads()).toContain(`/api/certification/pharmacies/${dom.id}/retention-period`));
+    // The press's check ends while the new pharmacy's period is still on its way, which is the window it must not
+    // send in; then that period arrives.
+    await vi.waitFor(() => expect(host.mock.calls.length).toBeGreaterThan(0));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    releaseDom();
+
+    await waitFor(() => expect(yearsField()).toHaveValue(12));
+    expect(saves().filter((save) => save.url.includes(dom.id))).toEqual([]);
+    expect(state.periods[dom.id]).toEqual({ years: 12, isDefault: false });
+  });
+
   test('is cleared when another pharmacy is chosen, the field at that pharmacy’s period', async () => {
     const user = userEvent.setup();
     state.memberships = [markt, dom];
