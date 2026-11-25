@@ -7,9 +7,11 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersio
 /// Whether text is plain: no control character, no format character (bidi overrides, zero-width characters), line or
 /// paragraph separator, private-use or unassigned code point, and no unpaired surrogate. A caller may allow line breaks
 /// and tabs, as a free-text reason does; a one-line value such as a name does not. A name (<see cref="IsPlainName"/>) also
-/// holds at least one letter and no Default_Ignorable code point (Hangul fillers, the combining grapheme joiner, variation
-/// selectors), so it never shows as nothing, but it may hold the zero-width non-joiner and joiner (U+200C, U+200D), which
-/// Persian and Indic names are written with: only after a letter or mark, and at the end of a word only after a virama.
+/// holds at least one letter and no Default_Ignorable code point (Hangul fillers, the combining grapheme joiner), so it
+/// never shows as nothing, with two exceptions real names are written with: the zero-width non-joiner and joiner (U+200C,
+/// U+200D), which Persian and Indic names hold, only after a letter or mark, and at the end of a word only after a virama;
+/// and a variation selector (<see cref="VariationSelectors"/>), which picks how the letter before it is drawn (辻 with
+/// U+E0100 in a Japanese name, a Mongolian free variation selector), only right after a letter or a letter and its marks.
 /// </summary>
 internal static class PlainText
 {
@@ -25,6 +27,16 @@ internal static class PlainText
     ];
 
     /// <summary>
+    /// The variation selectors, all Default_Ignorable: the Mongolian free variation selectors FVS1 to FVS3 and FVS4
+    /// (U+180B to U+180D, U+180F; U+180E, the vowel separator, is a format character), the standardized variation
+    /// selectors (U+FE00 to U+FE0F) and the ideographic ones (U+E0100 to U+E01EF).
+    /// </summary>
+    private static readonly (int First, int Last)[] VariationSelectors =
+    [
+        (0x180B, 0x180D), (0x180F, 0x180F), (0xFE00, 0xFE0F), (0xE0100, 0xE01EF),
+    ];
+
+    /// <summary>
     /// The viramas (and the Khmer coeng) after which a joiner may end a word: a virama followed by a joiner is how
     /// Malayalam chillu letters and Bengali khanda-ta are typed, at the end of a word as often as inside one.
     /// </summary>
@@ -35,13 +47,22 @@ internal static class PlainText
     ];
 
     /// <summary>
-    /// A one-line name a reader can see: plain, at least one letter, no Default_Ignorable code point but the joiners,
-    /// and a joiner only after a letter or mark, ending a word only after a virama.
+    /// A one-line name a reader can see: plain, at least one letter, no Default_Ignorable code point but the joiners and
+    /// the variation selectors, a joiner only after a letter or mark, ending a word only after a virama, and a variation
+    /// selector only right after a letter or a letter and its marks.
     /// </summary>
-    public static bool IsPlainName(string text) =>
-        IsPlain(text, allowLineBreaksAndTabs: false, allowJoiners: true)
-        && text.EnumerateRunes().All(character => IsJoiner(character) || !IsDefaultIgnorable(character))
-        && text.EnumerateRunes().Any(Rune.IsLetter);
+    public static bool IsPlainName(string text)
+    {
+        if (!IsPlain(text, allowLineBreaksAndTabs: false, allowJoiners: true))
+        {
+            return false;
+        }
+
+        var characters = text.EnumerateRunes().ToList();
+        return characters.Any(Rune.IsLetter)
+            && Enumerable.Range(0, characters.Count).All(index =>
+                IsJoiner(characters[index]) || !IsDefaultIgnorable(characters[index]) || SelectsALetter(characters, index));
+    }
 
     public static bool IsPlain(string text, bool allowLineBreaksAndTabs) => IsPlain(text, allowLineBreaksAndTabs, allowJoiners: false);
 
@@ -93,11 +114,36 @@ internal static class PlainText
         return !endsWord || Viramas.Contains(characters[index - 1].Value);
     }
 
-    private static bool IsLetterOrMark(Rune character) =>
-        Rune.IsLetter(character) || Rune.GetUnicodeCategory(character) is UnicodeCategory.NonSpacingMark or UnicodeCategory.SpacingCombiningMark or UnicodeCategory.EnclosingMark;
+    /// <summary>
+    /// A variation selector right after a letter, or after a letter and the marks on it, so it never stands alone, starts a
+    /// name or a word, or follows a space, a digit, a joiner or another selector, where it would select nothing.
+    /// </summary>
+    private static bool SelectsALetter(List<Rune> characters, int index)
+    {
+        if (!IsIn(VariationSelectors, characters[index]))
+        {
+            return false;
+        }
 
-    private static bool IsDefaultIgnorable(Rune character) =>
-        DefaultIgnorable.Any(range => character.Value >= range.First && character.Value <= range.Last);
+        var before = index - 1;
+        while (before >= 0 && IsMark(characters[before]) && !IsDefaultIgnorable(characters[before]))
+        {
+            before--;
+        }
+
+        return before >= 0 && Rune.IsLetter(characters[before]) && !IsDefaultIgnorable(characters[before]);
+    }
+
+    private static bool IsMark(Rune character) =>
+        Rune.GetUnicodeCategory(character) is UnicodeCategory.NonSpacingMark or UnicodeCategory.SpacingCombiningMark or UnicodeCategory.EnclosingMark;
+
+    private static bool IsLetterOrMark(Rune character) =>
+        Rune.IsLetter(character) || IsMark(character);
+
+    private static bool IsDefaultIgnorable(Rune character) => IsIn(DefaultIgnorable, character);
+
+    private static bool IsIn((int First, int Last)[] ranges, Rune character) =>
+        ranges.Any(range => character.Value >= range.First && character.Value <= range.Last);
 
     /// <summary>A lone high or low surrogate, which <see cref="string.EnumerateRunes"/> would read as U+FFFD and let through.</summary>
     private static bool HasUnpairedSurrogate(string text)

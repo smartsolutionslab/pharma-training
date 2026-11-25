@@ -10,7 +10,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersio
 /// included), no format character (bidi overrides, zero-width characters) other than the zero-width joiners a script
 /// writes names with (see <see cref="PlainText"/>), no line or paragraph separator, private-use or unassigned code point,
 /// and no unpaired surrogate; and it shows: at least one letter and no Default_Ignorable code point but those joiners
-/// (no Hangul filler, combining grapheme joiner or variation selector). <see cref="From"/> guards a value the code already trusts;
+/// and a variation selector right after a letter (no Hangul filler, combining grapheme joiner or stray selector). <see cref="From"/> guards a value the code already trusts;
 /// <see cref="TryFrom"/> checks a token's, so a bad one is no name rather than an exception. Both trim it first.
 /// </summary>
 public sealed record ReviewerName : IValueObject<string>
