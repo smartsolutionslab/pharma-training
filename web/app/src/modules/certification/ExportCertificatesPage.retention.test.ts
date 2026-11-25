@@ -173,6 +173,8 @@ const section = () => screen.findByRole('region', { name: 'Aufbewahrungsfrist' }
 const yearsField = () => screen.getByLabelText('Aufbewahrungsfrist in Jahren');
 const saveButton = () => screen.getByRole('button', { name: 'Frist speichern' });
 const noSection = () => expect(screen.queryByRole('heading', { name: 'Aufbewahrungsfrist' })).toBeNull();
+/** How many presses of "Frist speichern" the section has checked, and so sent or dropped. */
+const pressesChecked = () => document.querySelector('[data-presses-checked]')?.getAttribute('data-presses-checked');
 
 describe('the retention period section', () => {
   test('with the default of five years shows its heading, "Derzeit 5 Jahre (Standard)", the note and the field at 5', async () => {
@@ -570,14 +572,54 @@ describe('a period the form refuses', () => {
     await waitFor(() => expect(retentionReads()).toContain(`/api/certification/pharmacies/${dom.id}/retention-period`));
     // The press's check ends while the new pharmacy's period is still on its way, which is the window it must not
     // send in; then that period arrives.
-    await vi.waitFor(() => expect(host.mock.calls.length).toBeGreaterThan(0));
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await waitFor(() => expect(pressesChecked()).toBe('1'));
+    noSection();
     releaseDom();
 
     await waitFor(() => expect(yearsField()).toHaveValue(12));
     expect(saves().filter((save) => save.url.includes(dom.id))).toEqual([]);
     expect(state.periods[dom.id]).toEqual({ years: 12, isDefault: false });
   });
+
+  // A press is checked before it is sent. When the period changes in that time (the read again on focus, or another
+  // manager's change), the field starts again from the new period and the press sends nothing, which it says.
+  test.each([
+    [
+      'de-DE',
+      'Die Aufbewahrungsfrist wurde inzwischen geändert. Prüfen Sie den Wert und speichern Sie erneut.',
+    ] as const,
+    ['en-GB', 'The retention period was changed meanwhile. Check the value and save again.'] as const,
+  ])(
+    'a press while the period changes sends nothing, the field at the new period, and says so in %s',
+    async (language, text) => {
+      const user = userEvent.setup();
+      const { queryClient } = await renderPage();
+      await section();
+      setLanguage(language, { remember: false });
+      const field = await screen.findByLabelText(
+        language === 'de-DE' ? 'Aufbewahrungsfrist in Jahren' : 'Retention period in years',
+      );
+      await user.clear(field);
+      await user.type(field, '7');
+
+      const press = fireEvent.click(
+        screen.getByRole('button', { name: language === 'de-DE' ? 'Frist speichern' : 'Save period' }),
+      );
+      // Another manager set 9 years, and the period read again brings it while the press is checked.
+      queryClient.setQueryData(getGetCertificationPharmaciesIdRetentionPeriodQueryKey(markt.id), {
+        years: 9,
+        isDefault: false,
+      });
+      await press;
+
+      await waitFor(() => expect(pressesChecked()).toBe('1'));
+      expect(saves()).toEqual([]);
+      await waitFor(() => expect(field).toHaveValue(9));
+      await waitFor(() => expect(notify.failure).toHaveBeenCalledWith(text));
+      expect(notify.failure).toHaveBeenCalledTimes(1);
+      expect(notify.success).not.toHaveBeenCalled();
+    },
+  );
 
   test('is cleared when another pharmacy is chosen, the field at that pharmacy’s period', async () => {
     const user = userEvent.setup();

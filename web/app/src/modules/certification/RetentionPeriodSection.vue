@@ -3,11 +3,7 @@ import { useForm } from 'vee-validate';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useQueryClient } from '@tanstack/vue-query';
-import {
-  getGetCertificationPharmaciesIdRetentionPeriodQueryKey,
-  getGetOrganisationPharmaciesMineQueryKey,
-  type MyPharmacyDto,
-} from '@/api/generated';
+import { getGetOrganisationPharmaciesMineQueryKey, type MyPharmacyDto } from '@/api/generated';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toTypedSchema } from '@/forms/toTypedSchema';
@@ -66,8 +62,11 @@ watch(years, () => {
  * next one's period in its place.
  */
 let generation = 0;
+/** Whether the section has gone: a press dropped then says nothing, there is nobody left to tell. */
+let gone = false;
 onBeforeUnmount(() => {
   generation += 1;
+  gone = true;
 });
 // Another pharmacy starts a new form at once, not only when its period arrives: a press for the one before, whose check
 // ends while the new period is on its way, would otherwise send the old pharmacy's years to the new one.
@@ -124,8 +123,11 @@ async function focusField() {
   document.getElementById(field)?.focus();
 }
 
-/** Shows the refusal by its code: the period's at the field, any other in a toast, and the period read again. */
-function refuse(error: unknown, pharmacyId: string) {
+/**
+ * Shows the refusal by its code: the period's at the field, any other in a toast. The period is read again after any
+ * save (useRetentionPeriod): refused now, the read is likely refused too, and the section goes; the toast says why.
+ */
+function refuse(error: unknown) {
   const refusal = retentionRefusal(error);
   if (refusal.kind === 'field') {
     hostRefusal.value = refusal.message;
@@ -133,8 +135,6 @@ function refuse(error: unknown, pharmacyId: string) {
     return;
   }
   notify.failure(messageText(refusal.message));
-  // Refused now, the read is likely refused too, and the section goes: the toast says why.
-  void queryClient.invalidateQueries({ queryKey: getGetCertificationPharmaciesIdRetentionPeriodQueryKey(pharmacyId) });
   if (refusal.pharmacyGone) {
     // The membership is gone: the switcher and the audience catch up with the memberships read again.
     void queryClient.invalidateQueries({ queryKey: getGetOrganisationPharmaciesMineQueryKey() });
@@ -150,12 +150,19 @@ async function send({ years: chosen }: RetentionPeriod, pharmacyId: string) {
     if (change.ok) {
       notify.success(translate('certification.retention.saved', { years: n(chosen, 'integer') }));
     } else {
-      refuse(change.error, pharmacyId);
+      refuse(change.error);
     }
   } finally {
     sending.value = false;
   }
 }
+
+/**
+ * How many presses have been checked, whether the check passed or not, and so were sent or dropped. It stands on the
+ * section's root, which stays while another pharmacy's period is read, so a test can tell when a press's check has
+ * ended without waiting a while.
+ */
+const checked = ref(0);
 
 /** Sends once, however often the button is pressed: a press while one is on its way does nothing. */
 async function submit(event: Event) {
@@ -167,11 +174,17 @@ async function submit(event: Event) {
   const pressedFor = pharmacy.id;
   await handleSubmit(
     async (values) => {
+      checked.value += 1;
       if (pressed === generation && pressedFor === pharmacy.id) {
         await send(values, pressedFor);
+      } else if (!gone && pressedFor === pharmacy.id) {
+        // The period changed while the press was checked, and the field started again from it: the years typed were
+        // not sent, which is said, since the field now shows another value. Another pharmacy chosen says nothing.
+        notify.failure(translate('certification.retention.changed'));
       }
     },
     () => {
+      checked.value += 1;
       if (pressed === generation) {
         void focusField();
       }
@@ -181,43 +194,45 @@ async function submit(event: Event) {
 </script>
 
 <template>
-  <section v-if="shown !== undefined" :aria-labelledby="titleId" class="flex flex-col gap-4">
-    <h2 :id="titleId" class="text-body font-semibold">{{ t('certification.retention.title') }}</h2>
-    <p class="text-body">{{ t('certification.retention.intro', { pharmacy: pharmacy.name }) }}</p>
-    <p :id="currentId" class="text-body font-medium tabular-nums">{{ status }}</p>
-    <p :id="noteId" class="text-caption text-muted-foreground">{{ t('certification.retention.retroactive') }}</p>
-    <form class="flex flex-col gap-4" novalidate @submit="submit">
-      <div class="flex flex-col gap-2">
-        <label :for="field" class="text-body font-medium">{{ t('certification.retention.years') }}</label>
-        <Input
-          :id="field"
-          v-model="years"
-          v-bind="yearsAttributes"
-          type="number"
-          inputmode="numeric"
-          step="1"
-          :min="retentionYears.min"
-          :max="retentionYears.max"
-          aria-required="true"
-          :aria-invalid="fieldError ? true : undefined"
-          :aria-describedby="fieldError ? `${currentId} ${noteId} ${errorId}` : `${currentId} ${noteId}`"
-          class="max-w-40 tabular-nums"
-        />
-        <p v-if="fieldError" :id="errorId" role="alert" class="text-caption text-destructive">{{ fieldError }}</p>
-      </div>
-      <div>
-        <Button
-          type="submit"
-          :aria-disabled="busy ? 'true' : undefined"
-          :aria-busy="busy ? 'true' : undefined"
-          class="aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
-        >
-          {{ sending ? t('certification.retention.saving') : t('certification.retention.submit') }}
-        </Button>
-      </div>
-      <p role="status" class="sr-only">
-        <template v-if="sending">{{ t('certification.retention.saving') }}</template>
-      </p>
-    </form>
-  </section>
+  <div class="contents" :data-presses-checked="checked">
+    <section v-if="shown !== undefined" :aria-labelledby="titleId" class="flex flex-col gap-4">
+      <h2 :id="titleId" class="text-body font-semibold">{{ t('certification.retention.title') }}</h2>
+      <p class="text-body">{{ t('certification.retention.intro', { pharmacy: pharmacy.name }) }}</p>
+      <p :id="currentId" class="text-body font-medium tabular-nums">{{ status }}</p>
+      <p :id="noteId" class="text-caption text-muted-foreground">{{ t('certification.retention.retroactive') }}</p>
+      <form class="flex flex-col gap-4" novalidate @submit="submit">
+        <div class="flex flex-col gap-2">
+          <label :for="field" class="text-body font-medium">{{ t('certification.retention.years') }}</label>
+          <Input
+            :id="field"
+            v-model="years"
+            v-bind="yearsAttributes"
+            type="number"
+            inputmode="numeric"
+            step="1"
+            :min="retentionYears.min"
+            :max="retentionYears.max"
+            aria-required="true"
+            :aria-invalid="fieldError ? true : undefined"
+            :aria-describedby="fieldError ? `${currentId} ${noteId} ${errorId}` : `${currentId} ${noteId}`"
+            class="max-w-40 tabular-nums"
+          />
+          <p v-if="fieldError" :id="errorId" role="alert" class="text-caption text-destructive">{{ fieldError }}</p>
+        </div>
+        <div>
+          <Button
+            type="submit"
+            :aria-disabled="busy ? 'true' : undefined"
+            :aria-busy="busy ? 'true' : undefined"
+            class="aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+          >
+            {{ sending ? t('certification.retention.saving') : t('certification.retention.submit') }}
+          </Button>
+        </div>
+        <p role="status" class="sr-only">
+          <template v-if="sending">{{ t('certification.retention.saving') }}</template>
+        </p>
+      </form>
+    </section>
+  </div>
 </template>
