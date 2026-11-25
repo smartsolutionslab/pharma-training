@@ -187,7 +187,11 @@ public class OrganisationMailRecipientAndSenderLimitsTests(AspireFixture aspire)
         var first = await RegisterAsync(owner, cancellationToken);
         var second = await RegisterAsync(owner, cancellationToken);
         var address = Invitee();
-        await InviteAsync(owner, first, Invitee(), cancellationToken);
+        // The sender's row is made by an invitation from a third pharmacy. Its mail is sent by a consumer that saves that
+        // pharmacy once more after the request has answered; from first or second, that save could move the pharmacy on
+        // under the race below and answer it 409 organisation.pharmacy-changed instead of the cooldown's 429.
+        var elsewhere = await RegisterAsync(owner, cancellationToken);
+        await InviteAsync(owner, elsewhere, Invitee(), cancellationToken);
         var senderMails = await database.SenderMailsThatDayAsync(person, cancellationToken);
 
         HttpResponseMessage[] responses;
