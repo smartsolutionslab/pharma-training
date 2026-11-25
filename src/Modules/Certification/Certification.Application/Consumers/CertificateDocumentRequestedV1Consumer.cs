@@ -15,6 +15,12 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Con
 /// commit, or a parallel delivery) is kept and attached as it is: the first bytes stored win. It deduplicates on the
 /// certificate's state and the derived blob name, not on <c>Metadata.EventIdentifier</c>. Anything that fails throws, so
 /// Wolverine retries the message and dead-letters it at last, and a replay finishes what is left.
+/// <para>
+/// An erasure (#115) deletes the certificates no pharmacy keeps, PDF first, so a request may find its certificate gone:
+/// it is logged and dropped. The certificate is loaded first and its holder then held, as the erasure holds them, so a
+/// render either commits before the erasure reads the holder's certificates (and its PDF is deleted there) or waits and
+/// finds the holder tombstoned, and is dropped before anything is written.
+/// </para>
 /// </summary>
 public sealed partial class CertificateDocumentRequestedV1Consumer(
     ICertificateStore certificates,
@@ -25,10 +31,6 @@ public sealed partial class CertificateDocumentRequestedV1Consumer(
     IFrontendLinks links,
     ILogger<CertificateDocumentRequestedV1Consumer> logger)
 {
-    // Not used yet: slice 4's red tests (#115) ask for the holder to be held and a tombstoned holder's request dropped
-    // before rendering, so a render cannot write a PDF back after the erasure deleted it.
-    private readonly IErasedPersonStore erased = erased;
-
     public async Task HandleAsync(CertificateDocumentRequestedV1 message, CancellationToken cancellationToken)
     {
         // Refused here by its name, so a poison message dead-letters with a reason that says which field.
@@ -39,11 +41,19 @@ public sealed partial class CertificateDocumentRequestedV1Consumer(
         var found = await certificates.LoadAsync(id, cancellationToken);
         if (!found.HasValue)
         {
-            // Saved in the same commit as this request, so a missing certificate is a bug: thrown, it dead-letters.
-            throw new InvalidOperationException($"Certificate {message.CertificateId} was requested a document but is not stored.");
+            // Saved in the same commit as this request, so it is gone only because an erasure removed it (#115).
+            CertificateGone(logger, message.CertificateId);
+            return;
         }
 
         var certificate = found.Value;
+        await erased.HoldAsync(certificate.Holder, cancellationToken);
+        if (await erased.IsErasedAsync(certificate.Holder, cancellationToken))
+        {
+            HolderErased(logger, message.CertificateId);
+            return;
+        }
+
         if (certificate.Document == DocumentState.Stored)
         {
             AlreadyStored(logger, message.CertificateId);
@@ -63,6 +73,12 @@ public sealed partial class CertificateDocumentRequestedV1Consumer(
         await unitOfWork.CommitAsync(cancellationToken);
         Stored(logger, message.CertificateId);
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Certificate {Certificate} is no longer stored, an erasure removed it; its document request is dropped.")]
+    private static partial void CertificateGone(ILogger logger, Guid certificate);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "The holder of certificate {Certificate} was erased; its document request is dropped.")]
+    private static partial void HolderErased(ILogger logger, Guid certificate);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "The document of certificate {Certificate} is stored already; it is not rendered again.")]
     private static partial void AlreadyStored(ILogger logger, Guid certificate);

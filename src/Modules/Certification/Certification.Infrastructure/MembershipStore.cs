@@ -8,7 +8,8 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Infrastructure;
 
 /// <summary>
 /// The memberships, their endings and their changes. The module's unit of work saves what is added; nothing is ever
-/// updated, a change being a row of its own, so two deliveries of one event race only on its primary key.
+/// updated but the holder's name an erasure forgets (#115), a change being a row of its own, so two deliveries of one
+/// event race only on its primary key.
 /// </summary>
 public sealed class MembershipStore(CertificationDbContext context) : IMembershipStore
 {
@@ -52,11 +53,17 @@ public sealed class MembershipStore(CertificationDbContext context) : IMembershi
             ? Option<HolderName>.Some(name)
             : Option<HolderName>.None;
 
-    // Not implemented yet: slice 4's red tests (#115).
-    public Task<IReadOnlyList<Membership>> OfPersonAsync(PersonId person, CancellationToken cancellationToken) =>
-        throw new NotImplementedException($"{person}");
+    public async Task<IReadOnlyList<Membership>> OfPersonAsync(PersonId person, CancellationToken cancellationToken)
+    {
+        Ensure.That(person).IsNotNull();
 
-    // Not implemented yet: slice 4's red tests (#115).
-    public Task<IReadOnlyList<MembershipEnding>> EndingsOfPersonAsync(PersonId person, CancellationToken cancellationToken) =>
-        throw new NotImplementedException($"{person}");
+        return await context.Set<Membership>().Where(membership => membership.Person == person).ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<MembershipEnding>> EndingsOfPersonAsync(PersonId person, CancellationToken cancellationToken)
+    {
+        Ensure.That(person).IsNotNull();
+
+        return await context.Set<MembershipEnding>().AsNoTracking().Where(ending => ending.Person == person).ToListAsync(cancellationToken);
+    }
 }
