@@ -7,4 +7,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Membersh
 public enum Capability
 {
     ExportCertificates,
+
+    // stub for #391
+    ManageRetention,
 }

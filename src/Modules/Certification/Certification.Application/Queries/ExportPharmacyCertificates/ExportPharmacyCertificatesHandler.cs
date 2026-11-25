@@ -3,6 +3,7 @@ using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Storage;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Exports;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Certificates;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Memberships;
+using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Retention;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Queries.ExportPharmacyCertificates;
 
@@ -19,7 +20,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Que
 /// certificate past the cut-off never counts towards the limit. Nothing is
 /// read from blob storage here: the archive reads each PDF as it is written into the response.
 /// </summary>
-public sealed class ExportPharmacyCertificatesHandler(IMembershipStore memberships, ICertificateStore certificates, IBlobReads blobs, TimeProvider time)
+public sealed class ExportPharmacyCertificatesHandler(IMembershipStore memberships, ICertificateStore certificates, IPharmacyRetentionStore retention, IBlobReads blobs, TimeProvider time)
     : IQueryHandler<ExportPharmacyCertificates, Result<CertificateExportArchive, ApiError>>
 {
     public async Task<Result<CertificateExportArchive, ApiError>> HandleAsync(ExportPharmacyCertificates query, CancellationToken cancellationToken)
@@ -53,7 +54,10 @@ public sealed class ExportPharmacyCertificatesHandler(IMembershipStore membershi
         // Retention (#53, docs/adr/0034) is applied in the query, before the limit is counted: a certificate the pharmacy
         // no longer keeps neither appears in the export nor makes it too large.
         var now = Timestamp.From(time.GetUtcNow());
-        var chosen = await certificates.IssuedInPharmacyAsync(pharmacy, period.Value.Start, period.Value.End, now, CertificateExportArchive.MaxCertificates + 1, cancellationToken);
+
+        // stub for #391: the pharmacy's own period is not read yet; every pharmacy keeps the default.
+        _ = retention;
+        var chosen = await certificates.IssuedInPharmacyAsync(pharmacy, period.Value.Start, period.Value.End, now, RetentionPeriod.Default, CertificateExportArchive.MaxCertificates + 1, cancellationToken);
         if (chosen.Count > CertificateExportArchive.MaxCertificates)
         {
             return Failure(ExportFailures.TooLarge());

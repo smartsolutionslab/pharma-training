@@ -1,5 +1,6 @@
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Certificates;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Memberships;
+using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Retention;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Application;
 
@@ -28,7 +29,7 @@ public interface ICertificateStore
     /// (<see cref="Certificate.IsKeptByPharmaciesAt"/>, docs/adr/0034), read without tracking, oldest first, then by id, at
     /// most <paramref name="limit"/>. The limit counts only the certificates kept.
     /// </summary>
-    Task<IReadOnlyList<Certificate>> IssuedInPharmacyAsync(PharmacyId pharmacy, Timestamp issuedFrom, Timestamp issuedBefore, Timestamp keptAt, int limit, CancellationToken cancellationToken);
+    Task<IReadOnlyList<Certificate>> IssuedInPharmacyAsync(PharmacyId pharmacy, Timestamp issuedFrom, Timestamp issuedBefore, Timestamp keptAt, RetentionPeriod keptFor, int limit, CancellationToken cancellationToken);
 
     /// <summary>
     /// A page of the holder's certificates, read without tracking, newest first (issued later, then the larger id), and

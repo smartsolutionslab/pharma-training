@@ -1,5 +1,6 @@
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Domain;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Certificates.Events;
+using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Retention;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Certificates;
 
@@ -104,11 +105,10 @@ public sealed class Certificate : AggregateRoot<CertificateId>
     public Validity ValidityOn(CalendarDate today) => today > ValidUntil ? Validity.Expired : Validity.Valid;
 
     /// <summary>
-    /// Whether a pharmacy still sees this certificate in its view at <paramref name="now"/> (#53, docs/adr/0034): until
-    /// <see cref="PharmacyRetentionYears"/> years after <see cref="IssuedAt"/>, to the instant, and no longer from then on.
-    /// The holder keeps the certificate in their own account whatever this answers.
+    /// Whether a pharmacy still sees this certificate in its view at <paramref name="now"/> (#53, docs/adr/0034).
     /// </summary>
-    public bool IsKeptByPharmaciesAt(Timestamp now)
+    // stub for #391: ignores the period and keeps the five years of #53.
+    public bool IsKeptByPharmaciesAt(Timestamp now, RetentionPeriod period)
     {
         Ensure.That(now).IsNotNull();
         return IssuedAt.Value.AddYears(PharmacyRetentionYears) > now.Value;

@@ -85,7 +85,7 @@ public class CertificationExportTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var developer = await aspire.CreateHostClientAsync("developer");
-        var pharmacy = await ManagedPharmacyAsync(developer, cancellationToken);
+        var pharmacy = await ManagedPharmacyAsync(aspire, developer, cancellationToken);
 
         using var response = await developer.GetAsync(Export(pharmacy, query), cancellationToken);
 
@@ -97,7 +97,7 @@ public class CertificationExportTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var developer = await aspire.CreateHostClientAsync("developer");
-        var pharmacy = await ManagedPharmacyAsync(developer, cancellationToken);
+        var pharmacy = await ManagedPharmacyAsync(aspire, developer, cancellationToken);
 
         using var response = await developer.GetAsync(Export(pharmacy, "?from=abc&to=2025-12-31"), cancellationToken);
 
@@ -109,7 +109,7 @@ public class CertificationExportTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var developer = await aspire.CreateHostClientAsync("developer");
-        var pharmacy = await ManagedPharmacyAsync(developer, cancellationToken);
+        var pharmacy = await ManagedPharmacyAsync(aspire, developer, cancellationToken);
 
         var export = await ExportAsync(developer, pharmacy, "2025-01-01", "2025-12-31", cancellationToken);
 
@@ -126,7 +126,7 @@ public class CertificationExportTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var developer = await aspire.CreateHostClientAsync("developer");
-        var pharmacy = await ManagedPharmacyAsync(developer, cancellationToken);
+        var pharmacy = await ManagedPharmacyAsync(aspire, developer, cancellationToken);
         var member = StartedIn(Guid.CreateVersion7(), pharmacy, "Employee", new DateTimeOffset(2025, 3, 1, 8, 0, 0, TimeSpan.Zero));
         await CertificationDatabase.DeliverAsync(aspire, StartedType, member, cancellationToken);
         await CertificationDatabase.DeliverAsync(aspire, EndedType, EndedAt(member, new DateTimeOffset(2025, 9, 1, 8, 0, 0, TimeSpan.Zero)), cancellationToken);
@@ -155,7 +155,7 @@ public class CertificationExportTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var developer = await aspire.CreateHostClientAsync("developer");
-        var pharmacy = await ManagedPharmacyAsync(developer, cancellationToken);
+        var pharmacy = await ManagedPharmacyAsync(aspire, developer, cancellationToken);
         var member = StartedIn(Guid.CreateVersion7(), pharmacy, "Employee", LongAgo);
         await CertificationDatabase.DeliverAsync(aspire, StartedType, member, cancellationToken);
         var published = Published();
@@ -186,7 +186,7 @@ public class CertificationExportTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var developer = await aspire.CreateHostClientAsync("developer");
-        var pharmacy = await ManagedPharmacyAsync(developer, cancellationToken);
+        var pharmacy = await ManagedPharmacyAsync(aspire, developer, cancellationToken);
         var firstStart = new DateTimeOffset(2025, 3, 1, 8, 0, 0, TimeSpan.Zero);
         var firstEnd = new DateTimeOffset(2025, 5, 1, 8, 0, 0, TimeSpan.Zero);
         var first = StartedIn(Guid.CreateVersion7(), pharmacy, "Employee", firstStart);
@@ -232,7 +232,7 @@ public class CertificationExportTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var developer = await aspire.CreateHostClientAsync("developer");
-        var pharmacy = await ManagedPharmacyAsync(developer, cancellationToken);
+        var pharmacy = await ManagedPharmacyAsync(aspire, developer, cancellationToken);
         var member = StartedIn(Guid.CreateVersion7(), pharmacy, "Employee", LongAgo);
         await CertificationDatabase.DeliverAsync(aspire, StartedType, member, cancellationToken);
         var published = Published();
@@ -263,7 +263,7 @@ public class CertificationExportTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var developer = await aspire.CreateHostClientAsync("developer");
-        var pharmacy = await ManagedPharmacyAsync(developer, cancellationToken);
+        var pharmacy = await ManagedPharmacyAsync(aspire, developer, cancellationToken);
         var member = StartedIn(Guid.CreateVersion7(), pharmacy, "Employee", LongAgo);
         await CertificationDatabase.DeliverAsync(aspire, StartedType, member, cancellationToken);
         var published = Published();
@@ -292,7 +292,7 @@ public class CertificationExportTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var developer = await aspire.CreateHostClientAsync("developer");
-        var pharmacy = await ManagedPharmacyAsync(developer, cancellationToken);
+        var pharmacy = await ManagedPharmacyAsync(aspire, developer, cancellationToken);
         var member = StartedIn(Guid.CreateVersion7(), pharmacy, "Employee", LongAgo);
         await CertificationDatabase.DeliverAsync(aspire, StartedType, member, cancellationToken);
         var published = Published();
@@ -311,6 +311,74 @@ public class CertificationExportTests(AspireFixture aspire)
         exported.Count.ShouldBe(2000);
         exported.ShouldContain(template);
         exported.ShouldNotContain(id => expired.Contains(id));
+    }
+
+    /// <summary>
+    /// #391: the pharmacy's retention period is retroactive. On the host's own clock, a certificate passed six years ago
+    /// is left out while the pharmacy keeps the default five years, and is exported once it keeps seven.
+    /// </summary>
+    [Fact]
+    public async Task A_pharmacy_that_keeps_seven_years_exports_a_certificate_issued_six_years_ago()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var developer = await aspire.CreateHostClientAsync("developer");
+        var pharmacy = await ManagedPharmacyAsync(aspire, developer, cancellationToken);
+        var member = StartedIn(Guid.CreateVersion7(), pharmacy, "Employee", LongAgo);
+        await CertificationDatabase.DeliverAsync(aspire, StartedType, member, cancellationToken);
+        var published = Published();
+        await CertificationDatabase.DeliverAsync(aspire, PublishedType, published, cancellationToken);
+        var sixYearsAgo = TimeProvider.System.GetUtcNow().AddYears(-6);
+        var certificate = await PassAsync(member, published, sixYearsAgo, cancellationToken);
+        await CertificationDatabase.WaitUntilCountAsync(aspire, StoredOfHolder, member.PersonId, 1, cancellationToken);
+        var from = DayOf(sixYearsAgo.AddDays(-3));
+        var to = DayOf(sixYearsAgo.AddDays(3));
+
+        var before = await ExportAsync(developer, pharmacy, from, to, cancellationToken);
+        await KeepAsync(developer, pharmacy, 7, cancellationToken);
+        var after = await ExportAsync(developer, pharmacy, from, to, cancellationToken);
+
+        before.ShouldNotMention(certificate);
+        after.ExportedIds().ShouldBe([certificate]);
+        after.Entries.Select(entry => entry.Name).ShouldBe(["index.csv", $"pdf/{certificate:D}.pdf"]);
+        after.PdfsShouldBePdfs();
+    }
+
+    /// <summary>
+    /// #391: a pharmacy that keeps two years leaves out a certificate passed three years ago, which the default five years
+    /// exported, and still exports one passed a year ago.
+    /// </summary>
+    [Fact]
+    public async Task A_pharmacy_that_keeps_two_years_leaves_out_a_certificate_issued_three_years_ago()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var developer = await aspire.CreateHostClientAsync("developer");
+        var pharmacy = await ManagedPharmacyAsync(aspire, developer, cancellationToken);
+        var member = StartedIn(Guid.CreateVersion7(), pharmacy, "Employee", LongAgo);
+        await CertificationDatabase.DeliverAsync(aspire, StartedType, member, cancellationToken);
+        var published = Published();
+        await CertificationDatabase.DeliverAsync(aspire, PublishedType, published, cancellationToken);
+        var now = TimeProvider.System.GetUtcNow();
+        var threeYearsOld = await PassAsync(member, published, now.AddYears(-3), cancellationToken);
+        var oneYearOld = await PassAsync(member, published, now.AddYears(-1), cancellationToken);
+        await CertificationDatabase.WaitUntilCountAsync(aspire, StoredOfHolder, member.PersonId, 2, cancellationToken);
+        var from = DayOf(now.AddYears(-3).AddDays(-3));
+        var to = DayOf(now);
+
+        var before = await ExportAsync(developer, pharmacy, from, to, cancellationToken);
+        await KeepAsync(developer, pharmacy, 2, cancellationToken);
+        var after = await ExportAsync(developer, pharmacy, from, to, cancellationToken);
+
+        before.ExportedIds().ShouldBe([threeYearsOld, oneYearOld]);
+        after.ExportedIds().ShouldBe([oneYearOld]);
+        after.ShouldNotMention(threeYearsOld);
+    }
+
+    /// <summary>The manager sets the pharmacy's retention period through the edge (#391); answers once it answered 204.</summary>
+    private static async Task KeepAsync(HttpClient manager, Guid pharmacy, int years, CancellationToken cancellationToken)
+    {
+        using var body = new StringContent($"{{\"years\":{years}}}", Encoding.UTF8, "application/json");
+        using var response = await manager.PutAsync(new Uri($"/certification/pharmacies/{pharmacy:D}/retention-period", UriKind.Relative), body, cancellationToken);
+        response.StatusCode.ShouldBe(HttpStatusCode.NoContent, await response.Content.ReadAsStringAsync(cancellationToken));
     }
 
     /// <summary>
@@ -395,18 +463,6 @@ public class CertificationExportTests(AspireFixture aspire)
         var text = Encoding.UTF8.GetString(index, 3, index.Length - 3);
         text.ShouldEndWith("\r\n");
         return new ExportedZip(entries, text[..^2].Split("\r\n"));
-    }
-
-    /// <summary>A pharmacy of its own with the developer as its manager since long ago; answers its id.</summary>
-    /// <summary>
-    /// A fresh pharmacy <c>developer</c> manages from now on: other tests issue <c>developer</c> certificates of their own,
-    /// back-dated as far as last year, which an export of a membership started long ago would rightly hold.
-    /// </summary>
-    private async Task<Guid> ManagedPharmacyAsync(HttpClient developer, CancellationToken cancellationToken)
-    {
-        var pharmacy = Guid.CreateVersion7();
-        await CertificationDatabase.DeliverAsync(aspire, StartedType, StartedIn(SubjectOf(developer), pharmacy, "Manager", TimeProvider.System.GetUtcNow()), cancellationToken);
-        return pharmacy;
     }
 
     /// <summary>The member passes the published version's test at the instant; answers the id of the certificate Certification issued.</summary>
