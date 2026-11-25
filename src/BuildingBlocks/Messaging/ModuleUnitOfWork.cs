@@ -59,7 +59,9 @@ public abstract partial class ModuleUnitOfWork<TContext>(IServiceProvider servic
     /// transaction, with the outbox's envelopes, rolls back, and the outbox flushes only after a save that succeeded.
     /// A module opts in by declaring this method on its own unit of work's interface; <see cref="CommitAsync"/> still
     /// lets a lost race through, as a 500.
-    /// A deadlock (40P01) or serialization failure (40001) that PostgreSQL raises anywhere in the save is a lost race too:
+    /// A deadlock (40P01), a serialization failure (40001) or a lock wait past the transaction's <c>lock_timeout</c>
+    /// (55P03, which Organisation sets for the rows its invitation mails count on) that PostgreSQL raises anywhere in the
+    /// save is a lost race too:
     /// at one of its statements, where EF Core wraps it in a plain <see cref="DbUpdateException"/>; at the commit EF Core
     /// owns, where it wraps it in <see cref="DbUpdateConcurrencyException"/>; and, once a handler publishes, at the commit
     /// of Wolverine's envelope transaction through <c>Database.CommitTransactionAsync</c>, where it arrives as a bare
@@ -134,12 +136,12 @@ public abstract partial class ModuleUnitOfWork<TContext>(IServiceProvider servic
     }
 
     /// <summary>
-    /// The deadlock or serialization failure that ended the save, wherever it is wrapped: an <see cref="AggregateException"/>
+    /// The deadlock, serialization failure or lock timeout that ended the save, wherever it is wrapped: an <see cref="AggregateException"/>
     /// is searched through all its inner exceptions, since <see cref="Exception.InnerException"/> names only its first.
     /// </summary>
     private static PostgresException? EndedAsLostRace(Exception exception) => exception switch
     {
-        PostgresException { SqlState: PostgresErrorCodes.DeadlockDetected or PostgresErrorCodes.SerializationFailure } ended => ended,
+        PostgresException { SqlState: PostgresErrorCodes.DeadlockDetected or PostgresErrorCodes.SerializationFailure or PostgresErrorCodes.LockNotAvailable } ended => ended,
         AggregateException aggregate => aggregate.InnerExceptions.Select(EndedAsLostRace).FirstOrDefault(ended => ended is not null),
         { InnerException: { } inner } => EndedAsLostRace(inner),
         _ => null,
@@ -152,7 +154,7 @@ public abstract partial class ModuleUnitOfWork<TContext>(IServiceProvider servic
     /// </summary>
     private static IEnumerable<Exception> Leaves(Exception exception) => exception switch
     {
-        PostgresException { SqlState: PostgresErrorCodes.DeadlockDetected or PostgresErrorCodes.SerializationFailure } => [exception],
+        PostgresException { SqlState: PostgresErrorCodes.DeadlockDetected or PostgresErrorCodes.SerializationFailure or PostgresErrorCodes.LockNotAvailable } => [exception],
         AggregateException aggregate => aggregate.InnerExceptions.SelectMany(Leaves),
         { InnerException: { } inner } => Leaves(inner),
         _ => [exception],
