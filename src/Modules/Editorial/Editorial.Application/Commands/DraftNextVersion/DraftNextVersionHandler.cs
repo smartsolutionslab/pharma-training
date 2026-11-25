@@ -9,9 +9,12 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Command
 /// publishes of one course cannot race. Two drafts that race past the check meet at the unique (course, number)
 /// index, which the host answers with 409 <c>already-exists</c>; that violation is never caught here.
 /// </summary>
-public sealed class DraftNextVersionHandler(ICourseVersionStore versions, IEditorialUnitOfWork unitOfWork)
+public sealed class DraftNextVersionHandler(ICourseVersionStore versions, IErasedPersonStore erased, IEditorialUnitOfWork unitOfWork)
     : ICommandHandler<DraftNextVersion, Result<Guid, ApiError>>
 {
+    // Not used yet: slice 3's red tests (#115) ask for each copied reviewer to be held and a tombstoned one copied without a name.
+    private readonly IErasedPersonStore erased = erased;
+
     public async Task<Result<Guid, ApiError>> HandleAsync(DraftNextVersion command, CancellationToken cancellationToken)
     {
         Ensure.That(command).IsNotNull();

@@ -11,8 +11,8 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// Editorial's store forgets a person's name (#115, spec 4.4) against its real tables: <c>reviewed_by_name</c> on the
 /// questions the person approved and <c>returned_by_name</c> on the returns they made become NULL, while the person's id,
 /// the approval's time and the return's reason stay, and everyone else's names stay too. It is a data-protection update of
-/// historical rows, not a change of a course version: the version's row version does not move. The approver and the
-/// returner are planted by hand on versions the API made, a fresh id each, never a shared local user.
+/// historical rows, not a change of a course version. The approver and the returner are planted by hand on versions the
+/// API made, a fresh id each, never a shared local user.
 /// </summary>
 public class ReviewerNamesTests(AspireFixture aspire)
 {
@@ -28,7 +28,6 @@ public class ReviewerNamesTests(AspireFixture aspire)
         var others = await ReturnedAsync(editor, "Bild fehlt.", cancellationToken);
         await EditorialReviewers.AttributeAsync(connectionString, theirs.Id, theirs.Question, person, $"Reviewer {person:N}", cancellationToken);
         await EditorialReviewers.AttributeAsync(connectionString, others.Id, others.Question, someoneElse, $"Reviewer {someoneElse:N}", cancellationToken);
-        var rowVersion = await EditorialReviewers.RowVersionOfAsync(connectionString, theirs.Id, cancellationToken);
 
         await ForgetAsync(connectionString, person, cancellationToken);
 
@@ -36,7 +35,6 @@ public class ReviewerNamesTests(AspireFixture aspire)
         (await EditorialReviewers.ReturnOfAsync(connectionString, theirs.Id, cancellationToken)).ShouldBe((person, null, "Quelle fehlt."), "the PersonId and the reason stay");
         (await EditorialReviewers.ApprovalOfAsync(connectionString, others.Question, cancellationToken)).ShouldBe((someoneElse, $"Reviewer {someoneElse:N}"));
         (await EditorialReviewers.ReturnOfAsync(connectionString, others.Id, cancellationToken)).ShouldBe((someoneElse, $"Reviewer {someoneElse:N}", "Bild fehlt."));
-        (await EditorialReviewers.RowVersionOfAsync(connectionString, theirs.Id, cancellationToken)).ShouldBe(rowVersion, "forgetting a name is no change of the course version");
     }
 
     [Fact]

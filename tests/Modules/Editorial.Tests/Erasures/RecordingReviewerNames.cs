@@ -19,6 +19,7 @@ internal sealed class RecordingReviewerNames(InMemoryCourseVersionStore unitOfWo
     public Task ForgetAsync(PersonId person, CancellationToken cancellationToken)
     {
         Forgotten.Add((person, unitOfWork.Commits));
+        unitOfWork.PersonCalls.Add("forget");
         return Task.CompletedTask;
     }
 }

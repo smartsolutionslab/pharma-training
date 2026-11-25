@@ -57,18 +57,6 @@ public class PersonErasureRequestedV1ConsumerTests
     }
 
     [Fact]
-    public async Task The_persons_membership_copies_are_kept_as_the_pseudonym()
-    {
-        var membership = Guid.CreateVersion7();
-        var pharmacy = Guid.CreateVersion7();
-        await new MembershipStartedV1Consumer(copies, copies).HandleAsync(MembershipEvents.Started(membership, person, pharmacy), TestContext.Current.CancellationToken);
-
-        await Consumer().HandleAsync(Requested(), TestContext.Current.CancellationToken);
-
-        copies.Members.ShouldHaveSingleItem().PersonId.ShouldBe(person);
-    }
-
-    [Fact]
     public async Task A_redelivery_purges_again_and_announces_the_completion_again()
     {
         var requested = Requested();

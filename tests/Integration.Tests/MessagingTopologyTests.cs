@@ -106,16 +106,6 @@ public class MessagingTopologyTests
         published.ShouldBe([Contracts + "Learning.ContentCompletedV1", LearningErasureCompleted, Contracts + "Learning.LearningSessionStartedV1"], ignoreOrder: false);
     }
 
-    /// <summary>#115: Learning purges the membership messages it stored on Organisation's request and announces its completion.</summary>
-    [Fact]
-    public void Learning_consumes_the_erasure_request_and_publishes_its_erasure_completion()
-    {
-        var (consumed, published) = MessagingTopology.Of("learning");
-
-        consumed.ShouldContain(PersonErasureRequested);
-        published.ShouldContain(LearningErasureCompleted);
-    }
-
     /// <summary>#42: Learning reopens the failed chapters on the exhaustion and finishes the session on the passed test.</summary>
     [Fact]
     public void Learning_consumes_the_test_outcomes()

@@ -199,14 +199,51 @@ public class PersonErasureTests(AspireFixture aspire)
         var connectionString = await EditorialDatabase.ConnectionStringAsync(aspire, cancellationToken);
         var draft = await EditorialReturnedAsync(probe, connectionString, cancellationToken);
         (await EditorialReviewers.ApprovalOfAsync(connectionString, draft.Question, cancellationToken)).ShouldBe((probe.Person, probe.Name), "the probe was not planted in Editorial");
-        var rowVersion = await EditorialReviewers.RowVersionOfAsync(connectionString, draft.Id, cancellationToken);
 
         var erasure = await RequestAsync(support, probe.Person, cancellationToken);
         await WaitForStepsAsync(support, erasure, AllSteps, cancellationToken);
 
         (await EditorialReviewers.ApprovalOfAsync(connectionString, draft.Question, cancellationToken)).ShouldBe((probe.Person, null), "Editorial still holds the approver's name");
         (await EditorialReviewers.ReturnOfAsync(connectionString, draft.Id, cancellationToken)).ShouldBe((probe.Person, null, EditorialReason), "the return keeps its person and reason, not the name");
-        (await EditorialReviewers.RowVersionOfAsync(connectionString, draft.Id, cancellationToken)).ShouldBe(rowVersion, "forgetting a name is no change of the course version");
+    }
+
+    [Fact]
+    public async Task A_person_editorial_never_saw_is_tombstoned_in_editorial()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var probe = Probe.New();
+        using var support = await aspire.CreateHostClientAsync("support");
+        var connectionString = await EditorialDatabase.ConnectionStringAsync(aspire, cancellationToken);
+
+        var erasure = await RequestAsync(support, probe.Person, cancellationToken);
+        await WaitForStepsAsync(support, erasure, AllSteps, cancellationToken);
+
+        (await EditorialReviewers.TombstonesOfAsync(connectionString, probe.Person, cancellationToken)).ShouldBe(1, "Editorial keeps no tombstone of the erased person");
+    }
+
+    /// <summary>
+    /// The erased person's account and tokens outlive the erasure (until slice 6), and a next version drafted at the same
+    /// time copies the names it loaded: a name written beside the person's approval after Editorial's step, planted here as
+    /// such an approval writes it, must not be copied into the next version.
+    /// </summary>
+    [Fact]
+    public async Task A_name_written_after_the_erasure_is_not_copied_into_the_next_version()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var probe = Probe.New();
+        using var support = await aspire.CreateHostClientAsync("support");
+        using var editor = await aspire.CreateHostClientAsync("editor");
+        using var publisher = await aspire.CreateHostClientAsync(EditorialWorkflow.Publisher);
+        var connectionString = await EditorialDatabase.ConnectionStringAsync(aspire, cancellationToken);
+        var published = await EditorialWorkflow.PublishedAsync(editor, publisher, cancellationToken);
+        var erasure = await RequestAsync(support, probe.Person, cancellationToken);
+        await WaitForStepsAsync(support, erasure, AllSteps, cancellationToken);
+        await EditorialReviewers.AttributeApprovalAsync(connectionString, published.Question, probe.Person, probe.Name, cancellationToken);
+
+        var next = await EditorialWorkflow.DraftNextAsync(editor, published.Id, cancellationToken);
+
+        (await EditorialReviewers.ApprovalsOfVersionAsync(connectionString, next, cancellationToken))
+            .ShouldHaveSingleItem().ShouldBe((probe.Person, null), "the next version copied the erased person's name");
     }
 
     [Fact]

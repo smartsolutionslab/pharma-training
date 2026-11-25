@@ -61,13 +61,46 @@ internal static class EditorialReviewers
         return found;
     }
 
-    /// <summary>The version's row version (<c>xmin</c>), which every save of the version or anything beneath it moves on.</summary>
-    public static async Task<uint> RowVersionOfAsync(string connectionString, Guid version, CancellationToken cancellationToken)
+    /// <summary>Makes <paramref name="person"/>, named <paramref name="name"/>, the approver of the question, as an approval with their token would.</summary>
+    public static async Task AttributeApprovalAsync(string connectionString, Guid question, Guid person, string name, CancellationToken cancellationToken)
     {
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
-        await using var command = new NpgsqlCommand("SELECT xmin FROM editorial.course_versions WHERE id = @id", connection);
+        await using var approved = new NpgsqlCommand(
+            "UPDATE editorial.course_version_questions SET reviewed_by = @person, reviewed_by_name = @name, reviewed_at = now() WHERE id = @id",
+            connection);
+        approved.Parameters.AddWithValue("person", person);
+        approved.Parameters.AddWithValue("name", name);
+        approved.Parameters.AddWithValue("id", question);
+        (await approved.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1, $"Editorial stores no question {question}.");
+    }
+
+    /// <summary>Each question's approver of the version and the name kept beside them.</summary>
+    public static async Task<List<(Guid? By, string? Name)>> ApprovalsOfVersionAsync(string connectionString, Guid version, CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("SELECT reviewed_by, reviewed_by_name FROM editorial.course_version_questions WHERE course_version_id = @id ORDER BY position", connection);
         command.Parameters.AddWithValue("id", version);
-        return (uint)(await command.ExecuteScalarAsync(cancellationToken) ?? throw new ShouldAssertException($"Editorial stores no version {version}."));
+        List<(Guid? By, string? Name)> approvals = [];
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            approvals.Add((
+                await reader.IsDBNullAsync(0, cancellationToken) ? null : reader.GetGuid(0),
+                await reader.IsDBNullAsync(1, cancellationToken) ? null : reader.GetString(1)));
+        }
+
+        return approvals;
+    }
+
+    /// <summary>The tombstones Editorial keeps of the person (#115): one once they are erased.</summary>
+    public static async Task<long> TombstonesOfAsync(string connectionString, Guid person, CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("SELECT count(*) FROM editorial.erased_persons WHERE person_id = @id", connection);
+        command.Parameters.AddWithValue("id", person);
+        return (long)(await command.ExecuteScalarAsync(cancellationToken))!;
     }
 }

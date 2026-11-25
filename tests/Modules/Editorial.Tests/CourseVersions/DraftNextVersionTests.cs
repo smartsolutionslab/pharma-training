@@ -174,7 +174,7 @@ public class DraftNextVersionTests
         drafted.Error.Message.ShouldBe("The next version of this course already exists; continue that one instead of drafting another.");
     }
 
-    private static DraftNextVersionHandler Handler(InMemoryCourseVersionStore store, IEditorialUnitOfWork unitOfWork) => new(store, unitOfWork);
+    private static DraftNextVersionHandler Handler(InMemoryCourseVersionStore store, IEditorialUnitOfWork unitOfWork) => new(store, store, unitOfWork);
 
     /// <summary>A published version of two questions, both approved by the given editor at the given time, submitted by the author and published by the reviewer.</summary>
     private static CourseVersion PublishedWithQuestionsApprovedBy(PersonId approver, Timestamp approvedAt)

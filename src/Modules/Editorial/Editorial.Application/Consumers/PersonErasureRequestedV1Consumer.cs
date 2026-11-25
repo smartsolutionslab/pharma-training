@@ -14,8 +14,12 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Consume
 /// and announces the completion again, which Organisation records once. An unknown person completes too.
 /// </para>
 /// </summary>
-public sealed class PersonErasureRequestedV1Consumer(IReviewerNames names, IEditorialUnitOfWork unitOfWork)
+public sealed class PersonErasureRequestedV1Consumer(IReviewerNames names, IErasedPersonStore erased, IEditorialUnitOfWork unitOfWork, TimeProvider time)
 {
+    // Not used yet: slice 3's red tests (#115) ask for the person to be held and tombstoned.
+    private readonly IErasedPersonStore erased = erased;
+    private readonly TimeProvider time = time;
+
     private readonly IReviewerNames names = names;
     private readonly IEditorialUnitOfWork unitOfWork = unitOfWork;
 

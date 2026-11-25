@@ -3,9 +3,12 @@ using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.ReturnToDraft;
 
-public sealed class ReturnToDraftHandler(ICourseVersionStore versions, IEditorialUnitOfWork unitOfWork, TimeProvider time)
+public sealed class ReturnToDraftHandler(ICourseVersionStore versions, IErasedPersonStore erased, IEditorialUnitOfWork unitOfWork, TimeProvider time)
     : ICommandHandler<ReturnToDraft, Result<Unit, ApiError>>
 {
+    // Not used yet: slice 3's red tests (#115) ask for the returner to be held and a tombstoned one stored without a name.
+    private readonly IErasedPersonStore erased = erased;
+
     public async Task<Result<Unit, ApiError>> HandleAsync(ReturnToDraft command, CancellationToken cancellationToken)
     {
         Ensure.That(command).IsNotNull();
