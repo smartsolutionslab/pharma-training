@@ -2,6 +2,7 @@ using SmartSolutionsLab.PharmaTraining.Contracts;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Certificates;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Memberships;
+using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Retention;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Tests.Memberships;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Tests.Certificates;
@@ -68,14 +69,14 @@ internal sealed class InMemoryCertificateStore : ICertificateStore, ICertificati
     /// <summary>
     /// The certificates issued from <paramref name="issuedFrom"/> on and before <paramref name="issuedBefore"/> whose holder
     /// had a membership in the pharmacy at the instant of issue (started at or before it, no ending of it at or before it),
-    /// and that pharmacies still keep at <paramref name="keptAt"/>, oldest first, then by id, at most <paramref name="limit"/>,
+    /// and that the pharmacy still keeps at <paramref name="keptAt"/> for <paramref name="keptFor"/>, oldest first, then by id, at most <paramref name="limit"/>,
     /// as the store in Infrastructure reads them; none without a membership store.
     /// </summary>
-    public Task<IReadOnlyList<Certificate>> IssuedInPharmacyAsync(PharmacyId pharmacy, Timestamp issuedFrom, Timestamp issuedBefore, Timestamp keptAt, int limit, CancellationToken cancellationToken)
+    public Task<IReadOnlyList<Certificate>> IssuedInPharmacyAsync(PharmacyId pharmacy, Timestamp issuedFrom, Timestamp issuedBefore, Timestamp keptAt, RetentionPeriod keptFor, int limit, CancellationToken cancellationToken)
     {
         var issued = Stored
             .Where(certificate => issuedFrom <= certificate.IssuedAt && certificate.IssuedAt < issuedBefore)
-            .Where(certificate => certificate.IsKeptByPharmaciesAt(keptAt))
+            .Where(certificate => certificate.IsKeptByPharmaciesAt(keptAt, keptFor))
             .Where(certificate => memberships is not null && memberships.Memberships.Any(membership =>
                 membership.Pharmacy == pharmacy
                 && membership.Person == certificate.Holder

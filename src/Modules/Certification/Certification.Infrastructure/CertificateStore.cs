@@ -1,6 +1,7 @@
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Certificates;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Memberships;
+using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Retention;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -38,18 +39,21 @@ public sealed class CertificateStore(CertificationDbContext context) : ICertific
         return Option<Certificate>.Some(certificate);
     }
 
-    public async Task<IReadOnlyList<Certificate>> IssuedInPharmacyAsync(PharmacyId pharmacy, Timestamp issuedFrom, Timestamp issuedBefore, Timestamp keptAt, int limit, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<Certificate>> IssuedInPharmacyAsync(PharmacyId pharmacy, Timestamp issuedFrom, Timestamp issuedBefore, Timestamp keptAt, RetentionPeriod keptFor, int limit, CancellationToken cancellationToken)
     {
         Ensure.That(pharmacy).IsNotNull();
         Ensure.That(keptAt).IsNotNull();
+        Ensure.That(keptFor).IsNotNull();
         Ensure.That(limit).AtLeast(1);
 
-        // Retention (#53, docs/adr/0034) is Certificate.IsKeptByPharmaciesAt, IssuedAt.AddYears(5) > now, evaluated here so
-        // that the limit counts only the certificates kept. It is the anniversary on the UTC calendar: timestamp arithmetic
+        // Retention (#53, docs/adr/0034, 0039) is Certificate.IsKeptByPharmaciesAt, IssuedAt.AddYears(n) > now for the
+        // pharmacy's period of n years, evaluated here so that the limit counts only the certificates kept. It is the
+        // anniversary on the UTC calendar: timestamp arithmetic
         // in UTC whatever the session's time zone, and PostgreSQL, like AddYears, takes 29 February to 28 February. It is not
-        // written as issued_at > now - 5 years: around 29 February no single lower bound matches AddYears (a certificate
+        // written as issued_at > now - n years: around 29 February no single lower bound matches AddYears (a certificate
         // issued on 28 February at 13:00 outlasts one issued on 29 February at 01:00), and certificates would reappear.
-        var keptYears = Certificate.PharmacyRetentionYears;
+        // The years are a parameter of the statement, never interpolated into its text.
+        var keptYears = keptFor.Value;
         var now = keptAt.Value;
 
         // EXISTS rather than a join, so a holder with two overlapping memberships in the pharmacy yields each certificate once.

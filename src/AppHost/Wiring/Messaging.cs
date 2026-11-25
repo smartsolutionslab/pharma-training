@@ -47,8 +47,11 @@ public static partial class Messaging
     /// the broker can read its definitions but not change them. The image lets the user rabbitmq own <c>/etc/rabbitmq</c>
     /// and its <c>conf.d</c>, so a process of an earlier boot of the same container could have left a symlink at either
     /// directory or at either file: the boot fails unless both directories are directories of their own, each file's path
-    /// is cleared before it is written, a write never replaces a file that reappeared meanwhile (<c>noclobber</c>), and a
-    /// symlink's owner is changed rather than its target's. It then starts the image's own entrypoint in its place without
+    /// is cleared before it is written, a write never replaces a regular file that reappeared meanwhile (<c>noclobber</c>,
+    /// which bash applies to regular files alone), each file is created under the script's <c>umask</c> of 077 (so it is
+    /// root's alone until handed over, and RabbitMQ starts with 077 too), and, as root, its owner is changed rather than a
+    /// symlink's target's and its mode set to 0640 by <c>chmod</c> on the regular file just written, which also undoes
+    /// whatever a default ACL left on <c>conf.d</c> would have given it. It then starts the image's own entrypoint in its place without
     /// the admin's password or any <c>BROKER_*</c> variable, as <c>env</c> lists them: bash does not see one whose name is
     /// not a shell identifier, so it could not unset it, yet would hand it on. The image starts as root and its entrypoint
     /// runs RabbitMQ as the user rabbitmq.

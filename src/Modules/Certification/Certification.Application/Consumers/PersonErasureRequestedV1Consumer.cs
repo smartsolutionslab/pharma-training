@@ -6,6 +6,7 @@ using SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Documen
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Certificates;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.ErasedPersons;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Memberships;
+using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Retention;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Consumers;
 
@@ -34,6 +35,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Con
 public sealed class PersonErasureRequestedV1Consumer(
     ICertificateStore certificates,
     IMembershipStore memberships,
+    IPharmacyRetentionStore retention,
     IErasedPersonStore erased,
     IBlobDeletes blobs,
     IPersonalMessagePurge purge,
@@ -45,6 +47,7 @@ public sealed class PersonErasureRequestedV1Consumer(
 
     private readonly ICertificateStore certificates = certificates;
     private readonly IMembershipStore memberships = memberships;
+    private readonly IPharmacyRetentionStore retention = retention;
     private readonly IErasedPersonStore erased = erased;
     private readonly IBlobDeletes blobs = blobs;
     private readonly IPersonalMessagePurge purge = purge;
@@ -101,6 +104,6 @@ public sealed class PersonErasureRequestedV1Consumer(
     /// membership of its holder covers its issue (the rule <see cref="ICertificateStore.IssuedInPharmacyAsync"/> applies).
     /// </summary>
     private static bool IsRetained(Certificate certificate, IReadOnlyList<Membership> persons, IReadOnlyList<MembershipEnding> endings, Timestamp now) =>
-        certificate.IsKeptByPharmaciesAt(now)
+        certificate.IsKeptByPharmaciesAt(now, RetentionPeriod.Default)
         && persons.Any(membership => membership.Covers(certificate.IssuedAt, endings.FirstOrDefault(ending => ending.Id == membership.Id)));
 }

@@ -3,6 +3,7 @@ using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Storage;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Exports;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Certificates;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Memberships;
+using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Retention;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Queries.ExportPharmacyCertificates;
 
@@ -13,13 +14,13 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Que
 /// <see cref="CertificateExportArchive.MaxCertificates"/> certificates are chosen (400). A certificate is chosen when its
 /// holder was a member of the pharmacy at the instant it was issued, start inclusive and end exclusive, its issue day in
 /// Germany lies within the period, and the pharmacy still keeps it (#53, docs/adr/0034:
-/// <see cref="Certificate.IsKeptByPharmaciesAt"/>, less than five years since its issue at the time of the request,
-/// whatever the period). A certificate is chosen in the database, the cut-off included; at most
+/// <see cref="Certificate.IsKeptByPharmaciesAt"/>, less than the pharmacy's retention period (default five years,
+/// docs/adr/0039) since its issue at the time of the request, whatever the export's period). A certificate is chosen in the database, the cut-off included; at most
 /// <see cref="CertificateExportArchive.MaxCertificates"/> + 1 are read, so a refusal never loads more (#367), and a
 /// certificate past the cut-off never counts towards the limit. Nothing is
 /// read from blob storage here: the archive reads each PDF as it is written into the response.
 /// </summary>
-public sealed class ExportPharmacyCertificatesHandler(IMembershipStore memberships, ICertificateStore certificates, IBlobReads blobs, TimeProvider time)
+public sealed class ExportPharmacyCertificatesHandler(IMembershipStore memberships, ICertificateStore certificates, IPharmacyRetentionStore retention, IBlobReads blobs, TimeProvider time)
     : IQueryHandler<ExportPharmacyCertificates, Result<CertificateExportArchive, ApiError>>
 {
     public async Task<Result<CertificateExportArchive, ApiError>> HandleAsync(ExportPharmacyCertificates query, CancellationToken cancellationToken)
@@ -53,7 +54,10 @@ public sealed class ExportPharmacyCertificatesHandler(IMembershipStore membershi
         // Retention (#53, docs/adr/0034) is applied in the query, before the limit is counted: a certificate the pharmacy
         // no longer keeps neither appears in the export nor makes it too large.
         var now = Timestamp.From(time.GetUtcNow());
-        var chosen = await certificates.IssuedInPharmacyAsync(pharmacy, period.Value.Start, period.Value.End, now, CertificateExportArchive.MaxCertificates + 1, cancellationToken);
+
+        // The pharmacy's retention period (default five years), applied to every certificate as it stands now (#391).
+        var keptFor = (await retention.FindAsync(pharmacy, cancellationToken)).Match(stored => stored.Period, () => RetentionPeriod.Default);
+        var chosen = await certificates.IssuedInPharmacyAsync(pharmacy, period.Value.Start, period.Value.End, now, keptFor, CertificateExportArchive.MaxCertificates + 1, cancellationToken);
         if (chosen.Count > CertificateExportArchive.MaxCertificates)
         {
             return Failure(ExportFailures.TooLarge());

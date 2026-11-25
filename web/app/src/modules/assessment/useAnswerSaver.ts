@@ -15,6 +15,13 @@ export type SaveState =
 /** How often a 409 examination-changed or concurrent-save is sent again by itself (ADR 0016: sending again is safe). */
 const resends = 3;
 
+/**
+ * How long the saver waits before it sends a 409 concurrent-save again, in milliseconds. Marten has already retried the
+ * deadlock (up to 3 times), so a resend at once would meet the same contention; with the saver's own 3 resends that is at
+ * most 16 database attempts for one answer (ADR 0016). An examination-changed is sent again at once.
+ */
+export const concurrentSavePause = 200;
+
 /** The refusals sent again: the examination moved on, or PostgreSQL ended the save as a deadlock; neither stored anything. */
 const resent = ['assessment.examination-changed', 'assessment.concurrent-save'];
 
@@ -113,6 +120,9 @@ export function useAnswerSaver(
         });
       } catch (error) {
         if (error instanceof ApiError && resent.includes(error.code ?? '') && attempt < resends) {
+          if (error.code === 'assessment.concurrent-save') {
+            await new Promise((resolve) => setTimeout(resolve, concurrentSavePause));
+          }
           continue;
         }
         fail(questionId, draft, error);

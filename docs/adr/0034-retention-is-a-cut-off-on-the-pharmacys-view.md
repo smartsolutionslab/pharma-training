@@ -1,6 +1,6 @@
 # 0034: Retention is a cut-off on the pharmacy's view, not a deletion
 
-**Status:** Accepted (#53). Amends ADR 0032, which said "Retention (#53) is untouched: nothing is written".
+**Status:** Accepted (#53). Amends ADR 0032, which said "Retention (#53) is untouched: nothing is written". Amended by ADR 0039 (#391): the five years are the default of a period per pharmacy.
 
 ## Context
 

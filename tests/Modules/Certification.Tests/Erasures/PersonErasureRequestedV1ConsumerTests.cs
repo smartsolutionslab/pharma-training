@@ -8,6 +8,7 @@ using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Certificates
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Memberships;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Tests.Certificates;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Tests.Memberships;
+using SmartSolutionsLab.PharmaTraining.Modules.Certification.Tests.Retention;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Tests.Erasures;
 
@@ -29,6 +30,7 @@ public class PersonErasureRequestedV1ConsumerTests
     private readonly List<string> journal = [];
     private readonly InMemoryCertificateStore certificates = new();
     private readonly InMemoryMembershipStore memberships = new();
+    private readonly InMemoryPharmacyRetentionStore retention = new();
     private readonly InMemoryErasedPersonStore erased;
     private readonly RecordingBlobDeletes blobs;
     private readonly ErasureUnitOfWork unitOfWork;
@@ -274,7 +276,7 @@ public class PersonErasureRequestedV1ConsumerTests
 
     private static Certificate Issue(PersonId holder, DateTimeOffset issuedAt) => TestCertificates.Issued(holder, "Hygiene 2027", issuedAt);
 
-    private PersonErasureRequestedV1Consumer Consumer() => new(certificates, memberships, erased, blobs, purge, unitOfWork, time);
+    private PersonErasureRequestedV1Consumer Consumer() => new(certificates, memberships, retention, erased, blobs, purge, unitOfWork, time);
 
     private PersonErasureRequestedV1 Requested(PersonId erasedPerson) => new(erasure, erasedPerson.Value);
 

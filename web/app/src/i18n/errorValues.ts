@@ -15,6 +15,8 @@ export const pharmacyNameMaxLength = 120;
 export const changeReasonMaxLength = 500;
 /** How often a recurring assignment may recur, in months. */
 export const recurrenceMonths = { min: 1, max: 60 } as const;
+/** How many years a pharmacy may keep a certificate in its view (RetentionPeriod). */
+export const retentionYears = { min: 2, max: 30 } as const;
 /** The longest name of a module's generated sample. */
 export const sampleNameMaxLength = 100;
 
@@ -44,6 +46,7 @@ export const errorValues: Partial<Record<string, Readonly<Record<string, number>
   'compliance.invalid-change-reason': { max: changeReasonMaxLength },
   'compliance.invalid-recurrence': recurrenceMonths,
   'compliance.too-many-learners': { max: maximumLearners },
+  'certification.invalid-retention-period': retentionYears,
   'assessment.invalid-sample-name': sampleName,
   'catalog.invalid-sample-name': sampleName,
   'certification.invalid-sample-name': sampleName,

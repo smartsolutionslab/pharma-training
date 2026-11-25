@@ -128,6 +128,19 @@ public class AppHostStorageTests
         }
     }
 
+    // An upload URL is a create-only SAS (sp=c), which Azure also accepts as the destination of Put Blob From URL and Copy
+    // Blob: its holder could copy a blob from anywhere into the container instead of uploading it (#159, docs/adr/0002).
+    // The account accepts copy sources in its own Entra tenant alone, which still lets a module's own copies run (IBlobCopies).
+    [Theory]
+    [InlineData(PublishedAppHost.Staging)]
+    [InlineData(PublishedAppHost.Production)]
+    public async Task The_published_account_copies_from_its_own_tenant_alone(string environment)
+    {
+        var bicep = await PublishedAppHost.PublishAsync(environment, TestContext.Current.CancellationToken);
+
+        bicep.Module("storage").ShouldContain("allowedCopyScope: 'AAD'");
+    }
+
     [Fact]
     public async Task The_published_account_allows_the_frontend_url_origin_and_no_wildcard()
     {
