@@ -67,7 +67,7 @@ public sealed partial class ErasureConfirmationMailRequestedV1Consumer(
 
         var person = PersonId.From(message.PersonId);
         var addresses = await pharmacies.AddressesOfAsync(person, cancellationToken);
-        var confirmTo = addresses.Count > 0 ? addresses : await AccountAddressAsync(person, cancellationToken);
+        var confirmTo = addresses.Count > 0 ? addresses : await AccountAddressAsync(erasure.Id, person, cancellationToken);
 
         // Every mail is out before anything is forgotten: once the address is gone, nothing could mail it.
         // An address the server refuses for good is given up: no retry could reach it, and the erasure must go on.
@@ -115,11 +115,22 @@ public sealed partial class ErasureConfirmationMailRequestedV1Consumer(
     /// Q5 (#115): where Organisation holds no address of the person, the confirmation goes to their Keycloak account's
     /// address, only where Keycloak verified it (docs/adr/0014); no account, or none verified, means no mail. That address
     /// is used for the mail alone, and nothing in Organisation is forgotten by it (owner decision C, docs/adr/0040). A
-    /// failure of Keycloak throws before anything is mailed or forgotten.
+    /// read Keycloak fails reads as no address: it is logged by the erasure's id alone and the erasure goes on, since the
+    /// account's deletion retries Keycloak on its own.
     /// </summary>
-    private async Task<IReadOnlyList<EmailAddress>> AccountAddressAsync(PersonId person, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<EmailAddress>> AccountAddressAsync(ErasureId erasure, PersonId person, CancellationToken cancellationToken)
     {
-        var account = await accounts.FindAsync(person, cancellationToken);
+        Option<Account> account;
+        try
+        {
+            account = await accounts.FindAsync(person, cancellationToken);
+        }
+        catch (AccountsUnavailableException)
+        {
+            AccountUnread(logger, erasure.Value);
+            return [];
+        }
+
         if (account.HasValue && account.Value.VerifiedAddress.HasValue)
         {
             return [account.Value.VerifiedAddress.Value];
@@ -144,6 +155,9 @@ public sealed partial class ErasureConfirmationMailRequestedV1Consumer(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "The mail server refused one address of erasure {Erasure} for good; its confirmation is given up for that address.")]
     private static partial void AddressRefused(ILogger logger, Guid erasure);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Keycloak could not be read for the account of erasure {Erasure}; its confirmation is not mailed, and the erasure goes on.")]
+    private static partial void AccountUnread(ILogger logger, Guid erasure);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "The confirmation of erasure {Erasure} is handled already; it is not mailed again.")]
     private static partial void AlreadyHandled(ILogger logger, Guid erasure);
