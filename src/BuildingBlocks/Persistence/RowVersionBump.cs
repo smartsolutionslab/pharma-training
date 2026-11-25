@@ -11,6 +11,11 @@ namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Persistence;
 /// <c>WHERE xmin = @loaded</c>, so of two saves that loaded the same aggregate the second updates no row and fails,
 /// even when both only touched its children. It follows each changed entry's foreign keys to the tracked principals,
 /// through principals without a row version, up to the roots. A context without a row version is left as it is.
+/// <para>
+/// A change marked <c>ChangesOnlyItsOwnersRowVersion</c> (an owned entity type, or a modified entry whose every changed
+/// property is marked) goes up only to the first principal with a row version, updates that one and stops there, so it
+/// races only with changes to that entity and not with every change to its root (docs/adr/0036).
+/// </para>
 /// </summary>
 public sealed class RowVersionBump : SaveChangesInterceptor
 {
@@ -39,7 +44,13 @@ public sealed class RowVersionBump : SaveChangesInterceptor
         context.ChangeTracker.DetectChanges();
 
         var tracked = context.ChangeTracker.Entries().ToList();
-        var waiting = new Queue<EntityEntry>(tracked.Where(entry => entry.State is EntityState.Added or EntityState.Modified or EntityState.Deleted));
+        var changed = tracked.Where(entry => entry.State is EntityState.Added or EntityState.Modified or EntityState.Deleted).ToList();
+        foreach (var entry in changed.Where(ChangesOnlyItsOwnersRowVersion))
+        {
+            BumpNearest(entry, tracked);
+        }
+
+        var waiting = new Queue<EntityEntry>(changed.Where(entry => !ChangesOnlyItsOwnersRowVersion(entry)));
         var visited = new HashSet<object>(ReferenceEqualityComparer.Instance);
         while (waiting.TryDequeue(out var entry))
         {
@@ -57,6 +68,49 @@ public sealed class RowVersionBump : SaveChangesInterceptor
 
                 waiting.Enqueue(principal);
             }
+        }
+    }
+
+    /// <summary>Whether the entry's change is kept to its nearest row version: its type is marked, or every property it changed is.</summary>
+    private static bool ChangesOnlyItsOwnersRowVersion(EntityEntry entry)
+    {
+        if (entry.Metadata.ChangesOnlyItsOwnersRowVersion())
+        {
+            return true;
+        }
+
+        if (entry.State != EntityState.Modified)
+        {
+            return false;
+        }
+
+        var modified = entry.Properties.Where(property => property.IsModified && property.Metadata.Name != RowVersion.PropertyName).ToList();
+        return modified.Count > 0 && modified.All(property => property.Metadata.ChangesOnlyItsOwnersRowVersion());
+    }
+
+    /// <summary>Updates the entry itself when it carries a row version, or else the first principal above it that does.</summary>
+    private static void BumpNearest(EntityEntry entry, IReadOnlyList<EntityEntry> tracked)
+    {
+        var current = entry;
+        var seen = new HashSet<object>(ReferenceEqualityComparer.Instance);
+        while (seen.Add(current.Entity))
+        {
+            if (current.Metadata.HasRowVersion() && current.State != EntityState.Deleted)
+            {
+                if (current.State == EntityState.Unchanged)
+                {
+                    current.State = EntityState.Modified;
+                }
+
+                return;
+            }
+
+            if (current.Metadata.GetForeignKeys().Select(foreignKey => PrincipalOf(current, foreignKey, tracked)).OfType<EntityEntry>().FirstOrDefault() is not { } principal)
+            {
+                return;
+            }
+
+            current = principal;
         }
     }
 
