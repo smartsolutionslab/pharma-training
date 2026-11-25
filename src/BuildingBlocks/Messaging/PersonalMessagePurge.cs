@@ -16,6 +16,12 @@ public sealed partial class PersonalMessagePurge(NpgsqlDataSource dataSource) : 
     /// <summary>A module's schema as the sweep names it in SQL: a plain lowercase identifier, so it is never quoted input.</summary>
     public const string SchemaPattern = @"^[a-z][a-z0-9_]{0,62}\z";
 
+    /// <summary>
+    /// The name the sweep's advisory lock is keyed by, <c>hashtextextended(SweepLockKey, 0)</c>: a pass of
+    /// <see cref="PurgeErasedAsync"/> takes it first and skips while another session holds it.
+    /// </summary>
+    public const string SweepLockKey = "wolverine.erased-person-sweep";
+
     // Wolverine's storage in the module's database, in the schema the MigrationRunner builds it in; the outbox,
     // wolverine_outgoing_envelopes, is never touched: what is in it is still to be sent. An incoming envelope is purged
     // only once it is handled, so a message still waiting is delivered.
@@ -33,7 +39,7 @@ public sealed partial class PersonalMessagePurge(NpgsqlDataSource dataSource) : 
 
     // One sweep per database at a time: a replica that finds the lock taken skips its pass. Advisory locks are per
     // database, and every service has a database of its own.
-    private const string SweepLock = "SELECT pg_try_advisory_xact_lock(hashtextextended('wolverine.erased-person-sweep', 0))";
+    private const string SweepLock = $"SELECT pg_try_advisory_xact_lock(hashtextextended('{SweepLockKey}', 0))";
 
     private readonly NpgsqlDataSource dataSource = dataSource;
 
@@ -100,21 +106,28 @@ public sealed partial class PersonalMessagePurge(NpgsqlDataSource dataSource) : 
 
     private static string[] Names(IReadOnlyCollection<Type> types) => [.. types.Select(type => type.FullName ?? type.Name)];
 
+    // A Guid in its lowercase D form, as Wolverine's JSON writes one. The sweep takes every such id out of a body and looks
+    // it up in the module's tombstones by their key, so a pass costs the bodies it reads, whatever the number of erased
+    // persons (#462); matching each tombstone's id against each body cost both multiplied. encode(..., 'escape') leaves an
+    // id's ASCII as it is and reads any body, even one that is not UTF-8. It matches what position() matched: the id's D
+    // form anywhere in the body.
+    private const string IdPattern = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+
     // The schema is checked against SchemaPattern before it is named here, so it is a plain identifier, never input.
     private static string ErasedDeadLetters(string schema) =>
         $"""
         DELETE FROM {ModuleMessageStorage.Schema}.wolverine_dead_letters AS letter
          WHERE letter.message_type = ANY(@types)
-           AND EXISTS (SELECT 1 FROM "{schema}".erased_persons AS erased
-                        WHERE position(convert_to(erased.person_id::text, 'UTF8') in letter.body) > 0)
+           AND EXISTS (SELECT 1 FROM regexp_matches(encode(letter.body, 'escape'), '{IdPattern}', 'g') AS found(id)
+                          JOIN "{schema}".erased_persons AS erased ON erased.person_id = found.id[1]::uuid)
         """;
 
     private static string ErasedHandledEnvelopes(string schema) =>
         $"""
         DELETE FROM {ModuleMessageStorage.Schema}.wolverine_incoming_envelopes AS envelope
          WHERE envelope.status = 'Handled' AND envelope.message_type = ANY(@types)
-           AND EXISTS (SELECT 1 FROM "{schema}".erased_persons AS erased
-                        WHERE position(convert_to(erased.person_id::text, 'UTF8') in envelope.body) > 0)
+           AND EXISTS (SELECT 1 FROM regexp_matches(encode(envelope.body, 'escape'), '{IdPattern}', 'g') AS found(id)
+                          JOIN "{schema}".erased_persons AS erased ON erased.person_id = found.id[1]::uuid)
         """;
 
     [GeneratedRegex(SchemaPattern, RegexOptions.CultureInvariant)]
