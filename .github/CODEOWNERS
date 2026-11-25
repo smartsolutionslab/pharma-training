@@ -2,5 +2,6 @@
 # (docs/adr/fabric/base-fabric.md). Require code owner review in the branch protection of main.
 /.github/ @notonlywhite
 # Claude Code runs the hooks in .claude/settings.json by itself, as root in a cloud session, before the first turn;
-# .claude/agents and .claude/skills steer every agent. A change there needs its owner's review too.
+# .claude/agents and .claude/skills steer every agent. A change there needs its owner's review before it reaches main;
+# a branch's own hook still runs in a session on that branch.
 /.claude/ @notonlywhite

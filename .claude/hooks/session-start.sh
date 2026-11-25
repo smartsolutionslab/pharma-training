@@ -19,7 +19,10 @@ if ! command -v dockerd > /dev/null; then
 fi
 
 # A fresh file of the hook's own, not a fixed /tmp path that a symlink could redirect.
-log="$(mktemp -t dockerd.XXXXXX.log)"
+if ! log="$(mktemp -t dockerd.XXXXXX.log)"; then
+  echo "session-start: could not create a log file for dockerd; Docker was not started." >&2
+  exit 0
+fi
 setsid nohup dockerd > "$log" 2>&1 < /dev/null &
 daemon=$!
 
