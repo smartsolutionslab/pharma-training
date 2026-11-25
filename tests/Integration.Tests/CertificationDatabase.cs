@@ -112,10 +112,13 @@ internal static class CertificationDatabase
         }
     }
 
+    public static async Task<string> ConnectionStringAsync(AspireFixture aspire, CancellationToken cancellationToken) =>
+        await aspire.App.GetConnectionStringAsync("certification-database", cancellationToken)
+            ?? throw new InvalidOperationException("Certification's database has no connection string.");
+
     public static async Task<NpgsqlConnection> OpenAsync(AspireFixture aspire, CancellationToken cancellationToken)
     {
-        var connectionString = await aspire.App.GetConnectionStringAsync("certification-database", cancellationToken)
-            ?? throw new InvalidOperationException("Certification's database has no connection string.");
+        var connectionString = await ConnectionStringAsync(aspire, cancellationToken);
         var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
         return connection;

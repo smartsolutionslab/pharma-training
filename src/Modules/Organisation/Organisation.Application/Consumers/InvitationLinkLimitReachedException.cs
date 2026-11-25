@@ -8,7 +8,8 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Cons
 /// mail request dead-letters and stays visible until a manager renews the invitation. As an
 /// <see cref="IPermanentMessageFailure"/> it is dead-lettered on its first failure, without walking the retry ladder: no
 /// retry can succeed before a renewal clears the links. Its message names only the
-/// membership id and the code, never an address or a pharmacy's name, and it keeps no inner exception.
+/// membership id and the code, never an address or a pharmacy's name, and it takes no inner exception, so it never wraps a failure that might be transient
+/// (the architecture rule PermanentMessageFailuresAreSealedExceptions).
 /// </summary>
 public sealed class InvitationLinkLimitReachedException : InvalidOperationException, IPermanentMessageFailure
 {
@@ -18,11 +19,6 @@ public sealed class InvitationLinkLimitReachedException : InvalidOperationExcept
 
     public InvitationLinkLimitReachedException(string message)
         : base(message)
-    {
-    }
-
-    public InvitationLinkLimitReachedException(string message, Exception innerException)
-        : base(message, innerException)
     {
     }
 

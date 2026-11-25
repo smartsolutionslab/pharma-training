@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-/** The longest reason the host takes, in UTF-16 code units (ADR 0013). */
+/** The longest reason the host takes, in characters: Unicode code points, an emoji one (ADR 0013). */
 export const returnReasonMaxLength = 1000;
 
 /**
@@ -15,8 +15,11 @@ export const returnReasonSchema = z.object({
     .string()
     .trim()
     .min(1, 'editorial.workflow.returnForm.reasonRequired')
-    // Counted in UTF-16 code units, as the host counts: zod's max counts code points, an emoji as one.
-    .refine((reason) => reason.length <= returnReasonMaxLength, 'editorial.workflow.returnForm.reasonTooLong')
+    // Counted in code points, as the host counts: an emoji outside the BMP is one, not two UTF-16 code units.
+    .refine(
+      (reason) => Array.from(reason).length <= returnReasonMaxLength,
+      'editorial.workflow.returnForm.reasonTooLong',
+    )
     .refine((reason) => !notPlainText.test(reason), 'editorial.workflow.returnForm.reasonInvalid'),
 });
 

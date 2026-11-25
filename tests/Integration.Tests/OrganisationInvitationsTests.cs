@@ -316,8 +316,13 @@ public partial class OrganisationInvitationsTests(AspireFixture aspire)
         refused.StatusCode.ShouldBe(HttpStatusCode.BadRequest, await refused.Content.ReadAsStringAsync(cancellationToken));
     }
 
+    /// <summary>
+    /// Both invitations load the pharmacy before either commits, so both pass its own check; the first then holds the
+    /// address's recipient row until it commits (#375), and the second, which waited for it, finds the address mailed
+    /// within its cooldown and is told so (429 organisation.recipient-mailed-recently), never 409 already-exists.
+    /// </summary>
     [Fact]
-    public async Task Of_two_invitations_of_one_address_at_once_one_is_stored_and_the_other_is_a_conflict()
+    public async Task Of_two_invitations_of_one_address_at_once_one_is_stored_and_the_other_is_told_the_address_was_mailed_recently()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var owner = await aspire.CreateHostClientAsync("owner");
@@ -337,9 +342,9 @@ public partial class OrganisationInvitationsTests(AspireFixture aspire)
         try
         {
             var described = await DescribeAsync(responses, cancellationToken);
-            responses.Select(response => response.StatusCode).ShouldBe([HttpStatusCode.Created, HttpStatusCode.Conflict], ignoreOrder: true, described);
-            var lost = responses.Single(response => response.StatusCode == HttpStatusCode.Conflict);
-            (await CodeOfAsync(lost, cancellationToken)).ShouldBeOneOf(["organisation.pharmacy-changed", "already-exists"], described);
+            responses.Select(response => response.StatusCode).ShouldBe([HttpStatusCode.Created, HttpStatusCode.TooManyRequests], ignoreOrder: true, described);
+            var lost = responses.Single(response => response.StatusCode == HttpStatusCode.TooManyRequests);
+            (await CodeOfAsync(lost, cancellationToken)).ShouldBe("organisation.recipient-mailed-recently", described);
             (await database.StatusesOfAsync(pharmacy, address, cancellationToken)).ShouldBe(["Invited"]);
             (await mailpit.MessagesToAsync(address, 1, cancellationToken)).ShouldHaveSingleItem("the invitation that lost must send no mail");
         }

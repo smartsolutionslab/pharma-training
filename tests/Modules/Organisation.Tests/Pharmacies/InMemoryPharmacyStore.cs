@@ -19,6 +19,8 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Tests.Pharmacies
 /// </summary>
 internal sealed class InMemoryPharmacyStore : IPharmacyStore, IInvitationRecipientStore, IInvitationSenderStore, IErasureStore, IOrganisationUnitOfWork
 {
+    private static readonly LostRace LockTimedOut = new SaveDeadlocked("55P03");
+
     private readonly List<Pharmacy> added = [];
     private readonly List<InvitationRecipient> addedRecipients = [];
     private readonly List<InvitationSender> addedSenders = [];
@@ -26,7 +28,10 @@ internal sealed class InMemoryPharmacyStore : IPharmacyStore, IInvitationRecipie
     private readonly List<InvitationRecipientId> removedRecipients = [];
     private readonly List<PersonId> removedSenders = [];
     private readonly List<IntegrationEvent> queued = [];
+
     private bool loseNextCommit;
+    private bool timeOutNextRecipientLock;
+    private bool timeOutNextSenderLock;
 
     private LostRace how = new VersionMovedOn();
     private Exception? failNextCommit;
@@ -47,7 +52,31 @@ internal sealed class InMemoryPharmacyStore : IPharmacyStore, IInvitationRecipie
 
     public void Add(Pharmacy pharmacy) => added.Add(pharmacy);
 
-    public void Add(InvitationRecipient recipient) => addedRecipients.Add(recipient);
+    /// <summary>
+    /// The stored recipient itself, so what a command changes on it is what the next read finds once committed; an
+    /// address with none gets a new one, <see cref="InvitationRecipient.NotYetMailed"/>, stored only once committed, as
+    /// the database's row inserted in the command's transaction is. After <see cref="TimeOutNextRecipientLock"/> it
+    /// answers a lock timeout instead and discards what the command did, as its transaction is ended.
+    /// </summary>
+    public Task<Result<InvitationRecipient, LostRace>> LoadForMailAsync(EmailAddress address, CancellationToken cancellationToken)
+    {
+        if (timeOutNextRecipientLock)
+        {
+            timeOutNextRecipientLock = false;
+            Discard();
+            return Task.FromResult<Result<InvitationRecipient, LostRace>>(Failure(LockTimedOut));
+        }
+
+        var id = InvitationRecipientId.For(address);
+        if ((StoredRecipients.SingleOrDefault(recipient => recipient.Id == id) ?? addedRecipients.SingleOrDefault(recipient => recipient.Id == id)) is { } known)
+        {
+            return Task.FromResult<Result<InvitationRecipient, LostRace>>(Success(known));
+        }
+
+        var created = InvitationRecipient.NotYetMailed(address);
+        addedRecipients.Add(created);
+        return Task.FromResult<Result<InvitationRecipient, LostRace>>(Success(created));
+    }
 
     public void Add(Erasure erasure) => addedErasures.Add(erasure);
 
@@ -87,26 +116,36 @@ internal sealed class InMemoryPharmacyStore : IPharmacyStore, IInvitationRecipie
         return Task.CompletedTask;
     }
 
-    /// <summary>The stored recipient itself, so what a command changes on it is what the next read finds once committed.</summary>
-    public Task<Option<InvitationRecipient>> LoadAsync(InvitationRecipientId id, CancellationToken cancellationToken) =>
-        Task.FromResult(StoredRecipients.SingleOrDefault(recipient => recipient.Id == id) is { } recipient ? Option<InvitationRecipient>.Some(recipient) : Option<InvitationRecipient>.None);
-
     /// <summary>
     /// The stored sender itself, so what a command changes on it is what the next read finds once committed; a sender
     /// with none gets a new one, <see cref="InvitationSender.NotYetMailed"/>, stored only once committed, as the database's
-    /// row inserted in the command's transaction is.
+    /// row inserted in the command's transaction is. After <see cref="TimeOutNextSenderLock"/> it answers a lock timeout
+    /// instead and discards what the command did, as its transaction is ended.
     /// </summary>
-    public Task<InvitationSender> LoadForMailAsync(PersonId id, Timestamp now, CancellationToken cancellationToken)
+    public Task<Result<InvitationSender, LostRace>> LoadForMailAsync(PersonId id, Timestamp now, CancellationToken cancellationToken)
     {
+        if (timeOutNextSenderLock)
+        {
+            timeOutNextSenderLock = false;
+            Discard();
+            return Task.FromResult<Result<InvitationSender, LostRace>>(Failure(LockTimedOut));
+        }
+
         if ((StoredSenders.SingleOrDefault(sender => sender.Id == id) ?? addedSenders.SingleOrDefault(sender => sender.Id == id)) is { } known)
         {
-            return Task.FromResult(known);
+            return Task.FromResult<Result<InvitationSender, LostRace>>(Success(known));
         }
 
         var created = InvitationSender.NotYetMailed(id, now);
         addedSenders.Add(created);
-        return Task.FromResult(created);
+        return Task.FromResult<Result<InvitationSender, LostRace>>(Success(created));
     }
+
+    /// <summary>The next recipient loaded for a mail waits for its row past the lock timeout (55P03, #375).</summary>
+    public void TimeOutNextRecipientLock() => timeOutNextRecipientLock = true;
+
+    /// <summary>The next sender loaded for a mail waits for their row past the lock timeout (55P03, #375).</summary>
+    public void TimeOutNextSenderLock() => timeOutNextSenderLock = true;
 
     public Task<Option<Pharmacy>> FindAsync(PharmacyId id, CancellationToken cancellationToken)
     {

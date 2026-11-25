@@ -58,7 +58,7 @@ public sealed class InviteMemberHandler(
         }
 
         // Counted on the address and the sender in the same commit as the pharmacy (docs/adr/0004).
-        var counted = await InvitationMailCounting.CountAsync(recipients, senders, recipientAndSenderLimits, logger, command.Email, command.By, now, cancellationToken);
+        var counted = await InvitationMailCounting.CountAsync(recipients, senders, recipientAndSenderLimits, logger, command.Pharmacy, command.Email, command.By, now, cancellationToken);
         if (counted.IsFailure)
         {
             return Failure(counted.Error);

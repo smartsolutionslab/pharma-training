@@ -596,6 +596,58 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
     }
 
     /// <summary>
+    /// Opens a transaction that inserts the address's recipient row (#375) and holds it uncommitted, so a request that
+    /// inserts or locks that recipient waits for it until the transaction ends; a request for any other address does
+    /// not. Disposing the lock rolls the row back and closes its connection.
+    /// </summary>
+    public async Task<PharmacyLock> HoldNewInvitationRecipientAsync(string address, CancellationToken cancellationToken)
+    {
+        var connection = await OpenAsync(cancellationToken);
+        try
+        {
+            var transaction = await connection.BeginTransactionAsync(cancellationToken);
+            await using (var row = new NpgsqlCommand("INSERT INTO organisation.invitation_recipients (id, last_mailed_at) VALUES (@id, '-infinity')", connection, transaction))
+            {
+                row.Parameters.AddWithValue("id", RecipientIdOf(address));
+                (await row.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1, $"The address {address} has a recipient row already.");
+            }
+
+            return new PharmacyLock(connection, transaction);
+        }
+        catch
+        {
+            await connection.DisposeAsync();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Opens a transaction that holds the person's invitation sender row (#375) with <c>FOR UPDATE</c>, so a request
+    /// that locks that sender waits for it until the transaction ends; a request of any other sender does not. The person
+    /// must have a row already. Disposing the lock closes its connection.
+    /// </summary>
+    public async Task<PharmacyLock> HoldInvitationSenderAsync(Guid person, CancellationToken cancellationToken)
+    {
+        var connection = await OpenAsync(cancellationToken);
+        try
+        {
+            var transaction = await connection.BeginTransactionAsync(cancellationToken);
+            await using (var row = new NpgsqlCommand("SELECT 1 FROM organisation.invitation_senders WHERE person_id = @person FOR UPDATE", connection, transaction))
+            {
+                row.Parameters.AddWithValue("person", person);
+                (await row.ExecuteScalarAsync(cancellationToken)).ShouldNotBeNull($"The person {person} has sent no invitation mail.");
+            }
+
+            return new PharmacyLock(connection, transaction);
+        }
+        catch
+        {
+            await connection.DisposeAsync();
+            throw;
+        }
+    }
+
+    /// <summary>
     /// Opens a transaction that holds the invitation senders' table (#369) in ACCESS EXCLUSIVE mode, so every request that
     /// reads, inserts or locks a sender waits at its first statement on the table until the transaction ends. Disposing
     /// the lock closes its connection.
