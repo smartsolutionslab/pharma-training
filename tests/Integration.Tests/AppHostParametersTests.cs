@@ -18,6 +18,8 @@ public class AppHostParametersTests
 
     private const string Deployment = "azure-openai-deployment";
 
+    private const string ErasureClientSecret = "keycloak-erasure-client-secret";
+
     private static readonly TimeSpan Timeout = TimeSpan.FromMinutes(1);
 
     [Fact]
@@ -143,12 +145,60 @@ public class AppHostParametersTests
         sender.Default.ShouldBeNull("smtp-from publishes a default, so a deployment that forgot it sends from that address");
     }
 
+    /// <summary>
+    /// #115 slice 6: one secret, generated once in run mode and kept in the AppHost's user secrets, is the erasure client's
+    /// secret in both places that need it: Keycloak's realm import reads it as <c>KEYCLOAK_ERASURE_CLIENT_SECRET</c>, and the
+    /// service that deletes accounts, Organisation, as <c>Keycloak:Accounts:ClientSecret</c>, beside Keycloak's internal
+    /// address, the realm and the client's id. No other service reads any of them.
+    /// </summary>
+    [Fact]
+    public async Task The_erasure_client_secret_is_a_generated_secret_given_to_keycloak_and_to_the_services_that_manage_accounts_alone()
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(Timeout);
+        await using var builder = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AppHost>(timeout.Token);
+        Unconfigured(builder);
+
+        var secret = builder.Resources.OfType<ParameterResource>().SingleOrDefault(parameter => parameter.Name == ErasureClientSecret);
+        secret.ShouldNotBeNull($"the AppHost has no parameter {ErasureClientSecret}");
+        secret.Secret.ShouldBeTrue($"{ErasureClientSecret} is not a secret parameter.");
+        (await secret.GetValueAsync(timeout.Token)).ShouldNotBeNullOrWhiteSpace($"{ErasureClientSecret} has no generated value, so Keycloak's import and Organisation would wait for it.");
+
+        var keycloak = builder.Resources.OfType<ContainerResource>().Single(resource => resource.Name == "keycloak");
+        var keycloakEnvironment = await EnvironmentAsync(keycloak, timeout.Token);
+        keycloakEnvironment.ShouldContainKey("KEYCLOAK_ERASURE_CLIENT_SECRET", "Keycloak's realm import has no value for the erasure client's secret.");
+        keycloakEnvironment["KEYCLOAK_ERASURE_CLIENT_SECRET"].ShouldBe($"{{{ErasureClientSecret}.value}}");
+
+        var services = Services(builder);
+        services.Select(service => service.Name).ShouldContain("organisation");
+        foreach (var service in services)
+        {
+            var environment = await EnvironmentAsync(service, timeout.Token);
+            if (service.Name == "organisation")
+            {
+                environment.ShouldContainKey("Keycloak__Accounts__ClientSecret", "Organisation deletes accounts but does not read the erasure client's secret.");
+                environment["Keycloak__Accounts__ClientSecret"].ShouldBe($"{{{ErasureClientSecret}.value}}");
+                environment.ShouldContainKey("Keycloak__Accounts__Address", "Organisation deletes accounts but does not read Keycloak's address.");
+                environment["Keycloak__Accounts__Address"].ShouldContain("{keycloak.bindings.http.", Case.Sensitive);
+                environment.ShouldContainKey("Keycloak__Accounts__Realm");
+                environment["Keycloak__Accounts__Realm"].ShouldBe("pharma-training");
+                environment.ShouldContainKey("Keycloak__Accounts__ClientId");
+                environment["Keycloak__Accounts__ClientId"].ShouldBe("pharma-training-erasure");
+            }
+            else
+            {
+                environment.Keys.Where(key => key.StartsWith("Keycloak__Accounts__", StringComparison.Ordinal))
+                    .ShouldBeEmpty($"{service.Name} manages no accounts but reads the erasure client's settings.");
+            }
+        }
+    }
+
     private static bool SendsMail(ProjectResource service) => ServiceHostMail.SendsMail(service.GetProjectMetadata().ProjectPath);
 
     private static bool LinksToFrontend(ProjectResource service) => ServiceHostMail.LinksToFrontend(service.GetProjectMetadata().ProjectPath);
 
     /// <summary>The service's environment as the model sets it, values unresolved.</summary>
-    private static async Task<Dictionary<string, string>> EnvironmentAsync(ProjectResource service, CancellationToken cancellationToken)
+    private static async Task<Dictionary<string, string>> EnvironmentAsync(IResource service, CancellationToken cancellationToken)
     {
         var configuration = await ExecutionConfigurationBuilder.Create(service)
             .WithEnvironmentVariablesConfig()

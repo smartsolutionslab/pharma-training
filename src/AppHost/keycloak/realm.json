@@ -8,6 +8,7 @@
   "failureFactor": 10,
   "eventsEnabled": true,
   "eventsExpiration": 2592000,
+  "attributes": { "adminEventsExpiration": "2592000" },
   "adminEventsEnabled": true,
   "requiredActions": [
     { "alias": "CONFIGURE_TOTP", "name": "Configure OTP", "providerId": "CONFIGURE_TOTP", "enabled": true, "defaultAction": false, "priority": 10 },
@@ -88,6 +89,25 @@
           }
         }
       ]
+    },
+    {
+      "clientId": "pharma-training-erasure",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${KEYCLOAK_ERASURE_CLIENT_SECRET}",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false
+    }
+  ],
+  "users": [
+    {
+      "username": "service-account-pharma-training-erasure",
+      "enabled": true,
+      "serviceAccountClientId": "pharma-training-erasure",
+      "clientRoles": { "realm-management": ["manage-users"] }
     }
   ]
 }

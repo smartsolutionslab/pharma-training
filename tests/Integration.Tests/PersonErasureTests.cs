@@ -24,9 +24,11 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// membership messages it stored. Certification (slice 4) removes the certificates no pharmacy keeps any longer, row and
 /// PDF, keeps the retained ones with the name, forgets the name on its copies of the memberships and drops what arrives
 /// for the person afterwards; a periodic purge (slice 5) deletes a retained one once no pharmacy keeps it any longer.
-/// A membership message of the person that is dead-lettered or dropped after the erasure is removed from Compliance's,
-/// Learning's and Certification's message storage by their sweeps of erased persons' messages (#439). Each announces
-/// its step; the steps after Organisation's arrive in any order. The class
+/// Organisation deletes the person's Keycloak account and records the step keycloak, and confirms a person it holds no
+/// address for at the account's verified address (slice 6). A membership message of the person that is dead-lettered
+/// or dropped after the erasure is removed from Compliance's, Learning's and Certification's message storage by their
+/// sweeps of erased persons' messages (#439). Each announces its step; the steps after Organisation's arrive in any
+/// order. The class
 /// calls the public verification, so it runs in that endpoint's collection (one per-address limit, docs/adr/0029).
 /// </summary>
 [Collection(CertificationVerification.Name)]
@@ -37,10 +39,19 @@ public class PersonErasureTests(AspireFixture aspire)
     private const string ChangedType = "SmartSolutionsLab.PharmaTraining.Contracts.Organisation.MembershipChangedV1";
     private const string EditorialReason = "Kapitel 2 braucht eine Quelle.";
 
+    private const string ConfirmationSubject = "Löschung Ihrer Daten bei PharmaTraining";
+
     private const string NotVerifiable = "certification.certificate-not-verifiable";
     private const string StoredOfHolder = "select count(*) from certification.certificates where holder_id = @id and document_state = 'Stored'";
 
-    private static readonly string[] AllSteps = ["organisation", "compliance", "editorial", "learning", "certification"];
+    // Slice 6: Organisation deletes the person's Keycloak account and records the step keycloak; a probe's fresh id has no
+    // account, so its step follows Keycloak's "not found".
+    private static readonly string[] AllSteps = ["organisation", "compliance", "editorial", "learning", "certification", "keycloak"];
+
+    private static readonly string[] StepsButKeycloak = [.. AllSteps.Where(step => step != "keycloak")];
+
+    /// <summary>How long a staff account's erasure is watched, after every other step, for a step keycloak that must not come.</summary>
+    private static readonly TimeSpan StaffSettle = TimeSpan.FromSeconds(10);
 
     /// <summary>The services that store membership messages, and so sweep an erased person's (#439).</summary>
     private static readonly string[] SweptServices = ["compliance", "learning", "certification"];
@@ -51,6 +62,7 @@ public class PersonErasureTests(AspireFixture aspire)
 
     private readonly OrganisationDatabase database = new(aspire);
     private readonly Mailpit mailpit = new(aspire);
+    private readonly KeycloakAdmin keycloak = new(aspire);
 
     [Fact]
     public async Task The_last_active_manager_is_refused_and_nothing_changes()
@@ -548,6 +560,103 @@ public class PersonErasureTests(AspireFixture aspire)
     }
 
     /// <summary>
+    /// #115 slice 6: the person's Keycloak account, whose subject is their PersonId, is deleted, and the step keycloak
+    /// recorded. The confirmation goes to the address Organisation held, once, and never to the account's as well.
+    /// </summary>
+    [Fact]
+    public async Task The_persons_keycloak_account_is_deleted()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var accountAddress = $"erasure-account-{Guid.CreateVersion7():N}@example.com";
+        var account = await keycloak.CreateUserAsync(accountAddress, emailVerified: true, cancellationToken);
+        var fresh = Probe.New();
+        var probe = fresh with { Person = account };
+        using var owner = await aspire.CreateHostClientAsync("owner");
+        using var support = await aspire.CreateHostClientAsync("support");
+        var employer = await RegisterAsync(owner, cancellationToken);
+        await database.InsertMembershipOfPersonAsync(employer, probe.Person, probe.Address, "Active", cancellationToken, probe.Name);
+        (await keycloak.UserStatusAsync(account, cancellationToken)).ShouldBe(HttpStatusCode.OK, "the account was not planted");
+
+        var erasure = await RequestAsync(support, probe.Person, cancellationToken);
+
+        var read = await WaitForStepsAsync(support, erasure, AllSteps, cancellationToken);
+        read.ConfirmationMailed.ShouldBeTrue();
+        (await keycloak.UserStatusAsync(account, cancellationToken)).ShouldBe(HttpStatusCode.NotFound, "the erased person's Keycloak account still exists");
+        var confirmation = (await mailpit.MessagesToAsync(probe.Address, 1, cancellationToken)).ShouldHaveSingleItem();
+        confirmation.Subject.ShouldBe(ConfirmationSubject);
+        (await mailpit.CountToAsync(probe.Address, cancellationToken)).ShouldBe(1, "the confirmation is mailed once");
+        (await mailpit.CountToAsync(accountAddress, cancellationToken)).ShouldBe(0, "Organisation held an address, so the account's is not mailed");
+    }
+
+    /// <summary>
+    /// #115 slice 6, Q5: a person Organisation holds no address for is confirmed at their account's address, which Keycloak
+    /// verified; then the account is deleted.
+    /// </summary>
+    [Fact]
+    public async Task A_person_organisation_holds_no_address_for_is_confirmed_at_the_accounts_address()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var accountAddress = $"erasure-account-{Guid.CreateVersion7():N}@example.com";
+        var account = await keycloak.CreateUserAsync(accountAddress, emailVerified: true, cancellationToken);
+        using var support = await aspire.CreateHostClientAsync("support");
+
+        var erasure = await RequestAsync(support, account, cancellationToken);
+
+        var confirmation = await mailpit.MessageToAsync(accountAddress, ConfirmationSubject, cancellationToken);
+        confirmation.To.ShouldBe([accountAddress]);
+        var read = await WaitForStepsAsync(support, erasure, AllSteps, cancellationToken);
+        read.ConfirmationMailed.ShouldBeTrue("the account's verified address took the confirmation");
+        (await mailpit.CountToAsync(accountAddress, cancellationToken)).ShouldBe(1, "the confirmation is mailed once");
+        (await keycloak.UserStatusAsync(account, cancellationToken)).ShouldBe(HttpStatusCode.NotFound, "the erased person's Keycloak account still exists");
+    }
+
+    /// <summary>#115 slice 6, decision B: an address Keycloak did not verify may be a stranger's, so it is not mailed (docs/adr/0014).</summary>
+    [Fact]
+    public async Task An_account_with_an_unverified_address_gets_no_confirmation()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var accountAddress = $"erasure-account-{Guid.CreateVersion7():N}@example.com";
+        var account = await keycloak.CreateUserAsync(accountAddress, emailVerified: false, cancellationToken);
+        using var support = await aspire.CreateHostClientAsync("support");
+
+        var erasure = await RequestAsync(support, account, cancellationToken);
+
+        var read = await WaitForStepsAsync(support, erasure, AllSteps, cancellationToken);
+        read.ConfirmationMailed.ShouldBeFalse("an unverified address is not mailed");
+        (await mailpit.CountToAsync(accountAddress, cancellationToken)).ShouldBe(0);
+        (await keycloak.UserStatusAsync(account, cancellationToken)).ShouldBe(HttpStatusCode.NotFound, "the erased person's Keycloak account still exists");
+    }
+
+    /// <summary>
+    /// #115 slice 6, owner decision: an account holding a staff realm role (here <c>editor</c>) is never deleted by an
+    /// erasure. Every other step completes; the step keycloak stays open, so the erasure shows as unfinished until an
+    /// administrator removes the account by hand (README runbook).
+    /// </summary>
+    [Fact]
+    public async Task A_staff_account_is_not_deleted_and_its_keycloak_step_stays_open()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var accountAddress = $"erasure-staff-{Guid.CreateVersion7():N}@example.com";
+        var account = await keycloak.CreateUserAsync(accountAddress, emailVerified: true, cancellationToken);
+        try
+        {
+            await keycloak.GrantRealmRoleAsync(account, "editor", cancellationToken);
+            using var support = await aspire.CreateHostClientAsync("support");
+
+            var erasure = await RequestAsync(support, account, cancellationToken);
+
+            var read = await WaitForStepsAsync(support, erasure, StepsButKeycloak, cancellationToken);
+            read.Steps.Select(step => step.Module).ShouldNotContain("keycloak");
+            await StaysWithoutStepAsync(support, erasure, "keycloak", StaffSettle, cancellationToken);
+            (await keycloak.UserStatusAsync(account, cancellationToken)).ShouldBe(HttpStatusCode.OK, "a staff account must not be deleted by an erasure");
+        }
+        finally
+        {
+            await keycloak.DeleteUserAsync(account, CancellationToken.None);
+        }
+    }
+
+    /// <summary>
     /// #439: membership messages of the person that arrive after the erasure leave no copy of the name in Wolverine's
     /// storage of Compliance, Learning or Certification, although no purge runs for them. A valid late start is consumed
     /// and dropped, so only its handled envelope holds the name; a forged one (no <c>user_id</c>) is refused by the
@@ -646,6 +755,20 @@ public class PersonErasureTests(AspireFixture aspire)
         read.Steps.Select(step => step.Module).ShouldBe(modules, ignoreOrder: true, $"the erasure's steps within {StepWait.TotalSeconds:0} s");
         read.Steps[0].Module.ShouldBe(modules[0], "Organisation records its own step first");
         return read;
+    }
+
+    /// <summary>Reads the erasure for <paramref name="settle"/> and fails as soon as it lists <paramref name="module"/>.</summary>
+    private static async Task StaysWithoutStepAsync(HttpClient support, Uri erasure, string module, TimeSpan settle, CancellationToken cancellationToken)
+    {
+        var until = TimeProvider.System.GetUtcNow() + settle;
+        while (TimeProvider.System.GetUtcNow() < until)
+        {
+            using var response = await support.GetAsync(erasure, cancellationToken);
+            response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync(cancellationToken));
+            var read = await response.Content.ReadFromJsonAsync<ErasureRead>(cancellationToken);
+            read.ShouldNotBeNull().Steps.Select(step => step.Module).ShouldNotContain(module, $"the erasure recorded the step {module}");
+            await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken);
+        }
     }
 
     private static StartedEvent Started(Guid membership, Probe probe, Guid pharmacy) =>

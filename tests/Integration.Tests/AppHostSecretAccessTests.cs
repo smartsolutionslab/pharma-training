@@ -148,8 +148,8 @@ public partial class AppHostSecretAccessTests
     /// </summary>
     // Staging's Keycloak sends to Mailpit without credentials, so it reads no SMTP secret there (#130).
     [Theory]
-    [InlineData(PublishedAppHost.Production, new[] { "keycloak-admin-password", "keycloak-database-password", "smtp-password", "smtp-username" })]
-    [InlineData(PublishedAppHost.Staging, new[] { "keycloak-admin-password", "keycloak-database-password" })]
+    [InlineData(PublishedAppHost.Production, new[] { "keycloak-admin-password", "keycloak-database-password", "keycloak-erasure-client-secret", "smtp-password", "smtp-username" })]
+    [InlineData(PublishedAppHost.Staging, new[] { "keycloak-admin-password", "keycloak-database-password", "keycloak-erasure-client-secret" })]
     public async Task Keycloak_reads_its_administrators_mail_and_database_passwords_alone(string environment, string[] expected)
     {
         var bicep = await PublishedAppHost.PublishAsync(environment, TestContext.Current.CancellationToken);
@@ -163,6 +163,33 @@ public partial class AppHostSecretAccessTests
             .ToList()
             .ShouldBe(expected, ignoreOrder: false, "Keycloak's own container should read exactly its administrator's password, the SMTP user and password, and keycloak-database-password.");
         Granted(bicep, "keycloak").ShouldBe(expected, ignoreOrder: false, $"keycloak-identity should be a Key Vault Secrets User on exactly these. It holds: {Describe(bicep.RoleAssignmentsOf("keycloak-identity"))}");
+    }
+
+    /// <summary>
+    /// #115 slice 6: the erasure client's secret administers every account, so of the services only Organisation, which
+    /// deletes an erased person's account, reads it; Keycloak, whose realm import declares the client, is the only other
+    /// reader.
+    /// </summary>
+    [Theory]
+    [InlineData(PublishedAppHost.Staging)]
+    [InlineData(PublishedAppHost.Production)]
+    public async Task Only_organisation_reads_the_erasure_client_secret(string environment)
+    {
+        var bicep = await PublishedAppHost.PublishAsync(environment, TestContext.Current.CancellationToken);
+
+        var readers = bicep.Identities()
+            .Where(identity => bicep.RoleAssignmentsOf(identity)
+                .Any(assignment => assignment.Role == KeyVaultSecretsUser && assignment.ScopeType == VaultSecret && assignment.ScopeName == "keycloak-erasure-client-secret"))
+            .Order(StringComparer.Ordinal)
+            .ToList();
+
+        readers.ShouldBe(["keycloak-identity", "organisation-identity"], ignoreOrder: false, "keycloak-erasure-client-secret administers every account: Keycloak and Organisation alone may read it.");
+        bicep.ContainerApps.ShouldContainKey("organisation");
+        PublishedBicep.SecretEntries(bicep.ContainerApps["organisation"])
+            .Where(entry => entry.VaultSecret == "keycloak-erasure-client-secret")
+            .Select(entry => entry.Identity)
+            .Distinct(StringComparer.Ordinal)
+            .ShouldBe(["organisation-identity"], ignoreOrder: false, "Organisation's own container reads the erasure client's secret, its init stage never.");
     }
 
     /// <summary>

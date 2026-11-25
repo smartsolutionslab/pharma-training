@@ -65,4 +65,13 @@ public class OrganisationEventsTests
         json.ShouldNotContain("token", Case.Insensitive);
         json.ShouldNotContain("email", Case.Insensitive);
     }
+
+    /// <summary>#115 slice 6: the local request to delete an erased person's Keycloak account carries ids only.</summary>
+    [Fact]
+    public void AccountDeletionRequestedV1_survives_the_wire()
+    {
+        var json = Wire.ShouldSurviveTheWire(new AccountDeletionRequestedV1(Guid.CreateVersion7(), Guid.CreateVersion7()));
+
+        json.ShouldNotContain("email", Case.Insensitive);
+    }
 }

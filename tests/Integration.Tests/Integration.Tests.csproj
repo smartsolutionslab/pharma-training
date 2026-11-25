@@ -39,6 +39,9 @@
     <!-- CertificationRetentionTests asks CertificateStore itself, with a keptAt of its own, whether PostgreSQL counts the
          five years around 29 February as Certificate.IsKeptByPharmaciesAt does (#53). -->
     <ProjectReference Include="../../src/Modules/Certification/Certification.Infrastructure/Certification.Infrastructure.csproj" />
+    <!-- KeycloakErasureClientTests reads the erasure client's own service account through KeycloakAccounts itself, to see
+         Organisation recognise it in what Keycloak's admin API really answers (#115). -->
+    <ProjectReference Include="../../src/Modules/Organisation/Organisation.Infrastructure/Organisation.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

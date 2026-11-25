@@ -18,7 +18,8 @@ public static class AuthProxy
 {
     private const string Name = "auth";
 
-    private const string Realm = "pharma-training";
+    /// <summary>The realm the application signs in with.</summary>
+    internal const string Realm = "pharma-training";
 
     // YARP's image (mcr.microsoft.com/dotnet/nightly/yarp) by tag and digest (the security review of #114): Aspire's default
     // tag, 2.3-preview, moves with every nightly build. Dependabot cannot see an image named in C#, so a new one is pinned

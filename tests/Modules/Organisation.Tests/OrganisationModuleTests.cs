@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Mail;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Infrastructure;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Tests;
 
@@ -62,6 +63,29 @@ public class OrganisationModuleTests
 
         services.ShouldContain(service => service.ServiceType == typeof(IMailSender), "Organisation registers no IMailSender");
         services.ShouldContain(service => service.ServiceType == typeof(IFrontendLinks), "Organisation registers no IFrontendLinks");
+    }
+
+    /// <summary>#115 slice 6: Organisation deletes an erased person's Keycloak account through the admin API, with the settings the AppHost passes.</summary>
+    [Fact]
+    public void The_module_registers_keycloak_accounts()
+    {
+        var services = new ServiceCollection().AddLogging();
+        services.AddSingleton<Microsoft.Extensions.AI.IChatClient>(_ => new SmartSolutionsLab.PharmaTraining.Tests.Fakes.FakeChatClient("unused"));
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:database"] = "Host=localhost",
+                ["Keycloak:Accounts:Address"] = "http://keycloak.internal:8080",
+                ["Keycloak:Accounts:Realm"] = "pharma-training",
+                ["Keycloak:Accounts:ClientId"] = "pharma-training-erasure",
+                ["Keycloak:Accounts:ClientSecret"] = "erasure-client-secret-0123456789abcdef",
+            })
+            .Build();
+        new OrganisationModule().AddServices(services, configuration);
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        scope.ServiceProvider.GetService<IAccounts>().ShouldBeOfType<KeycloakAccounts>("the module registered no IAccounts over Keycloak");
     }
 
     private static IConfiguration Configuration() => new ConfigurationBuilder()
