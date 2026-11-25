@@ -114,6 +114,27 @@ public class DraftNextVersionTests
         drafted.Error.Status.ShouldBe(HttpStatusCode.Conflict);
     }
 
+    /// <summary>
+    /// The draft runs in the transaction that holds its copied reviewers (#115). A commit that lost aborts that
+    /// transaction, so it is rolled back before the number is looked up again; otherwise the lookup would fail in the
+    /// aborted transaction and answer 500 instead of 409.
+    /// </summary>
+    [Fact]
+    public async Task A_next_version_that_lost_the_race_rolls_back_before_it_looks_the_number_up_again()
+    {
+        var store = new InMemoryCourseVersionStore();
+        var source = Published();
+        store.Stored.Add(source);
+        var lostRace = Substitute.For<IEditorialUnitOfWork>();
+        lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(Failure(LostRaces.Deadlocked("40P01")));
+
+        var drafted = await Handler(store, lostRace).HandleAsync(new DraftNextVersion(source.Id, Editor), TestContext.Current.CancellationToken);
+
+        drafted.IsFailure.ShouldBeTrue();
+        drafted.Error.Status.ShouldBe(HttpStatusCode.Conflict);
+        await lostRace.Received(1).RollbackAsync(Arg.Any<CancellationToken>());
+    }
+
     [Fact]
     public async Task The_next_version_is_saved_with_TryCommitAsync()
     {
