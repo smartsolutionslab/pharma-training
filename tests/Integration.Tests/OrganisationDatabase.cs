@@ -360,6 +360,25 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         return day is DBNull ? null : (DateOnly)day;
     }
 
+    /// <summary>The pharmacy row's version (<c>xmin</c>), which every update of the row moves on.</summary>
+    public async Task<long> PharmacyRowVersionAsync(Guid pharmacy, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("SELECT xmin::text::bigint FROM organisation.pharmacies WHERE id = @id", connection);
+        command.Parameters.AddWithValue("id", pharmacy);
+        return (long)(await command.ExecuteScalarAsync(cancellationToken) ?? throw new InvalidOperationException($"There is no pharmacy {pharmacy}."));
+    }
+
+    /// <summary>The invitation version the membership's mail was recorded for, or null while none was.</summary>
+    public async Task<int?> InvitationMailedForAsync(Guid membership, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("SELECT invitation_mailed_for FROM organisation.memberships WHERE id = @id", connection);
+        command.Parameters.AddWithValue("id", membership);
+        var mailedFor = await command.ExecuteScalarAsync(cancellationToken) ?? throw new InvalidOperationException($"There is no membership {membership}.");
+        return mailedFor is DBNull ? null : (int)mailedFor;
+    }
+
     /// <summary>The number of the pharmacy's memberships, whatever their status.</summary>
     public async Task<long> MembershipsOfAsync(Guid pharmacy, CancellationToken cancellationToken)
     {

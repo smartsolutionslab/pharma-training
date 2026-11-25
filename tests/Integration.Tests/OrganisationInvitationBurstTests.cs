@@ -5,8 +5,9 @@ using System.Text.Json;
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 
 /// <summary>
-/// Many invitations of one pharmacy at once. Each mail request's consumer commits a token hash on the pharmacy, which
-/// moves its row version, so the consumers race one another. However the races fall, each request ends either mailed
+/// Many invitations of one pharmacy at once. The invitations race one another on the pharmacy's row version; each mail
+/// request's consumer commits its token hash on its own membership's row (docs/adr/0037). However the races fall, each
+/// request ends either mailed
 /// exactly once, or dead-lettered and not mailed (to be replayed), and no invitee is ever mailed twice. How many were
 /// dead-lettered depends on timing, so it is written to the test's output rather than asserted.
 /// </summary>
@@ -87,7 +88,8 @@ public class OrganisationInvitationBurstTests(AspireFixture aspire)
 
     /// <summary>
     /// Invites the address as an employee and answers the membership. The invitations race one another on the
-    /// pharmacy's row version, and so do the mail consumers' commits; on the sender's row they wait for each other (#369).
+    /// pharmacy's row version (the mail consumers' commits no longer do, docs/adr/0037); on the sender's row they wait for
+    /// each other (#369).
     /// An invite that loses a race on the pharmacy is told 409 organisation.pharmacy-changed and is asked again, as a
     /// manager would.
     /// </summary>
