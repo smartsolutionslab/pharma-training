@@ -13,7 +13,10 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Assessment.Application.Comman
 /// ago, is announced by <see cref="AnnouncementSweepPass"/> as the submit would have announced it (AttemptsExhaustedV1,
 /// the same mapping, with the course of its examination), with its marker, in a commit of its own. The marker guarantees
 /// that a lock whose announcement left is never announced again, so Learning, which notes each lock by its
-/// EventIdentifier (docs/adr/0025), sees one; Compliance orders it by the sweep's OccurredAt (docs/adr/0023).
+/// EventIdentifier (docs/adr/0025), sees one; Compliance orders it by the sweep's OccurredAt (docs/adr/0023). This sweep
+/// runs independently of the sweep of failures (<see cref="ReannounceTestFailures.ReannounceTestFailuresHandler"/>), so
+/// after a lost commit AttemptsExhaustedV1 can leave before the same attempt's TestFailedV1, where a submit sends them
+/// in stream order; a consumer must not assume that order.
 /// </summary>
 public sealed class ReannounceExhaustionsHandler(
     IUnannouncedExaminationEvents<ExaminationExhausted> unannounced,

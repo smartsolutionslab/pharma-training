@@ -14,7 +14,10 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Assessment.Application.Comman
 /// <see cref="AnnouncementSweepPass"/>: a failed one is announced as the submit would have announced it (TestFailedV1,
 /// the same mapping, with the attempt's number from its examination), with its marker, in a commit of its own. A passed
 /// one is announced by its ExaminationPassed, which the sweep of passes looks after, so it gets its marker alone and is
-/// never read again. One that cannot be read or mapped is skipped, as in every sweep.
+/// never read again. One that cannot be read or mapped is skipped, as in every sweep. This sweep runs independently of
+/// the sweep of locks (<see cref="ReannounceExhaustions.ReannounceExhaustionsHandler"/>), so after a lost commit the
+/// attempt's AttemptsExhaustedV1 can leave before its TestFailedV1, where a submit sends them in stream order; a
+/// consumer must not assume that order.
 /// </summary>
 public sealed class ReannounceTestFailuresHandler(
     IUnannouncedExaminationEvents<AttemptSubmitted> unannounced,
