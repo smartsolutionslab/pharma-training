@@ -16,7 +16,7 @@ partial class OrganisationModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261124010310_AddInvitationRecipientsAndSenders";
+    public override string LastMigrationId => "20261125054827_GuardInvitationsByTheirMembership";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -96,7 +96,8 @@ partial class OrganisationModelSnapshot : ModelSnapshot
 
                 b.Property<int?>("InvitationMailedFor")
                     .HasColumnType("integer")
-                    .HasColumnName("invitation_mailed_for");
+                    .HasColumnName("invitation_mailed_for")
+                    .HasAnnotation("PharmaTraining:ChangesOnlyItsOwnersRowVersion", true);
 
                 b.Property<DateTimeOffset?>("InvitationRequestedAt")
                     .HasColumnType("timestamp with time zone")
@@ -132,6 +133,12 @@ partial class OrganisationModelSnapshot : ModelSnapshot
                     .HasMaxLength(20)
                     .HasColumnType("character varying(20)")
                     .HasColumnName("role");
+
+                b.Property<uint>("RowVersion")
+                    .IsConcurrencyToken()
+                    .ValueGeneratedOnAddOrUpdate()
+                    .HasColumnType("xid")
+                    .HasColumnName("xmin");
 
                 b.Property<DateTimeOffset?>("StartedAt")
                     .HasColumnType("timestamp with time zone")
@@ -245,6 +252,8 @@ partial class OrganisationModelSnapshot : ModelSnapshot
                             .IsUnique();
 
                         b1.ToTable("invitation_links", "organisation");
+
+                        b1.HasAnnotation("PharmaTraining:ChangesOnlyItsOwnersRowVersion", true);
 
                         b1.WithOwner()
                             .HasForeignKey("MembershipId");

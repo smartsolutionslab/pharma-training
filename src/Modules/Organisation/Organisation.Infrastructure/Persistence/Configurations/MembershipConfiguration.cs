@@ -20,6 +20,10 @@ public sealed class MembershipConfiguration : IEntityTypeConfiguration<Membershi
 
         builder.ToTable("memberships");
         builder.HasKey(membership => membership.Id);
+        // An invitation's links and its mail record are checked against the membership's own row, not the pharmacy's: the
+        // mail consumer saving them races only with a change to this invitation, never with a second invitation that loaded
+        // the pharmacy before it (docs/adr/0036). Every other change under the pharmacy still moves the pharmacy's row.
+        builder.HasRowVersion();
         // The identifier and the value objects map to their backing values by convention (module.ddd-depth: strict).
         builder.Property(membership => membership.Id).HasColumnName("id").ValueGeneratedNever();
         builder.Property<PharmacyId>(PharmacyId).HasColumnName("pharmacy_id").IsRequired();
@@ -28,7 +32,7 @@ public sealed class MembershipConfiguration : IEntityTypeConfiguration<Membershi
         builder.Property(membership => membership.InvitationVersion).HasColumnName("invitation_version").HasDefaultValue(InvitationVersion.First).IsRequired();
         // Rows from before versions were kept are each at version 1: no change was ever announced for them.
         builder.Property(membership => membership.Version).HasColumnName("version").HasDefaultValue(MembershipVersion.First).IsRequired();
-        builder.Property(membership => membership.InvitationMailedFor).HasColumnName("invitation_mailed_for");
+        builder.Property(membership => membership.InvitationMailedFor).HasColumnName("invitation_mailed_for").ChangesOnlyItsOwnersRowVersion();
         builder.Property(membership => membership.InvitationExpiresAt).HasColumnName("invitation_expires_at");
         // When the newest invitation mail was requested, from which the renew cooldown runs; rows from before it was kept
         // have none, and so no cooldown (docs/adr/0004).
@@ -63,6 +67,7 @@ public sealed class MembershipConfiguration : IEntityTypeConfiguration<Membershi
             // Backed twice: a token is 256 random bits, so no two links share a hash, and the database refuses one that would;
             // an accept finds the one membership a link opens by it.
             links.HasIndex(link => link.Hash).IsUnique();
+            links.ChangesOnlyItsOwnersRowVersion();
         });
         builder.Navigation(membership => membership.InvitationLinks)
             .HasField("invitationLinks")
