@@ -36,6 +36,17 @@ internal static class CertificationIssuing
         return (await CertificatesAsync(aspire, passed.AttemptId, cancellationToken)).ShouldHaveSingleItem();
     }
 
+    /// <summary>
+    /// A fresh pharmacy the client's user manages from now on: other tests issue <c>developer</c> certificates of their own,
+    /// back-dated as far as last year, which an export of a membership started long ago would rightly hold. Answers its id.
+    /// </summary>
+    public static async Task<Guid> ManagedPharmacyAsync(AspireFixture aspire, HttpClient manager, CancellationToken cancellationToken)
+    {
+        var pharmacy = Guid.CreateVersion7();
+        await CertificationDatabase.DeliverAsync(aspire, StartedType, StartedIn(LearningSessions.SubjectOf(manager), pharmacy, "Manager", TimeProvider.System.GetUtcNow()), cancellationToken);
+        return pharmacy;
+    }
+
     public static StartedEvent Started(Guid personId, DateTimeOffset startedAt) =>
         new(Guid.CreateVersion7(), personId, Guid.CreateVersion7(), $"Anna Berger {Guid.CreateVersion7()}", "Pta", "Employee", startedAt, NewMetadata());
 

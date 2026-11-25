@@ -1023,6 +1023,7 @@ export const en: MessageSchema = {
       'identity-incomplete': 'Your sign-in names no person. Please sign in again.',
       'invalid-export-period':
         'Choose a start and an end date; the end may not be before the start and at most five years after it.',
+      'invalid-retention-period': 'The retention period is a whole number of years from {min} to {max}.',
       'invalid-sample-name': "A sample's name has 1 to {max} characters and must not be blank.",
       'pharmacy-not-found': 'You are not a member of this pharmacy, or it does not exist.',
       'sample-not-found': 'This sample does not exist.',
