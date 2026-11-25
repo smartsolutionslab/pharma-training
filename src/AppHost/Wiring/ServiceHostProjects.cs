@@ -1,22 +1,16 @@
-using System.Reflection;
 using System.Xml.Linq;
 using Aspire.Hosting.ApplicationModel;
+using Aspire.Hosting.Dotnet;
 
 namespace Aspire.Hosting;
 
 /// <summary>
 /// Every module's service host, found by convention (src/Services/*/Host/Host.csproj) so that adding a module only
-/// creates files. Each is named after its module, as its project file records it, and is added through the
-/// <c>Projects.*</c> type the Aspire SDK generates for it (AppHost.csproj), whose metadata suppresses the build: Aspire
-/// then starts it with <c>dotnet run --no-build</c> from the AppHost's own build, instead of building it again.
+/// creates files. Each is named after its module, as its project file records it, and is added by its path: Aspire builds
+/// every .NET project the AppHost runs in one coordinated build before it starts them, so the AppHost references none.
 /// </summary>
 public static class ServiceHostProjects
 {
-    // AddBuilt<TProject>, made for the type found at run time. It calls Aspire's AddProject<TProject> directly, so a change
-    // to that signature fails the build here instead of at start-up.
-    private static readonly MethodInfo AddBuiltOfMetadata = typeof(ServiceHostProjects)
-        .GetMethod(nameof(AddBuilt), BindingFlags.NonPublic | BindingFlags.Static)!;
-
     public static IEnumerable<(string Module, string ProjectPath)> ServiceHosts(this IDistributedApplicationBuilder builder)
     {
         ArgumentNullException.ThrowIfNull(builder);
@@ -74,39 +68,14 @@ public static class ServiceHostProjects
         throw new InvalidOperationException($"{projectPath} says <{name}> is \"{value}\"; it is true or false, or absent for false.");
     }
 
-    /// <summary>Adds the service host at <paramref name="projectPath"/> through its generated project metadata.</summary>
-    public static IResourceBuilder<ProjectResource> AddServiceHost(this IDistributedApplicationBuilder builder, string name, string projectPath)
+    /// <summary>Adds the service host at <paramref name="projectPath"/>, which Aspire builds before it starts it.</summary>
+    public static IResourceBuilder<DotnetProjectResource> AddServiceHost(this IDistributedApplicationBuilder builder, string name, string projectPath)
     {
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentException.ThrowIfNullOrWhiteSpace(projectPath);
 
-        var metadata = MetadataTypeOf(Path.GetFullPath(projectPath));
-        // DoNotWrapExceptions: an exception Aspire throws arrives as itself, not wrapped in TargetInvocationException.
-        return (IResourceBuilder<ProjectResource>)AddBuiltOfMetadata.MakeGenericMethod(metadata)
-            .Invoke(null, BindingFlags.DoNotWrapExceptions, binder: null, [builder, name], culture: null)!;
-    }
-
-    private static IResourceBuilder<ProjectResource> AddBuilt<TProject>(IDistributedApplicationBuilder builder, string name)
-        where TProject : IProjectMetadata, new() =>
-        builder.AddProject<TProject>(name);
-
-    private static Type MetadataTypeOf(string projectPath)
-    {
-        var matches = typeof(ServiceHostProjects).Assembly.GetTypes()
-            .Where(type => type.Namespace == "Projects" && type.IsClass && !type.IsAbstract && typeof(IProjectMetadata).IsAssignableFrom(type))
-            .Where(type => Activator.CreateInstance(type) is IProjectMetadata metadata
-                && string.Equals(Path.GetFullPath(metadata.ProjectPath), projectPath, StringComparison.Ordinal))
-            .ToList();
-
-        // The SDK generates one type per referenced project, so a path names one type or, with a stale build, none. More
-        // than one is a guard: only a Host.csproj referenced twice, with different AspireProjectMetadataTypeName values.
-        return matches.Count switch
-        {
-            1 => matches[0],
-            0 => throw new InvalidOperationException($"The AppHost's build generated no Projects.* type for {projectPath}; AppHost.csproj references every src/Services/*/Host/Host.csproj, so build the AppHost again."),
-            _ => throw new InvalidOperationException($"The AppHost's build generated more than one Projects.* type for {projectPath} ({string.Join(", ", matches.Select(type => type.Name))}); reference it once in AppHost.csproj."),
-        };
+        return builder.AddDotnetProject(name, Path.GetFullPath(projectPath));
     }
 
     private static string ModuleName(string projectPath) =>

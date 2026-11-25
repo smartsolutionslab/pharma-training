@@ -1,3 +1,4 @@
+using Aspire.Hosting.Dotnet;
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Testing;
@@ -35,8 +36,9 @@ public class AppHostParametersTests
         var keyValue = await key.GetValueAsync(timeout.Token);
         var deployment = await Parameter(builder, Deployment).GetValueAsync(timeout.Token);
 
-        endpoint.ShouldBe(string.Empty);
-        keyValue.ShouldBe(string.Empty);
+        // Optional (Aspire 17): unset, each resolves to no value, and a service is given no variable for it.
+        endpoint.ShouldBeNull();
+        keyValue.ShouldBeNull();
         key.Secret.ShouldBeTrue();
         deployment.ShouldBe("gpt-5-mini");
     }
@@ -193,9 +195,9 @@ public class AppHostParametersTests
         }
     }
 
-    private static bool SendsMail(ProjectResource service) => ServiceHostMail.SendsMail(service.GetProjectMetadata().ProjectPath);
+    private static bool SendsMail(DotnetProjectResource service) => ServiceHostMail.SendsMail(service.GetProjectMetadata().ProjectPath);
 
-    private static bool LinksToFrontend(ProjectResource service) => ServiceHostMail.LinksToFrontend(service.GetProjectMetadata().ProjectPath);
+    private static bool LinksToFrontend(DotnetProjectResource service) => ServiceHostMail.LinksToFrontend(service.GetProjectMetadata().ProjectPath);
 
     /// <summary>The service's environment as the model sets it, values unresolved.</summary>
     private static async Task<Dictionary<string, string>> EnvironmentAsync(IResource service, CancellationToken cancellationToken)
@@ -217,8 +219,8 @@ public class AppHostParametersTests
         builder.Resources.OfType<ParameterResource>().Single(parameter => parameter.Name == name);
 
     /// <summary>Every module's service host, found as the AppHost finds them: src/Services/*/Host/Host.csproj.</summary>
-    private static List<ProjectResource> Services(IDistributedApplicationTestingBuilder builder) =>
-        [.. builder.Resources.OfType<ProjectResource>()
+    private static List<DotnetProjectResource> Services(IDistributedApplicationTestingBuilder builder) =>
+        [.. builder.Resources.OfType<DotnetProjectResource>()
             .Where(project => IsServiceHost(project.GetProjectMetadata().ProjectPath))
             .OrderBy(project => project.Name, StringComparer.Ordinal)];
 

@@ -26,7 +26,7 @@ jobs:
       matrix:
         environment: [staging, production]
     # A placeholder for every parameter the AppHost declares without a default. The Bicep declares each one and never holds
-    # its value, so a placeholder changes nothing it writes. Aspire 13.6.5's `publish --non-interactive` writes the Bicep
+    # its value, so a placeholder changes nothing it writes. Aspire's (13.6.5 and 17.0) `publish --non-interactive` writes the Bicep
     # without them; they guard against a CLI that prompts for a missing value, as the in-process test harness does. They
     # reach the AppHost (the CLI runs natively, never through dnx), so each passes the checks publishing makes
     # (PublishedParameterChecks): database-roles-key is 32 characters or more, frontend-url an https origin.
@@ -53,7 +53,7 @@ jobs:
       # CLI through dnx here: dnx is a /bin/sh script, and dash drops every Parameters__* variable, whose names hold '-'.
       - name: The Aspire CLI
         run: |
-          dotnet tool install aspire.cli --version 13.6.5 --tool-path "$HOME/.aspire/bin"
+          dotnet tool install aspire.cli --version 17.0.0 --tool-path "$HOME/.aspire/bin"
           "$HOME/.aspire/bin/aspire" setup --install-path "$HOME/.aspire"
       # Every service has a broker password of its own, messaging-<module>-password (docs/adr/0011): a placeholder for each
       # service host, found as the AppHost finds them (src/Services/*/Host/Host.csproj and its <ModuleName>), so no module
@@ -100,7 +100,7 @@ jobs:
         run: grep -h -A3 '\[FAIL\]' "$HOME"/.aspire/logs/*.log || true
       - name: Both publishes wrote the same files
         run: diff -r "publish/${{ matrix.environment }}/first" "publish/${{ matrix.environment }}/second"
-      # Every file the publish wrote: Aspire 13.6.5's main.bicep does not name the Container App modules (each service,
+      # Every file the publish wrote: Aspire's (13.6.5 and 17.0) main.bicep does not name the Container App modules (each service,
       # Keycloak, the broker), so compiling main.bicep alone would skip exactly the modules this AppHost customises.
       - name: The Bicep compiles
         run: |

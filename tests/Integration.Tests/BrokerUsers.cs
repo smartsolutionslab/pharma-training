@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using Aspire.Hosting.Dotnet;
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Testing;
@@ -35,8 +36,8 @@ public static class BrokerUsers
     public const ushort AccessRefused = 403;
 
     /// <summary>Every module's service host in the running application, found as the AppHost finds them.</summary>
-    public static List<ProjectResource> ServiceHosts(AspireFixture aspire) =>
-        [.. Model(aspire).Resources.OfType<ProjectResource>()
+    public static List<DotnetProjectResource> ServiceHosts(AspireFixture aspire) =>
+        [.. Model(aspire).Resources.OfType<DotnetProjectResource>()
             .Where(project => IsServiceHost(project.GetProjectMetadata().ProjectPath))
             .OrderBy(project => project.Name, StringComparer.Ordinal)];
 
@@ -146,12 +147,59 @@ public static class BrokerUsers
         }
     }
 
-    /// <summary>The alternatives of a permission pattern written <c>^(a|b|c)$</c>, unescaped; it fails on any other shape.</summary>
+    /// <summary>
+    /// Every name a permission pattern written <c>^(...)$</c> matches, in ordinal order: its escaped characters, groups and
+    /// alternatives expanded, so <c>^(a|b\.(c|d))$</c> is <c>a</c>, <c>b.c</c> and <c>b.d</c>. It fails on any other
+    /// shape, an unescaped character that would match more than itself included.
+    /// </summary>
     public static List<string> Alternatives(string pattern)
     {
         pattern.ShouldStartWith("^(", Case.Sensitive, $"The permission '{pattern}' is not anchored at its start as ^(...)$.");
         pattern.ShouldEndWith(")$", Case.Sensitive, $"The permission '{pattern}' is not anchored at its end as ^(...)$.");
-        return [.. pattern[2..^2].Split('|').Select(System.Text.RegularExpressions.Regex.Unescape).Order(StringComparer.Ordinal)];
+        var position = 1;
+        var names = Expand(pattern, ref position);
+        position.ShouldBe(pattern.Length - 1, $"The permission '{pattern}' does not end where its outer group does.");
+        return [.. names.Order(StringComparer.Ordinal)];
+    }
+
+    /// <summary>Expands the group that starts at <paramref name="position"/>, its <c>(</c>, and moves past its <c>)</c>.</summary>
+    private static List<string> Expand(string pattern, ref int position)
+    {
+        pattern[position].ShouldBe('(', $"The permission '{pattern}' has no group at {position}.");
+        position++;
+        List<string> names = [];
+        List<string> alternative = [string.Empty];
+        while (true)
+        {
+            pattern.Length.ShouldBeGreaterThan(position, $"The permission '{pattern}' has a group that never ends.");
+            var character = pattern[position];
+            switch (character)
+            {
+                case '\\':
+                    var escaped = pattern[position + 1].ToString();
+                    alternative = [.. alternative.Select(prefix => prefix + escaped)];
+                    position += 2;
+                    break;
+                case '(':
+                    var inner = Expand(pattern, ref position);
+                    alternative = [.. alternative.SelectMany(prefix => inner.Select(rest => prefix + rest))];
+                    break;
+                case '|':
+                    names.AddRange(alternative);
+                    alternative = [string.Empty];
+                    position++;
+                    break;
+                case ')':
+                    names.AddRange(alternative);
+                    position++;
+                    return names;
+                default:
+                    "^$.[]{}*+?".ShouldNotContain(character, $"The permission '{pattern}' holds an unescaped '{character}', which matches more than itself.");
+                    alternative = [.. alternative.Select(prefix => prefix + character)];
+                    position++;
+                    break;
+            }
+        }
     }
 
     private static DistributedApplicationModel Model(AspireFixture aspire) =>

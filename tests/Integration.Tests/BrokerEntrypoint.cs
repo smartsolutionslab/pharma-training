@@ -70,7 +70,9 @@ public static class BrokerEntrypoint
         }
 
         arguments.Count.ShouldBe(2, $"The broker's arguments are {string.Join(" ", arguments)}");
-        var reference = $"{(image.Registry is null ? string.Empty : image.Registry + "/")}{image.Image}:{image.Tag}";
+        // The broker is pinned by digest (Messaging.cs), so its image is named <image>@sha256:<digest>, as Aspire names it.
+        var version = image.SHA256 is null ? $":{image.Tag}" : $"@sha256:{image.SHA256}";
+        var reference = $"{(image.Registry is null ? string.Empty : image.Registry + "/")}{image.Image}{version}";
         return (reference, arguments[1].ShouldBeOfType<string>());
     }
 

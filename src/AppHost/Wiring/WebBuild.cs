@@ -1,4 +1,5 @@
 using Aspire.Hosting.ApplicationModel;
+using Aspire.Hosting.Dotnet;
 
 namespace Aspire.Hosting;
 
@@ -17,7 +18,7 @@ public static class WebBuild
 
     private const string WebRoot = "./wwwroot";
 
-    public static IResourceBuilder<ProjectResource> PublishWithTheWebBuild(this IResourceBuilder<ProjectResource> edge)
+    public static IResourceBuilder<DotnetProjectResource> PublishWithTheWebBuild(this IResourceBuilder<DotnetProjectResource> edge)
     {
         ArgumentNullException.ThrowIfNull(edge);
 

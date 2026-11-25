@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Aspire.Hosting.Dotnet;
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Testing;
@@ -35,7 +36,7 @@ public class AppHostMigrationsTests
         foreach (var service in services)
         {
             var module = service.Name;
-            var runner = builder.Resources.OfType<ProjectResource>().SingleOrDefault(project => project.Name == $"{module}-migrations");
+            var runner = builder.Resources.OfType<DotnetProjectResource>().SingleOrDefault(project => project.Name == $"{module}-migrations");
             runner.ShouldNotBeNull($"{module} has no {module}-migrations project in run mode.");
             Path.GetFileName(runner.GetProjectMetadata().ProjectPath).ShouldBe("MigrationRunner.csproj");
 
@@ -74,7 +75,7 @@ public class AppHostMigrationsTests
     public async Task The_migrations_image_is_published_once_as_a_job_nobody_starts()
     {
         await using var builder = await PublishedAppHost.ModelAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
-        var runners = builder.Resources.OfType<ProjectResource>()
+        var runners = builder.Resources.OfType<DotnetProjectResource>()
             .Where(project => Path.GetFileName(project.GetProjectMetadata().ProjectPath) == "MigrationRunner.csproj")
             .Select(project => project.Name)
             .ToList();
@@ -319,7 +320,7 @@ public class AppHostMigrationsTests
     }
 
     /// <summary>A resource's environment as its model sets it, values unresolved.</summary>
-    private static async Task<Dictionary<string, object>> EnvironmentAsync(IDistributedApplicationTestingBuilder builder, ProjectResource resource)
+    private static async Task<Dictionary<string, object>> EnvironmentAsync(IDistributedApplicationTestingBuilder builder, DotnetProjectResource resource)
     {
         var context = new EnvironmentCallbackContext(builder.ExecutionContext, resource, cancellationToken: TestContext.Current.CancellationToken);
         foreach (var callback in resource.Annotations.OfType<EnvironmentCallbackAnnotation>())

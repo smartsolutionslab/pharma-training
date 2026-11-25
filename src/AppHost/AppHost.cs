@@ -50,18 +50,17 @@ builder.AddPrivateNetwork(secrets, postgres, storage);
 var messaging = builder.AddMessaging(secrets);
 // Models deployed in your own Azure OpenAI resource in an EU region, through its OpenAI v1 endpoint; nothing is
 // provisioned (docs/adr/0001). Set the endpoint (https://<resource>.openai.azure.com) and the key with dotnet user-secrets
-// (Parameters:azure-openai-endpoint, Parameters:azure-openai-api-key) or the deployment's secret store. Both are read from
-// configuration when they are needed and are empty when unset, so nothing waits for them: the application starts without a
-// model, and a request that needs it answers 503 model-not-configured. Neither value is published to a manifest as a
-// default. The deployment must name one in that resource (gpt-5 for harder questions).
-var azureOpenAIEndpoint = builder.AddParameter("azure-openai-endpoint", () => builder.Configuration["Parameters:azure-openai-endpoint"] ?? string.Empty, publishValueAsDefault: false);
+// (Parameters:azure-openai-endpoint, Parameters:azure-openai-api-key) or the deployment's secret store. Both are optional:
+// unset, nothing waits for them and the services are not given them, so the application starts without a model, and a
+// request that needs it answers 503 model-not-configured. Neither value is published to a manifest as a default. The deployment must name one in that resource (gpt-5 for harder questions).
+var azureOpenAIEndpoint = builder.AddParameter("azure-openai-endpoint").AsOptional();
 var azureOpenAIDeployment = builder.AddParameter("azure-openai-deployment", "gpt-5-mini", publishValueAsDefault: true);
 // Published, the key is a secret the deployment must set, kept in the Key Vault (docs/adr/0006).
 var azureOpenAIApiKey = secrets.IsPublishing
     ? secrets.Secret("azure-openai-api-key")
-    : builder.AddParameter("azure-openai-api-key", () => builder.Configuration["Parameters:azure-openai-api-key"] ?? string.Empty, publishValueAsDefault: false, secret: true);
+    : builder.AddParameter("azure-openai-api-key", secret: true).AsOptional();
 
-var host = builder.AddProject<Projects.Edge>("host")
+var host = builder.AddDotnetProject("host", "../Edge/Edge.csproj")
     // With the auth proxy, the one entry from outside once published; the services, Keycloak and the broker stay inside.
     .WithExternalHttpEndpoints()
     .WithHttpHealthCheck("/health")
@@ -129,8 +128,10 @@ foreach (var (module, project) in builder.ServiceHosts())
         // Its own database, as its module's role once published (Wiring/Databases.cs).
         .WithModuleDatabase(database, secrets)
         .WaitFor(database)
+        // No wait for Keycloak: the service reads its metadata on the first request that carries a token, so it starts
+        // beside Keycloak instead of after it. The edge waits for Keycloak, so the application is healthy once a user can
+        // sign in.
         .WithReference(keycloak.GetEndpoint("http"))
-        .WaitFor(keycloak)
         .WithEnvironment("Authentication__Authority", authority)
         .WithMessaging(messaging, secrets, module)
         .WithBlobContainer(blobs, "blobs")
@@ -173,5 +174,8 @@ if (frontendUrlParameter is not null)
     storage.AllowBrowserAccessFromEdge(host, frontendUrlParameter);
     host.WithEnvironment("Edge__BlobEndpoint", storage.Resource.BlobEndpoint);
 }
+
+// In run mode every container outlives the AppHost, so a restart finds them running and healthy (Wiring/ContainerLifetimes.cs).
+builder.KeepContainersBetweenRuns();
 
 builder.Build().Run();

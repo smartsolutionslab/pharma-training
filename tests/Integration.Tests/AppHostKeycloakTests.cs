@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Aspire.Hosting.Dotnet;
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Testing;
@@ -56,7 +57,7 @@ public partial class AppHostKeycloakTests
 
         builder.Resources.Select(resource => resource.Name).ShouldNotContain(Auth, "Run mode has an auth proxy; the browser reaches Keycloak's own endpoint.");
 
-        var host = builder.Resources.OfType<ProjectResource>().Single(resource => resource.Name == "host");
+        var host = builder.Resources.OfType<DotnetProjectResource>().Single(resource => resource.Name == "host");
         var authority = (await EnvironmentAsync(builder.ExecutionContext, host))["Authentication__Authority"].ShouldBeOfType<ReferenceExpression>();
         authority.Format.ShouldBe("{0}/realms/pharma-training");
         var endpoint = authority.ValueProviders.ShouldHaveSingleItem().ShouldBeOfType<EndpointReference>();
