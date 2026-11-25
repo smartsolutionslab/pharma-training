@@ -60,7 +60,9 @@ public sealed partial class AspireFixture : IAsyncLifetime
     {
         using var timeout = new CancellationTokenSource(StartupTimeout);
         var started = TimeProvider.System.GetTimestamp();
-        var builder = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AppHost>(timeout.Token);
+        // The demo seeder (#457) is off for the run: no test sees demo data or waits for it. DemoSeederTests runs it as a
+        // process of its own against this run's endpoints.
+        var builder = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AppHost>(["--DemoSeeder:Enabled=false"], timeout.Token);
 
         // Tests start from empty containers: never a developer's data, never a password a volume remembers. The containers
         // end with the run, never a developer's persistent ones, which run mode keeps between runs (ContainerLifetimes).

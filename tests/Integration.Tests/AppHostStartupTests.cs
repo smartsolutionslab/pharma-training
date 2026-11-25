@@ -41,8 +41,9 @@ public class AppHostStartupTests
     {
         await using var builder = await RunModeAsync();
 
+        // The service hosts, found as the AppHost finds them (src/Services/<Module>/Host/Host.csproj).
         var services = builder.Resources.OfType<DotnetProjectResource>()
-            .Where(project => project.Name != "host" && !project.Name.EndsWith("-migrations", StringComparison.Ordinal))
+            .Where(project => IsServiceHost(project.GetProjectMetadata().ProjectPath))
             .ToList();
 
         services.ShouldNotBeEmpty();
@@ -78,6 +79,15 @@ public class AppHostStartupTests
 
         image.Image.ShouldBe("library/rabbitmq");
         image.SHA256.ShouldBe(PublishedBrokerDigest);
+    }
+
+    private static bool IsServiceHost(string projectPath)
+    {
+        var host = Path.GetDirectoryName(projectPath);
+        var services = Path.GetDirectoryName(Path.GetDirectoryName(host));
+        return Path.GetFileName(projectPath) == "Host.csproj"
+            && Path.GetFileName(host) == "Host"
+            && Path.GetFileName(services) == "Services";
     }
 
     private static async Task<IDistributedApplicationTestingBuilder> RunModeAsync()

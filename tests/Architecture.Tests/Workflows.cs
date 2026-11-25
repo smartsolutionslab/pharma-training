@@ -37,6 +37,18 @@ public static class Workflows
         return (root, null);
     }
 
+    /// <summary>The file name of every workflow in <c>.github/workflows</c>, in order.</summary>
+    public static IReadOnlyList<string> Names()
+    {
+        var directory = Path.Combine(RepositoryRoot(), ".github", "workflows");
+        return Directory.Exists(directory)
+            ? [.. Directory.EnumerateFiles(directory)
+                .Where(path => path.EndsWith(".yml", StringComparison.Ordinal) || path.EndsWith(".yaml", StringComparison.Ordinal))
+                .Select(path => Path.GetFileName(path))
+                .Order(StringComparer.Ordinal)]
+            : [];
+    }
+
     /// <summary>The value under <paramref name="key"/> when <paramref name="node"/> is a mapping that has it.</summary>
     public static YamlNode? Value(YamlNode? node, string key) =>
         node is YamlMappingNode mapping && mapping.Children.TryGetValue(new YamlScalarNode(key), out var value) ? value : null;

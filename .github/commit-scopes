@@ -13,3 +13,5 @@ integration
 ci
 board
 deps
+seeder
+edge

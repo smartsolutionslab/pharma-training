@@ -131,6 +131,12 @@ jobs:
             done
             exit 1
           fi
+          # The realm import pastes this secret into realm.json as it is (ADR 0041); a quote or backslash would break the
+          # import or add keys to the client, so only letters and digits pass, 32 or more of them. Never print the value.
+          if ! printenv 'Parameters__keycloak-erasure-client-secret' | grep -Eqx '[A-Za-z0-9]{32,}'; then
+            echo "::error::Parameters__keycloak-erasure-client-secret must be 32 or more letters and digits (openssl rand -hex 32)."
+            exit 1
+          fi
           "$HOME/.aspire/bin/aspire" deploy --apphost src/AppHost/AppHost.csproj -e staging --non-interactive --nologo --clear-cache
 
   # The MVP 1 flow against what staging now runs (#130, x1-staging.yml). Production does not wait for it: its reviewers see
@@ -139,6 +145,14 @@ jobs:
     needs: staging
     uses: ./.github/workflows/x1-staging.yml
     # No secrets: the run's job reads its two from the staging environment it names, and inherit would hand it every
+    # secret this workflow holds (StagingEndToEndRunTakesNoSecretsFromItsCaller).
+
+  # The demo data on what staging now runs (#457, demo-seed-staging.yml, docs/adr/0042). Staging alone: production neither
+  # calls nor waits for it (DemoSeedRunsOnStagingAlone).
+  demo-seed:
+    needs: staging
+    uses: ./.github/workflows/demo-seed-staging.yml
+    # No secrets: the seed's job reads its three from the staging environment it names, and inherit would hand it every
     # secret this workflow holds (StagingEndToEndRunTakesNoSecretsFromItsCaller).
 
   production:
@@ -247,6 +261,12 @@ jobs:
             for name in $missing; do
               echo "::error::Parameters__$name is empty; set the environment's secret or variable $(printf '%s' "$name" | tr '[:lower:]-' '[:upper:]_')."
             done
+            exit 1
+          fi
+          # The realm import pastes this secret into realm.json as it is (ADR 0041); a quote or backslash would break the
+          # import or add keys to the client, so only letters and digits pass, 32 or more of them. Never print the value.
+          if ! printenv 'Parameters__keycloak-erasure-client-secret' | grep -Eqx '[A-Za-z0-9]{32,}'; then
+            echo "::error::Parameters__keycloak-erasure-client-secret must be 32 or more letters and digits (openssl rand -hex 32)."
             exit 1
           fi
           "$HOME/.aspire/bin/aspire" deploy --apphost src/AppHost/AppHost.csproj -e production --non-interactive --nologo --clear-cache

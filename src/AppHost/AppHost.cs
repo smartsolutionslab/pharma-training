@@ -67,6 +67,10 @@ var host = builder.AddDotnetProject("host", "../Edge/Edge.csproj")
     .WithReference(keycloak.GetEndpoint("http"))
     .WaitFor(keycloak)
     .WithEnvironment("Authentication__Authority", authority)
+    // The deployment its /api/config.json reports, which the demo seeder checks before it sends a credential to staging:
+    // published, the environment's name (aspire publish -e staging|production); in run mode, never one of those
+    // (Wiring/DemoSeeding.cs, docs/adr/0042).
+    .WithDeploymentName()
     // Published, the client's address is the one the ingress appended to X-Forwarded-For (Wiring/IngressForwarding.cs).
     .TrustsTheIngressHop()
     // Published, the edge's image carries the web app's build and serves it; the browser reads its identity provider from
@@ -93,6 +97,9 @@ if (builder.ExecutionContext.IsRunMode)
     // The browser PUTs uploads and GETs files with the signed URLs, straight to blob storage, from the web app's origin alone.
     storage.AllowBrowserAccessFrom(web);
     frontendUrl = ReferenceExpression.Create($"{web.GetEndpoint("http")}");
+    // Demo data, seeded through the edge once it, Keycloak and the web app are up; off with DemoSeeder:Enabled=false
+    // (Wiring/DemoSeeding.cs, docs/adr/0042).
+    builder.AddDemoSeeder(host, web, keycloak);
 }
 else
 {

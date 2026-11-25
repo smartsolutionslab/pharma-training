@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The demo data seeder (#457), against a scripted fake of the edge, Keycloak and Mailpit behind one HttpMessageHandler. -->
+  <PropertyGroup>
+    <RootNamespace>SmartSolutionsLab.PharmaTraining.DemoSeeder.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/DemoSeeder/DemoSeeder.csproj" />
+  </ItemGroup>
+
+</Project>

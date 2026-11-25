@@ -86,21 +86,48 @@ public class KeycloakErasureClientTests(AspireFixture aspire)
         using var identity = keycloak.Identity();
         var subject = Subject(await ClientTokenAsync(identity, cancellationToken));
         using var http = keycloak.Identity();
-        var accounts = new KeycloakAccounts(
-            http,
-            Options.Create(new KeycloakAccountsSettings
-            {
-                Address = identity.BaseAddress.ShouldNotBeNull().AbsoluteUri,
-                Realm = KeycloakAdmin.Realm,
-                ClientId = ClientId,
-                ClientSecret = await keycloak.ParameterAsync(SecretParameter, cancellationToken),
-            }));
+        var accounts = await AccountsAsync(http, cancellationToken);
 
         var found = await accounts.FindAsync(PersonId.From(subject), cancellationToken);
 
         found.HasValue.ShouldBeTrue("the token's subject is a user of the realm, the client's service account");
         found.Value.IsServiceAccount.ShouldBeTrue("an erasure naming the client's service account must not delete it");
         (await keycloak.UserStatusAsync(subject, cancellationToken)).ShouldBe(HttpStatusCode.OK);
+    }
+
+    /// <summary>
+    /// A delegated realm administrator holds a <c>realm-management</c> client role and no staff realm role. Read through
+    /// Organisation's own <see cref="KeycloakAccounts"/> with the erasure client's own permissions, which must let it find
+    /// that client and read the user's roles of it, the account is marked as staff, so an erasure never deletes it; a
+    /// user without such a role is not.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_delegated_realm_administrator_is_marked_as_staff(bool delegated)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var user = await keycloak.CreateUserAsync($"erasure-delegated-{Guid.CreateVersion7():N}@example.com", emailVerified: true, cancellationToken);
+        try
+        {
+            if (delegated)
+            {
+                await keycloak.GrantClientRoleAsync(user, "realm-management", "view-users", cancellationToken);
+            }
+
+            using var http = keycloak.Identity();
+            var accounts = await AccountsAsync(http, cancellationToken);
+
+            var found = await accounts.FindAsync(PersonId.From(user), cancellationToken);
+
+            found.HasValue.ShouldBeTrue("the user exists in the realm");
+            found.Value.HoldsStaffRole.ShouldBe(delegated, "a realm-management client role, and only one, marks a delegated realm administrator");
+            found.Value.IsServiceAccount.ShouldBeFalse();
+        }
+        finally
+        {
+            await keycloak.DeleteUserAsync(user, cancellationToken);
+        }
     }
 
     [Fact]
@@ -124,6 +151,18 @@ public class KeycloakErasureClientTests(AspireFixture aspire)
         using var problem = JsonDocument.Parse(body);
         problem.RootElement.GetProperty("error").GetString().ShouldBeOneOf("unauthorized_client", "invalid_client");
     }
+
+    /// <summary>Organisation's own reader over Keycloak's admin API, as the erasure client, at Keycloak's internal address.</summary>
+    private async Task<KeycloakAccounts> AccountsAsync(HttpClient http, CancellationToken cancellationToken) =>
+        new(
+            http,
+            Options.Create(new KeycloakAccountsSettings
+            {
+                Address = http.BaseAddress.ShouldNotBeNull().AbsoluteUri,
+                Realm = KeycloakAdmin.Realm,
+                ClientId = ClientId,
+                ClientSecret = await keycloak.ParameterAsync(SecretParameter, cancellationToken),
+            }));
 
     private static async Task<HttpResponseMessage> MintAsync(HttpClient identity, string secret, CancellationToken cancellationToken)
     {
