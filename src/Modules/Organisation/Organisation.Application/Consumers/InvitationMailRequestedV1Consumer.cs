@@ -88,7 +88,7 @@ public sealed partial class InvitationMailRequestedV1Consumer(
         var link = links.LinkTo($"/invitations/accept#token={token.Value}");
         var invited = pharmacy.Memberships.Single(m => m.Id == membership);
         var version = invited.InvitationVersion;
-        var mail = InvitationMails.Compose(pharmacy.Name, invited.Email, issued.Value, link);
+        var mail = InvitationMails.Compose(pharmacy.Name, invited.Email!, issued.Value, link); // an open invitation holds its address
 
         // A lost race throws, so Wolverine retries and the retry reloads the pharmacy; nothing is mailed for it.
         await unitOfWork.CommitAsync(cancellationToken);

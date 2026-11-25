@@ -10,7 +10,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Tests.Pharmacies
 
 /// <summary>
 /// An invitation's links and its mail record are checked against the membership's own row version, not the pharmacy's
-/// (docs/adr/0036): the mail consumer saving them leaves the pharmacy's row alone, so a second invitation that loaded the
+/// (docs/adr/0037): the mail consumer saving them leaves the pharmacy's row alone, so a second invitation that loaded the
 /// pharmacy before it does not lose a race nobody ran. Every other change under the pharmacy still updates its row.
 /// </summary>
 public sealed class InvitationMailRowVersionTests : IDisposable

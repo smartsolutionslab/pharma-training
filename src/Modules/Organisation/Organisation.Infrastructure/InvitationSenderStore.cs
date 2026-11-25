@@ -45,4 +45,14 @@ public sealed class InvitationSenderStore(OrganisationDbContext context) : IInvi
 
         return Success(await context.Set<InvitationSender>().SingleAsync(sender => sender.Id == id, cancellationToken));
     }
+
+    public async Task RemoveAsync(PersonId id, CancellationToken cancellationToken)
+    {
+        Ensure.That(id).IsNotNull();
+
+        if (await context.Set<InvitationSender>().SingleOrDefaultAsync(sender => sender.Id == id, cancellationToken) is { } sender)
+        {
+            context.Remove(sender);
+        }
+    }
 }

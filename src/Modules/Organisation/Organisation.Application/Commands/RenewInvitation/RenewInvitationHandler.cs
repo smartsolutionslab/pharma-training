@@ -49,7 +49,8 @@ public sealed class RenewInvitationHandler(
         // Counted on the renewed membership's address and on the manager who renews, in the same commit as the pharmacy
         // (docs/adr/0004).
         var renewed = pharmacy.Memberships.Single(membership => membership.Id == command.Membership);
-        var counted = await InvitationMailCounting.CountAsync(recipients, senders, recipientAndSenderLimits, logger, command.Pharmacy, renewed.Email, command.By, now, cancellationToken);
+        // An open invitation always holds its address; only an erasure forgets one, and only of a closed membership.
+        var counted = await InvitationMailCounting.CountAsync(recipients, senders, recipientAndSenderLimits, logger, command.Pharmacy, renewed.Email!, command.By, now, cancellationToken);
         if (counted.IsFailure)
         {
             // Ends the transaction the count opened now, so a request waiting for a row it held goes on at once rather

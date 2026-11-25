@@ -35,7 +35,7 @@ public static class RowVersion
 
     /// <summary>
     /// Keeps changes to this property to the row version of the entity that holds it, when the entity has one: saving
-    /// only this property checks and moves that entity's row, not its aggregate root's (docs/adr/0036).
+    /// only this property checks and moves that entity's row, not its aggregate root's (docs/adr/0037).
     /// </summary>
     public static PropertyBuilder<TProperty> ChangesOnlyItsOwnersRowVersion<TProperty>(this PropertyBuilder<TProperty> builder)
     {
@@ -46,7 +46,7 @@ public static class RowVersion
 
     /// <summary>
     /// Keeps adding, changing and removing these owned entities to the nearest row version above them: saving them checks
-    /// and moves their owner's row (or the first owner up with a row version), not its aggregate root's (docs/adr/0036).
+    /// and moves their owner's row (or the first owner up with a row version), not its aggregate root's (docs/adr/0037).
     /// </summary>
     public static OwnedNavigationBuilder<TOwner, TDependent> ChangesOnlyItsOwnersRowVersion<TOwner, TDependent>(this OwnedNavigationBuilder<TOwner, TDependent> builder)
         where TOwner : class

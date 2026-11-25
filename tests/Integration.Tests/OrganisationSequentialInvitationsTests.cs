@@ -5,7 +5,7 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 
 /// <summary>
 /// Two invitations of one pharmacy, one after the other (#405). The first one's mail consumer issues its link and records
-/// its mail on the membership's own row version, not the pharmacy's (docs/adr/0036), so it never makes a second invitation
+/// its mail on the membership's own row version, not the pharmacy's (docs/adr/0037), so it never makes a second invitation
 /// that loaded the pharmacy before it lose a race nobody ran.
 /// </summary>
 [Collection(InvitationSenders.Name)]

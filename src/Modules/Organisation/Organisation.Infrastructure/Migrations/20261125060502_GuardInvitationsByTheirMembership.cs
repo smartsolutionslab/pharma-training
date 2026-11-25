@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Infrastructure.Migrations;
 
 /// <inheritdoc />
-public partial class _20261125054827_GuardInvitationsByTheirMembership : Migration
+public partial class _20261125060502_GuardInvitationsByTheirMembership : Migration
 {
     /// <inheritdoc />
     protected override void Up(MigrationBuilder migrationBuilder)

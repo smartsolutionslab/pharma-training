@@ -1,4 +1,4 @@
-# 0036: An invitation's links and mail record race only with their membership
+# 0037: An invitation's links and mail record race only with their membership
 
 **Status:** Accepted (#405). Narrows ADR 0002 for these two changes: everything else under a pharmacy still moves the pharmacy's row version.
 

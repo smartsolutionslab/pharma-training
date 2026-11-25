@@ -14,7 +14,7 @@ namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Persistence;
 /// <para>
 /// A change marked <c>ChangesOnlyItsOwnersRowVersion</c> (an owned entity type, or a modified entry whose every changed
 /// property is marked) goes up only to the first principal with a row version, updates that one and stops there, so it
-/// races only with changes to that entity and not with every change to its root (docs/adr/0036).
+/// races only with changes to that entity and not with every change to its root (docs/adr/0037).
 /// </para>
 /// </summary>
 public sealed class RowVersionBump : SaveChangesInterceptor

@@ -15,5 +15,6 @@ public sealed class OrganisationPolicies : IModulePolicies
         Ensure.That(policies).IsNotNull();
 
         policies.AddPolicy(OrganisationPolicyNames.Manage, policy => policy.RequireRole("manager"));
+        policies.AddPolicy(OrganisationPolicyNames.ErasePersons, policy => policy.RequireRole("support"));
     }
 }

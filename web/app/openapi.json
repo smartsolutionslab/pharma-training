@@ -2484,6 +2484,66 @@
         }
       }
     },
+    "/organisation/erasures": {
+      "post": {
+        "tags": [
+          "Host"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestOrganisationErasureRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organisation/erasures/{id}": {
+      "get": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganisationErasureDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/organisation/pharmacies/{id}/invitations": {
       "get": {
         "tags": [
@@ -5151,6 +5211,63 @@
           }
         }
       },
+      "OrganisationErasureDto": {
+        "required": [
+          "id",
+          "requestedAt",
+          "requestedBy",
+          "confirmationMailed",
+          "confirmationHandledAt",
+          "steps"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "requestedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "requestedBy": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "confirmationMailed": {
+            "type": "boolean"
+          },
+          "confirmationHandledAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrganisationErasureStepDto"
+            }
+          }
+        }
+      },
+      "OrganisationErasureStepDto": {
+        "required": [
+          "module",
+          "completedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "module": {
+            "type": "string"
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "OrganisationJobFunction": {
         "enum": [
           "Pharmacist",
@@ -6050,6 +6167,18 @@
               "string"
             ],
             "format": "int32"
+          }
+        }
+      },
+      "RequestOrganisationErasureRequest": {
+        "required": [
+          "personId"
+        ],
+        "type": "object",
+        "properties": {
+          "personId": {
+            "type": "string",
+            "format": "uuid"
           }
         }
       },

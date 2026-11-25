@@ -40,7 +40,7 @@ public static class MembershipMappings
 
         return new PharmacyInvitationDto(
             membership.Id.Value,
-            membership.Email.Value,
+            membership.Email!.Value, // an invitation holds its address; only a closed membership's is forgotten
             membership.JobFunction.ToDto(),
             membership.Role.ToDto(),
             expiresAt.Value);

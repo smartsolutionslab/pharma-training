@@ -25,6 +25,15 @@ public interface IPharmacyStore
     /// </summary>
     Task<Option<Pharmacy>> LoadByInvitationAsync(InvitationTokenHash hash, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Every pharmacy, unpaged, where the person has a membership or one of the addresses is invited, with its
+    /// memberships, for a command: what it changes is saved when the unit of work commits. A person's pharmacies are few.
+    /// </summary>
+    Task<IReadOnlyList<Pharmacy>> LoadTouchingPersonAsync(PersonId person, IReadOnlyCollection<EmailAddress> addresses, CancellationToken cancellationToken);
+
+    /// <summary>The distinct addresses of the person's memberships, in every pharmacy, as stored.</summary>
+    Task<IReadOnlyList<EmailAddress>> AddressesOfAsync(PersonId person, CancellationToken cancellationToken);
+
     /// <summary>One page of the pharmacies where the person is an active member, by name, with their memberships.</summary>
     Task<PagedResult<Pharmacy>> ListWithActiveMemberAsync(PersonId person, Page page, PageSize pageSize, CancellationToken cancellationToken);
 
