@@ -7,6 +7,7 @@ using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Memberships;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Tests.Certificates;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Tests.Exports;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Tests.Memberships;
+using SmartSolutionsLab.PharmaTraining.Modules.Certification.Tests.Retention;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Tests.Queries;
 
@@ -22,9 +23,11 @@ public class ExportPharmacyCertificatesTests
     private static readonly DateOnly From = new(2025, 1, 1);
     private static readonly DateOnly To = new(2025, 12, 31);
     private static readonly DateTimeOffset LongAgo = new(2020, 1, 1, 0, 0, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset MidJune2025 = new(2025, 6, 15, 10, 0, 0, TimeSpan.Zero);
 
     private readonly InMemoryMembershipStore memberships = new();
     private readonly InMemoryCertificateStore certificates;
+    private readonly InMemoryPharmacyRetentionStore retention = new();
     private readonly InMemoryBlobReads blobs = new();
     private readonly FakeTimeProvider time = new(new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero));
     private readonly PharmacyId pharmacy = PharmacyId.From(Guid.CreateVersion7());
@@ -483,6 +486,100 @@ public class ExportPharmacyCertificatesTests
         (await ExportedAsync()).Count.ShouldBe(2000);
     }
 
+    /// <summary>#391: a pharmacy that chose no period keeps the default, five years, to the instant.</summary>
+    [Fact]
+    public async Task Without_a_setting_the_pharmacy_keeps_five_years()
+    {
+        Start(manager, MembershipRole.Manager, LongAgo);
+        var certificate = IssueToMember(MidJune2025);
+
+        time.SetUtcNow(MidJune2025.AddYears(5).AddTicks(-1));
+        (await ExportedAsync()).ShouldBe([certificate.Id]);
+
+        time.SetUtcNow(MidJune2025.AddYears(5));
+        (await ExportedAsync()).ShouldBeEmpty();
+    }
+
+    /// <summary>#391: a pharmacy that keeps seven years exports a certificate until seven years after its issue, to the instant.</summary>
+    [Fact]
+    public async Task A_pharmacy_that_keeps_seven_years_exports_a_certificate_until_seven_years_after_its_issue()
+    {
+        Start(manager, MembershipRole.Manager, LongAgo);
+        retention.Keep(pharmacy, 7);
+        var certificate = IssueToMember(MidJune2025);
+
+        time.SetUtcNow(MidJune2025.AddYears(7).AddTicks(-1));
+        (await ExportedAsync()).ShouldBe([certificate.Id]);
+
+        time.Advance(TimeSpan.FromTicks(1));
+        (await ExportedAsync()).ShouldBeEmpty();
+    }
+
+    /// <summary>#391: the period is retroactive; lengthening it shows a certificate past the default again.</summary>
+    [Fact]
+    public async Task A_longer_period_shows_certificates_past_the_default_again()
+    {
+        Start(manager, MembershipRole.Manager, LongAgo);
+        var certificate = IssueToMember(MidJune2025);
+        time.SetUtcNow(MidJune2025.AddYears(6));
+        (await ExportedAsync()).ShouldBeEmpty();
+
+        retention.Keep(pharmacy, 7);
+
+        (await ExportedAsync()).ShouldBe([certificate.Id]);
+    }
+
+    /// <summary>#391: a pharmacy that keeps two years leaves out a certificate three years old and exports one a year and a half old.</summary>
+    [Fact]
+    public async Task A_pharmacy_that_keeps_two_years_leaves_out_a_certificate_three_years_old()
+    {
+        Start(manager, MembershipRole.Manager, LongAgo);
+        retention.Keep(pharmacy, 2);
+        var member = PersonId.From(Guid.CreateVersion7());
+        Start(member, MembershipRole.Employee, LongAgo);
+        var threeYearsOld = Issue(member, MidJune2025);
+        var recent = Issue(member, new DateTimeOffset(2026, 12, 15, 10, 0, 0, TimeSpan.Zero));
+        time.SetUtcNow(MidJune2025.AddYears(3));
+
+        var exported = await ExportedAsync(new ExportPharmacyCertificates(pharmacy.Value, manager.Value, new DateOnly(2025, 1, 1), new DateOnly(2027, 12, 31)));
+
+        exported.ShouldBe([recent.Id]);
+        exported.ShouldNotContain(threeYearsOld.Id);
+    }
+
+    /// <summary>#391: only the exporting pharmacy's own period applies, not another's its holder also worked in.</summary>
+    [Fact]
+    public async Task Another_pharmacys_period_does_not_apply()
+    {
+        var other = PharmacyId.From(Guid.CreateVersion7());
+        Start(manager, MembershipRole.Manager, LongAgo);
+        retention.Keep(other, 7);
+        var member = PersonId.From(Guid.CreateVersion7());
+        Start(member, MembershipRole.Employee, LongAgo);
+        Start(member, MembershipRole.Employee, LongAgo, other);
+        Issue(member, MidJune2025);
+        var younger = Issue(member, new DateTimeOffset(2025, 12, 1, 10, 0, 0, TimeSpan.Zero));
+        time.SetUtcNow(MidJune2025.AddYears(5).AddDays(30));
+
+        (await ExportedAsync()).ShouldBe([younger.Id]);
+    }
+
+    /// <summary>
+    /// #391: certificates past the pharmacy's own period are left out before the 2000 are counted: 2000 kept and five
+    /// past a two-year period, though within the default five years, are exported, not refused as too large.
+    /// </summary>
+    [Fact]
+    public async Task Certificates_past_the_pharmacys_period_do_not_count_towards_the_limit()
+    {
+        Start(manager, MembershipRole.Manager, LongAgo);
+        retention.Keep(pharmacy, 2);
+        time.SetUtcNow(new DateTimeOffset(2027, 6, 15, 10, 0, 0, TimeSpan.Zero));
+        IssueMany(CertificateExportArchive.MaxCertificates, new DateTimeOffset(2025, 7, 1, 9, 0, 0, TimeSpan.Zero));
+        IssueMany(5, new DateTimeOffset(2025, 3, 1, 9, 0, 0, TimeSpan.Zero));
+
+        (await ExportedAsync()).Count.ShouldBe(2000);
+    }
+
     [Fact]
     public async Task No_query_is_refused()
     {
@@ -492,7 +589,7 @@ public class ExportPharmacyCertificatesTests
     private static DateOnly? DateOf(string? text) =>
         text is null ? null : DateOnly.ParseExact(text, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
 
-    private ExportPharmacyCertificatesHandler Handler() => new(memberships, certificates, blobs, time);
+    private ExportPharmacyCertificatesHandler Handler() => new(memberships, certificates, retention, blobs, time);
 
     private Task<Result<CertificateExportArchive, ApiError>> HandleAsync(Guid caller) =>
         HandleAsync(new ExportPharmacyCertificates(pharmacy.Value, caller, From, To));
@@ -529,6 +626,14 @@ public class ExportPharmacyCertificatesTests
         var certificate = ExportCertificates.Stored(holder, issuedAt);
         certificates.Stored.Add(certificate);
         return certificate;
+    }
+
+    /// <summary>A member of the pharmacy since long ago is issued a certificate at the instant.</summary>
+    private Certificate IssueToMember(DateTimeOffset issuedAt)
+    {
+        var member = PersonId.From(Guid.CreateVersion7());
+        Start(member, MembershipRole.Employee, LongAgo);
+        return Issue(member, issuedAt);
     }
 
     private void IssueMany(int count) => IssueMany(count, new DateTimeOffset(2025, 1, 1, 9, 0, 0, TimeSpan.Zero));

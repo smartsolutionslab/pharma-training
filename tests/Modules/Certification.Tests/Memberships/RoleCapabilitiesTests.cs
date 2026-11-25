@@ -21,6 +21,18 @@ public class RoleCapabilitiesTests
     }
 
     [Fact]
+    public void A_manager_may_manage_the_pharmacys_retention()
+    {
+        MembershipRole.Manager.Grants(Capability.ManageRetention).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void An_employee_may_not_manage_retention()
+    {
+        MembershipRole.Employee.Grants(Capability.ManageRetention).ShouldBeFalse();
+    }
+
+    [Fact]
     public void No_role_grants_a_capability_that_is_not_defined()
     {
         MembershipRole.Manager.Grants((Capability)99).ShouldBeFalse();

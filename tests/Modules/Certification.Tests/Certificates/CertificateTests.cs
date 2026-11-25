@@ -1,5 +1,6 @@
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Certificates;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Certificates.Events;
+using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Retention;
 
 // Certification — behaviour of the Certificate aggregate.
 
@@ -77,7 +78,7 @@ public class CertificateTests
     {
         var at = Timestamp.From(DateTimeOffset.Parse(now, System.Globalization.CultureInfo.InvariantCulture));
 
-        Issue(RecurrenceInterval.Yearly).IsKeptByPharmaciesAt(at).ShouldBe(kept);
+        Issue(RecurrenceInterval.Yearly).IsKeptByPharmaciesAt(at, RetentionPeriod.Default).ShouldBe(kept);
     }
 
     /// <summary>
@@ -99,7 +100,50 @@ public class CertificateTests
     {
         var certificate = Issue(RecurrenceInterval.Yearly, Timestamp.From(DateTimeOffset.Parse(issuedAt, System.Globalization.CultureInfo.InvariantCulture)));
 
-        certificate.IsKeptByPharmaciesAt(Timestamp.From(DateTimeOffset.Parse(now, System.Globalization.CultureInfo.InvariantCulture))).ShouldBe(kept);
+        certificate.IsKeptByPharmaciesAt(Timestamp.From(DateTimeOffset.Parse(now, System.Globalization.CultureInfo.InvariantCulture)), RetentionPeriod.Default).ShouldBe(kept);
+    }
+
+    /// <summary>
+    /// #391: a pharmacy keeps a certificate for its own period, to the instant, as it keeps it for the default five years.
+    /// Issued at 23:30 UTC on 1 March 2027.
+    /// </summary>
+    [Theory]
+    [InlineData(7, "2034-03-01T23:29:59.9999999Z", true)]
+    [InlineData(7, "2034-03-01T23:30:00Z", false)]
+    [InlineData(2, "2029-03-01T23:29:59.9999999Z", true)]
+    [InlineData(2, "2029-03-01T23:30:00Z", false)]
+    [InlineData(30, "2057-03-01T23:29:59.9999999Z", true)]
+    [InlineData(30, "2057-03-01T23:30:00Z", false)]
+    public void A_pharmacy_keeps_a_certificate_for_its_own_period_to_the_instant(int years, string now, bool kept)
+    {
+        Issue(RecurrenceInterval.Yearly).IsKeptByPharmaciesAt(At(now), RetentionPeriod.From(years)).ShouldBe(kept);
+    }
+
+    /// <summary>#391: the period applies to every certificate, whenever it was chosen: one six years old is kept at seven years, not at five.</summary>
+    [Fact]
+    public void A_certificate_six_years_old_is_kept_at_seven_years_and_not_at_five()
+    {
+        var certificate = Issue(RecurrenceInterval.Yearly);
+        var sixYearsLater = Timestamp.From(PassedAt.Value.AddYears(6));
+
+        certificate.IsKeptByPharmaciesAt(sixYearsLater, RetentionPeriod.From(7)).ShouldBeTrue();
+        certificate.IsKeptByPharmaciesAt(sixYearsLater, RetentionPeriod.Default).ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// #391: a period counts 29 February as <see cref="DateTimeOffset.AddYears"/> does, which PostgreSQL's
+    /// <c>make_interval</c> repeats: four years on it is 29 February again, seven years on it is 28 February.
+    /// </summary>
+    [Theory]
+    [InlineData(4, "2032-02-29T00:59:59.9999999Z", true)]
+    [InlineData(4, "2032-02-29T01:00:00Z", false)]
+    [InlineData(7, "2035-02-28T00:59:59.9999999Z", true)]
+    [InlineData(7, "2035-02-28T01:00:00Z", false)]
+    public void A_period_counts_29_February_as_AddYears_does(int years, string now, bool kept)
+    {
+        var certificate = Issue(RecurrenceInterval.Yearly, At("2028-02-29T01:00:00Z"));
+
+        certificate.IsKeptByPharmaciesAt(At(now), RetentionPeriod.From(years)).ShouldBe(kept);
     }
 
     [Fact]
@@ -107,6 +151,9 @@ public class CertificateTests
     {
         Should.Throw<GuardException>(() => VerificationCode.From("abc"));
     }
+
+    private static Timestamp At(string instant) =>
+        Timestamp.From(DateTimeOffset.Parse(instant, System.Globalization.CultureInfo.InvariantCulture));
 
     private static Certificate Issue(RecurrenceInterval validity) => Issue(validity, PassedAt);
 

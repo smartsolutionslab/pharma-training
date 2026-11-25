@@ -16,7 +16,7 @@ partial class CertificationModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261124145003_AddMembershipRolesAndChanges";
+    public override string LastMigrationId => "20261125081729_AddPharmacyRetentionPeriods";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -239,6 +239,25 @@ partial class CertificationModelSnapshot : ModelSnapshot
                     .HasName("pk_membership_endings");
 
                 b.ToTable("membership_endings", "certification");
+            });
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Retention.PharmacyRetention", b =>
+            {
+                b.Property<Guid>("Id")
+                    .HasColumnType("uuid")
+                    .HasColumnName("pharmacy_id");
+
+                b.Property<int>("Period")
+                    .HasColumnType("integer")
+                    .HasColumnName("years");
+
+                b.HasKey("Id")
+                    .HasName("pk_pharmacy_retention_periods");
+
+                b.ToTable("pharmacy_retention_periods", "certification", t =>
+                    {
+                        t.HasCheckConstraint("ck_pharmacy_retention_periods_years", "years BETWEEN 2 AND 30");
+                    });
             });
 
         modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Samples.Sample", b =>
