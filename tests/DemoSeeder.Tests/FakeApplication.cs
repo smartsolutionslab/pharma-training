@@ -18,11 +18,22 @@ public sealed class FakeApplication : HttpMessageHandler
 
     public static readonly Uri WebOrigin = new("http://localhost:5173");
 
+    /// <summary>Staging's edge, as the staging workflow names it (vars.FRONTEND_URL): the same fake edge at an https origin.</summary>
+    public static readonly Uri StagingEdgeUrl = new("https://staging.example.com");
+
+    /// <summary>Staging's Keycloak behind the auth proxy (vars.X1_KEYCLOAK_URL): the same fake Keycloak at an https origin.</summary>
+    public static readonly Uri StagingKeycloakUrl = new("https://auth.staging.example.com");
+
+    /// <summary>Staging's Mailpit (vars.X1_MAILPIT_URL): the same fake Mailpit at an https origin.</summary>
+    public static readonly Uri StagingMailpitUrl = new("https://mailpit.staging.example.com");
+
     private readonly Lock gate = new();
 
     private readonly List<RecordedRequest> requests = [];
 
     private readonly List<Failure> failures = [];
+
+    private readonly List<Thrown> thrown = [];
 
     private readonly FakeTimeProvider time;
 
@@ -76,6 +87,19 @@ public sealed class FakeApplication : HttpMessageHandler
         }
     }
 
+    /// <summary>
+    /// The next request with the method whose path (the edge's without <c>/api</c>) matches the template throws
+    /// <paramref name="exception"/> from the handler, once, and changes nothing: a timeout (HttpClient's
+    /// <see cref="TaskCanceledException"/>) or another exception the run did not expect at that step.
+    /// </summary>
+    public void ThrowOnce(HttpMethod method, string template, Exception exception)
+    {
+        lock (gate)
+        {
+            thrown.Add(new Thrown(method.Method, template, exception));
+        }
+    }
+
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
@@ -84,8 +108,19 @@ public sealed class FakeApplication : HttpMessageHandler
         var cookie = request.Headers.TryGetValues("Cookie", out var cookies) ? string.Join("; ", cookies) : string.Empty;
         lock (gate)
         {
-            var name = origin == EdgeUrl ? "edge" : origin == KeycloakUrl ? "keycloak" : origin == MailpitUrl ? "mailpit" : origin.ToString();
+            var name = origin == EdgeUrl || origin == StagingEdgeUrl ? "edge"
+                : origin == KeycloakUrl || origin == StagingKeycloakUrl ? "keycloak"
+                : origin == MailpitUrl || origin == StagingMailpitUrl ? "mailpit"
+                : origin.ToString();
             var path = name == "edge" && uri.AbsolutePath.StartsWith("/api/", StringComparison.Ordinal) ? uri.AbsolutePath[4..] : uri.AbsolutePath;
+            var throwing = thrown.FirstOrDefault(each => each.Method == request.Method.Method && FakeRoute.TryMatch(each.Template, path, out _));
+            if (throwing is not null)
+            {
+                thrown.Remove(throwing);
+                requests.Add(new RecordedRequest(name, request.Method.Method, path, uri.Query, throwing.Template, null, body, cookie, time.GetUtcNow(), 0));
+                throw throwing.Exception;
+            }
+
             var failure = failures.FirstOrDefault(each => each.Method == request.Method.Method && FakeRoute.TryMatch(each.Template, path, out _));
             FakeAnswer answer;
             if (failure is not null && failure.After == 0)
@@ -122,4 +157,6 @@ public sealed class FakeApplication : HttpMessageHandler
 
         public int After { get; set; } = after;
     }
+
+    private sealed record Thrown(string Method, string Template, Exception Exception);
 }

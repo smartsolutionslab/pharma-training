@@ -68,18 +68,11 @@ public class TargetGuardTests
         harness.Output.ToString().ShouldNotContain("a-password", Case.Sensitive, "The refusal names the key, never its value.");
     }
 
-    /// <summary>Settings as the staging workflow sets them: the client credentials and the users' password, no administrator.</summary>
+    /// <summary>Settings as the staging workflow sets them (<see cref="StagingSettings"/>), with another edge.</summary>
     private static void Staging(Dictionary<string, string?> values, string edgeUrl)
     {
-        values["DemoSeeder:Target"] = "Staging";
+        StagingSettings.Apply(values);
         values["DemoSeeder:EdgeUrl"] = edgeUrl;
         values["DemoSeeder:WebOrigin"] = edgeUrl;
-        values["DemoSeeder:MailpitUrl"] = "https://mail.staging.example.com";
-        values["DemoSeeder:ClientId"] = "demo-seeder";
-        values["DemoSeeder:ClientSecret"] = "client-secret";
-        values["DemoSeeder:UserPassword"] = "users-password";
-        values.Remove("DemoSeeder:AdminUser");
-        values.Remove("DemoSeeder:AdminPassword");
-        values.Remove("DemoSeeder:KeycloakAdminUrl");
     }
 }
