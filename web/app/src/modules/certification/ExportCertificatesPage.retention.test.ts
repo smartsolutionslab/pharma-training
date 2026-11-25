@@ -579,6 +579,37 @@ describe('a period the form refuses', () => {
     await waitFor(() => expect(yearsField()).toHaveValue(12));
     expect(saves().filter((save) => save.url.includes(dom.id))).toEqual([]);
     expect(state.periods[dom.id]).toEqual({ years: 12, isDefault: false });
+    // Dropped by the switch, the press says nothing: its period did not change (#454).
+    expect(notify.failure).not.toHaveBeenCalled();
+  });
+
+  // A press checked while the pharmacy goes to another and back sends nothing (the field started again), but its
+  // period did not change, so it says nothing either (#454).
+  test('a press while the pharmacy goes to another and back, its period unchanged, sends nothing and says nothing', async () => {
+    const user = userEvent.setup();
+    state.memberships = [markt, dom];
+    const pinia = createPinia();
+    const store = useSelectedPharmacyStore(pinia);
+    store.choose(markt.id);
+    const { queryClient } = await renderPage({ pinia });
+    await section();
+    // Dom's period is in the cache already, so the switch and the way back need no read.
+    queryClient.setQueryData(getGetCertificationPharmaciesIdRetentionPeriodQueryKey(dom.id), {
+      years: 12,
+      isDefault: false,
+    });
+    await enterYears(user, '7');
+
+    const press = fireEvent.click(saveButton());
+    store.choose(dom.id);
+    await waitFor(() => expect(yearsField()).toHaveValue(12));
+    store.choose(markt.id);
+    await press;
+
+    await waitFor(() => expect(pressesChecked()).toBe('1'));
+    await waitFor(() => expect(yearsField()).toHaveValue(5));
+    expect(saves()).toEqual([]);
+    expect(notify.failure).not.toHaveBeenCalled();
   });
 
   // A press is checked before it is sent. When the period changes in that time (the read again on focus, or another
