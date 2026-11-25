@@ -87,9 +87,13 @@
       "serviceAccountsEnabled": true,
       "standardFlowEnabled": false,
       "implicitFlowEnabled": false,
-      "directAccessGrantsEnabled": false
+      "directAccessGrantsEnabled": false,
+      "fullScopeAllowed": false
     }
   ],
+  "clientScopeMappings": {
+    "realm-management": [{ "client": "pharma-training-erasure", "roles": ["manage-users"] }]
+  },
   "users": [
     {
       "username": "developer",

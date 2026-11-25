@@ -251,8 +251,14 @@ The services and Keycloak are built from images whose bases come from `mcr.micro
      -s clientAuthenticatorType=client-secret -s serviceAccountsEnabled=true -s standardFlowEnabled=false \
      -s directAccessGrantsEnabled=false -s implicitFlowEnabled=false
    ./kcadm.sh add-roles -r pharma-training --uusername service-account-pharma-training-erasure --cclientid realm-management --rolename manage-users
-   ./kcadm.sh get clients/$(./kcadm.sh get clients -r pharma-training -q clientId=pharma-training-erasure --fields id --format csv --noquotes)/client-secret -r pharma-training
+   ERASURE=$(./kcadm.sh get clients -r pharma-training -q clientId=pharma-training-erasure --fields id --format csv --noquotes)
+   MANAGEMENT=$(./kcadm.sh get clients -r pharma-training -q clientId=realm-management --fields id --format csv --noquotes)
+   ./kcadm.sh update clients/$ERASURE -r pharma-training -s fullScopeAllowed=false
+   ./kcadm.sh create clients/$ERASURE/scope-mappings/clients/$MANAGEMENT -r pharma-training -b "[$(./kcadm.sh get clients/$MANAGEMENT/roles/manage-users -r pharma-training)]"
+   ./kcadm.sh get clients/$ERASURE/client-secret -r pharma-training
    ```
+
+   The `update` and `create …/scope-mappings` lines keep the client's token to `manage-users` alone, whatever else its service account comes to hold (#462). An environment whose client already exists, created by an earlier version of this step or imported before #462, runs those four lines (the two variables, the `update`, the `create`) alone; `./kcadm.sh get clients/$ERASURE -r pharma-training --fields fullScopeAllowed` then answers `false`.
 
    Put the secret the last command shows into the environment's `KEYCLOAK_ERASURE_CLIENT_SECRET` (`gh secret set KEYCLOAK_ERASURE_CLIENT_SECRET --env <environment>`), `clear` the terminal, remove `~/.keycloak/kcadm.config`, and deploy, so Organisation reads it. The secret may delete every account of the realm: only Keycloak and Organisation read it. To rotate it, `./kcadm.sh create clients/<id>/client-secret -r pharma-training`, set the new value and deploy; an environment imported after this client existed took its secret from `KEYCLOAK_ERASURE_CLIENT_SECRET` at the import, and is rotated the same way.
 
