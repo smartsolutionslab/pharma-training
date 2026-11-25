@@ -318,11 +318,11 @@ describe('the return dialog', () => {
     ]);
   });
 
-  test('refuses 501 emoji, 1002 UTF-16 code units, as too long', async () => {
+  test('refuses 1001 emoji, 1001 characters, as too long', async () => {
     const { user, dialog, reason, confirm } = await openReturn();
 
     await user.click(reason);
-    await user.paste('\u{1F600}'.repeat(501));
+    await user.paste('\u{1F600}'.repeat(1001));
     await user.click(confirm);
 
     expect(await within(dialog).findByRole('alert')).toHaveTextContent(

@@ -9,7 +9,6 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Json;
 using Microsoft.AspNetCore.Routing;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.Net.Http.Headers;
 
@@ -40,9 +39,9 @@ public sealed class UploadEndpoints : IEndpoint
         // The body is read here rather than bound, so that a kind the converter cannot read (Text, which takes no file)
         // is refused with the module's code like a missing or undefined one, instead of the framework's bare 400. The
         // document describes it as EditorialUploadRequest, whose kind names exactly what is accepted: Pdf or Video.
-        endpoints.MapPost("/course-versions/{id:guid}/uploads", async (Guid id, HttpRequest http, IDispatcher dispatcher, CancellationToken cancellationToken) =>
+        endpoints.MapPost("/course-versions/{id:guid}/uploads", async (Guid id, HttpRequest http, IOptions<JsonOptions> json, IDispatcher dispatcher, CancellationToken cancellationToken) =>
         {
-            var request = await ReadAsync(http, cancellationToken);
+            var request = await ReadAsync(http, json.Value.SerializerOptions, cancellationToken);
             if (request is not { Kind: var kind } || !Enum.IsDefined(kind))
             {
                 return Result<EditorialChapterUploadDto, ApiError>.Failure(CourseVersionFailures.InvalidUploadKind()).ToHttpResult();
@@ -62,14 +61,13 @@ public sealed class UploadEndpoints : IEndpoint
     /// read cannot disagree. A body without a kind reads as 0, which is no kind either; the converter also reads numbers,
     /// so an undefined one is left to the caller's check.
     /// </summary>
-    private static async Task<EditorialUploadRequest?> ReadAsync(HttpRequest http, CancellationToken cancellationToken)
+    private static async Task<EditorialUploadRequest?> ReadAsync(HttpRequest http, JsonSerializerOptions options, CancellationToken cancellationToken)
     {
         if (!http.HasJsonContentType() || !TryGetEncoding(http, out var encoding))
         {
             return null;
         }
 
-        var options = http.HttpContext.RequestServices.GetRequiredService<IOptions<JsonOptions>>().Value.SerializerOptions;
         try
         {
             using var reader = new StreamReader(http.Body, encoding, detectEncodingFromByteOrderMarks: false, leaveOpen: true);

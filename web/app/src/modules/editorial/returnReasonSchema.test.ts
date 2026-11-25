@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { setLanguage, t } from '@/i18n';
 import { returnReasonSchema } from './returnReasonSchema';
 
-// The return dialog's schema (#26, ADR 0013): the reason trimmed, 1 to 1000 UTF-16 units, plain text: no control
+// The return dialog's schema (#26, ADR 0013): the reason trimmed, 1 to 1000 characters (code points), plain text: no control
 // character but tab, line feed and carriage return, no format, separator, private-use or unassigned character and no
 // lone surrogate. Markup is text like any other and kept as it is. Each message is a key, rendered with t where shown.
 
@@ -13,8 +13,8 @@ function refusals(reason: unknown): string[] {
 }
 
 describe('accepts', () => {
-  test('500 emoji, 1000 UTF-16 code units as the host counts them', () => {
-    expect(refusals('\u{1F600}'.repeat(500))).toEqual([]);
+  test('1000 emoji, 1000 characters as the host counts them', () => {
+    expect(refusals('\u{1F600}'.repeat(1000))).toEqual([]);
   });
 
   test('a reason, and hands it over trimmed', () => {
@@ -65,9 +65,9 @@ describe('refuses', () => {
     expect(refusals(` ${'a'.repeat(1001)} `)).toEqual(['editorial.workflow.returnForm.reasonTooLong']);
   });
 
-  // The host counts UTF-16 code units: an emoji outside the BMP is two.
-  test('501 emoji, 1002 UTF-16 code units, as too long', () => {
-    expect(refusals('\u{1F600}'.repeat(501))).toEqual(['editorial.workflow.returnForm.reasonTooLong']);
+  // The host counts characters (code points): an emoji outside the BMP is one, so 1000 of them pass and 1001 do not.
+  test('1001 emoji, 1001 characters, as too long', () => {
+    expect(refusals('\u{1F600}'.repeat(1001))).toEqual(['editorial.workflow.returnForm.reasonTooLong']);
   });
 
   test.each([

@@ -3,7 +3,8 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
-using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Consumers;
+using SmartSolutionsLab.PharmaTraining.Architecture.Tests.Probes;
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using Wolverine;
 using Wolverine.ErrorHandling;
 
@@ -11,10 +12,11 @@ namespace SmartSolutionsLab.PharmaTraining.Architecture.Tests;
 
 /// <summary>
 /// The Organisation service's own Wolverine failure policy, read from the host as it configures it (src/Host/Wiring,
-/// <c>AddMessaging</c>) and asked what it does on the first failure. At the cap of an invitation's links a retry cannot
-/// succeed until a manager renews the invitation, so <see cref="InvitationLinkLimitReachedException"/> goes to the dead
-/// letters at once instead of walking the retry ladder (1 … 32 s; #193's review, follow-up 2). Any other failure is
-/// still retried. Wolverine asks its rules in the order they were added and takes the first that matches, as
+/// <c>AddMessaging</c>) and asked what it does on the first failure. A failure marked <see cref="IPermanentMessageFailure"/>
+/// (at the cap of an invitation's links, a retry cannot succeed until a manager renews the invitation) goes to the dead
+/// letters at once instead of walking the retry ladder (1 … 32 s; #193's review, follow-up 2). The policy is asked with
+/// a stub of its own (<see cref="ProbePermanentFailure"/>), so this project needs no module's exception; Organisation's
+/// tests pin that its link-cap failure carries the marker (#198's review). Any other failure is still retried. Wolverine asks its rules in the order they were added and takes the first that matches, as
 /// <see cref="FirstContinuation"/> does.
 /// </summary>
 public class InvitationLinkLimitDeadLettersAtOnceTests
@@ -24,11 +26,11 @@ public class InvitationLinkLimitDeadLettersAtOnceTests
     private const string ScheduledRetry = "Wolverine.ErrorHandling.ScheduledRetryContinuation";
 
     [Fact]
-    public void The_organisation_service_dead_letters_a_reached_link_limit_on_its_first_failure_without_a_retry()
+    public void The_organisation_service_dead_letters_a_permanent_failure_on_its_first_failure_without_a_retry()
     {
         using var host = new ConfiguredHost();
 
-        var continuation = FirstContinuation(host.Failures, new InvitationLinkLimitReachedException(Guid.CreateVersion7()), attempt: 1);
+        var continuation = FirstContinuation(host.Failures, new ProbePermanentFailure(), attempt: 1);
 
         continuation.ShouldBe(MoveToErrorQueue, $"the policy: {Describe(host.Failures)}");
     }
