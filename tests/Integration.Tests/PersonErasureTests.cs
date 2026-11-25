@@ -45,6 +45,11 @@ public class PersonErasureTests(AspireFixture aspire)
     // account, so its step follows Keycloak's "not found".
     private static readonly string[] AllSteps = ["organisation", "compliance", "editorial", "learning", "certification", "keycloak"];
 
+    private static readonly string[] StepsButKeycloak = [.. AllSteps.Where(step => step != "keycloak")];
+
+    /// <summary>How long a staff account's erasure is watched, after every other step, for a step keycloak that must not come.</summary>
+    private static readonly TimeSpan StaffSettle = TimeSpan.FromSeconds(10);
+
     private static readonly Uri Erasures = new("/organisation/erasures", UriKind.Relative);
     private static readonly Uri Pharmacies = new("/organisation/pharmacies", UriKind.Relative);
     private static readonly TimeSpan StepWait = TimeSpan.FromSeconds(30);
@@ -616,6 +621,35 @@ public class PersonErasureTests(AspireFixture aspire)
         (await keycloak.UserStatusAsync(account, cancellationToken)).ShouldBe(HttpStatusCode.NotFound, "the erased person's Keycloak account still exists");
     }
 
+    /// <summary>
+    /// #115 slice 6, owner decision: an account holding a staff realm role (here <c>editor</c>) is never deleted by an
+    /// erasure. Every other step completes; the step keycloak stays open, so the erasure shows as unfinished until an
+    /// administrator removes the account by hand (README runbook).
+    /// </summary>
+    [Fact]
+    public async Task A_staff_account_is_not_deleted_and_its_keycloak_step_stays_open()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var accountAddress = $"erasure-staff-{Guid.CreateVersion7():N}@example.com";
+        var account = await keycloak.CreateUserAsync(accountAddress, emailVerified: true, cancellationToken);
+        try
+        {
+            await keycloak.GrantRealmRoleAsync(account, "editor", cancellationToken);
+            using var support = await aspire.CreateHostClientAsync("support");
+
+            var erasure = await RequestAsync(support, account, cancellationToken);
+
+            var read = await WaitForStepsAsync(support, erasure, StepsButKeycloak, cancellationToken);
+            read.Steps.Select(step => step.Module).ShouldNotContain("keycloak");
+            await StaysWithoutStepAsync(support, erasure, "keycloak", StaffSettle, cancellationToken);
+            (await keycloak.UserStatusAsync(account, cancellationToken)).ShouldBe(HttpStatusCode.OK, "a staff account must not be deleted by an erasure");
+        }
+        finally
+        {
+            await keycloak.DeleteUserAsync(account, CancellationToken.None);
+        }
+    }
+
     [Fact]
     public async Task An_empty_person_id_is_a_bad_request()
     {
@@ -672,6 +706,20 @@ public class PersonErasureTests(AspireFixture aspire)
         read.Steps.Select(step => step.Module).ShouldBe(modules, ignoreOrder: true, $"the erasure's steps within {StepWait.TotalSeconds:0} s");
         read.Steps[0].Module.ShouldBe(modules[0], "Organisation records its own step first");
         return read;
+    }
+
+    /// <summary>Reads the erasure for <paramref name="settle"/> and fails as soon as it lists <paramref name="module"/>.</summary>
+    private static async Task StaysWithoutStepAsync(HttpClient support, Uri erasure, string module, TimeSpan settle, CancellationToken cancellationToken)
+    {
+        var until = TimeProvider.System.GetUtcNow() + settle;
+        while (TimeProvider.System.GetUtcNow() < until)
+        {
+            using var response = await support.GetAsync(erasure, cancellationToken);
+            response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync(cancellationToken));
+            var read = await response.Content.ReadFromJsonAsync<ErasureRead>(cancellationToken);
+            read.ShouldNotBeNull().Steps.Select(step => step.Module).ShouldNotContain(module, $"the erasure recorded the step {module}");
+            await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken);
+        }
     }
 
     private static StartedEvent Started(Guid membership, Probe probe, Guid pharmacy) =>

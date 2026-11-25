@@ -14,7 +14,9 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Tests.Erasures;
 /// <summary>
 /// #115 slice 6: Organisation deletes the erased person's Keycloak account and records the step <c>keycloak</c> at its
 /// own clock. An account that is gone counts as deleted; once the step is recorded, Keycloak is not asked again; a
-/// client's service account is never deleted; a failure of Keycloak records nothing and rethrows, so Wolverine retries.
+/// client's service account and a staff account (a realm role <c>support</c>, <c>editor</c> or <c>manager</c>, owner
+/// decision on #115) are never deleted and leave the step open; a failure of Keycloak records nothing and rethrows, so
+/// Wolverine retries.
 /// </summary>
 public class AccountDeletionRequestedV1ConsumerTests
 {
@@ -87,6 +89,39 @@ public class AccountDeletionRequestedV1ConsumerTests
         logged.Message.ShouldNotContain(person.Value.ToString());
     }
 
+    [Fact]
+    public async Task A_staff_account_is_never_deleted_and_no_step_is_recorded()
+    {
+        var erasure = Forgotten();
+        accounts.FindAsync(person, Arg.Any<CancellationToken>()).Returns(Option<Account>.Some(AnAccount() with { HoldsStaffRole = true }));
+
+        await Consumer().HandleAsync(new AccountDeletionRequestedV1(erasure.Id.Value, person.Value), TestContext.Current.CancellationToken);
+
+        await accounts.DidNotReceiveWithAnyArgs().DeleteAsync(default!, TestContext.Current.CancellationToken);
+        erasure.HasCompleted(ErasureModule.Keycloak).ShouldBeFalse("an administrator removes a staff account by hand; until then the erasure is unfinished");
+        erasure.Steps.Select(step => step.Module).ShouldBe([ErasureModule.Organisation], "the rest of the erasure stays as it was");
+        store.Commits.ShouldBe(0);
+        var logged = logger.Collector.GetSnapshot().ShouldHaveSingleItem();
+        logged.Level.ShouldBe(LogLevel.Error);
+        logged.Message.ShouldContain(erasure.Id.Value.ToString());
+        logged.Message.ShouldContain("staff");
+        logged.Message.ShouldNotContain(person.Value.ToString());
+        logged.Message.ShouldNotContain("account@example.org");
+    }
+
+    [Fact]
+    public async Task A_staff_service_account_is_logged_once()
+    {
+        var erasure = Forgotten();
+        accounts.FindAsync(person, Arg.Any<CancellationToken>()).Returns(Option<Account>.Some(AnAccount() with { IsServiceAccount = true, HoldsStaffRole = true }));
+
+        await Consumer().HandleAsync(new AccountDeletionRequestedV1(erasure.Id.Value, person.Value), TestContext.Current.CancellationToken);
+
+        await accounts.DidNotReceiveWithAnyArgs().DeleteAsync(default!, TestContext.Current.CancellationToken);
+        erasure.HasCompleted(ErasureModule.Keycloak).ShouldBeFalse();
+        logger.Collector.GetSnapshot().ShouldHaveSingleItem().Level.ShouldBe(LogLevel.Error);
+    }
+
     [Theory]
     [InlineData("read")]
     [InlineData("delete")]
@@ -144,7 +179,7 @@ public class AccountDeletionRequestedV1ConsumerTests
         store.Commits.ShouldBe(0);
     }
 
-    private static Account AnAccount() => new(Option<EmailAddress>.Some(EmailAddress.From("account@example.org")), IsServiceAccount: false);
+    private static Account AnAccount() => new(Option<EmailAddress>.Some(EmailAddress.From("account@example.org")), IsServiceAccount: false, HoldsStaffRole: false);
 
     private AccountDeletionRequestedV1Consumer Consumer() => new(store, accounts, store, time, logger);
 

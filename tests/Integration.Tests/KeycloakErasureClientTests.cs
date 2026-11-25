@@ -3,6 +3,9 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.Extensions.Options;
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Infrastructure;
 
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 
@@ -10,7 +13,8 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// #115 slice 6: the realm's confidential client <c>pharma-training-erasure</c>, whose secret the AppHost generates as
 /// <c>keycloak-erasure-client-secret</c> and Keycloak's import reads from its environment, mints a token with the client
 /// credentials grant alone, and that token may read and delete a user of the realm through the admin API, as Organisation
-/// does when it erases a person.
+/// does when it erases a person. Organisation's own reader, <see cref="KeycloakAccounts"/>, recognises the client's
+/// service account as one, whatever shape Keycloak's admin API answers it in, so an erasure never deletes it.
 /// </summary>
 public class KeycloakErasureClientTests(AspireFixture aspire)
 {
@@ -70,6 +74,35 @@ public class KeycloakErasureClientTests(AspireFixture aspire)
         gone.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
+    /// <summary>
+    /// The token's subject is the client's service account; read through Organisation's own <see cref="KeycloakAccounts"/>
+    /// as an erasure reads a person, it is marked a service account, so the guard that keeps it from being deleted holds
+    /// against the admin API itself, not only against a hand-written answer.
+    /// </summary>
+    [Fact]
+    public async Task Its_own_service_account_is_recognised_as_one()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var identity = keycloak.Identity();
+        var subject = Subject(await ClientTokenAsync(identity, cancellationToken));
+        using var http = keycloak.Identity();
+        var accounts = new KeycloakAccounts(
+            http,
+            Options.Create(new KeycloakAccountsSettings
+            {
+                Address = identity.BaseAddress.ShouldNotBeNull().AbsoluteUri,
+                Realm = KeycloakAdmin.Realm,
+                ClientId = ClientId,
+                ClientSecret = await keycloak.ParameterAsync(SecretParameter, cancellationToken),
+            }));
+
+        var found = await accounts.FindAsync(PersonId.From(subject), cancellationToken);
+
+        found.HasValue.ShouldBeTrue("the token's subject is a user of the realm, the client's service account");
+        found.Value.IsServiceAccount.ShouldBeTrue("an erasure naming the client's service account must not delete it");
+        (await keycloak.UserStatusAsync(subject, cancellationToken)).ShouldBe(HttpStatusCode.OK);
+    }
+
     [Fact]
     public async Task It_refuses_the_password_grant()
     {
@@ -109,6 +142,15 @@ public class KeycloakErasureClientTests(AspireFixture aspire)
         response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync(cancellationToken));
         var token = await response.Content.ReadFromJsonAsync<ClientToken>(cancellationToken);
         return token.ShouldNotBeNull().AccessToken;
+    }
+
+    /// <summary>The access token's <c>sub</c>, read from its payload; the signature is Keycloak's own and not checked here.</summary>
+    private static Guid Subject(string token)
+    {
+        var payload = token.Split('.')[1].Replace('-', '+').Replace('_', '/');
+        payload = payload.PadRight(payload.Length + ((4 - (payload.Length % 4)) % 4), '=');
+        using var claims = JsonDocument.Parse(Convert.FromBase64String(payload));
+        return Guid.Parse(claims.RootElement.GetProperty("sub").GetString().ShouldNotBeNull("the client's token names no subject"));
     }
 
     private sealed record ClientToken([property: JsonPropertyName("access_token")] string AccessToken);

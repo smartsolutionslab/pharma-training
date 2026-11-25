@@ -232,7 +232,7 @@ public class ErasureConfirmationMailRequestedV1ConsumerTests
     {
         var erasure = StoredErasure();
         var address = EmailAddress.From($"account-{person.Value:N}@example.org");
-        accounts.FindAsync(person, Arg.Any<CancellationToken>()).Returns(Option<Account>.Some(new Account(Option<EmailAddress>.Some(address), IsServiceAccount: false)));
+        accounts.FindAsync(person, Arg.Any<CancellationToken>()).Returns(Option<Account>.Some(new Account(Option<EmailAddress>.Some(address), IsServiceAccount: false, HoldsStaffRole: false)));
 
         await Consumer().HandleAsync(new ErasureConfirmationMailRequestedV1(erasure.Id.Value, person.Value), TestContext.Current.CancellationToken);
 
@@ -254,7 +254,7 @@ public class ErasureConfirmationMailRequestedV1ConsumerTests
         var erasure = StoredErasure();
         if (accountExists)
         {
-            accounts.FindAsync(person, Arg.Any<CancellationToken>()).Returns(Option<Account>.Some(new Account(Option<EmailAddress>.None, IsServiceAccount: false)));
+            accounts.FindAsync(person, Arg.Any<CancellationToken>()).Returns(Option<Account>.Some(new Account(Option<EmailAddress>.None, IsServiceAccount: false, HoldsStaffRole: false)));
         }
 
         await Consumer().HandleAsync(new ErasureConfirmationMailRequestedV1(erasure.Id.Value, person.Value), TestContext.Current.CancellationToken);
@@ -304,7 +304,7 @@ public class ErasureConfirmationMailRequestedV1ConsumerTests
     {
         var erasure = StoredErasure();
         var address = EmailAddress.From($"account-{person.Value:N}@example.org");
-        accounts.FindAsync(person, Arg.Any<CancellationToken>()).Returns(Option<Account>.Some(new Account(Option<EmailAddress>.Some(address), IsServiceAccount: false)));
+        accounts.FindAsync(person, Arg.Any<CancellationToken>()).Returns(Option<Account>.Some(new Account(Option<EmailAddress>.Some(address), IsServiceAccount: false, HoldsStaffRole: false)));
         mails.SendAsync(Arg.Any<OutgoingMail>(), Arg.Any<CancellationToken>()).ThrowsAsync(RecipientRefused());
 
         await Consumer().HandleAsync(new ErasureConfirmationMailRequestedV1(erasure.Id.Value, person.Value), TestContext.Current.CancellationToken);

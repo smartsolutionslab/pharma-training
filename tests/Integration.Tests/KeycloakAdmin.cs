@@ -76,5 +76,27 @@ internal sealed class KeycloakAdmin(AspireFixture aspire)
         return response.StatusCode;
     }
 
+    /// <summary>Gives the user the realm role, as an administrator does with kcadm.sh's <c>add-roles</c>.</summary>
+    public async Task GrantRealmRoleAsync(Guid user, string role, CancellationToken cancellationToken)
+    {
+        using var administrator = await AdministratorAsync(cancellationToken);
+        using var read = await administrator.GetAsync(new Uri($"/admin/realms/{Realm}/roles/{Uri.EscapeDataString(role)}", UriKind.Relative), cancellationToken);
+        var body = await read.Content.ReadAsStringAsync(cancellationToken);
+        read.StatusCode.ShouldBe(HttpStatusCode.OK, body);
+        using var granted = await administrator.PostAsync(
+            new Uri($"/admin/realms/{Realm}/users/{user:D}/role-mappings/realm", UriKind.Relative),
+            new StringContent($"[{body}]", System.Text.Encoding.UTF8, "application/json"),
+            cancellationToken);
+        granted.StatusCode.ShouldBe(HttpStatusCode.NoContent, await granted.Content.ReadAsStringAsync(cancellationToken));
+    }
+
+    /// <summary>Deletes a test's throwaway user; one that is gone already is fine.</summary>
+    public async Task DeleteUserAsync(Guid user, CancellationToken cancellationToken)
+    {
+        using var administrator = await AdministratorAsync(cancellationToken);
+        using var deleted = await administrator.DeleteAsync(new Uri($"/admin/realms/{Realm}/users/{user:D}", UriKind.Relative), cancellationToken);
+        deleted.StatusCode.ShouldBeOneOf(HttpStatusCode.NoContent, HttpStatusCode.NotFound);
+    }
+
     private sealed record AccessToken([property: JsonPropertyName("access_token")] string Token);
 }
