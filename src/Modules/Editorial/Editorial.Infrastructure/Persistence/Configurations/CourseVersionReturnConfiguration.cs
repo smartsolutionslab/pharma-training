@@ -25,10 +25,12 @@ public sealed class CourseVersionReturnConfiguration : IEntityTypeConfiguration<
         builder.Property(record => record.ReturnedAt).HasColumnName("returned_at").IsRequired();
         builder.Property(record => record.Reason).HasColumnName("reason").HasMaxLength(ReturnReason.MaxLength).IsRequired();
 
+        // Restrict, not cascade: once stored a return never changes, so deleting a version that has one is refused
+        // rather than erasing its history with it. Nothing deletes a version today.
         builder.HasOne<CourseVersion>()
             .WithMany()
             .HasForeignKey(record => record.Version)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasIndex(record => new { record.Version, record.ReturnedAt });
     }
