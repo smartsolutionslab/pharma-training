@@ -161,5 +161,7 @@ public class AppHostStagingMailTests
 
         image.Image.ShouldBe("axllent/mailpit");
         image.Tag.ShouldNotBeNull().ShouldMatch(@"^v\d+\.\d+\.\d+$", "Mailpit's tag must name an exact patch (vX.Y.Z).");
+        // And its digest, so a tag pushed again elsewhere cannot change what runs (#445).
+        image.SHA256.ShouldNotBeNull("Mailpit's image is not pinned by digest.").ShouldMatch("^[0-9a-f]{64}$");
     }
 }
