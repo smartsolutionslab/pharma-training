@@ -13,4 +13,12 @@ public interface ICertificationUnitOfWork : IUnitOfWork
     /// of work declares it, so none can leave a person's transaction open for the next one by default.
     /// </summary>
     Task AbandonAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Saves like <see cref="IUnitOfWork.CommitAsync"/> for a use case that commits several times in one scope: the purge
+    /// of erased persons' certificates commits each person on their own (#115, slice 5). <see cref="IUnitOfWork.CommitAsync"/>
+    /// flushes a scope's outbox once, and Wolverine warns at every further flush; this one allows several (ADR 0019).
+    /// The purge publishes nothing, so nothing is sent twice. A unit of work that has no outbox commits as ever.
+    /// </summary>
+    Task CommitOneOfSeveralAsync(CancellationToken cancellationToken) => CommitAsync(cancellationToken);
 }

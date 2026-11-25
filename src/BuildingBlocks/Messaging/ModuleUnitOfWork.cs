@@ -45,8 +45,9 @@ public abstract partial class ModuleUnitOfWork<TContext>(IServiceProvider servic
     /// events at once: the flush of this call alone is <see cref="MultiFlushMode.AllowMultiples"/>, so it sends exactly
     /// the envelopes stored since the scope's last flush, and the scope keeps <see cref="MultiFlushMode.OnlyOnce"/> for
     /// every other commit. Only a save that cannot lose a race may use it (nothing tracked changes), since the envelopes of
-    /// a failed attempt would go out with the next one. A module offers it by declaring it on its own unit of work's
-    /// interface for the one use case that needs it; today that is Editorial's republish (ADR 0019).
+    /// a failed attempt would go out with the next one, unless the use case publishes nothing and abandons a failed attempt.
+    /// A module offers it by declaring it on its own unit of work's interface for the use case that needs it; today those
+    /// are Editorial's republish (ADR 0019) and Certification's purge of erased persons' certificates (#462).
     /// </summary>
     public Task CommitOneOfSeveralAsync(CancellationToken cancellationToken) =>
         Outbox.SaveChangesAndFlushMessagesAsync(MultiFlushMode.AllowMultiples, cancellationToken);
