@@ -23,6 +23,10 @@ public class OrganisationMailRecipientAndSenderLimitsTests(AspireFixture aspire)
 
     private const string Sender = "editor-b";
 
+    // A second manager, of pharmacies of their own, for the race only the recipient's row orders: a signed-in user who
+    // may register a pharmacy and whom no test of this collection invites as otherwise.
+    private const string SecondManager = "developer";
+
     private const int RaceAttempts = 3;
 
     private static readonly Uri Pharmacies = new("/organisation/pharmacies", UriKind.Relative);
@@ -184,7 +188,7 @@ public class OrganisationMailRecipientAndSenderLimitsTests(AspireFixture aspire)
     /// first until it commits, so the second waits for it and then counts on the row as the first committed it: within
     /// the address's cooldown, as it would be alone, it is told 429 organisation.recipient-mailed-recently, never 409
     /// already-exists. Only the first is stored, counted and mailed. One manager invites from both pharmacies, so the
-    /// sender's row orders them too (#381).
+    /// sender's row orders them too (#381); the test below leaves only the recipient's row to order them.
     /// </summary>
     [Fact]
     public async Task Of_two_pharmacies_inviting_one_new_address_at_once_the_first_is_stored_and_mailed_and_the_second_waits_and_is_told_the_address_was_mailed_recently()
@@ -204,6 +208,35 @@ public class OrganisationMailRecipientAndSenderLimitsTests(AspireFixture aspire)
             var first = await RegisterAsync(owner, cancellationToken);
             var second = await RegisterAsync(owner, cancellationToken);
             raced = await InviteOneNewAddressAtOnceAsync((owner, first), (owner, second), [person], cancellationToken);
+        }
+
+        raced.ShouldBeTrue($"in {RaceAttempts} attempts the second invitation never came to the gate within {RaceWindow} of the first");
+    }
+
+    /// <summary>
+    /// As above, but two managers, each of a pharmacy of their own, invite one new address at once (#375, review of
+    /// #395): they share no sender's row, so only the recipient's row orders them. The second waits for it and is told
+    /// 429 organisation.recipient-mailed-recently, as the decision on #375 says; only the first is stored, counted on its
+    /// sender and mailed.
+    /// </summary>
+    [Fact]
+    public async Task Of_two_managers_of_two_pharmacies_inviting_one_new_address_at_once_the_first_is_stored_and_mailed_and_the_second_is_told_the_address_was_mailed_recently()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var owner = await aspire.CreateHostClientAsync("owner");
+        using var manager = await aspire.CreateHostClientAsync(SecondManager);
+        var owners = await database.SubjectOfAsync("owner");
+        var managers = await database.SubjectOfAsync(SecondManager);
+        // Each sender's row is made by an invitation from a pharmacy of its own, outside the race, as above.
+        await InviteAsync(owner, await RegisterAsync(owner, cancellationToken), Invitee(), cancellationToken);
+        await InviteAsync(manager, await RegisterAsync(manager, cancellationToken), Invitee(), cancellationToken);
+
+        var raced = false;
+        for (var attempt = 0; attempt < RaceAttempts && !raced; attempt++)
+        {
+            var first = await RegisterAsync(owner, cancellationToken);
+            var second = await RegisterAsync(manager, cancellationToken);
+            raced = await InviteOneNewAddressAtOnceAsync((owner, first), (manager, second), [owners, managers], cancellationToken);
         }
 
         raced.ShouldBeTrue($"in {RaceAttempts} attempts the second invitation never came to the gate within {RaceWindow} of the first");
