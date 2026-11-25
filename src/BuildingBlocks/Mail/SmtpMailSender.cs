@@ -119,7 +119,12 @@ public sealed partial class SmtpMailSender : IMailSender
         {
             // The server answered with a refusal, at whichever step: it says it did not take the mail.
             // The server's text (550 5.1.1 <anna@example.org>: ...) stays out of the exception, its logs and dead letters.
-            throw new MailNotSentException($"The SMTP server refused the mail at {refused.ErrorCode} with {(int)refused.StatusCode} {refused.StatusCode}.", mayHaveBeenDelivered: false);
+            // A 5xx reply to RCPT TO refuses the recipient for good, so a caller may give that address up; a 4xx is temporary.
+            var recipientRefused = refused.ErrorCode == SmtpErrorCode.RecipientNotAccepted && (int)refused.StatusCode is >= 500 and < 600;
+            throw new MailNotSentException(
+                $"The SMTP server refused the mail at {refused.ErrorCode} with {(int)refused.StatusCode} {refused.StatusCode}.",
+                mayHaveBeenDelivered: false,
+                recipientRefused: recipientRefused);
         }
         catch (Exception failed)
         {
