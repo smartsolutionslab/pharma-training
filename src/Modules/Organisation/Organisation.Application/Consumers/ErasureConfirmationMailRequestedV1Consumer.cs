@@ -9,9 +9,9 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Cons
 
 /// <summary>
 /// Mails the erasure's confirmation to each of the person's addresses, then forgets their name and addresses in every
-/// pharmacy, removes their invitation recipients and sender, records the confirmation and Organisation's step and
-/// announces the erasure as <see cref="PersonErasureRequestedV1"/>, in one commit (#115). A confirmation that is handled
-/// already is not mailed again.
+/// pharmacy, removes their invitation recipients and sender, records the confirmation and Organisation's step, announces
+/// the erasure as <see cref="PersonErasureRequestedV1"/> and requests the account's deletion as
+/// <see cref="AccountDeletionRequestedV1"/>, in one commit (#115). A confirmation that is handled already is not mailed again.
 /// <para>
 /// It is idempotent by the erasure's state, not by <c>Metadata.EventIdentifier</c>: a send that failed must be sent
 /// again, and the handled confirmation is the key. An address the mail server refuses for good (a 5xx reply to RCPT TO) is
@@ -103,6 +103,9 @@ public sealed partial class ErasureConfirmationMailRequestedV1Consumer(
         erasure.ConfirmationHandled(Confirmation(mailed), now);
         erasure.CompleteStep(ErasureModule.Organisation, now);
         await unitOfWork.PublishAsync(new PersonErasureRequestedV1(erasure.Id.Value, person.Value));
+        // The account's deletion is Organisation's own work item, in the same commit: a Keycloak outage then retries the
+        // deletion alone, never the mails or the forgetting above (docs/adr/0040).
+        await unitOfWork.PublishAsync(new AccountDeletionRequestedV1(erasure.Id.Value, person.Value));
         await unitOfWork.CommitAsync(cancellationToken);
     }
 

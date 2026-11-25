@@ -1,5 +1,7 @@
 using Microsoft.Extensions.Logging;
 using SmartSolutionsLab.PharmaTraining.Contracts.Organisation;
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Erasures;
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Consumers;
 
@@ -22,6 +24,51 @@ public sealed partial class AccountDeletionRequestedV1Consumer(
     private readonly TimeProvider time = time;
     private readonly ILogger<AccountDeletionRequestedV1Consumer> logger = logger;
 
-    public Task HandleAsync(AccountDeletionRequestedV1 message, CancellationToken cancellationToken) =>
-        throw new NotImplementedException();
+    public async Task HandleAsync(AccountDeletionRequestedV1 message, CancellationToken cancellationToken)
+    {
+        // Refused here, each by its name, so a poison message dead-letters with a reason that says which field.
+        Ensure.That(message).IsNotNull();
+        Ensure.That(message.ErasureId, nameof(message.ErasureId)).IsNotEmpty();
+        Ensure.That(message.PersonId, nameof(message.PersonId)).IsNotEmpty();
+
+        var found = await erasures.LoadAsync(ErasureId.From(message.ErasureId), cancellationToken);
+        if (!found.HasValue)
+        {
+            ErasureGone(logger, message.ErasureId);
+            return;
+        }
+
+        var erasure = found.Value;
+        if (erasure.HasCompleted(ErasureModule.Keycloak))
+        {
+            AlreadyDeleted(logger, message.ErasureId);
+            return;
+        }
+
+        var person = PersonId.From(message.PersonId);
+        var account = await accounts.FindAsync(person, cancellationToken);
+        if (account.HasValue)
+        {
+            if (account.Value.IsServiceAccount)
+            {
+                // A person's id never names a client's service account; one that does is a mistake support must see.
+                ServiceAccount(logger, message.ErasureId);
+                return;
+            }
+
+            await accounts.DeleteAsync(person, cancellationToken);
+        }
+
+        erasure.CompleteStep(ErasureModule.Keycloak, Timestamp.From(time.GetUtcNow()));
+        await unitOfWork.CommitAsync(cancellationToken);
+    }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "No erasure {Erasure} is logged; its account's deletion is dropped.")]
+    private static partial void ErasureGone(ILogger logger, Guid erasure);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "The account of erasure {Erasure} is deleted already; Keycloak is not asked again.")]
+    private static partial void AlreadyDeleted(ILogger logger, Guid erasure);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Erasure {Erasure} names a client's service account in Keycloak, which is never deleted; its step keycloak stays open.")]
+    private static partial void ServiceAccount(ILogger logger, Guid erasure);
 }

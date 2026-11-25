@@ -52,7 +52,11 @@ public sealed class Erasure : AggregateRoot<ErasureId>
     }
 
     /// <summary>Whether the module's part is recorded as done.</summary>
-    public bool HasCompleted(ErasureModule module) => throw new NotImplementedException();
+    public bool HasCompleted(ErasureModule module)
+    {
+        Ensure.That(module).IsNotNull();
+        return steps.Any(step => step.Module == module);
+    }
 
     /// <summary>Records the module's part as done; a step that is recorded already stays as it was.</summary>
     public void CompleteStep(ErasureModule module, Timestamp now)
@@ -60,7 +64,7 @@ public sealed class Erasure : AggregateRoot<ErasureId>
         Ensure.That(module).IsNotNull();
         Ensure.That(now).IsNotNull();
 
-        if (steps.Any(step => step.Module == module))
+        if (HasCompleted(module))
         {
             return;
         }
