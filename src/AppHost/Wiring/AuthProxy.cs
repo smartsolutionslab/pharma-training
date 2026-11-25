@@ -6,9 +6,9 @@ namespace Aspire.Hosting;
 
 /// <summary>
 /// Published, the browser's one way to Keycloak (OQ2 and X2 on #114, docs/adr/0005): a YARP app, <c>auth</c>, with external
-/// ingress like the edge, forwarding the realm <c>pharma-training</c> and Keycloak's static resources to Keycloak's
-/// <c>http</c> endpoint, which stays internal, and nothing else. Not <c>/realms/master</c>, whose token endpoint takes the
-/// administrator's password, not <c>/admin</c>, not the management port: those answer 404 from YARP, and the administrator
+/// ingress like the edge, forwarding the realm <c>pharma-training</c>, its admin API's users and roles (#457) and Keycloak's static resources to
+/// Keycloak's <c>http</c> endpoint, which stays internal, and nothing else. Not <c>/realms/master</c>, whose token endpoint
+/// takes the administrator's password, not the rest of <c>/admin</c>, not the management port: those answer 404 from YARP, and the administrator
 /// works with <c>kcadm.sh</c> inside Keycloak's container. It reads the scheme and host the Container Apps ingress forwards,
 /// and passes them on. Its address, <c>https://auth.&lt;the environment's default domain&gt;</c>, is Keycloak's hostname
 /// and the issuer the edge and every service validate (<see cref="Authority"/>). Run mode has none: the browser reaches
@@ -28,8 +28,18 @@ public static class AuthProxy
 
     private const string ImageDigest = "540266215e741cebd0152343f8a6018ee7ebc34f7caaa4022e3a93ff2f778b58";
 
-    // The paths the browser needs: the realm's endpoints and login pages, and the themes' static files.
-    private static readonly string[] Paths = [$"/realms/{Realm}/{{**catch-all}}", "/resources/{**catch-all}"];
+    // The paths the browser needs: the realm's endpoints and login pages, and the themes' static files. And of the admin
+    // API only the realm's users and roles (#457): a manage-users client of the realm (the demo seeder's, X1's) creates
+    // and updates its users from outside the environment. It authenticates with its own token from the realm's token
+    // endpoint, and Keycloak checks its realm-management roles on every call; the console, other realms and /realms/master
+    // stay unreachable.
+    private static readonly string[] Paths =
+    [
+        $"/realms/{Realm}/{{**catch-all}}",
+        "/resources/{**catch-all}",
+        $"/admin/realms/{Realm}/users/{{**catch-all}}",
+        $"/admin/realms/{Realm}/roles/{{**catch-all}}",
+    ];
 
     /// <summary>Published, the auth proxy in front of <paramref name="keycloak"/>, which it names as its hostname; null in run mode.</summary>
     public static IResourceBuilder<YarpResource>? AddAuthProxy(this IDistributedApplicationBuilder builder, IResourceBuilder<ContainerResource> keycloak)
