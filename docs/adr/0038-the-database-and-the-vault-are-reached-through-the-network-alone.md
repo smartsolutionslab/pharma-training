@@ -1,6 +1,6 @@
 # 0038: The database and the vault are reached through the network alone
 
-**Status:** Accepted for PostgreSQL and the Key Vault (#149; the owner chose OQ8 (d) on #114, 2026-11-22). Blob Storage is open, see Consequences.
+**Status:** Accepted (#149; the owner chose OQ8 (d) on #114, 2026-11-22, and option (a) for Blob Storage on #149, 2026-11-25).
 
 ## Context
 
@@ -20,6 +20,15 @@
   - the subnet `private-endpoints` (`10.0.2.0/24`), with a private endpoint for the server (`postgresqlServer`) and one for the vault (`vault`);
   - the private DNS zones `privatelink.postgres.database.azure.com` and `privatelink.vaultcore.azure.net`, linked to the network, each endpoint registering its address in its zone.
   - Aspire passes it the server's and the vault's ids and wires it into `main.bicep` like any module.
+- **The services reach Blob Storage through a private endpoint (`blob`), and the account keeps its public endpoint** (the owner's option (a) on #149).
+  - Browsers upload to the account and read from it directly, with the URLs the services sign (ADR 0002), so its public endpoint stays.
+  - What guards it there:
+    - every URL is a SAS on one blob, `Create` or `Read` alone, for at most 15 minutes;
+    - it is signed with a user delegation key under the service's own identity, which may use its own container alone;
+    - shared-key access is off, so no account key exists to sign with;
+    - copies are taken from the deployment's own Entra tenant alone (`allowedCopyScope`, #159).
+  - Inside the network, the blob host resolves to the endpoint's address through the zone `privatelink.blob.<storage suffix>`, which `network.bicep` declares and links. The services' own reads, writes, copies and delegation keys therefore never leave it.
+  - The endpoint itself is `src/AppHost/network/blob-endpoint.bicep`, a module of its own. The account comes after the environment (its CORS rule names the environment's domain), and the environment after the network, so the network cannot wait for the account.
 - **The Container Apps environment is injected into `aca-subnet`.** It takes the subnet's id from the network's output (`InjectInto`, in the environment's `ConfigureInfrastructure`). Its ingress stays external, so `host` and `auth` answer the internet as before. Every app now reaches the server's and the vault's names at their private addresses.
 - **The server has no public endpoint:** `publicNetworkAccess: 'Disabled'`, and every firewall rule removed, `AllowAllAzureIps` included (`DenyPublicAccess`, in the server's `ConfigureInfrastructure`).
 - **The vault has no public endpoint:** `publicNetworkAccess: 'Disabled'`, `networkAcls` deny by default and let no trusted service bypass them.
@@ -29,12 +38,13 @@
 ## Consequences
 
 - No public address reaches the server or the vault. A database password or a vault role that leaks is of no use from outside the network (`AppHostPrivateNetworkTests`, against the generated Bicep, in staging and production alike).
-- **Blob Storage keeps its public endpoint.** Browsers upload to it and read from it directly, with the short-lived SAS URLs the services sign (ADR 0002), and the Content Security Policy names its origin. A private endpoint alone would cut them off. Closing it means either serving every file through the services, or accepting its public endpoint behind SAS and its own controls. That is a decision for the owner, asked on #149; until it is made, #149 stays open.
-- The registry and the environment's own storage account (the broker's Azure Files volume) keep their public endpoints too. Neither is named by #149; both answer Entra identities alone.
+- **Blob Storage keeps its public endpoint, behind the SAS controls above.** Whoever holds no signed URL reaches nothing in it: Entra sign-in or a URL a service signed is the only way in. Serving every file through the services was the alternative; the owner chose against it (#149).
+- The registry and the environment's own storage account (the broker's Azure Files volume) keep their public endpoints too. Both answer Entra identities alone. The owner moved them out of #149; #412 reviews them after the first deploy.
 - **An environment's network is fixed when it is created.** Container Apps cannot move an existing environment into a subnet. An environment deployed before this change must be deleted and deployed again, data restored into a new server. None exists yet (#129).
 - What only the first deploy shows (#129), each with its fix in the AppHost:
   - that Container Apps resolve the vault's Key Vault references through the private endpoint;
   - that the deployment's own writes of secrets into the vault (`Microsoft.KeyVault/vaults/secrets` in Bicep, through Azure Resource Manager) pass the vault's firewall without a trusted-service bypass. If they do not, `Bypass` becomes `AzureServices`;
-  - that the init containers' migrations reach the server by its private address on their first run.
+  - that the init containers' migrations reach the server by its private address on their first run;
+  - that the services' blob calls resolve to the blob endpoint, while a browser's upload and read still reach the public endpoint.
 - Reading a vault secret by hand (`az keyvault secret show`) from outside the network no longer works. A secret an operator needs is read from inside the environment, as a Key Vault reference of the temporary app.
 - Neither the generated Bicep nor the template was compiled with the Bicep CLI here. `aspire deploy` compiles it on the first run.

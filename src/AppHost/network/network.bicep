@@ -1,7 +1,8 @@
 // The network the published application runs in (#149, docs/adr/0038), written by hand and added by
 // src/AppHost/Wiring/PrivateNetwork.cs: the Container Apps environment is injected into aca-subnet, and the PostgreSQL
 // server and the Key Vault are reached through private endpoints in private-endpoints alone, their names resolving to the
-// endpoints' addresses through the private DNS zones linked to the network.
+// endpoints' addresses through the private DNS zones linked to the network. The blobs' zone is here too; their endpoint
+// is blob-endpoint.bicep's, which comes after the storage account, since the account comes after the environment.
 
 @description('The location for the resource(s) to be deployed.')
 param location string = resourceGroup().location
@@ -120,4 +121,26 @@ resource zoneGroups 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@202
   }
 }]
 
+// The zone the storage account's blob host resolves in for the services; its public name stays for the browsers.
+resource blobZone 'Microsoft.Network/privateDnsZones@2024-06-01' = {
+  name: 'privatelink.blob.${environment().suffixes.storage}'
+  location: 'global'
+}
+
+resource blobLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2024-06-01' = {
+  parent: blobZone
+  name: 'vnet'
+  location: 'global'
+  properties: {
+    registrationEnabled: false
+    virtualNetwork: {
+      id: vnet.id
+    }
+  }
+}
+
 output acaSubnetId string = vnet.properties.subnets[0].id
+
+output privateEndpointsSubnetId string = vnet.properties.subnets[1].id
+
+output blobZoneId string = blobZone.id
