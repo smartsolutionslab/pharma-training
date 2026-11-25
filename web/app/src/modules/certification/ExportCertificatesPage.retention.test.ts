@@ -1,5 +1,5 @@
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query';
-import { cleanup, render, screen, waitFor, within } from '@testing-library/vue';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/vue';
 import userEvent from '@testing-library/user-event';
 import { createPinia, type Pinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -493,4 +493,172 @@ describe('saving a period', () => {
     await waitFor(() => expect(saveButton()).toHaveFocus());
     expect(saves()).toHaveLength(1);
   });
+});
+
+// Refusals (#419, T5; ADR 0027). A period outside 2 to 30 whole years is refused at the field before anything is sent,
+// with the sentence the host's own 400 has in the catalog, and the focus goes to the field, where it is read out; the
+// host's 400 shows the same there. The route's other refusals go to a toast, and the period is read again: refused now,
+// the section goes, which is why it says nothing itself. Anything else says the period could not be saved, and the
+// field keeps its value, so pressing again retries. There is no conflict to handle: the last write wins (ADR 0039).
+
+const invalidText = 'Die Aufbewahrungsfrist ist eine ganze Zahl von 2 bis 30 Jahren.';
+const failedText = 'Die Aufbewahrungsfrist konnte nicht gespeichert werden. Versuchen Sie es erneut.';
+
+describe('a period the form refuses', () => {
+  test.each([
+    ['31', '31'],
+    ['1', '1'],
+    ['an empty field', ''],
+    ['2.5', '2.5'],
+  ])('%s shows the refusal at the field, moves the focus there and sends nothing', async (_name, years) => {
+    const user = userEvent.setup();
+    await renderPage();
+    const region = await section();
+
+    await fireEvent.update(yearsField(), years);
+    await user.click(saveButton());
+
+    expect(await within(region).findByRole('alert')).toHaveTextContent(invalidText);
+    expect(yearsField()).toHaveAttribute('aria-invalid', 'true');
+    expect(yearsField()).toHaveAccessibleDescription(expect.stringContaining(invalidText));
+    await waitFor(() => expect(yearsField()).toHaveFocus());
+    expect(saves()).toEqual([]);
+    expect(notify.success).not.toHaveBeenCalled();
+    expect(notify.failure).not.toHaveBeenCalled();
+  });
+
+  test('switched to English, shows the English text', async () => {
+    const user = userEvent.setup();
+    await renderPage();
+    await section();
+    setLanguage('en-GB', { remember: false });
+
+    await fireEvent.update(await screen.findByLabelText('Retention period in years'), '31');
+    await user.click(await screen.findByRole('button', { name: 'Save period' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The retention period is a whole number of years from 2 to 30.',
+    );
+    expect(saves()).toEqual([]);
+  });
+
+  test('is cleared when another pharmacy is chosen, the field at that pharmacy’s period', async () => {
+    const user = userEvent.setup();
+    state.memberships = [markt, dom];
+    const pinia = createPinia();
+    useSelectedPharmacyStore(pinia).choose(markt.id);
+    await renderPage({ pinia });
+    const region = await section();
+    await fireEvent.update(yearsField(), '31');
+    await user.click(saveButton());
+    expect(await within(region).findByRole('alert')).toHaveTextContent(invalidText);
+
+    useSelectedPharmacyStore(pinia).choose(dom.id);
+
+    await waitFor(() => expect(yearsField()).toHaveValue(12));
+    await waitFor(() => expect(yearsField()).not.toHaveAttribute('aria-invalid', 'true'));
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(yearsField()).not.toHaveAccessibleDescription(expect.stringContaining(invalidText));
+  });
+});
+
+describe('a refusal of the host', () => {
+  test('of the period shows its text at the field and moves the focus there', async () => {
+    const user = userEvent.setup();
+    state.save = async () =>
+      refusal(400, 'certification.invalid-retention-period', 'The retention period is from 2 to 30 years.');
+    await renderPage();
+    const region = await section();
+
+    await enterYears(user, '7');
+    await user.click(saveButton());
+
+    await waitFor(() => expect(yearsField()).toHaveAccessibleDescription(expect.stringContaining(invalidText)));
+    expect(yearsField()).toHaveAttribute('aria-invalid', 'true');
+    expect(within(region).getByRole('alert')).toHaveTextContent(invalidText);
+    await waitFor(() => expect(yearsField()).toHaveFocus());
+    expect(saves()).toHaveLength(1);
+    expect(notify.success).not.toHaveBeenCalled();
+    expect(notify.failure).not.toHaveBeenCalled();
+  });
+
+  test('capability-missing says "Ihre Rolle in dieser Apotheke erlaubt das nicht." and the section goes once the period is refused too', async () => {
+    const user = userEvent.setup();
+    const capabilityMissing = () =>
+      refusal(403, 'certification.capability-missing', 'Your role in this pharmacy does not allow this.');
+    state.save = async () => {
+      // The manager became an employee: the host now refuses the read as well.
+      state.read = async () => capabilityMissing();
+      return capabilityMissing();
+    };
+    await renderPage();
+    await section();
+    const readsBefore = retentionReads().length;
+
+    await enterYears(user, '7');
+    await user.click(saveButton());
+
+    await waitFor(() =>
+      expect(notify.failure).toHaveBeenCalledWith('Ihre Rolle in dieser Apotheke erlaubt das nicht.'),
+    );
+    await waitFor(() => expect(retentionReads().length).toBeGreaterThan(readsBefore));
+    await waitFor(() => noSection());
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(notify.success).not.toHaveBeenCalled();
+  });
+
+  test('pharmacy-not-found says its text and reads the period and the memberships again', async () => {
+    const user = userEvent.setup();
+    const notFound = () =>
+      refusal(404, 'certification.pharmacy-not-found', 'You are not a member of this pharmacy, or it does not exist.');
+    state.save = async () => {
+      state.read = async () => notFound();
+      return notFound();
+    };
+    await renderPage();
+    await section();
+    const readsBefore = retentionReads().length;
+    const membershipsBefore = membershipReads();
+
+    await enterYears(user, '7');
+    await user.click(saveButton());
+
+    await waitFor(() =>
+      expect(notify.failure).toHaveBeenCalledWith('Sie sind nicht Mitglied dieser Apotheke, oder es gibt sie nicht.'),
+    );
+    await waitFor(() => expect(retentionReads().length).toBeGreaterThan(readsBefore));
+    await waitFor(() => expect(membershipReads()).toBeGreaterThan(membershipsBefore));
+    await waitFor(() => noSection());
+    expect(notify.success).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ['a 500', async () => new Response('', { status: 500 })],
+    ['a rejected fetch', () => Promise.reject(new TypeError('Failed to fetch'))],
+  ])(
+    '%s says the period could not be saved, the field keeps its value, and pressing again sends again',
+    async (_name, answer) => {
+      const user = userEvent.setup();
+      const stored = state.save;
+      state.save = answer;
+      await renderPage();
+      await section();
+
+      await enterYears(user, '7');
+      await user.click(saveButton());
+
+      await waitFor(() => expect(notify.failure).toHaveBeenCalledWith(failedText));
+      expect(saves()).toHaveLength(1);
+      expect(yearsField()).toHaveValue(7);
+      expect(yearsField()).not.toHaveAttribute('aria-invalid', 'true');
+      expect(screen.getByRole('region', { name: 'Aufbewahrungsfrist' })).toBeInTheDocument();
+
+      state.save = stored;
+      await user.click(saveButton());
+
+      await waitFor(() => expect(saves()).toHaveLength(2));
+      await waitFor(() => expect(notify.success).toHaveBeenCalledWith('Die Aufbewahrungsfrist beträgt jetzt 7 Jahre.'));
+      expect(saves()[1]?.body).toBe('{"years":7}');
+    },
+  );
 });
