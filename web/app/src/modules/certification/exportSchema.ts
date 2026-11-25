@@ -53,11 +53,10 @@ const calendarDate = z
 
 /**
  * The export form's schema: two calendar dates, to on or after from, at most five years apart. Its rules mirror the
- * host's, which has no rule against a future day, so the clock goes unread here. Each message is a key, rendered with
- * t where it is shown.
+ * host's, which has no rule against a future day, so it reads no clock. Each message is a key, rendered with t where it
+ * is shown.
  */
-export function exportSchema(clock: () => Date): z.ZodType<ExportPeriod, ExportPeriod> {
-  void clock;
+export function exportSchema(): z.ZodType<ExportPeriod, ExportPeriod> {
   return z.object({ from: calendarDate, to: calendarDate }).superRefine(({ from, to }, context) => {
     if (!isCalendarDate(from) || !isCalendarDate(to)) {
       return;
