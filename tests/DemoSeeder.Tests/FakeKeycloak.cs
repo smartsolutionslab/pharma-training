@@ -9,7 +9,8 @@ namespace SmartSolutionsLab.PharmaTraining.DemoSeeder.Tests;
 /// Keycloak as the seeder meets it: the realm pharma-training, whose web client signs users in with the code flow and
 /// PKCE only (the published realm refuses the password grant on every client; the fake refuses it locally too, so the
 /// seeder takes the one path both share), its login form behind a session cookie, the master realm's admin-cli for the
-/// local administrator, and the admin API's user calls.
+/// local administrator, the confidential client demo-seeder, which staging's run administers users with (its
+/// <c>client_credentials</c> grant at the realm's token endpoint), and the admin API's user calls.
 /// </summary>
 public sealed class FakeKeycloak
 {
@@ -21,6 +22,12 @@ public sealed class FakeKeycloak
 
     public const string AdministratorPassword = "admin-password-of-the-run";
 
+    /// <summary>The confidential client staging's run administers users with (owner decision 4 on #457).</summary>
+    public const string SeederClientId = "demo-seeder";
+
+    /// <summary>Its secret, as the staging workflow hands it to the run (DEMO_SEEDER_SECRET).</summary>
+    public const string SeederClientSecret = StagingSettings.ClientSecret;
+
     /// <summary>The login page's title, which a failed sign-in names.</summary>
     public const string LoginTitle = "Sign in to Pharma Training";
 
@@ -28,6 +35,8 @@ public sealed class FakeKeycloak
     public const string InvalidCredentials = "Invalid username or password.";
 
     private const string AdminToken = "admin-token-of-the-run";
+
+    private const string SeederClientToken = "demo-seeder-token-of-the-run";
 
     private const string TokenPrefix = "token-for-";
 
@@ -39,8 +48,16 @@ public sealed class FakeKeycloak
 
     private readonly Dictionary<string, IssuedCode> codes = [with(StringComparer.Ordinal)];
 
+    private readonly List<IReadOnlyDictionary<string, string>> tokenRequests = [];
+
     /// <summary>The web client's redirect URI: the web app's origin with a slash, which the realm allows (http://localhost:5173/*).</summary>
     public static string RedirectUri => FakeApplication.WebOrigin.ToString();
+
+    /// <summary>Staging's redirect URI: the edge's origin, which serves the web app there.</summary>
+    public static string StagingRedirectUri => FakeApplication.StagingEdgeUrl.ToString();
+
+    /// <summary>The forms the realm's token endpoint was posted, in order: what each grant sent.</summary>
+    public IReadOnlyList<IReadOnlyDictionary<string, string>> TokenRequests => tokenRequests;
 
     public static string RealmUrl => $"{FakeApplication.KeycloakUrl.ToString().TrimEnd('/')}/realms/{Realm}";
 
@@ -110,9 +127,16 @@ public sealed class FakeKeycloak
         if (path.StartsWith($"/admin/realms/{Realm}/", StringComparison.Ordinal))
         {
             var authorization = request.Headers.Authorization?.ToString();
-            if (authorization != "Bearer " + AdminToken)
+            if (authorization != "Bearer " + AdminToken && authorization != "Bearer " + SeederClientToken)
             {
                 return new FakeAnswer("admin", null, new HttpResponseMessage(HttpStatusCode.Unauthorized));
+            }
+
+            // demo-seeder's service account holds realm-management's manage-users and view-users alone: reading a realm
+            // role by name asks view-realm too, which it does not hold.
+            if (authorization == "Bearer " + SeederClientToken && path.StartsWith($"/admin/realms/{Realm}/roles/", StringComparison.Ordinal))
+            {
+                return new FakeAnswer("/roles/{name}", null, new HttpResponseMessage(HttpStatusCode.Forbidden));
             }
 
             return Admin(method, path[$"/admin/realms/{Realm}".Length..], query, body);
@@ -145,7 +169,7 @@ public sealed class FakeKeycloak
     {
         var valid = query.GetValueOrDefault("client_id") == ClientId
             && query.GetValueOrDefault("response_type") == "code"
-            && query.GetValueOrDefault("redirect_uri") == RedirectUri
+            && query.GetValueOrDefault("redirect_uri") is { } redirectUri && (redirectUri == RedirectUri || redirectUri == StagingRedirectUri)
             && query.GetValueOrDefault("code_challenge_method") == "S256"
             && !string.IsNullOrEmpty(query.GetValueOrDefault("code_challenge"))
             && !string.IsNullOrEmpty(query.GetValueOrDefault("state"));
@@ -187,6 +211,14 @@ public sealed class FakeKeycloak
 
     private FakeAnswer Token(Dictionary<string, string> form)
     {
+        tokenRequests.Add(form);
+        if (form.GetValueOrDefault("grant_type") == "client_credentials")
+        {
+            return new FakeAnswer("token", null, form.GetValueOrDefault("client_id") == SeederClientId && form.GetValueOrDefault("client_secret") == SeederClientSecret
+                ? FakeResponses.Ok(new JsonObject { ["access_token"] = SeederClientToken, ["token_type"] = "Bearer", ["expires_in"] = 300 })
+                : FakeResponses.Json(HttpStatusCode.Unauthorized, new { error = "unauthorized_client", error_description = "Invalid client or Invalid client credentials" }));
+        }
+
         if (form.GetValueOrDefault("grant_type") != "authorization_code")
         {
             return new FakeAnswer("token", null, FakeResponses.Json(HttpStatusCode.BadRequest, new { error = "unauthorized_client", error_description = "Client not allowed for direct access grants" }));
