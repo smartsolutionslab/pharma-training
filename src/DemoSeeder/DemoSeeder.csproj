@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- stub for #457: the demo data seeder, a console app that seeds through the edge's public API alone (docs/adr). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>SmartSolutionsLab.PharmaTraining.DemoSeeder</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../ServiceDefaults/ServiceDefaults.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
