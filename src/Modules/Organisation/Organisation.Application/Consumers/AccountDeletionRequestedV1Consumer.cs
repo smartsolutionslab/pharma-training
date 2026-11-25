@@ -9,7 +9,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Cons
 /// Deletes an erased person's Keycloak account and records the erasure's step <c>keycloak</c> (#115). It is idempotent by
 /// the erasure's state: once the step is recorded, Keycloak is not asked again, and an account that is gone counts as
 /// deleted. A client's service account is never deleted, nor is a staff account, one holding a realm role of
-/// <see cref="StaffRoles"/> (owner decision on #115, docs/adr/0040): each logs an error by the erasure's id alone and
+/// <see cref="StaffRoles"/> (owner decision on #115, docs/adr/0041): each logs an error by the erasure's id alone and
 /// leaves the step open, so the erasure shows as unfinished until an administrator removes the account by hand. A failure of Keycloak records nothing and rethrows, so Wolverine
 /// retries and finally dead-letters the message, which holds ids only.
 /// </summary>

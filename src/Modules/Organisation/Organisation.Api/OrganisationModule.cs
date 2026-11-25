@@ -19,13 +19,10 @@ public sealed class OrganisationModule : IModule
         services.AddSingleton(OrganisationLimits.InvitationMailsFrom(configuration));
         services.AddSingleton(OrganisationLimits.RecipientAndSenderMailsFrom(configuration));
 
-        // Organisation deletes an erased person's Keycloak account (#115 slice 6, docs/adr/0040): its host says so with
-        // <ManagesAccounts>, from which the AppHost gives it Keycloak:Accounts. A host without that section (a test host,
-        // another module's) registers no IAccounts, and the start-up check of the settings never runs there.
-        if (configuration.GetSection(KeycloakAccountsSettings.Section).Exists())
-        {
-            services.AddKeycloakAccounts(configuration);
-        }
+        // Organisation deletes an erased person's Keycloak account (#115 slice 6, docs/adr/0041): its host says so with
+        // <ManagesAccounts>, from which the AppHost gives it Keycloak:Accounts, checked at start-up. A host without that
+        // section (a test host) still builds the erasure consumers; their first account call fails naming the setting.
+        services.AddKeycloakAccounts(configuration);
 
         // The per-user limit on accepting invitations, read once here like the line above (docs/adr/0004, docs/adr/0020).
         services.AddUserRateLimit(OrganisationLimits.AcceptFrom(configuration));

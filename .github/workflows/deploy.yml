@@ -124,7 +124,7 @@ jobs:
             done
             exit 1
           fi
-          # The realm import pastes this secret into realm.json as it is (ADR 0040); a quote or backslash would break the
+          # The realm import pastes this secret into realm.json as it is (ADR 0041); a quote or backslash would break the
           # import or add keys to the client, so only letters and digits pass, 32 or more of them. Never print the value.
           if ! printenv 'Parameters__keycloak-erasure-client-secret' | grep -Eqx '[A-Za-z0-9]{32,}'; then
             echo "::error::Parameters__keycloak-erasure-client-secret must be 32 or more letters and digits (openssl rand -hex 32)."
@@ -246,7 +246,7 @@ jobs:
             done
             exit 1
           fi
-          # The realm import pastes this secret into realm.json as it is (ADR 0040); a quote or backslash would break the
+          # The realm import pastes this secret into realm.json as it is (ADR 0041); a quote or backslash would break the
           # import or add keys to the client, so only letters and digits pass, 32 or more of them. Never print the value.
           if ! printenv 'Parameters__keycloak-erasure-client-secret' | grep -Eqx '[A-Za-z0-9]{32,}'; then
             echo "::error::Parameters__keycloak-erasure-client-secret must be 32 or more letters and digits (openssl rand -hex 32)."
