@@ -69,6 +69,14 @@ let generation = 0;
 onBeforeUnmount(() => {
   generation += 1;
 });
+// Another pharmacy starts a new form at once, not only when its period arrives: a press for the one before, whose check
+// ends while the new period is on its way, would otherwise send the old pharmacy's years to the new one.
+watch(
+  () => pharmacy.id,
+  () => {
+    generation += 1;
+  },
+);
 
 // The field starts from the period the host answered, and again whenever that changes: another pharmacy, or the read
 // after a save. An error at the field goes with it.
@@ -133,8 +141,8 @@ function refuse(error: unknown, pharmacyId: string) {
   }
 }
 
-async function send({ years: chosen }: RetentionPeriod) {
-  const pharmacyId = pharmacy.id;
+/** Sends the years to the pharmacy the press was made for, never to the one current when the check ends. */
+async function send({ years: chosen }: RetentionPeriod, pharmacyId: string) {
   hostRefusal.value = undefined;
   sending.value = true;
   try {
@@ -156,10 +164,11 @@ async function submit(event: Event) {
     return;
   }
   const pressed = generation;
+  const pressedFor = pharmacy.id;
   await handleSubmit(
     async (values) => {
-      if (pressed === generation) {
-        await send(values);
+      if (pressed === generation && pressedFor === pharmacy.id) {
+        await send(values, pressedFor);
       }
     },
     () => {
