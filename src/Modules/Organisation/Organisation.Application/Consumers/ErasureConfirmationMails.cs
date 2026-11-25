@@ -6,7 +6,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Cons
 /// <summary>The erasure's confirmation mail, in German plain text; it names neither the person nor a pharmacy.</summary>
 public static class ErasureConfirmationMails
 {
-    public const string Subject = "Ihre Daten bei PharmaTraining wurden gelöscht";
+    public const string Subject = "Löschung Ihrer Daten bei PharmaTraining";
 
     public static OutgoingMail Compose(EmailAddress address)
     {
