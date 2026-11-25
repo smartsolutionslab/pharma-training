@@ -1,4 +1,6 @@
 import { type APIRequestContext, expect, type Page } from '@playwright/test';
+import { newestFirst } from './newestFirst';
+import { signIn } from './signIn';
 
 // The setup the Compliance end-to-end tests share, all through the host's API with no route mocked: the realm's local
 // user editor publishes a course, the developer registers a pharmacy they manage, of which they are the only member,
@@ -10,28 +12,14 @@ const keycloak = process.env.E2E_KEYCLOAK_URL ?? 'http://localhost:8080';
 /** The developer's name as Compliance's member list answers it: the realm's first and last name. */
 export const developer = 'Local Developer';
 
-/** A number that shrinks as time goes on, padded so that it sorts as text: a newer run's name sorts first. */
-function countdown() {
-  return String(9_999_999_999_999 - Date.now()).padStart(13, '0');
-}
-
-/** A short random suffix, so two tests that start in the same millisecond (several workers) still differ. */
-function suffix() {
-  return String(Math.floor(Math.random() * 1e4)).padStart(4, '0');
-}
-
-/**
- * A course title the catalog (by title, 20 to a page) lists before every course an earlier run published: it starts
- * with a digit, and its number shrinks as time goes on, so the newest run's course is on the first page.
- */
+/** A course title the catalog (by title, 20 to a page) lists before every course an earlier run published. */
 export function courseTitle(label = 'Zuweisung') {
-  // The countdown before the label: by name, the newest course of any spec comes first.
-  return `0 E2E ${countdown()}${suffix()} ${label}`;
+  return newestFirst(label);
 }
 
 /** A pharmacy name no earlier run used, counting down like the course titles. */
 export function pharmacyName(label: string) {
-  return `0 E2E ${countdown()}${suffix()} ${label}`;
+  return newestFirst(label);
 }
 
 /** The access token Keycloak issues to a local user, whose password is their name (direct access grants are on). */
@@ -179,11 +167,7 @@ export async function assignThroughApi(
  * belongs to several (earlier runs add some), or current by itself when it is their only one.
  */
 export async function signInTo(page: Page, pharmacy: string) {
-  await page.goto('/');
-  await page.getByLabel('Username or email').fill('developer');
-  await page.getByLabel('Password', { exact: true }).fill('developer');
-  await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.getByText('Angemeldet als developer')).toBeVisible();
+  await signIn(page);
 
   // Exactly: the start page has regions whose names hold the word too.
   const region = page.getByRole('region', { name: 'Apotheke', exact: true });

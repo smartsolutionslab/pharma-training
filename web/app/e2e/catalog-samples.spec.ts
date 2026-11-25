@@ -1,20 +1,19 @@
 import { expect, type Page, test } from '@playwright/test';
+import { newestFirst } from './newestFirst';
 import { memberOfOnePharmacy } from './onePharmacy';
+import { signIn } from './signIn';
 
 /** The Catalog page, as a signed-in member of a pharmacy, who may manage it, opens it. */
 async function openCatalog(page: Page) {
   await memberOfOnePharmacy(page);
-  await page.goto('/');
-  await page.getByLabel('Username or email').fill('developer');
-  await page.getByLabel('Password', { exact: true }).fill('developer');
-  await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.getByText('Angemeldet als developer')).toBeVisible();
+  await signIn(page);
   await page.goto('/catalog');
   await expect(page.getByRole('heading', { name: 'Beispiele' })).toBeVisible();
 }
 
 test('a user creates a catalog sample and finds it in the list, after a reload too', async ({ page }) => {
-  const name = `E2E ${Date.now()}`;
+  // The list is by name, 20 to a page: this name sorts before every sample an earlier test made.
+  const name = newestFirst('Beispiel');
   await openCatalog(page);
 
   await page.getByRole('textbox', { name: 'Name' }).fill(name);
