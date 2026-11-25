@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.Extensions.Time.Testing;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Exports;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Queries.ExportPharmacyCertificates;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Certificates;
@@ -25,6 +26,7 @@ public class ExportPharmacyCertificatesTests
     private readonly InMemoryMembershipStore memberships = new();
     private readonly InMemoryCertificateStore certificates;
     private readonly InMemoryBlobReads blobs = new();
+    private readonly FakeTimeProvider time = new(new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero));
     private readonly PharmacyId pharmacy = PharmacyId.From(Guid.CreateVersion7());
     private readonly PersonId manager = PersonId.From(Guid.CreateVersion7());
 
@@ -427,6 +429,60 @@ public class ExportPharmacyCertificatesTests
         certificates.CertificatesReadForExports.ShouldBeLessThanOrEqualTo(CertificateExportArchive.MaxCertificates + 1);
     }
 
+    /// <summary>
+    /// #53 (docs/adr/0034): the pharmacy keeps a certificate in its view until five years after its issue, to the instant,
+    /// whatever period is asked for. Issued 15 June 2025 at 10:00 UTC, it is exported on 14 June 2030 (4 years 364 days)
+    /// and no longer at 10:00 UTC on 15 June 2030 (exactly 5 years).
+    /// </summary>
+    [Fact]
+    public async Task A_certificate_is_exported_until_five_years_after_its_issue()
+    {
+        Start(manager, MembershipRole.Manager, LongAgo);
+        var member = PersonId.From(Guid.CreateVersion7());
+        Start(member, MembershipRole.Employee, LongAgo);
+        var issuedAt = new DateTimeOffset(2025, 6, 15, 10, 0, 0, TimeSpan.Zero);
+        var certificate = Issue(member, issuedAt);
+
+        time.SetUtcNow(issuedAt.AddYears(5).AddDays(-1));
+        (await ExportedAsync()).ShouldBe([certificate.Id]);
+
+        time.SetUtcNow(issuedAt.AddYears(5).AddTicks(-1));
+        (await ExportedAsync()).ShouldBe([certificate.Id]);
+
+        time.SetUtcNow(issuedAt.AddYears(5));
+        (await ExportedAsync()).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task Of_one_period_only_the_certificates_issued_less_than_five_years_ago_are_exported()
+    {
+        Start(manager, MembershipRole.Manager, LongAgo);
+        var member = PersonId.From(Guid.CreateVersion7());
+        Start(member, MembershipRole.Employee, LongAgo);
+        time.SetUtcNow(new DateTimeOffset(2030, 6, 15, 10, 0, 0, TimeSpan.Zero));
+        Issue(member, new DateTimeOffset(2025, 2, 1, 9, 0, 0, TimeSpan.Zero));
+        Issue(member, new DateTimeOffset(2025, 6, 15, 10, 0, 0, TimeSpan.Zero));
+        var dayLater = Issue(member, new DateTimeOffset(2025, 6, 16, 10, 0, 0, TimeSpan.Zero));
+        var later = Issue(member, new DateTimeOffset(2025, 11, 1, 9, 0, 0, TimeSpan.Zero));
+
+        (await ExportedAsync()).ShouldBe([dayLater.Id, later.Id]);
+    }
+
+    /// <summary>
+    /// #53: certificates the pharmacy no longer keeps are left out before the 2000 are counted, so an export that holds
+    /// 2000 kept certificates is not refused for older ones in the same period.
+    /// </summary>
+    [Fact]
+    public async Task Certificates_older_than_five_years_do_not_count_towards_the_limit()
+    {
+        Start(manager, MembershipRole.Manager, LongAgo);
+        time.SetUtcNow(new DateTimeOffset(2030, 6, 15, 10, 0, 0, TimeSpan.Zero));
+        IssueMany(CertificateExportArchive.MaxCertificates, new DateTimeOffset(2025, 7, 1, 9, 0, 0, TimeSpan.Zero));
+        IssueMany(5, new DateTimeOffset(2025, 3, 1, 9, 0, 0, TimeSpan.Zero));
+
+        (await ExportedAsync()).Count.ShouldBe(2000);
+    }
+
     [Fact]
     public async Task No_query_is_refused()
     {
@@ -436,7 +492,7 @@ public class ExportPharmacyCertificatesTests
     private static DateOnly? DateOf(string? text) =>
         text is null ? null : DateOnly.ParseExact(text, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
 
-    private ExportPharmacyCertificatesHandler Handler() => new(memberships, certificates, blobs);
+    private ExportPharmacyCertificatesHandler Handler() => new(memberships, certificates, blobs, time);
 
     private Task<Result<CertificateExportArchive, ApiError>> HandleAsync(Guid caller) =>
         HandleAsync(new ExportPharmacyCertificates(pharmacy.Value, caller, From, To));
@@ -475,11 +531,12 @@ public class ExportPharmacyCertificatesTests
         return certificate;
     }
 
-    private void IssueMany(int count)
+    private void IssueMany(int count) => IssueMany(count, new DateTimeOffset(2025, 1, 1, 9, 0, 0, TimeSpan.Zero));
+
+    private void IssueMany(int count, DateTimeOffset first)
     {
         var member = PersonId.From(Guid.CreateVersion7());
         Start(member, MembershipRole.Employee, LongAgo);
-        var first = new DateTimeOffset(2025, 1, 1, 9, 0, 0, TimeSpan.Zero);
         for (var i = 0; i < count; i++)
         {
             Issue(member, first.AddMinutes(i));

@@ -64,13 +64,14 @@ internal sealed class InMemoryCertificateStore : ICertificateStore, ICertificati
     /// <summary>
     /// The certificates issued from <paramref name="issuedFrom"/> on and before <paramref name="issuedBefore"/> whose holder
     /// had a membership in the pharmacy at the instant of issue (started at or before it, no ending of it at or before it),
-    /// oldest first, then by id, at most <paramref name="limit"/>, as the store in Infrastructure reads them; none without a
-    /// membership store.
+    /// and that pharmacies still keep at <paramref name="keptAt"/>, oldest first, then by id, at most <paramref name="limit"/>,
+    /// as the store in Infrastructure reads them; none without a membership store.
     /// </summary>
-    public Task<IReadOnlyList<Certificate>> IssuedInPharmacyAsync(PharmacyId pharmacy, Timestamp issuedFrom, Timestamp issuedBefore, int limit, CancellationToken cancellationToken)
+    public Task<IReadOnlyList<Certificate>> IssuedInPharmacyAsync(PharmacyId pharmacy, Timestamp issuedFrom, Timestamp issuedBefore, Timestamp keptAt, int limit, CancellationToken cancellationToken)
     {
         var issued = Stored
             .Where(certificate => issuedFrom <= certificate.IssuedAt && certificate.IssuedAt < issuedBefore)
+            .Where(certificate => certificate.IsKeptByPharmaciesAt(keptAt))
             .Where(certificate => memberships is not null && memberships.Memberships.Any(membership =>
                 membership.Pharmacy == pharmacy
                 && membership.Person == certificate.Holder
