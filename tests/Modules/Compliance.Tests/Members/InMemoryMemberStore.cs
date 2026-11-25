@@ -29,6 +29,9 @@ internal sealed class InMemoryMemberStore : IMemberStore, IErasedPersonStore, IC
 
     public int Commits { get; private set; }
 
+    /// <summary>What a consumer asked of the person, in order: <c>hold</c> and <c>is-erased</c>.</summary>
+    public List<string> PersonCalls { get; } = [];
+
     public Task<bool> ExistsAsync(MembershipId membership, CancellationToken cancellationToken) =>
         Task.FromResult(Members.Any(member => member.Id == membership));
 
@@ -89,8 +92,17 @@ internal sealed class InMemoryMemberStore : IMemberStore, IErasedPersonStore, IC
         return Task.FromResult(found);
     }
 
-    public Task<bool> IsErasedAsync(PersonId person, CancellationToken cancellationToken) =>
-        Task.FromResult(ErasedPersons.Any(erased => erased.Person == person));
+    public Task HoldAsync(PersonId person, CancellationToken cancellationToken)
+    {
+        PersonCalls.Add("hold");
+        return Task.CompletedTask;
+    }
+
+    public Task<bool> IsErasedAsync(PersonId person, CancellationToken cancellationToken)
+    {
+        PersonCalls.Add("is-erased");
+        return Task.FromResult(ErasedPersons.Any(erased => erased.Person == person));
+    }
 
     public void Add(ErasedPerson erased) => addedErasedPersons.Add(erased);
 

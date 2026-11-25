@@ -49,6 +49,26 @@ public class ErasedMembershipConsumersTests
         logged.Message.ShouldNotContain(Name);
     }
 
+    [Fact]
+    public async Task A_started_membership_holds_the_person_before_it_asks_whether_they_were_erased()
+    {
+        var started = MembershipEvents.Started(Guid.CreateVersion7(), person.Value, Guid.CreateVersion7(), Name);
+
+        await new MembershipStartedV1Consumer(store, store, store, new FakeLogger<MembershipStartedV1Consumer>()).HandleAsync(started, TestContext.Current.CancellationToken);
+
+        store.PersonCalls.ShouldBe(["hold", "is-erased"], "an erasure running at the same time must not commit its tombstone between the check and this write");
+    }
+
+    [Fact]
+    public async Task A_changed_membership_holds_the_person_before_it_asks_whether_they_were_erased()
+    {
+        var changed = MembershipEvents.Changed(Guid.CreateVersion7(), person.Value, Guid.CreateVersion7(), Name, JobFunctionV1.Pta, MembershipRoleV1.Employee, 2);
+
+        await new MembershipChangedV1Consumer(store, store, store, new FakeLogger<MembershipChangedV1Consumer>()).HandleAsync(changed, TestContext.Current.CancellationToken);
+
+        store.PersonCalls.ShouldBe(["hold", "is-erased"], "an erasure running at the same time must not commit its tombstone between the check and this write");
+    }
+
     private async Task EraseAsync(PersonId erased)
     {
         store.Add(ErasedPerson.Of(erased, Timestamp.From(ErasedAt)));

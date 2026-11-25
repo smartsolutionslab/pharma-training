@@ -106,6 +106,14 @@ public class PersonErasureRequestedV1ConsumerTests
     }
 
     [Fact]
+    public async Task The_erasure_holds_the_person_before_it_reads_anything_of_theirs()
+    {
+        await Consumer().HandleAsync(Requested(person), TestContext.Current.CancellationToken);
+
+        store.PersonCalls.ShouldBe(["hold", "is-erased"], "a membership event running at the same time must not commit the name between this read and the tombstone");
+    }
+
+    [Fact]
     public async Task The_stored_membership_messages_holding_the_persons_id_are_purged()
     {
         await ComplianceMembers.StartAsync(store, person, pharmacy, MembershipRole.Employee);
