@@ -67,6 +67,18 @@ resource vnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
   }
 }
 
+// The subnets by name, never by their position in the list, so reordering them cannot swap them; each waits for the
+// network it is part of.
+resource acaSubnet 'Microsoft.Network/virtualNetworks/subnets@2024-05-01' existing = {
+  parent: vnet
+  name: 'aca-subnet'
+}
+
+resource privateEndpointsSubnet 'Microsoft.Network/virtualNetworks/subnets@2024-05-01' existing = {
+  parent: vnet
+  name: 'private-endpoints'
+}
+
 resource zones 'Microsoft.Network/privateDnsZones@2024-06-01' = [for target in targets: {
   name: target.zone
   location: 'global'
@@ -89,8 +101,7 @@ resource endpoints 'Microsoft.Network/privateEndpoints@2024-05-01' = [for target
   location: location
   properties: {
     subnet: {
-      // The subnets in the order declared above: aca-subnet, then private-endpoints.
-      id: vnet.properties.subnets[1].id
+      id: privateEndpointsSubnet.id
     }
     privateLinkServiceConnections: [
       {
@@ -133,14 +144,17 @@ resource blobLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2024-06
   location: 'global'
   properties: {
     registrationEnabled: false
+    // The zone holds this account's record alone: another account's blob host, which Azure also resolves through
+    // privatelink.blob, falls back to public DNS instead of failing inside the network.
+    resolutionPolicy: 'NxDomainRedirect'
     virtualNetwork: {
       id: vnet.id
     }
   }
 }
 
-output acaSubnetId string = vnet.properties.subnets[0].id
+output acaSubnetId string = acaSubnet.id
 
-output privateEndpointsSubnetId string = vnet.properties.subnets[1].id
+output privateEndpointsSubnetId string = privateEndpointsSubnet.id
 
 output blobZoneId string = blobZone.id

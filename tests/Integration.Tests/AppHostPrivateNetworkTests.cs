@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 
 /// <summary>
@@ -29,7 +31,13 @@ public class AppHostPrivateNetworkTests
     {
         var bicep = await PublishedAppHost.PublishAsync(environment, TestContext.Current.CancellationToken);
 
-        bicep.Module("secrets").ShouldContain("publicNetworkAccess: 'Disabled'");
+        var secrets = bicep.Module("secrets");
+
+        secrets.ShouldContain("publicNetworkAccess: 'Disabled'");
+        // Denied by default, and no trusted service passes: Container Apps is not one, so a bypass would not help a Key Vault
+        // reference, and the deployment's own writes go through Azure Resource Manager (docs/adr/0038).
+        secrets.ShouldContain("defaultAction: 'Deny'");
+        secrets.ShouldContain("bypass: 'None'");
     }
 
     [Theory]
@@ -84,5 +92,51 @@ public class AppHostPrivateNetworkTests
 
         storage.ShouldNotContain("publicNetworkAccess: 'Disabled'");
         storage.ShouldNotContain("defaultAction: 'Deny'");
+    }
+
+    // Each module that reaches a resource privately is handed that resource's own id, and the environment the network's
+    // subnet: a miswired id would put an endpoint on the wrong resource, or none at all (#415).
+    [Theory]
+    [InlineData(PublishedAppHost.Staging, "network", "postgres_outputs_id", "postgres.outputs.id")]
+    [InlineData(PublishedAppHost.Staging, "network", "secrets_outputs_id", "secrets.outputs.id")]
+    [InlineData(PublishedAppHost.Staging, "blob_endpoint", "storage_outputs_id", "storage.outputs.id")]
+    [InlineData(PublishedAppHost.Staging, "blob_endpoint", "network_outputs_privateendpointssubnetid", "network.outputs.privateEndpointsSubnetId")]
+    [InlineData(PublishedAppHost.Staging, "blob_endpoint", "network_outputs_blobzoneid", "network.outputs.blobZoneId")]
+    [InlineData(PublishedAppHost.Staging, "aca", "network_outputs_acasubnetid", "network.outputs.acaSubnetId")]
+    [InlineData(PublishedAppHost.Production, "network", "postgres_outputs_id", "postgres.outputs.id")]
+    [InlineData(PublishedAppHost.Production, "network", "secrets_outputs_id", "secrets.outputs.id")]
+    [InlineData(PublishedAppHost.Production, "blob_endpoint", "storage_outputs_id", "storage.outputs.id")]
+    [InlineData(PublishedAppHost.Production, "aca", "network_outputs_acasubnetid", "network.outputs.acaSubnetId")]
+    public async Task Main_bicep_hands_each_network_module_the_right_ids(string environment, string module, string parameter, string value)
+    {
+        var bicep = await PublishedAppHost.PublishAsync(environment, TestContext.Current.CancellationToken);
+
+        var block = Regex.Match(bicep.Files["main.bicep"], $@"(?ms)^module\s+{Regex.Escape(module)}\s+'[^']+'\s*=\s*\{{.*?^\}}", RegexOptions.None, TimeSpan.FromSeconds(1)).Value;
+
+        block.ShouldNotBeEmpty($"main.bicep has no module {module}.");
+        block.ShouldContain($"{parameter}: {value}", Case.Sensitive, $"main.bicep's module {module} does not hand {parameter} the value {value}: {block}");
+    }
+
+    // Subnets looked up by name, never by their position in the list, so reordering them cannot swap them (#415).
+    [Theory]
+    [InlineData(PublishedAppHost.Staging)]
+    [InlineData(PublishedAppHost.Production)]
+    public async Task The_network_finds_its_subnets_by_name(string environment)
+    {
+        var bicep = await PublishedAppHost.PublishAsync(environment, TestContext.Current.CancellationToken);
+
+        bicep.Module("network").ShouldNotContain("subnets[");
+    }
+
+    // The blobs' zone holds a record for this account alone; another account's blob host, private endpoint or not, must
+    // still resolve from inside the network, through public DNS (#415).
+    [Theory]
+    [InlineData(PublishedAppHost.Staging)]
+    [InlineData(PublishedAppHost.Production)]
+    public async Task The_blob_zone_falls_back_to_public_dns(string environment)
+    {
+        var bicep = await PublishedAppHost.PublishAsync(environment, TestContext.Current.CancellationToken);
+
+        bicep.Module("network").ShouldContain("resolutionPolicy: 'NxDomainRedirect'");
     }
 }
