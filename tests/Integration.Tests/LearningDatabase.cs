@@ -67,7 +67,10 @@ internal static class LearningDatabase
     /// <summary>Sends any event under a new envelope id and waits until Learning's inbox has handled it.</summary>
     public static async Task DeliverAsync<T>(AspireFixture aspire, string type, T message, CancellationToken cancellationToken)
     {
+        // A tombstoned person's membership message is dropped and its handled envelope swept (#439), maybe before a
+        // poll sees it Handled, so the sweep waits until this barrier is past.
         var messageId = Guid.CreateVersion7();
+        await using var pause = await ErasedPersonSweepPause.StartAsync(aspire, "learning", type, cancellationToken);
         await Broker.SendAsync(aspire, type, message, messageId, cancellationToken);
         await WaitUntilHandledAsync(aspire, messageId, cancellationToken);
     }

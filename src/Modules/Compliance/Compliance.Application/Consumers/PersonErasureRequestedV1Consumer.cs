@@ -31,9 +31,6 @@ public sealed class PersonErasureRequestedV1Consumer(
     IComplianceUnitOfWork unitOfWork,
     TimeProvider time)
 {
-    /// <summary>The messages Compliance stores that carry a person's name.</summary>
-    private static readonly IReadOnlyCollection<Type> PersonalMessages = [typeof(MembershipStartedV1), typeof(MembershipChangedV1)];
-
     private readonly IMemberStore members = members;
     private readonly IErasedPersonStore erased = erased;
     private readonly IAssignmentStore assignments = assignments;
@@ -78,7 +75,7 @@ public sealed class PersonErasureRequestedV1Consumer(
             }
         }
 
-        await purge.PurgeAsync(person.Value, PersonalMessages, cancellationToken);
+        await purge.PurgeAsync(person.Value, PersonalMessages.Types, cancellationToken);
 
         await unitOfWork.PublishAsync(new ComplianceErasureCompletedV1(message.ErasureId));
         await unitOfWork.CommitAsync(cancellationToken);

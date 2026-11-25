@@ -90,6 +90,27 @@ internal sealed class KeycloakAdmin(AspireFixture aspire)
         granted.StatusCode.ShouldBe(HttpStatusCode.NoContent, await granted.Content.ReadAsStringAsync(cancellationToken));
     }
 
+    /// <summary>
+    /// Gives the user a role of the client, as an administrator does with kcadm.sh's <c>add-roles --cclientid</c>; a
+    /// <c>realm-management</c> role makes the user a delegated realm administrator.
+    /// </summary>
+    public async Task GrantClientRoleAsync(Guid user, string clientId, string role, CancellationToken cancellationToken)
+    {
+        using var administrator = await AdministratorAsync(cancellationToken);
+        var clients = await administrator.GetFromJsonAsync<List<RealmClient>>(
+            new Uri($"/admin/realms/{Realm}/clients?clientId={Uri.EscapeDataString(clientId)}", UriKind.Relative),
+            cancellationToken);
+        var client = clients.ShouldNotBeNull().ShouldHaveSingleItem($"the realm should hold one client {clientId}");
+        using var read = await administrator.GetAsync(new Uri($"/admin/realms/{Realm}/clients/{client.Id}/roles/{Uri.EscapeDataString(role)}", UriKind.Relative), cancellationToken);
+        var body = await read.Content.ReadAsStringAsync(cancellationToken);
+        read.StatusCode.ShouldBe(HttpStatusCode.OK, body);
+        using var granted = await administrator.PostAsync(
+            new Uri($"/admin/realms/{Realm}/users/{user:D}/role-mappings/clients/{client.Id}", UriKind.Relative),
+            new StringContent($"[{body}]", System.Text.Encoding.UTF8, "application/json"),
+            cancellationToken);
+        granted.StatusCode.ShouldBe(HttpStatusCode.NoContent, await granted.Content.ReadAsStringAsync(cancellationToken));
+    }
+
     /// <summary>Deletes a test's throwaway user; one that is gone already is fine.</summary>
     public async Task DeleteUserAsync(Guid user, CancellationToken cancellationToken)
     {
@@ -99,4 +120,6 @@ internal sealed class KeycloakAdmin(AspireFixture aspire)
     }
 
     private sealed record AccessToken([property: JsonPropertyName("access_token")] string Token);
+
+    private sealed record RealmClient(string Id, string ClientId);
 }

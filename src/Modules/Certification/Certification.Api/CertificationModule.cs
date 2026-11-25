@@ -1,8 +1,10 @@
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Mail;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Modules;
+using SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Consumers;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Commands.PurgeErasedCertificates;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Documents;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Infrastructure.Documents;
+using SmartSolutionsLab.PharmaTraining.Modules.Certification.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
@@ -31,6 +33,11 @@ public sealed class CertificationModule : IModule
         // The purge of erased persons' retained certificates no pharmacy keeps any longer (#115, slice 5), every
         // interval read here once: a value the host cannot read stops it at startup.
         services.AddPeriodicCommand<PurgeErasedCertificates>(ErasedCertificatePurgeSettings.From(configuration).Interval);
+
+        // Removes the dead letters and handled envelopes of an erased person's membership messages that arrive after the
+        // erasure's purge (#439, docs/adr/0036), and those of a membership message its consumers dropped, under
+        // Certification:ErasedPersonMessageSweep.
+        services.AddErasedPersonMessageSweep(configuration, "Certification", CertificationDbContext.Schema, PersonalMessages.Types);
     }
 
     public void MapEndpoints(IEndpointRouteBuilder endpoints) =>
