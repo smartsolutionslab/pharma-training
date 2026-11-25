@@ -9,12 +9,17 @@ if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   exit 0
 fi
 
-if docker info > /dev/null 2>&1; then
+# Each probe is bounded, so a daemon that accepts the connection but hangs cannot stretch the 60 s wait.
+docker_answers() {
+  timeout 5 docker info > /dev/null 2>&1
+}
+
+if ! command -v docker > /dev/null || ! command -v dockerd > /dev/null; then
+  echo "session-start: docker or dockerd is not installed; integration tests and the AppHost need Docker." >&2
   exit 0
 fi
 
-if ! command -v dockerd > /dev/null; then
-  echo "session-start: dockerd is not installed; integration tests and the AppHost need Docker." >&2
+if docker_answers; then
   exit 0
 fi
 
@@ -26,8 +31,9 @@ fi
 setsid nohup dockerd > "$log" 2>&1 < /dev/null &
 daemon=$!
 
-for _ in $(seq 1 60); do
-  if docker info > /dev/null 2>&1; then
+deadline=$((SECONDS + 60))
+while [ "$SECONDS" -lt "$deadline" ]; do
+  if docker_answers; then
     exit 0
   fi
   if ! kill -0 "$daemon" 2> /dev/null; then
