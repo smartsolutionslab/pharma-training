@@ -42,4 +42,7 @@ public interface IAssignmentStore
 
     /// <summary>The learner's open or in-progress assignments in the pharmacy, every course, read without tracking, for a query.</summary>
     Task<IReadOnlyList<Assignment>> ReadActiveOfLearnerInPharmacyAsync(PersonId learner, PharmacyId pharmacy, CancellationToken cancellationToken);
+
+    /// <summary>The learner's open or in-progress assignments in every pharmacy, every course, tracked so a commit saves their changes.</summary>
+    Task<IReadOnlyList<Assignment>> ActiveOfLearnerInEveryPharmacyAsync(PersonId learner, CancellationToken cancellationToken);
 }

@@ -19,7 +19,7 @@ public sealed class MemberConfiguration : IEntityTypeConfiguration<Member>
         builder.Property(member => member.Person).HasColumnName("person_id").IsRequired();
         builder.Property(member => member.Pharmacy).HasColumnName("pharmacy_id").IsRequired();
         // As long as Organisation allows a display name to be.
-        builder.Property(member => member.Name).HasColumnName("display_name").HasMaxLength(MemberName.MaxLength).IsRequired();
+        builder.Property(member => member.Name).HasColumnName("display_name").HasMaxLength(MemberName.MaxLength).IsRequired(false);
         builder.Property(member => member.JobFunction).HasColumnName("job_function").HasConversion<string>().HasMaxLength(EnumLength).IsRequired();
         builder.Property(member => member.Role).HasColumnName("role").HasConversion<string>().HasMaxLength(EnumLength).IsRequired();
 

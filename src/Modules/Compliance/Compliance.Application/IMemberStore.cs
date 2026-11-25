@@ -31,4 +31,10 @@ public interface IMemberStore
 
     /// <summary>Which of the persons have a membership in the pharmacy that has not ended.</summary>
     Task<IReadOnlySet<PersonId>> ActiveMembersAsync(PharmacyId pharmacy, IReadOnlyCollection<PersonId> persons, CancellationToken cancellationToken);
+
+    /// <summary>Every member of the person, in every pharmacy and whether ended or not, tracked so a commit saves what is changed.</summary>
+    Task<IReadOnlyList<Member>> MembersOfPersonAsync(PersonId person, CancellationToken cancellationToken);
+
+    /// <summary>Every change of the person's memberships, tracked so a commit saves what is changed.</summary>
+    Task<IReadOnlyList<MembershipChange>> ChangesOfPersonAsync(PersonId person, CancellationToken cancellationToken);
 }

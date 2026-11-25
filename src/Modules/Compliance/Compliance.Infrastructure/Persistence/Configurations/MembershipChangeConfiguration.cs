@@ -22,7 +22,7 @@ public sealed class MembershipChangeConfiguration : IEntityTypeConfiguration<Mem
         builder.Property(change => change.Person).HasColumnName("person_id").IsRequired();
         builder.Property(change => change.Pharmacy).HasColumnName("pharmacy_id").IsRequired();
         // As long as Organisation allows a display name to be.
-        builder.Property(change => change.Name).HasColumnName("display_name").HasMaxLength(MemberName.MaxLength).IsRequired();
+        builder.Property(change => change.Name).HasColumnName("display_name").HasMaxLength(MemberName.MaxLength).IsRequired(false);
         builder.Property(change => change.JobFunction).HasColumnName("job_function").HasConversion<string>().HasMaxLength(EnumLength).IsRequired();
         builder.Property(change => change.Role).HasColumnName("role").HasConversion<string>().HasMaxLength(EnumLength).IsRequired();
     }

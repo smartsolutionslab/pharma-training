@@ -5,6 +5,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- FakeLogger: a membership of an erased person is dropped and logged (#115). -->
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../../../src/Modules/Compliance/Compliance.Api/Compliance.Api.csproj" />
     <Compile Include="../../Fakes/*.cs" Link="Fakes/%(Filename)%(Extension)" />
   </ItemGroup>

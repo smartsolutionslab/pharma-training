@@ -26,7 +26,8 @@ public sealed class MembershipChange
 
     public MembershipVersion Version { get; }
 
-    public MemberName Name { get; }
+    /// <summary>The name as it arrived; null once the person is erased (#115).</summary>
+    public MemberName? Name { get; private set; }
 
     public JobFunction JobFunction { get; }
 
@@ -43,4 +44,7 @@ public sealed class MembershipChange
         Ensure.That(name).IsNotNull();
         return new MembershipChange(membership, person, pharmacy, version, name, jobFunction, role);
     }
+
+    /// <summary>Forgets the name, for the person's erasure (#115).</summary>
+    public void EraseName() => Name = null;
 }

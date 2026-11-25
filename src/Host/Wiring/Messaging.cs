@@ -1,4 +1,5 @@
 using System.Reflection;
+using Npgsql;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Modules;
 using SmartSolutionsLab.PharmaTraining.Contracts;
@@ -55,6 +56,11 @@ public static class Messaging
         {
             throw new InvalidOperationException($"The broker user '{shared.Key}' is named for the modules {string.Join(", ", shared.Select(publisher => publisher.Key))}; each module needs a user of its own.");
         }
+
+        // The purge of a person's stored messages (#115) runs over the service's own database, on a data source of its own,
+        // keyed so nothing else in the host takes it for its connections.
+        services.AddKeyedSingleton(nameof(PersonalMessagePurge), (_, _) => NpgsqlDataSource.Create(database));
+        services.AddSingleton<IPersonalMessagePurge>(provider => new PersonalMessagePurge(provider.GetRequiredKeyedService<NpgsqlDataSource>(nameof(PersonalMessagePurge))));
 
         services.AddSingleton(new BrokerPublishers(publishers.ToDictionary(publisher => publisher.Value!, publisher => publisher.Key, StringComparer.Ordinal)));
 
@@ -117,6 +123,8 @@ public static class Messaging
             {
                 options.Discovery.IncludeAssembly(ModuleAssemblies.Of(module, "Application"));
             }
+            // Made by a factory, so a consumer takes it from the container rather than Wolverine building it.
+            options.CodeGeneration.AlwaysUseServiceLocationFor<IPersonalMessagePurge>();
             options.ResolveDispatcherFromScope()
                 .ResolveModuleServicesFromScope(modules)
                 .UseConsumerTimeouts();

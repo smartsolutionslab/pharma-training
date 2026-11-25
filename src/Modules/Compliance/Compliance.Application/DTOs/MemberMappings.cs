@@ -8,6 +8,6 @@ public static class MemberMappings
     {
         Ensure.That(membership).IsNotNull();
 
-        return new ComplianceMemberDto(membership.Person.Value, membership.Name.Value, membership.JobFunction.ToDto());
+        return new ComplianceMemberDto(membership.Person.Value, membership.Name?.Value ?? string.Empty, membership.JobFunction.ToDto());
     }
 }

@@ -2,19 +2,26 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text.Json;
+using Npgsql;
 
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 
 /// <summary>
-/// A person's erasure end to end (#115), grown slice by slice; slice 1 covers Organisation. The person is a fresh id,
+/// A person's erasure end to end (#115), grown slice by slice; slice 1 covers Organisation, slice 2 Compliance. The person is a fresh id,
 /// named and addressed by a fresh Guid and planted in Organisation's tables by hand, never a shared local user. Support
 /// requests the erasure; Organisation refuses the last active manager of a pharmacy, otherwise ends the person's
 /// memberships, revokes the invitations to their address, mails the confirmation once and then forgets their name and
-/// address, and records its step in the erasure log.
+/// address, and records its step in the erasure log. Compliance, which holds copies of the person's memberships
+/// (planted by delivering Organisation's membership events), forgets the name there and in the messages it stored, and
+/// its step follows.
 /// </summary>
 public class PersonErasureTests(AspireFixture aspire)
 {
     private const string LastManager = "organisation.erasure-refused-last-manager";
+    private const string StartedType = "SmartSolutionsLab.PharmaTraining.Contracts.Organisation.MembershipStartedV1";
+    private const string ChangedType = "SmartSolutionsLab.PharmaTraining.Contracts.Organisation.MembershipChangedV1";
+
+    private static readonly string[] AllSteps = ["organisation", "compliance"];
 
     private static readonly Uri Erasures = new("/organisation/erasures", UriKind.Relative);
     private static readonly Uri Pharmacies = new("/organisation/pharmacies", UriKind.Relative);
@@ -68,7 +75,7 @@ public class PersonErasureTests(AspireFixture aspire)
         var confirmation = mails.ShouldHaveSingleItem();
         confirmation.Text.ShouldNotContain(probe.Name);
         confirmation.Text.ShouldNotContain(probe.Person.ToString());
-        var read = await WaitForStepsAsync(support, erasure, ["organisation"], cancellationToken);
+        var read = await WaitForStepsAsync(support, erasure, AllSteps, cancellationToken);
         read.ConfirmationMailed.ShouldBeTrue();
         read.ConfirmationHandledAt.ShouldNotBeNull();
         var ended = await database.MemberAsync(membership, cancellationToken);
@@ -99,13 +106,84 @@ public class PersonErasureTests(AspireFixture aspire)
         (await sweep.ColumnsHoldingAsync(probe.Name, cancellationToken)).ShouldContain("organisation.memberships.name", "the probe was not planted where the sweep looks");
 
         var erasure = await RequestAsync(support, probe.Person, cancellationToken);
-        await WaitForStepsAsync(support, erasure, ["organisation"], cancellationToken);
+        await WaitForStepsAsync(support, erasure, AllSteps, cancellationToken);
 
         (await sweep.ColumnsHoldingAsync(probe.Name, cancellationToken)).ShouldBeEmpty("a column still holds the erased person's name");
         (await sweep.ColumnsHoldingAsync(probe.Address, cancellationToken)).ShouldBeEmpty("a column still holds the erased person's address");
         (await sweep.ColumnsHoldingAsync(probe.Person.ToString(), cancellationToken))
             .Where(column => column.StartsWith("organisation.erasure", StringComparison.Ordinal))
             .ShouldBeEmpty("the erasure log holds the erased person's id");
+    }
+
+    [Fact]
+    public async Task An_employee_is_erased_in_compliance()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var probe = Probe.New();
+        using var owner = await aspire.CreateHostClientAsync("owner");
+        using var support = await aspire.CreateHostClientAsync("support");
+        var employer = await RegisterAsync(owner, cancellationToken);
+        var membership = await database.InsertMembershipOfPersonAsync(employer, probe.Person, probe.Address, "Active", cancellationToken, probe.Name);
+        var started = Started(membership, probe, employer);
+        await ComplianceDatabase.DeliverAsync(aspire, StartedType, started, cancellationToken);
+        await ComplianceDatabase.DeliverAsync(aspire, ChangedType, Changed(started, 2), cancellationToken);
+        (await ComplianceNamesAsync(probe.Person, cancellationToken)).ShouldBe([probe.Name, probe.Name], "the probe was not planted in Compliance");
+
+        var erasure = await RequestAsync(support, probe.Person, cancellationToken);
+        await WaitForStepsAsync(support, erasure, AllSteps, cancellationToken);
+
+        (await ComplianceNamesAsync(probe.Person, cancellationToken)).ShouldBe([null, null], "Compliance still holds the erased person's name");
+        (await ComplianceDatabase.CountAsync(aspire, "select count(*) from compliance.erased_persons where person_id = @id", probe.Person, cancellationToken)).ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task No_compliance_table_or_message_holds_the_persons_name()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var probe = Probe.New();
+        using var owner = await aspire.CreateHostClientAsync("owner");
+        using var support = await aspire.CreateHostClientAsync("support");
+        var employer = await RegisterAsync(owner, cancellationToken);
+        var membership = await database.InsertMembershipOfPersonAsync(employer, probe.Person, probe.Address, "Active", cancellationToken, probe.Name);
+        var started = Started(membership, probe, employer);
+        await ComplianceDatabase.DeliverAsync(aspire, StartedType, started, cancellationToken);
+        await ComplianceDatabase.DeliverAsync(aspire, ChangedType, Changed(started, 2), cancellationToken);
+        var sweep = new PersonalDataSweep(aspire, "compliance-database", "compliance", "wolverine");
+        var planted = await sweep.ColumnsHoldingAsync(probe.Name, cancellationToken);
+        planted.ShouldContain("compliance.members.display_name", "the probe was not planted where the sweep looks");
+        planted.ShouldContain("wolverine.wolverine_incoming_envelopes.body", "the delivered envelopes were not kept where the sweep looks");
+
+        var erasure = await RequestAsync(support, probe.Person, cancellationToken);
+        await WaitForStepsAsync(support, erasure, AllSteps, cancellationToken);
+
+        (await sweep.ColumnsHoldingAsync(probe.Name, cancellationToken)).ShouldBeEmpty("a column still holds the erased person's name");
+        (await sweep.ColumnsHoldingAsync(probe.Address, cancellationToken)).ShouldBeEmpty("a column still holds the erased person's address");
+    }
+
+    [Fact]
+    public async Task A_membership_event_delivered_again_after_the_erasure_writes_no_name_in_compliance()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var probe = Probe.New();
+        using var owner = await aspire.CreateHostClientAsync("owner");
+        using var support = await aspire.CreateHostClientAsync("support");
+        var employer = await RegisterAsync(owner, cancellationToken);
+        var membership = await database.InsertMembershipOfPersonAsync(employer, probe.Person, probe.Address, "Active", cancellationToken, probe.Name);
+        var started = Started(membership, probe, employer);
+        await ComplianceDatabase.DeliverAsync(aspire, StartedType, started, cancellationToken);
+        var erasure = await RequestAsync(support, probe.Person, cancellationToken);
+        await WaitForStepsAsync(support, erasure, AllSteps, cancellationToken);
+
+        // The same membership's start and a change again, and a start of another membership of the person, each under a
+        // new envelope id so the inbox lets it through to the consumer.
+        await ComplianceDatabase.DeliverAsync(aspire, StartedType, started with { Metadata = NewMetadata() }, cancellationToken);
+        await ComplianceDatabase.DeliverAsync(aspire, ChangedType, Changed(started, 3), cancellationToken);
+        var another = Started(Guid.CreateVersion7(), probe, employer);
+        await ComplianceDatabase.DeliverAsync(aspire, StartedType, another, cancellationToken);
+
+        (await new PersonalDataSweep(aspire, "compliance-database", "compliance").ColumnsHoldingAsync(probe.Name, cancellationToken))
+            .ShouldBeEmpty("a redelivered membership event wrote the erased person's name back");
+        (await ComplianceDatabase.CountAsync(aspire, "select count(*) from compliance.members where id = @id", another.MembershipId, cancellationToken)).ShouldBe(0);
     }
 
     [Fact]
@@ -165,6 +243,32 @@ public class PersonErasureTests(AspireFixture aspire)
         return read;
     }
 
+    private static StartedEvent Started(Guid membership, Probe probe, Guid pharmacy) =>
+        new(membership, probe.Person, pharmacy, probe.Name, "Pta", "Employee", TimeProvider.System.GetUtcNow(), NewMetadata());
+
+    private static ChangedEvent Changed(StartedEvent started, int version) =>
+        new(started.MembershipId, started.PersonId, started.PharmacyId, started.DisplayName, "Pka", "Employee", version, NewMetadata());
+
+    private static EventMetadata NewMetadata() => new(Guid.CreateVersion7(), TimeProvider.System.GetUtcNow());
+
+    /// <summary>The display names Compliance holds for the person: on their members, then on their membership changes.</summary>
+    private async Task<List<string?>> ComplianceNamesAsync(Guid person, CancellationToken cancellationToken)
+    {
+        await using var connection = await ComplianceDatabase.OpenAsync(aspire, cancellationToken);
+        await using var command = new NpgsqlCommand(
+            "select display_name from compliance.members where person_id = @id union all select display_name from compliance.membership_changes where person_id = @id",
+            connection);
+        command.Parameters.AddWithValue("id", person);
+        List<string?> names = [];
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            names.Add(await reader.IsDBNullAsync(0, cancellationToken) ? null : reader.GetString(0));
+        }
+
+        return names;
+    }
+
     private static string Hash() => Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));
 
     /// <summary>The person to erase: a fresh id, a name and an address only this test uses.</summary>
@@ -180,4 +284,10 @@ public class PersonErasureTests(AspireFixture aspire)
     private sealed record ErasureRead(Guid Id, DateTimeOffset RequestedAt, Guid RequestedBy, bool ConfirmationMailed, DateTimeOffset? ConfirmationHandledAt, IReadOnlyList<ErasureStepRead> Steps);
 
     private sealed record ErasureStepRead(string Module, DateTimeOffset CompletedAt);
+
+    private sealed record EventMetadata(Guid EventIdentifier, DateTimeOffset OccurredAt);
+
+    private sealed record StartedEvent(Guid MembershipId, Guid PersonId, Guid PharmacyId, string DisplayName, string JobFunction, string Role, DateTimeOffset StartedAt, EventMetadata Metadata);
+
+    private sealed record ChangedEvent(Guid MembershipId, Guid PersonId, Guid PharmacyId, string DisplayName, string JobFunction, string Role, int Version, EventMetadata Metadata);
 }

@@ -41,6 +41,10 @@ public class AppHostBrokerUsersTests(AspireFixture aspire)
 
     private const string MembershipStarted = Contracts + "Organisation.MembershipStartedV1";
 
+    private const string PersonErasureRequested = Contracts + "Organisation.PersonErasureRequestedV1";
+
+    private const string ComplianceErasureCompleted = Contracts + "Compliance.ComplianceErasureCompletedV1";
+
     /// <summary>The default exchange's name in RabbitMQ's permissions.</summary>
     private const string DefaultExchange = "amq.default";
 
@@ -55,9 +59,9 @@ public class AppHostBrokerUsersTests(AspireFixture aspire)
         },
         {
             "compliance",
-            ["compliance", Contracts + "Assessment.AttemptsExhaustedV1", Contracts + "Certification.CertificateIssuedV1", Contracts + "Compliance.AssignmentCompletedV1", Contracts + "Compliance.CourseAssignedV1", CourseVersionPublished, CourseVersionRetired, Contracts + "Learning.ContentCompletedV1", Contracts + "Learning.LearningSessionStartedV1", MembershipChanged, MembershipEnded, MembershipStarted],
-            ["compliance", Contracts + "Compliance.AssignmentCompletedV1", Contracts + "Compliance.CourseAssignedV1"],
-            ["compliance", Contracts + "Assessment.AttemptsExhaustedV1", Contracts + "Certification.CertificateIssuedV1", CourseVersionPublished, CourseVersionRetired, Contracts + "Learning.ContentCompletedV1", Contracts + "Learning.LearningSessionStartedV1", MembershipChanged, MembershipEnded, MembershipStarted]
+            ["compliance", Contracts + "Assessment.AttemptsExhaustedV1", Contracts + "Certification.CertificateIssuedV1", Contracts + "Compliance.AssignmentCompletedV1", ComplianceErasureCompleted, Contracts + "Compliance.CourseAssignedV1", CourseVersionPublished, CourseVersionRetired, Contracts + "Learning.ContentCompletedV1", Contracts + "Learning.LearningSessionStartedV1", MembershipChanged, MembershipEnded, MembershipStarted, PersonErasureRequested],
+            ["compliance", Contracts + "Compliance.AssignmentCompletedV1", ComplianceErasureCompleted, Contracts + "Compliance.CourseAssignedV1"],
+            ["compliance", Contracts + "Assessment.AttemptsExhaustedV1", Contracts + "Certification.CertificateIssuedV1", CourseVersionPublished, CourseVersionRetired, Contracts + "Learning.ContentCompletedV1", Contracts + "Learning.LearningSessionStartedV1", MembershipChanged, MembershipEnded, MembershipStarted, PersonErasureRequested]
         },
         {
             "editorial",
@@ -73,9 +77,9 @@ public class AppHostBrokerUsersTests(AspireFixture aspire)
         },
         {
             "organisation",
-            ["organisation", MembershipChanged, MembershipEnded, MembershipStarted, Contracts + "Organisation.PersonErasureRequestedV1", Contracts + "Organisation.PharmacyRegisteredV1"],
-            ["organisation", MembershipChanged, MembershipEnded, MembershipStarted, Contracts + "Organisation.PersonErasureRequestedV1", Contracts + "Organisation.PharmacyRegisteredV1"],
-            ["organisation"]
+            ["organisation", ComplianceErasureCompleted, MembershipChanged, MembershipEnded, MembershipStarted, PersonErasureRequested, Contracts + "Organisation.PharmacyRegisteredV1"],
+            ["organisation", MembershipChanged, MembershipEnded, MembershipStarted, PersonErasureRequested, Contracts + "Organisation.PharmacyRegisteredV1"],
+            ["organisation", ComplianceErasureCompleted]
         },
     };
 

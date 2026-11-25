@@ -164,7 +164,8 @@ Regeln:
 | `MembershipStarted` | Organisation | Compliance, Certification, Learning | MembershipId, PersonId, PharmacyId, DisplayName, JobFunction, Role |
 | `MembershipEnded` | Organisation | Compliance, Learning | MembershipId, PersonId, PharmacyId, EndedAt |
 | `MembershipChanged` | Organisation | Compliance, Learning, Certification | MembershipId, PersonId, PharmacyId, DisplayName, JobFunction, Role, Version |
-| `PersonErasureRequestedV1` | Organisation | (keiner in Slice 1 von #115; später Compliance, Certification, Editorial, Learning) | ErasureId, PersonId; erst nach der Bestätigungsmail und nachdem Organisation Name und Adresse vergessen hat (ADR 0036) |
+| `PersonErasureRequestedV1` | Organisation | Compliance (Slice 2 von #115: Tombstone, Namen auf NULL, offene Zuweisungen storniert, gespeicherte Mitgliedschaftsnachrichten gelöscht); später Certification, Editorial, Learning | ErasureId, PersonId; erst nach der Bestätigungsmail und nachdem Organisation Name und Adresse vergessen hat (ADR 0036) |
+| `ComplianceErasureCompletedV1` | Compliance | Organisation (Schritt `compliance`) | ErasureId (#115, ADR 0036) |
 | `CourseAssigned` | Compliance | (keiner in MVP 1, später Benachrichtigung) | AssignmentId, PersonId, PharmacyId, CourseId, DueDate |
 | `AssignmentCompleted` | Compliance | (keiner in MVP 1) | AssignmentId, CertificateId, CompletedAt, Late |
 | `LearningSessionStarted` | Learning | Compliance | SessionId, PersonId, CourseId, CourseVersionId |
