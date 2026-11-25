@@ -27,6 +27,9 @@
     <!-- FakeLogger: what a run waiting at the migration gate logs (SweptEventIndexTests, #351), and the warning
          EditorialRepublishLock logs when it cannot release the lock (EditorialRepublishTests). -->
     <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
+    <!-- Runs the auth proxy's published routes in-process on Kestrel, to send it the variants of admin paths
+         AuthProxyPathTests expects it to refuse (#462). -->
+    <PackageReference Include="Yarp.ReverseProxy" />
   </ItemGroup>
 
   <ItemGroup>
