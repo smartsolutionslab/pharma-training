@@ -70,7 +70,9 @@ public class SeedingOrderTests
             ("POST", "/editorial/course-versions/{id}/publish", Plans.Publisher),
         ]);
         harness.App.Api.Versions.ShouldBe([(Plans.Course, 1, "Published")]);
-        harness.App.Api.ContentOf(Plans.Course, 1).ShouldBe((["Kapitel 1", "Kapitel 2"], ["Frage zu Kapitel 1?", "Frage zu Kapitel 2?"]));
+        var content = harness.App.Api.ContentOf(Plans.Course, 1);
+        content.Chapters.ShouldBe(["Kapitel 1", "Kapitel 2"]);
+        content.Questions.ShouldBe(["Frage zu Kapitel 1?", "Frage zu Kapitel 2?"]);
         harness.App.Api.BlueprintChangedAfterApproval.ShouldBeFalse("The blueprint is set before any approval (docs/adr/0007).");
         harness.App.Requests.Where(request => request.Origin == "edge").ShouldAllBe(request => request.Status < 400, "No call of an empty seed is refused.");
         Regex.IsMatch(harness.Output.ToString(), @"Demo data: [1-9]\d* created", RegexOptions.None, MatchTimeout).ShouldBeTrue($"The summary line reports what was created. Output:\n{harness.Output}");
@@ -115,7 +117,9 @@ public class SeedingOrderTests
             Plans.Scenario(second, DemoOutcome.Passed, version: 2)));
 
         harness.App.Api.Versions.ShouldBe([(Plans.Course, 1, "Superseded"), (Plans.Course, 2, "Published")], ignoreOrder: true);
-        harness.App.Api.ContentOf(Plans.Course, 2).ShouldBe((["Kapitel 1", "Kapitel 2", "Kapitel 3"], ["Frage zu Kapitel 1?", "Frage zu Kapitel 2?", "Frage zu Kapitel 3?"]));
+        var content = harness.App.Api.ContentOf(Plans.Course, 2);
+        content.Chapters.ShouldBe(["Kapitel 1", "Kapitel 2", "Kapitel 3"]);
+        content.Questions.ShouldBe(["Frage zu Kapitel 1?", "Frage zu Kapitel 2?", "Frage zu Kapitel 3?"]);
         harness.App.Api.Examinations.Select(exam => (exam.User, exam.Version, exam.Status)).ShouldBe([(first, 1, "Passed"), (second, 2, "Passed")], ignoreOrder: true);
         harness.App.Api.Certificates.ShouldBe([(first, Plans.Course), (second, Plans.Course)], ignoreOrder: true);
 

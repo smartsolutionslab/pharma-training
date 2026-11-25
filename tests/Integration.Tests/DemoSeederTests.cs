@@ -48,12 +48,12 @@ public class DemoSeederTests(AspireFixture aspire)
         Regex.IsMatch(first.Output, @"Demo data: [1-9]\d* created", RegexOptions.None, MatchTimeout).ShouldBeTrue($"The first run's summary line reports what it created:\n{first.Output}");
         var seeded = await CountAsync(cancellationToken);
         seeded.ShouldSatisfyAllConditions(
-            counts => counts.Pharmacies.ShouldBe($"{Loewen}, {Markt}, {Rosen}"),
-            counts => counts.Members.ShouldBe($"{Loewen}=23, {Markt}=5, {Rosen}=4"),
+            counts => counts.Pharmacies.ShouldBe($"{Rosen}, {Markt}, {Loewen}"),
+            counts => counts.Members.ShouldBe($"{Rosen}=4, {Markt}=5, {Loewen}=23"),
             counts => counts.Versions.ShouldBe(5, "Four first versions and the Hygiene's second."),
             counts => counts.Hygiene.ShouldBe("1=Superseded, 2=Published"),
             counts => counts.CatalogTitles.ShouldBe(4),
-            counts => counts.MatrixRows.ShouldBe($"{Loewen}=23, {Markt}=5, {Rosen}=4", "The Löwen matrix has two pages at the default size 20."),
+            counts => counts.MatrixRows.ShouldBe($"{Rosen}=4, {Markt}=5, {Loewen}=23", "The Löwen matrix has two pages at the default size 20."),
             counts => counts.MatrixStates.ShouldContain($"{Rosen}: Completed=1, InProgress=1, Locked=1, Open=3"),
             counts => counts.MatrixStates.ShouldContain($"{Loewen}: Completed=6, InProgress=4, Open=34"),
             counts => counts.Certificates.ShouldBe(10, "Ten certificates, each with its PDF rendered."),

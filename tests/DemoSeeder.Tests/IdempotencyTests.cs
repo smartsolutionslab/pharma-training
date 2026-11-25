@@ -74,7 +74,9 @@ public class IdempotencyTests
         var harness = new SeederHarness();
         harness.App.FailOnce(HttpMethod.Post, "/editorial/course-versions/{id}/questions", after: 1);
         (await harness.RunAsync(Plans.OnePharmacyOneCourse())).ShouldNotBe(0, "The run should stop at the second question.");
-        harness.App.Api.ContentOf(Plans.Course, 1).ShouldBe((["Kapitel 1", "Kapitel 2"], ["Frage zu Kapitel 1?"]), "The first run leaves a draft with both chapters and one question.");
+        var halfWay = harness.App.Api.ContentOf(Plans.Course, 1);
+        halfWay.Chapters.ShouldBe(["Kapitel 1", "Kapitel 2"], "The first run leaves a draft with both chapters and one question.");
+        halfWay.Questions.ShouldBe(["Frage zu Kapitel 1?"], "The first run leaves a draft with both chapters and one question.");
         harness.App.Forget();
 
         await harness.SeedAsync(Plans.OnePharmacyOneCourse());
@@ -85,7 +87,9 @@ public class IdempotencyTests
         editorialWrites.ShouldNotContain(("PUT", "/editorial/course-versions/{id}/blueprint"), "The blueprint is set as planned.");
         editorialWrites.Count(write => write == ("POST", "/editorial/course-versions/{id}/questions")).ShouldBe(1, "Only the missing question is added.");
         harness.App.Api.Versions.ShouldBe([(Plans.Course, 1, "Published")]);
-        harness.App.Api.ContentOf(Plans.Course, 1).ShouldBe((["Kapitel 1", "Kapitel 2"], ["Frage zu Kapitel 1?", "Frage zu Kapitel 2?"]));
+        var resumed = harness.App.Api.ContentOf(Plans.Course, 1);
+        resumed.Chapters.ShouldBe(["Kapitel 1", "Kapitel 2"]);
+        resumed.Questions.ShouldBe(["Frage zu Kapitel 1?", "Frage zu Kapitel 2?"]);
     }
 
     [Fact]

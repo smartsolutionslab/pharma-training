@@ -27,10 +27,10 @@ public class SeedPlanTests
             ignoreOrder: true);
         plan.Courses.Select(course => (course.Title, course.Chapters.Count, course.Chapters.Sum(chapter => chapter.Questions.Count), course.Blueprint)).ShouldBe(
             [
-                (Hygiene, 3, 4, new DemoBlueprint(3, 80, 12)),
-                (Btm, 3, 4, new DemoBlueprint(3, 80, 12)),
-                (Dsgvo, 3, 4, new DemoBlueprint(3, 80, 12)),
-                (FirstAid, 4, 5, new DemoBlueprint(4, 80, 24)),
+                (Hygiene, 3, 4, new DemoBlueprint(4, 80, 12)),
+                (Btm, 3, 4, new DemoBlueprint(4, 80, 12)),
+                (Dsgvo, 3, 4, new DemoBlueprint(4, 80, 12)),
+                (FirstAid, 4, 5, new DemoBlueprint(5, 80, 24)),
             ],
             ignoreOrder: true);
         var revised = plan.Courses.Where(course => course.SecondVersionChapters.Count > 0).ShouldHaveSingleItem("Exactly one course has a second version.");
