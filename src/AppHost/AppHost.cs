@@ -91,6 +91,9 @@ if (builder.ExecutionContext.IsRunMode)
     // The browser PUTs uploads and GETs files with the signed URLs, straight to blob storage, from the web app's origin alone.
     storage.AllowBrowserAccessFrom(web);
     frontendUrl = ReferenceExpression.Create($"{web.GetEndpoint("http")}");
+    // Demo data, seeded through the edge once it, Keycloak and the web app are up; off with DemoSeeder:Enabled=false
+    // (Wiring/DemoSeeding.cs, docs/adr/0041).
+    builder.AddDemoSeeder(host, web, keycloak);
 }
 else
 {

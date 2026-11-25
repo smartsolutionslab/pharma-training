@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- stub for #457: the demo data seeder, a console app that seeds through the edge's public API alone (docs/adr). -->
+  <!-- The demo data seeder (#457): a console app that seeds through the edge's public API alone (docs/adr/0041). -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <RootNamespace>SmartSolutionsLab.PharmaTraining.DemoSeeder</RootNamespace>

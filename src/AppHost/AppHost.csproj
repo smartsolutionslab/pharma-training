@@ -30,6 +30,8 @@
   <ItemGroup>
     <ProjectReference Include="../MigrationRunner/MigrationRunner.csproj" />
     <ProjectReference Include="../Edge/Edge.csproj" />
+    <!-- Run mode only: the demo data seeder (Wiring/DemoSeeding.cs, docs/adr/0041). -->
+    <ProjectReference Include="../DemoSeeder/DemoSeeder.csproj" />
     <!-- Every service host, found by convention. Each gets a generated Projects.<Module>Service type, named after its folder
          (src/Services/<Module>/Host), so Aspire starts it from this build with dotnet run and no build of its own instead of building
          it again at every start (Wiring/ServiceHostProjects.cs). -->

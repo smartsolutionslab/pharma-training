@@ -1,7 +1,6 @@
 namespace SmartSolutionsLab.PharmaTraining.DemoSeeder;
 
 /// <summary>What a learner of a scenario does.</summary>
-// stub for #457
 public enum DemoOutcome
 {
     /// <summary>Nothing: the assignment stays open.</summary>

@@ -4,7 +4,6 @@ namespace SmartSolutionsLab.PharmaTraining.DemoSeeder;
 /// A course assigned in a pharmacy to some of its employees, due a number of days after the seed's day (0: today, in
 /// Germany), optionally recurring, and what each learner then does on the given version of it.
 /// </summary>
-// stub for #457
 public sealed record DemoScenario(
     string Pharmacy,
     IReadOnlyList<string> Learners,

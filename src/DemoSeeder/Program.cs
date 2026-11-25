@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using SmartSolutionsLab.PharmaTraining.DemoSeeder;
 
-// stub for #457
 var configuration = new ConfigurationBuilder()
     .AddJsonFile("appsettings.json", optional: true)
     .AddEnvironmentVariables()
