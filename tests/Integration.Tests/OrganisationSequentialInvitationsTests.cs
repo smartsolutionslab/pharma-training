@@ -11,6 +11,9 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 [Collection(InvitationSenders.Name)]
 public class OrganisationSequentialInvitationsTests(AspireFixture aspire)
 {
+    // The mail consumer may run before the pharmacy's row is first read; such a run shows nothing and is started again.
+    private const int Attempts = 5;
+
     private static readonly TimeSpan MailWait = TimeSpan.FromMinutes(1);
 
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(250);
@@ -22,21 +25,39 @@ public class OrganisationSequentialInvitationsTests(AspireFixture aspire)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var owner = await aspire.CreateHostClientAsync("owner");
-        using var registered = await owner.PostAsJsonAsync(
+
+        for (var attempt = 1; attempt <= Attempts; attempt++)
+        {
+            var pharmacy = await RegisterAsync(owner, cancellationToken);
+            var first = await InviteAsync(owner, pharmacy, cancellationToken);
+            var beforeTheMail = await database.PharmacyRowVersionAsync(pharmacy, cancellationToken);
+            if (await database.InvitationMailedForAsync(first, cancellationToken) is not null)
+            {
+                // Read after the consumer committed, the row version could not tell whether the consumer moved it.
+                TestContext.Current.TestOutputHelper?.WriteLine($"Attempt {attempt}: the mail was recorded before the pharmacy's row was read; starting again.");
+                continue;
+            }
+
+            await WaitUntilMailedAsync(first, cancellationToken);
+
+            (await database.PharmacyRowVersionAsync(pharmacy, cancellationToken))
+                .ShouldBe(beforeTheMail, "the first invitation's mail consumer updated the pharmacy's row");
+            var second = await InviteAsync(owner, pharmacy, cancellationToken);
+            await WaitUntilMailedAsync(second, cancellationToken);
+            return;
+        }
+
+        throw new InvalidOperationException($"In each of {Attempts} attempts the mail was recorded before the pharmacy's row was read, so the test observed nothing.");
+    }
+
+    private static async Task<Guid> RegisterAsync(HttpClient client, CancellationToken cancellationToken)
+    {
+        using var registered = await client.PostAsJsonAsync(
             new Uri("/organisation/pharmacies", UriKind.Relative),
             new { name = $"Apotheke {Guid.CreateVersion7()}", jobFunction = "Pharmacist" },
             cancellationToken);
         registered.StatusCode.ShouldBe(HttpStatusCode.Created);
-        var pharmacy = await registered.Content.ReadFromJsonAsync<Guid>(cancellationToken);
-
-        var first = await InviteAsync(owner, pharmacy, cancellationToken);
-        var beforeTheMail = await database.PharmacyRowVersionAsync(pharmacy, cancellationToken);
-        await WaitUntilMailedAsync(first, cancellationToken);
-
-        (await database.PharmacyRowVersionAsync(pharmacy, cancellationToken))
-            .ShouldBe(beforeTheMail, "the first invitation's mail consumer updated the pharmacy's row");
-        var second = await InviteAsync(owner, pharmacy, cancellationToken);
-        await WaitUntilMailedAsync(second, cancellationToken);
+        return await registered.Content.ReadFromJsonAsync<Guid>(cancellationToken);
     }
 
     private static async Task<Guid> InviteAsync(HttpClient client, Guid pharmacy, CancellationToken cancellationToken)

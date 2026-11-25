@@ -12,12 +12,16 @@ public abstract class ModuleDbContext(DbContextOptions options, IServiceProvider
     /// <summary>The application's services, for conventions that depend on the current request.</summary>
     public IServiceProvider Services { get; } = services;
 
-    /// <summary>Value objects and identifiers map to their backing values by convention (module.ddd-depth: strict).</summary>
+    /// <summary>
+    /// Value objects and identifiers map to their backing values by convention (module.ddd-depth: strict), and the
+    /// row-version marker is checked when the model is built (<see cref="OwnersOnlyRowVersionCheck"/>).
+    /// </summary>
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
         Ensure.That(configurationBuilder).IsNotNull();
 
         configurationBuilder.MapValueObjects(GetType().Assembly);
+        configurationBuilder.Conventions.Add(_ => new OwnersOnlyRowVersionCheck());
         base.ConfigureConventions(configurationBuilder);
     }
 
