@@ -97,4 +97,10 @@ internal sealed class InMemoryMembershipStore : IMembershipStore, ICertification
         addedEndings.Clear();
         addedChanges.Clear();
     }
+
+    public Task AbandonAsync(CancellationToken cancellationToken)
+    {
+        Discard();
+        return Task.CompletedTask;
+    }
 }

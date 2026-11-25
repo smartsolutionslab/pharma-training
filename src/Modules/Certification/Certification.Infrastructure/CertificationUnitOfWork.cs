@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Application;
@@ -23,9 +24,20 @@ public sealed class CertificationUnitOfWork : ModuleUnitOfWork<CertificationDbCo
     public async Task AbandonAsync(CancellationToken cancellationToken)
     {
         var context = services.GetRequiredService<CertificationDbContext>();
-        if (context.Database.CurrentTransaction is not null)
+        var transaction = context.Database.CurrentTransaction;
+        if (transaction is not null)
         {
-            await context.Database.RollbackTransactionAsync(cancellationToken);
+            try
+            {
+                await context.Database.RollbackTransactionAsync(cancellationToken);
+            }
+            catch (InvalidOperationException) when (transaction.GetDbTransaction().Connection is null)
+            {
+                // A failed COMMIT already ended the transaction on the server, and the provider refuses a second end; its
+                // connection is gone, which is how ADO.NET says the transaction is no longer valid (as EditorialUnitOfWork
+                // handles it). Disposing it lets the context forget it, so the next person's hold opens a new one.
+                await transaction.DisposeAsync();
+            }
         }
 
         context.ChangeTracker.Clear();

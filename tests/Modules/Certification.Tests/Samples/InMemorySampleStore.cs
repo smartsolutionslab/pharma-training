@@ -34,4 +34,7 @@ internal sealed class InMemorySampleStore : ISampleStore, ICertificationUnitOfWo
         added.Clear();
         return Task.CompletedTask;
     }
+
+    /// <summary>Nothing here is held or saved apart from a commit, so there is nothing to give up.</summary>
+    public Task AbandonAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }

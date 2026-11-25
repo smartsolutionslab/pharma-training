@@ -144,4 +144,10 @@ internal sealed class InMemoryCertificateStore : ICertificateStore, ICertificati
         removed.Clear();
         queued.Clear();
     }
+
+    public Task AbandonAsync(CancellationToken cancellationToken)
+    {
+        Discard();
+        return Task.CompletedTask;
+    }
 }
