@@ -11,9 +11,12 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Que
 /// that fails answering: the caller is a person (403); the caller has an active membership in the pharmacy (404); every
 /// such membership's current role grants the export (403); the period is valid (400); at most
 /// <see cref="CertificateExportArchive.MaxCertificates"/> certificates are chosen (400). A certificate is chosen when its
-/// holder was a member of the pharmacy at the instant it was issued, start inclusive and end exclusive, and its issue
-/// day in Germany lies within the period. A certificate is chosen in the database; at most
-/// <see cref="CertificateExportArchive.MaxCertificates"/> + 1 are read, so a refusal never loads more (#367). Nothing is
+/// holder was a member of the pharmacy at the instant it was issued, start inclusive and end exclusive, its issue day in
+/// Germany lies within the period, and the pharmacy still keeps it (#53, docs/adr/0034:
+/// <see cref="Certificate.IsKeptByPharmaciesAt"/>, less than five years since its issue at the time of the request,
+/// whatever the period). A certificate is chosen in the database, the cut-off included; at most
+/// <see cref="CertificateExportArchive.MaxCertificates"/> + 1 are read, so a refusal never loads more (#367), and a
+/// certificate past the cut-off never counts towards the limit. Nothing is
 /// read from blob storage here: the archive reads each PDF as it is written into the response.
 /// </summary>
 public sealed class ExportPharmacyCertificatesHandler(IMembershipStore memberships, ICertificateStore certificates, IBlobReads blobs, TimeProvider time)

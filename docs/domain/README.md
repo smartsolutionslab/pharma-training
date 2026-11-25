@@ -396,7 +396,7 @@ Lokale Kopien, die daraus folgen:
 | Z2 | PDF erzeugen und speichern | backend | Z1 | Z1, P3 |
 | Z3 | Öffentliche QR-Prüfung (mit Rate-Limit) | backend | Z2 | Z1 |
 | Z4 | Export ZIP mit CSV, nur Beschäftigungszeit | backend | Z3 | Z2 |
-| Z5 | Aufbewahrung: Apothekensicht nach 5 Jahren löschen | backend | Z3 | Z4 |
+| Z5 | Aufbewahrung: Apothekensicht nach 5 Jahren beenden (Stichtag im Export, gelöscht wird nichts; ADR 0034) | backend | Z3 | Z4 |
 | Z6 | Seiten Meine Bestätigungen, Prüfen, Export | frontend | Z1, Z2, Z3 | Z2, Z3, Z4 |
 | X1 | End-to-End-Durchstich: Registrieren bis Bestätigung in der Matrix | infra | alle | alle |
 
