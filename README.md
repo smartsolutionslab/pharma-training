@@ -89,6 +89,17 @@ Keycloak imports the realm only when it does not exist yet, and keeps it in a da
 
 The realm's confidential client `pharma-training-erasure`, with which Organisation deletes an erased person's account (#115, [ADR 0041](docs/adr/0041-the-erased-persons-keycloak-account-is-deleted-by-organisations-service-account.md)), came with that change too: a volume whose realm was imported before it has no such client, and every erasure then stops short of the step `keycloak`, its message dead-lettered after the retries. Its secret is the AppHost's parameter `keycloak-erasure-client-secret`, generated once and kept in the AppHost's user secrets like Keycloak's administrator password; the import reads it once. Remove the volume as above whenever you clear the AppHost's user secrets, or the imported client keeps the old secret and Organisation's token request is refused.
 
+### Demo data
+
+The AppHost starts the resource `demo-seeder` once the edge, Keycloak and the web app are up. It seeds demo data through the edge's public API, as the people the data names, and exits; the dashboard shows it Finished, or failed with its log, and its last line says `Demo data: <n> created` ([ADR 0042](docs/adr/0042-demo-data-is-seeded-through-the-edge.md)).
+
+- **What it seeds:** three pharmacies (`Demo-Apotheke am Markt`, `Demo-Apotheke Rosenstraße`, `Demo-Löwen-Apotheke Großstadt`, the last with 22 employees, so its members and its matrix have two pages), four published courses (`Demo: …`) and a second version of the Hygiene course, and assignments in every state: open, in progress, completed with a certificate, a failed attempt, an exhausted examination, a recurring assignment, and assignments due today, which are overdue from the next day.
+- **Who:** 35 users named `demo-*`, each with the address `<username>@example.com` and, like the local users above, their username as their password. `demo-autorin` writes, `demo-pruefer` approves and `demo-freigabe` publishes (all three `editor`); `demo-markt-leitung`, `demo-rosen-leitung` and `demo-loewen-leitung` manage the pharmacies; `demo-markt-1`…`4`, `demo-rosen-1`…`3` and `demo-loewen-01`…`22` are employees. Their invitations land in Mailpit.
+- **Again:** each start runs it again; it looks everything up first and finds it there, so it changes nothing (`Demo data: 0 created`). It never deletes; to start over, remove the volumes as above.
+- **Off:** `dotnet user-secrets set DemoSeeder:Enabled false --project src/AppHost`, or `DemoSeeder__Enabled=false` in the AppHost's environment. The integration tests switch it off.
+
+It runs in run mode only: a published AppHost has no seeder, and the seeder itself refuses any target but `Local` (a loopback edge) or `Staging` (an https edge, administering users through a client of its own) before it makes any call.
+
 ## Test
 
 ```bash

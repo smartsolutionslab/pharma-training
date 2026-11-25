@@ -12,6 +12,8 @@
   </Folder>
   <Project Path="tests/Kernel/Absence.Tests/Absence.Tests.csproj" />
   <Project Path="src/MigrationRunner/MigrationRunner.csproj" />
+  <Project Path="src/DemoSeeder/DemoSeeder.csproj" />
+  <Project Path="tests/DemoSeeder.Tests/DemoSeeder.Tests.csproj" />
   <Project Path="tests/Kernel/Guards.Tests/Guards.Tests.csproj" />
   <Project Path="tests/Evals/Evals.csproj" />
   <Project Path="tests/Evals.Tests/Evals.Tests.csproj" />
