@@ -29,7 +29,9 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Api.Endpoints;
 /// read; it takes its reason (<see cref="ReturnEditorialCourseVersionRequest"/>), read after authorization, the
 /// caller's person and name, whatever its content type: a reason that is missing or invalid, and a
 /// body that cannot be read (not JSON, not UTF-8), answer 400 <c>editorial.invalid-return-reason</c> with one message,
-/// and a body larger than <see cref="ReturnRequestLimit"/> is refused (413). The empty Guid is no version.
+/// and a body larger than <see cref="ReturnRequestLimit"/> is refused (413). The empty Guid is no version. The reason is
+/// checked before the version is loaded, so a bad reason answers 400 even for an unknown version (rather than 404) or
+/// one not in review (rather than 409); only a valid reason reaches those answers (ADR 0013).
 /// </summary>
 public sealed class WorkflowEndpoints : IEndpoint
 {
