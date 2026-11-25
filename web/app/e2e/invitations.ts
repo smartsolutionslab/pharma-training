@@ -72,13 +72,6 @@ export function invitationLink(text: string) {
   return link ?? '';
 }
 
-/** Signs in on Keycloak's login page, wherever the app sent the browser to it from. */
-export async function signInAs(page: Page, user: string) {
-  await page.getByLabel('Username or email').fill(user);
-  await page.getByLabel('Password', { exact: true }).fill(user);
-  await page.getByRole('button', { name: 'Sign In' }).click();
-}
-
 /** Every POST that accepts an invitation, from the moment the test starts recording. */
 export function recordAcceptances(page: Page) {
   const accepted: string[] = [];

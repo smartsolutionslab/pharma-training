@@ -1,4 +1,5 @@
 import { type APIRequestContext, expect, type Page, test } from '@playwright/test';
+import { signIn } from './signIn';
 
 // A new version of a published course (#155), as the realm's local user `editor` (realm role editor) drafts it against
 // the AppHost. The course is started in the inbox and published through the API (#18's workflow: a chapter, a
@@ -8,15 +9,7 @@ import { type APIRequestContext, expect, type Page, test } from '@playwright/tes
 
 /** Signs in as editor and starts a course from the inbox; resolves to its first version's id and the editor's token. */
 async function startCourse(page: Page, title: string) {
-  const signedIn = page.waitForRequest(
-    (request) => request.url().includes('/api/') && request.headers()['authorization'] !== undefined,
-  );
-  await page.goto('/');
-  await page.getByLabel('Username or email').fill('editor');
-  await page.getByLabel('Password', { exact: true }).fill('editor');
-  await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.getByText('Angemeldet als editor')).toBeVisible();
-  const authorization = (await signedIn).headers()['authorization'] ?? '';
+  const authorization = await signIn(page, 'editor');
   await page.goto('/editorial');
   await page.getByRole('button', { name: 'Neue Schulung' }).first().click();
   const dialog = page.getByRole('dialog', { name: 'Neue Schulung anlegen' });

@@ -3,7 +3,8 @@ import { addMonths } from '@/lib/addMonths';
 import { pdfText, qrLinkIn } from './certificatePdf';
 import { issuedCertificate, type IssuedCertificate } from './certificationDatabase';
 import { accessToken, courseTitle, daysAhead, germanDate, germanLongDate, pharmacyName } from './compliance';
-import { acceptOn, invitationLink, mailText, recordAcceptances, signInAs } from './invitations';
+import { acceptOn, invitationLink, mailText, recordAcceptances } from './invitations';
+import { signIn, submitSignIn } from './signIn';
 
 // MVP 1 end to end (#55, X1), against the AppHost with no route mocked, in three browsers of their own: the realm's
 // local user owner (Olaf Owner, no realm role) registers a pharmacy and invites employee-c (Clara Employee), a user no other spec invites (an address is mailed at most every 10 minutes, #265), on its team
@@ -40,17 +41,6 @@ function todayInGermany() {
 async function browserOf(browser: Browser) {
   const context = await browser.newContext({ locale: 'de-DE' });
   return { context, page: await context.newPage() };
-}
-
-/** Signs in as a local user on the start page; resolves to the Authorization header the app then sends. */
-async function signIn(page: Page, user: string) {
-  const signedIn = page.waitForRequest(
-    (request) => request.url().includes('/api/') && request.headers()['authorization'] !== undefined,
-  );
-  await page.goto('/');
-  await signInAs(page, user);
-  await expect(page.getByText(`Angemeldet als ${user}`)).toBeVisible();
-  return (await signedIn).headers()['authorization'] ?? '';
 }
 
 /**
@@ -205,7 +195,7 @@ test('MVP 1: an owner registers and invites, an editor publishes, the employee p
       const link = invitationLink(await mailText(page.request, employeeAddress, pharmacy));
       const accepted = recordAcceptances(learner.page);
       await learner.page.goto(link);
-      await signInAs(learner.page, 'employee-c');
+      await submitSignIn(learner.page, 'employee-c');
       await acceptOn(learner.page, pharmacy, link.slice(link.indexOf('#token=') + '#token='.length), accepted);
       await expect(toast(learner.page, `Sie sind jetzt Mitglied der Apotheke ${pharmacy}.`)).toBeVisible({
         timeout: 15_000,

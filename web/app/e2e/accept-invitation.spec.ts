@@ -1,13 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
-import {
-  acceptOn,
-  invitationLink,
-  inviteToNewPharmacy,
-  mailText,
-  recordAcceptances,
-  signInAs,
-  unique,
-} from './invitations';
+import { acceptOn, invitationLink, inviteToNewPharmacy, mailText, recordAcceptances, unique } from './invitations';
+import { submitSignIn } from './signIn';
 
 // No route is mocked: the developer registers a pharmacy and invites an address through the host's API, the invitation
 // mail is read from Mailpit, and the invitee opens its link in a browser. Each run registers a pharmacy of its own, so
@@ -53,7 +46,7 @@ test('an invited employee signs in from the link and lands on Meine Schulungen i
   await page.goto(link);
   await expect(page.getByLabel('Username or email')).toBeVisible();
   expect(page.url()).not.toContain(token);
-  await signInAs(page, 'employee-a');
+  await submitSignIn(page, 'employee-a');
 
   await acceptOn(page, pharmacy, token, accepted);
   await expectMemberOn(page, pharmacy, token);
@@ -72,7 +65,7 @@ test('a forwarded link signed in as someone else says the invitation is for anot
   const accepted = recordAcceptances(page);
 
   await page.goto(link);
-  await signInAs(page, 'employee-b');
+  await submitSignIn(page, 'employee-b');
   await acceptOn(page, pharmacy, tokenOf(link), accepted);
 
   await expect(page.getByRole('heading', { name: 'Einladung für eine andere Adresse', level: 1 })).toBeVisible();

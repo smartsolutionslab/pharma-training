@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { type APIRequestContext, expect, type Page, test } from '@playwright/test';
 import { memberOfOnePharmacy } from './onePharmacy';
+import { signIn } from './signIn';
 
 // The chapter player (#44) against the AppHost, with only the developer's pharmacy mocked (memberOfOnePharmacy).
 // Through the host's API, the realm's local user editor publishes a course of a long text chapter, a video chapter of
@@ -210,14 +211,6 @@ async function probeClip(page: Page, clip: Buffer) {
   );
 }
 
-async function signInAsDeveloper(page: Page) {
-  await page.goto('/');
-  await page.getByLabel('Username or email').fill('developer');
-  await page.getByLabel('Password', { exact: true }).fill('developer');
-  await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.getByText('Angemeldet als developer')).toBeVisible();
-}
-
 const overviewItem = (page: Page, title: string) =>
   page.getByRole('navigation', { name: 'Kapitel' }).getByRole('listitem').filter({ hasText: title });
 /** The "Erledigt" badge beside the chapter's h2. */
@@ -255,7 +248,7 @@ test('a learner works through a text, a video and a PDF chapter; the video keeps
   const course = await publishCourse(page.request, courseTitle(), clip);
   await waitUntilLearnable(page.request, course);
   await memberOfOnePharmacy(page);
-  await signInAsDeveloper(page);
+  await signIn(page);
 
   // The text chapter: open until its end has been in view.
   await page.goto(`/learning/courses/${course.version}?chapter=${course.text}`);
