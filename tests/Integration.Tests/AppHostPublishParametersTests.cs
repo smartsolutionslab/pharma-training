@@ -35,6 +35,8 @@ public class AppHostPublishParametersTests
     [InlineData("smtp-username", PublishedAppHost.Production)]
     [InlineData("smtp-password", PublishedAppHost.Production)]
     [InlineData("mailpit-ui-auth")]
+    [InlineData("keycloak-erasure-client-secret")]
+    [InlineData("keycloak-erasure-client-secret", PublishedAppHost.Production)]
     public async Task Every_publish_secret_is_an_explicit_parameter_in_key_vault(string name, string environment = PublishedAppHost.Staging)
     {
         // The relay's credentials exist in production alone, and Mailpit's inbox auth on staging alone (#130).

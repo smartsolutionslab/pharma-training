@@ -89,6 +89,25 @@
           }
         }
       ]
+    },
+    {
+      "clientId": "pharma-training-erasure",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${KEYCLOAK_ERASURE_CLIENT_SECRET}",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false
+    }
+  ],
+  "users": [
+    {
+      "username": "service-account-pharma-training-erasure",
+      "enabled": true,
+      "serviceAccountClientId": "pharma-training-erasure",
+      "clientRoles": { "realm-management": ["manage-users"] }
     }
   ]
 }

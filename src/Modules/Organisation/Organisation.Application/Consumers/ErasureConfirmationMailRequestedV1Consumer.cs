@@ -8,10 +8,11 @@ using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
 namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Consumers;
 
 /// <summary>
-/// Mails the erasure's confirmation to each of the person's addresses, then forgets their name and addresses in every
-/// pharmacy, removes their invitation recipients and sender, records the confirmation and Organisation's step and
-/// announces the erasure as <see cref="PersonErasureRequestedV1"/>, in one commit (#115). A confirmation that is handled
-/// already is not mailed again.
+/// Mails the erasure's confirmation to each of the person's addresses (or, where Organisation holds none, to their
+/// Keycloak account's verified address, Q5), then forgets their name and addresses in every pharmacy, removes their
+/// invitation recipients and sender, records the confirmation and Organisation's step, announces the erasure as
+/// <see cref="PersonErasureRequestedV1"/> and requests the account's deletion as <see cref="AccountDeletionRequestedV1"/>,
+/// in one commit (#115). A confirmation that is handled already is not mailed again.
 /// <para>
 /// It is idempotent by the erasure's state, not by <c>Metadata.EventIdentifier</c>: a send that failed must be sent
 /// again, and the handled confirmation is the key. An address the mail server refuses for good (a 5xx reply to RCPT TO) is
@@ -29,6 +30,7 @@ public sealed partial class ErasureConfirmationMailRequestedV1Consumer(
     IInvitationSenderStore senders,
     IOrganisationUnitOfWork unitOfWork,
     IMailSender mails,
+    IAccounts accounts,
     TimeProvider time,
     ILogger<ErasureConfirmationMailRequestedV1Consumer> logger)
 {
@@ -38,6 +40,7 @@ public sealed partial class ErasureConfirmationMailRequestedV1Consumer(
     private readonly IInvitationSenderStore senders = senders;
     private readonly IOrganisationUnitOfWork unitOfWork = unitOfWork;
     private readonly IMailSender mails = mails;
+    private readonly IAccounts accounts = accounts;
     private readonly TimeProvider time = time;
     private readonly ILogger<ErasureConfirmationMailRequestedV1Consumer> logger = logger;
 
@@ -64,11 +67,12 @@ public sealed partial class ErasureConfirmationMailRequestedV1Consumer(
 
         var person = PersonId.From(message.PersonId);
         var addresses = await pharmacies.AddressesOfAsync(person, cancellationToken);
+        var confirmTo = addresses.Count > 0 ? addresses : await AccountAddressAsync(person, cancellationToken);
 
         // Every mail is out before anything is forgotten: once the address is gone, nothing could mail it.
         // An address the server refuses for good is given up: no retry could reach it, and the erasure must go on.
         var mailed = 0;
-        foreach (var address in addresses)
+        foreach (var address in confirmTo)
         {
             try
             {
@@ -101,7 +105,27 @@ public sealed partial class ErasureConfirmationMailRequestedV1Consumer(
         erasure.ConfirmationHandled(Confirmation(mailed), now);
         erasure.CompleteStep(ErasureModule.Organisation, now);
         await unitOfWork.PublishAsync(new PersonErasureRequestedV1(erasure.Id.Value, person.Value));
+        // The account's deletion is Organisation's own work item, in the same commit: a Keycloak outage then retries the
+        // deletion alone, never the mails or the forgetting above (docs/adr/0040).
+        await unitOfWork.PublishAsync(new AccountDeletionRequestedV1(erasure.Id.Value, person.Value));
         await unitOfWork.CommitAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Q5 (#115): where Organisation holds no address of the person, the confirmation goes to their Keycloak account's
+    /// address, only where Keycloak verified it (docs/adr/0014); no account, or none verified, means no mail. That address
+    /// is used for the mail alone, and nothing in Organisation is forgotten by it (owner decision C, docs/adr/0040). A
+    /// failure of Keycloak throws before anything is mailed or forgotten.
+    /// </summary>
+    private async Task<IReadOnlyList<EmailAddress>> AccountAddressAsync(PersonId person, CancellationToken cancellationToken)
+    {
+        var account = await accounts.FindAsync(person, cancellationToken);
+        if (account.HasValue && account.Value.VerifiedAddress.HasValue)
+        {
+            return [account.Value.VerifiedAddress.Value];
+        }
+
+        return [];
     }
 
     /// <summary>Mailed when at least one address took the mail; no address when none was held or every one was refused.</summary>

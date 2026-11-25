@@ -49,6 +49,13 @@ public static class ServiceHostProjects
     /// </summary>
     public static bool LinksToFrontend(string projectPath) => Flag(projectPath, "LinksToFrontend");
 
+    /// <summary>
+    /// Whether the service host at <paramref name="projectPath"/> deletes people's Keycloak accounts, as its project says:
+    /// <c>&lt;ManagesAccounts&gt;true&lt;/ManagesAccounts&gt;</c>, read like <c>&lt;SendsMail&gt;</c>. Only such a host is given
+    /// the erasure client's settings and secret (<see cref="AccountDeletion"/>, docs/adr/0040).
+    /// </summary>
+    public static bool ManagesAccounts(string projectPath) => Flag(projectPath, "ManagesAccounts");
+
     private static bool Flag(string projectPath, string name)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(projectPath);
