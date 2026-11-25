@@ -1,3 +1,4 @@
+import { retentionYears } from '@/modules/certification/retentionSchema';
 import { maximumLearners, maximumYearsAhead } from '@/modules/compliance/assignSchema';
 import { chapterTitleMaxLength, maxDurationSeconds, maxTextLength } from '@/modules/editorial/chapterSchema';
 import { courseTitleMaxLength } from '@/modules/editorial/courseTitle';
@@ -15,8 +16,6 @@ export const pharmacyNameMaxLength = 120;
 export const changeReasonMaxLength = 500;
 /** How often a recurring assignment may recur, in months. */
 export const recurrenceMonths = { min: 1, max: 60 } as const;
-/** How many years a pharmacy may keep a certificate in its view (RetentionPeriod). */
-export const retentionYears = { min: 2, max: 30 } as const;
 /** The longest name of a module's generated sample. */
 export const sampleNameMaxLength = 100;
 

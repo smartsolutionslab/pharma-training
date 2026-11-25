@@ -151,6 +151,19 @@ export const en: MessageSchema = {
       done: 'The download has started.',
       failed: 'The export could not be created. Try again.',
     },
+    retention: {
+      title: 'Retention period',
+      intro: "How many years after their issue {pharmacy}'s certificates are included in the export.",
+      current: 'Currently {years} years',
+      default: '(default)',
+      retroactive:
+        'The period applies retroactively to every certificate: lengthening it includes older certificates in the export again; shortening it leaves the older ones out. Nothing is deleted.',
+      years: 'Retention period in years',
+      submit: 'Save period',
+      saving: 'Saving…',
+      saved: 'The retention period is now {years} years.',
+      failed: 'The retention period could not be saved. Try again.',
+    },
     mine: {
       columns: {
         course: 'Course',
