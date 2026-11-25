@@ -6,16 +6,46 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersio
 /// <summary>
 /// Whether text is plain: no control character, no format character (bidi overrides, zero-width characters), line or
 /// paragraph separator, private-use or unassigned code point, and no unpaired surrogate. A caller may allow line breaks
-/// and tabs, as a free-text reason does; a one-line value such as a name does not. A name may allow the zero-width
-/// non-joiner and joiner (U+200C, U+200D), which Persian and Indic names are written with, but only after a letter or mark,
-/// and at the end of a word only after a combining mark; the bidi controls and every other format character stay refused.
+/// and tabs, as a free-text reason does; a one-line value such as a name does not. A name (<see cref="IsPlainName"/>) also
+/// holds at least one letter and no Default_Ignorable code point (Hangul fillers, the combining grapheme joiner, variation
+/// selectors), so it never shows as nothing, but it may hold the zero-width non-joiner and joiner (U+200C, U+200D), which
+/// Persian and Indic names are written with: only after a letter or mark, and at the end of a word only after a virama.
 /// </summary>
 internal static class PlainText
 {
     private const int ZeroWidthNonJoiner = 0x200C;
     private const int ZeroWidthJoiner = 0x200D;
 
-    public static bool IsPlain(string text, bool allowLineBreaksAndTabs, bool allowJoiners = false)
+    /// <summary>The code points of Unicode's Default_Ignorable_Code_Point property (DerivedCoreProperties.txt).</summary>
+    private static readonly (int First, int Last)[] DefaultIgnorable =
+    [
+        (0x00AD, 0x00AD), (0x034F, 0x034F), (0x061C, 0x061C), (0x115F, 0x1160), (0x17B4, 0x17B5), (0x180B, 0x180F),
+        (0x200B, 0x200F), (0x202A, 0x202E), (0x2060, 0x206F), (0x3164, 0x3164), (0xFE00, 0xFE0F), (0xFEFF, 0xFEFF),
+        (0xFFA0, 0xFFA0), (0xFFF0, 0xFFF8), (0x1BCA0, 0x1BCA3), (0x1D173, 0x1D17A), (0xE0000, 0xE0FFF),
+    ];
+
+    /// <summary>
+    /// The viramas (and the Khmer coeng) after which a joiner may end a word: a virama followed by a joiner is how
+    /// Malayalam chillu letters and Bengali khanda-ta are typed, at the end of a word as often as inside one.
+    /// </summary>
+    private static readonly HashSet<int> Viramas =
+    [
+        0x094D, 0x09CD, 0x0A4D, 0x0ACD, 0x0B4D, 0x0BCD, 0x0C4D, 0x0CCD, 0x0D3B, 0x0D3C, 0x0D4D, 0x0DCA, 0x1039, 0x103A,
+        0x17D2, 0x1B44, 0xA8C4,
+    ];
+
+    /// <summary>
+    /// A one-line name a reader can see: plain, at least one letter, no Default_Ignorable code point but the joiners,
+    /// and a joiner only after a letter or mark, ending a word only after a virama.
+    /// </summary>
+    public static bool IsPlainName(string text) =>
+        IsPlain(text, allowLineBreaksAndTabs: false, allowJoiners: true)
+        && text.EnumerateRunes().All(character => IsJoiner(character) || !IsDefaultIgnorable(character))
+        && text.EnumerateRunes().Any(Rune.IsLetter);
+
+    public static bool IsPlain(string text, bool allowLineBreaksAndTabs) => IsPlain(text, allowLineBreaksAndTabs, allowJoiners: false);
+
+    private static bool IsPlain(string text, bool allowLineBreaksAndTabs, bool allowJoiners)
     {
         if (HasUnpairedSurrogate(text))
         {
@@ -49,8 +79,8 @@ internal static class PlainText
 
     /// <summary>
     /// A joiner follows a letter or mark, so it never starts a name or a word and never follows a space or another joiner,
-    /// where it would show nothing. It may end a word only after a combining mark: a virama followed by a joiner is how
-    /// Malayalam chillu letters and Bengali khanda-ta are typed, at the end of a word as often as inside one.
+    /// where it would show nothing. It may end a word only after a virama (<see cref="Viramas"/>), not after any other
+    /// mark, which may itself show nothing.
     /// </summary>
     private static bool JoinsTwoLetters(List<Rune> characters, int index)
     {
@@ -60,14 +90,14 @@ internal static class PlainText
         }
 
         var endsWord = index == characters.Count - 1 || !IsLetterOrMark(characters[index + 1]);
-        return !endsWord || IsCombiningMark(characters[index - 1]);
+        return !endsWord || Viramas.Contains(characters[index - 1].Value);
     }
-
-    private static bool IsCombiningMark(Rune character) =>
-        Rune.GetUnicodeCategory(character) is UnicodeCategory.NonSpacingMark or UnicodeCategory.SpacingCombiningMark or UnicodeCategory.EnclosingMark;
 
     private static bool IsLetterOrMark(Rune character) =>
         Rune.IsLetter(character) || Rune.GetUnicodeCategory(character) is UnicodeCategory.NonSpacingMark or UnicodeCategory.SpacingCombiningMark or UnicodeCategory.EnclosingMark;
+
+    private static bool IsDefaultIgnorable(Rune character) =>
+        DefaultIgnorable.Any(range => character.Value >= range.First && character.Value <= range.Last);
 
     /// <summary>A lone high or low surrogate, which <see cref="string.EnumerateRunes"/> would read as U+FFFD and let through.</summary>
     private static bool HasUnpairedSurrogate(string text)

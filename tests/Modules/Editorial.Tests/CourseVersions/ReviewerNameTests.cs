@@ -11,9 +11,22 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersion
 /// </summary>
 public class ReviewerNameTests
 {
-    public static TheoryData<string> Refused => [string.Empty, "   ", new string('a', 101), "a\0b", "\u200B", "Emma\u202EEditor", "Emma\u2066Editor", "Emma\nEditor", "Emma\tEditor", "Emma\u0001Editor", "Emma\uD800Editor", "Emma\uE000Editor", "\u200D", "\u200C\u200D", "\u200CEmma", "Emma\u200D", "Emma \u200C Reza", "a\u200C\u200Cb"];
+    /// <summary>
+    /// Names that would show nothing, or end in something that shows nothing (#213's review): Hangul fillers (letters that
+    /// draw nothing), the combining grapheme joiner, variation selectors and Mongolian free variation selectors, which are
+    /// Default_Ignorable; a name with no letter at all (the blank braille pattern); and a joiner ending a word after a mark
+    /// that is no virama, or after an invisible one.
+    /// </summary>
+    private static readonly string[] Invisible =
+    [
+        "\u3164", "\u115F\u1160", "\uFFA0", "\u3164\u200D\u3164", "\u034F", "Emma\u034FEditor", "\uFE0F", "Emma\uFE0F",
+        "\u180B", "Emma\u180DEditor", "\u2800", "\u2800 \u2800", "Emma\u0301\u200D", "\u034F\u200D", "\uFE0F\u200C",
+        "Emma \u034F\u200C Reza", "a\u200C\u034F\u200Cb",
+    ];
 
-    public static TheoryData<string?> NoName => [(string?)null, string.Empty, "  ", new string('a', 101), "a\0b", "\u200B", "Emma\u202EEditor", "Emma\u2066Editor", "Emma\nEditor", "Emma\tEditor", "Emma\u0001Editor", "Emma\uD800Editor", "Emma\uE000Editor", "\u200D", "\u200C\u200D", "\u200CEmma", "Emma\u200D", "Emma \u200C Reza", "a\u200C\u200Cb"];
+    public static TheoryData<string> Refused => [string.Empty, "   ", new string('a', 101), "a\0b", "\u200B", "Emma\u202EEditor", "Emma\u2066Editor", "Emma\nEditor", "Emma\tEditor", "Emma\u0001Editor", "Emma\uD800Editor", "Emma\uE000Editor", "\u200D", "\u200C\u200D", "\u200CEmma", "Emma\u200D", "Emma \u200C Reza", "a\u200C\u200Cb", .. Invisible];
+
+    public static TheoryData<string?> NoName => [(string?)null, string.Empty, "  ", new string('a', 101), "a\0b", "\u200B", "Emma\u202EEditor", "Emma\u2066Editor", "Emma\nEditor", "Emma\tEditor", "Emma\u0001Editor", "Emma\uD800Editor", "Emma\uE000Editor", "\u200D", "\u200C\u200D", "\u200CEmma", "Emma\u200D", "Emma \u200C Reza", "a\u200C\u200Cb", .. Invisible];
 
     [Fact]
     public void A_reviewer_name_is_kept_trimmed() =>
@@ -57,6 +70,11 @@ public class ReviewerNameTests
         ReviewerName.TryFrom(value, out var name).ShouldBeTrue();
         name.Value.ShouldBe(value);
     }
+
+    /// <summary>A combining mark that shows (a diaeresis written apart from its letter) keeps a name a name.</summary>
+    [Fact]
+    public void A_name_with_a_visible_combining_mark_is_kept() =>
+        ReviewerName.From("Zoe\u0308 Editor").Value.ShouldBe("Zoe\u0308 Editor");
 
     [Fact]
     public void TryFrom_trims_a_reviewer_name_it_accepts()

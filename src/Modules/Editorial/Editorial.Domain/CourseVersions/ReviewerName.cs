@@ -9,7 +9,8 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersio
 /// characters after trimming, on one line, and plain text that holds no control character (a line break and a tab
 /// included), no format character (bidi overrides, zero-width characters) other than the zero-width joiners a script
 /// writes names with (see <see cref="PlainText"/>), no line or paragraph separator, private-use or unassigned code point,
-/// and no unpaired surrogate. <see cref="From"/> guards a value the code already trusts;
+/// and no unpaired surrogate; and it shows: at least one letter and no Default_Ignorable code point but those joiners
+/// (no Hangul filler, combining grapheme joiner or variation selector). <see cref="From"/> guards a value the code already trusts;
 /// <see cref="TryFrom"/> checks a token's, so a bad one is no name rather than an exception. Both trim it first.
 /// </summary>
 public sealed record ReviewerName : IValueObject<string>
@@ -40,6 +41,6 @@ public sealed record ReviewerName : IValueObject<string>
     private static bool IsValid(string value)
     {
         var text = value.Trim();
-        return text.Length is > 0 and <= MaxLength && PlainText.IsPlain(text, allowLineBreaksAndTabs: false, allowJoiners: true);
+        return text.Length is > 0 and <= MaxLength && PlainText.IsPlainName(text);
     }
 }
