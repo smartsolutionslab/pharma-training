@@ -11,7 +11,7 @@ await secrets.GrantEachAppTheSecretsItReadsAsync(builder);
 // The server alone: every service gets a database of its own on it, in the AppHost's loop over the services.
 var postgres = builder.AddDatabaseServer(secrets);
 // Published, the environment runs in a virtual network, and the server and the Key Vault are reached through private
-// endpoints in it alone, with no public endpoint of their own (Wiring/PrivateNetwork.cs, docs/adr/0036).
+// endpoints in it alone, with no public endpoint of their own (Wiring/PrivateNetwork.cs, docs/adr/0038).
 builder.AddPrivateNetwork(secrets, postgres);
 // The one SMTP server Keycloak and the services send through: Mailpit in run mode, whose inbox is http://localhost:8025;
 // published, the server the deployment names in the smtp-* parameters (Wiring/MailServer.cs, docs/adr/0004 and 0005).

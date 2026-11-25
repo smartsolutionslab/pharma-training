@@ -1,4 +1,4 @@
-# 0036: The database and the vault are reached through the network alone
+# 0038: The database and the vault are reached through the network alone
 
 **Status:** Accepted for PostgreSQL and the Key Vault (#149; the owner chose OQ8 (d) on #114, 2026-11-22). Blob Storage is open, see Consequences.
 

@@ -1,4 +1,4 @@
-// The network the published application runs in (#149, docs/adr/0036), written by hand and added by
+// The network the published application runs in (#149, docs/adr/0038), written by hand and added by
 // src/AppHost/Wiring/PrivateNetwork.cs: the Container Apps environment is injected into aca-subnet, and the PostgreSQL
 // server and the Key Vault are reached through private endpoints in private-endpoints alone, their names resolving to the
 // endpoints' addresses through the private DNS zones linked to the network.

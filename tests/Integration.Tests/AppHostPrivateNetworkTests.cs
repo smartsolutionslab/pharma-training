@@ -3,7 +3,7 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// <summary>
 /// Published, the Container Apps environment runs in a virtual network of its own, and PostgreSQL and the Key Vault are
 /// reached through private endpoints in it alone: neither has a public endpoint, and the server has no firewall rule
-/// letting in every Azure address (#149, docs/adr/0036).
+/// letting in every Azure address (#149, docs/adr/0038).
 /// </summary>
 public class AppHostPrivateNetworkTests
 {

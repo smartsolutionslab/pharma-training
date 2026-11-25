@@ -9,7 +9,7 @@ using Azure.Provisioning.PostgreSql;
 namespace Aspire.Hosting;
 
 /// <summary>
-/// Published, the network the application runs in (#149, docs/adr/0036): the module <c>network</c>, written by hand in
+/// Published, the network the application runs in (#149, docs/adr/0038): the module <c>network</c>, written by hand in
 /// <c>network/network.bicep</c>, holds a virtual network whose subnet <c>aca-subnet</c> the Container Apps environment is
 /// injected into, and a private endpoint for the PostgreSQL server and one for the Key Vault in its subnet
 /// <c>private-endpoints</c>, with the private DNS zones their names resolve in. Neither resource has a public endpoint,
