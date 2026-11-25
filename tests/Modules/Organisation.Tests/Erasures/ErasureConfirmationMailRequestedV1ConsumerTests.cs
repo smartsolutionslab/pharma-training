@@ -285,12 +285,21 @@ public class ErasureConfirmationMailRequestedV1ConsumerTests
     /// not need. Nothing is mailed, the person is forgotten and both events are committed; the account's deletion then
     /// retries Keycloak on its own. The warning names the erasure alone.
     /// </summary>
-    [Fact]
-    public async Task A_failed_account_read_mails_nothing_and_the_erasure_goes_on()
+    /// <summary>
+    /// Keycloak answering with an error, or not reachable at all once the pipeline's retries are spent, reads as no account
+    /// address: the erasure goes on, and the account's deletion retries Keycloak on its own.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_failed_account_read_mails_nothing_and_the_erasure_goes_on(bool connectionRefused)
     {
         var erasure = StoredErasure();
         store.StoredSenders.Add(InvitationSender.FirstMailed(person, TestPharmacies.RegisteredAt));
-        accounts.FindAsync(person, Arg.Any<CancellationToken>()).ThrowsAsync(new AccountsUnavailableException("Keycloak answered the read with 503."));
+        Exception failure = connectionRefused
+            ? new HttpRequestException("Connection refused (keycloak:8080)")
+            : new AccountsUnavailableException("Keycloak answered the read with 503.");
+        accounts.FindAsync(person, Arg.Any<CancellationToken>()).ThrowsAsync(failure);
 
         await Consumer().HandleAsync(new ErasureConfirmationMailRequestedV1(erasure.Id.Value, person.Value), TestContext.Current.CancellationToken);
 
