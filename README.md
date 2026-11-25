@@ -174,6 +174,7 @@ Do this once per environment, `staging` and `production`, with `az` signed in as
    - `MESSAGING_PASSWORD`: the broker administrator's, URI-safe;
    - `MESSAGING_<MODULE>_PASSWORD`: one per service, URI-safe. The names are the service hosts' `<ModuleName>` upper-cased with `-` as `_`: `for p in src/Services/*/Host/Host.csproj; do sed -n 's:.*<ModuleName>\(.*\)</ModuleName>.*:MESSAGING_\1_PASSWORD:p' "$p" | tr '[:lower:]-' '[:upper:]_'; done`. A new module needs its secret in each environment before its first deploy;
    - `KEYCLOAK_ADMIN_PASSWORD`: Keycloak's administrator, `admin`;
+   - `KEYCLOAK_ERASURE_CLIENT_SECRET`: the secret of the client `pharma-training-erasure`, with which Organisation deletes an erased person's Keycloak account ([ADR 0040](docs/adr/0040-the-erased-persons-keycloak-account-is-deleted-by-organisations-service-account.md)); `openssl rand -hex 32`, its own per environment. Keycloak's realm import reads it, so set it before the first deploy; an environment whose realm was imported before the client existed needs the runbook below;
    - `SMTP_USERNAME`, `SMTP_PASSWORD`, **production only**: the relay's, URI-safe;
    - `MAILPIT_UI_AUTH`, **staging only**: Mailpit's inbox's basic auth, `x1:<password>` (`echo "x1:$(openssl rand -hex 24)"`), which staging's Mailpit takes and the staging end-to-end run sends;
    - `X1_RUNNER_SECRET`, **staging only**, set after the first deploy (below): the secret of the client the staging end-to-end run creates its users with;

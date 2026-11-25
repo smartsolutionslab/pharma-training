@@ -107,6 +107,7 @@ jobs:
           Parameters__messaging-username: ${{ vars.MESSAGING_USERNAME }}
           Parameters__messaging-password: ${{ secrets.MESSAGING_PASSWORD }}
           Parameters__keycloak-admin-password: ${{ secrets.KEYCLOAK_ADMIN_PASSWORD }}
+          Parameters__keycloak-erasure-client-secret: ${{ secrets.KEYCLOAK_ERASURE_CLIENT_SECRET }}
           Parameters__smtp-from: ${{ vars.SMTP_FROM }}
           # Staging sends to a Mailpit of its own, whose inbox the staging end-to-end run reads behind this basic auth,
           # user:password (#130); it needs no relay.
@@ -222,6 +223,7 @@ jobs:
           Parameters__messaging-username: ${{ vars.MESSAGING_USERNAME }}
           Parameters__messaging-password: ${{ secrets.MESSAGING_PASSWORD }}
           Parameters__keycloak-admin-password: ${{ secrets.KEYCLOAK_ADMIN_PASSWORD }}
+          Parameters__keycloak-erasure-client-secret: ${{ secrets.KEYCLOAK_ERASURE_CLIENT_SECRET }}
           Parameters__smtp-host: ${{ vars.SMTP_HOST }}
           Parameters__smtp-from: ${{ vars.SMTP_FROM }}
           Parameters__smtp-username: ${{ secrets.SMTP_USERNAME }}
