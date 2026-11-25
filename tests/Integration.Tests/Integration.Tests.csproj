@@ -36,6 +36,9 @@
     <!-- EditorialRepublishTests takes the republish's lock through EditorialRepublishLock itself, on a pool of its own, to
          see a failed release leave nothing held. -->
     <ProjectReference Include="../../src/Modules/Editorial/Editorial.Infrastructure/Editorial.Infrastructure.csproj" />
+    <!-- CertificationRetentionTests asks CertificateStore itself, with a keptAt of its own, whether PostgreSQL counts the
+         five years around 29 February as Certificate.IsKeptByPharmaciesAt does (#53). -->
+    <ProjectReference Include="../../src/Modules/Certification/Certification.Infrastructure/Certification.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

@@ -50,7 +50,7 @@ public sealed class RenewInvitationHandler(
         // (docs/adr/0004).
         var renewed = pharmacy.Memberships.Single(membership => membership.Id == command.Membership);
         // An open invitation always holds its address; only an erasure forgets one, and only of a closed membership.
-        var counted = await InvitationMailCounting.CountAsync(recipients, senders, recipientAndSenderLimits, logger, renewed.Email!, command.By, now, cancellationToken);
+        var counted = await InvitationMailCounting.CountAsync(recipients, senders, recipientAndSenderLimits, logger, command.Pharmacy, renewed.Email!, command.By, now, cancellationToken);
         if (counted.IsFailure)
         {
             return Failure(counted.Error);

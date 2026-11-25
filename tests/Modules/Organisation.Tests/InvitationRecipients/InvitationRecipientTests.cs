@@ -28,6 +28,18 @@ public class InvitationRecipientTests
     }
 
     [Fact]
+    public void An_address_not_yet_mailed_may_be_mailed_at_once_and_its_first_mail_is_counted()
+    {
+        var recipient = InvitationRecipient.NotYetMailed(Anna);
+
+        recipient.Id.ShouldBe(InvitationRecipientId.For(Anna));
+        recipient.MailedBeyond(At(Start), TenMinutes).HasValue.ShouldBeFalse("an address not yet mailed was taken for one mailed ahead");
+        recipient.RequestMail(At(Start), TenMinutes).IsSuccess.ShouldBeTrue("the first mail to an address was refused");
+        recipient.LastMailedAt.ShouldBe(At(Start));
+        recipient.DomainEvents.ShouldBeEmpty();
+    }
+
+    [Fact]
     public void A_mail_within_the_cooldown_is_refused_with_the_instant_the_address_may_be_mailed_again()
     {
         var recipient = InvitationRecipient.FirstMailed(Anna, At(Start));

@@ -16,6 +16,18 @@ public sealed class InvitationRecipient : AggregateRoot<InvitationRecipientId>
     /// <summary>The instant of the address's latest counted invitation mail.</summary>
     public Timestamp LastMailedAt { get; private set; }
 
+    /// <summary>
+    /// An address with no mail counted yet: its latest mail at the Unix epoch, long past any cooldown, so its first mail
+    /// is counted with <see cref="RequestMail"/> like every other. It is the row the store creates when an address has
+    /// none, and is committed only once a mail has been counted on it (#375).
+    /// </summary>
+    public static InvitationRecipient NotYetMailed(EmailAddress address)
+    {
+        Ensure.That(address).IsNotNull();
+
+        return new InvitationRecipient(InvitationRecipientId.For(address), Timestamp.From(DateTimeOffset.UnixEpoch));
+    }
+
     /// <summary>The address's first invitation mail, counted at <paramref name="now"/>.</summary>
     public static InvitationRecipient FirstMailed(EmailAddress address, Timestamp now)
     {

@@ -436,6 +436,41 @@ public class InviteMemberTests
     }
 
     [Fact]
+    public async Task An_invitation_whose_recipient_row_stayed_locked_past_the_lock_timeout_is_told_to_try_again_and_commits_nothing()
+    {
+        var store = new InMemoryPharmacyStore();
+        var pharmacy = TestPharmacies.Register(Owner).Stored(store);
+        store.TimeOutNextRecipientLock();
+
+        var refused = await Handler(store).HandleAsync(new InviteMember(pharmacy.Id, Owner, Invitee, JobFunction.Pta, MembershipRole.Employee), TestContext.Current.CancellationToken);
+
+        refused.IsSuccess.ShouldBeFalse();
+        refused.Error.Code.ShouldBe("organisation.concurrent-save");
+        refused.Error.Status.ShouldBe(HttpStatusCode.Conflict);
+        store.Commits.ShouldBe(0);
+        store.Published.ShouldBeEmpty();
+        store.StoredSenders.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task An_invitation_whose_sender_row_stayed_locked_past_the_lock_timeout_is_told_to_try_again_and_leaves_no_recipient_behind()
+    {
+        var store = new InMemoryPharmacyStore();
+        var pharmacy = TestPharmacies.Register(Owner).Stored(store);
+        store.TimeOutNextSenderLock();
+
+        var refused = await Handler(store).HandleAsync(new InviteMember(pharmacy.Id, Owner, Invitee, JobFunction.Pta, MembershipRole.Employee), TestContext.Current.CancellationToken);
+        await store.CommitAsync(TestContext.Current.CancellationToken);
+
+        refused.IsSuccess.ShouldBeFalse();
+        refused.Error.Code.ShouldBe("organisation.concurrent-save");
+        refused.Error.Status.ShouldBe(HttpStatusCode.Conflict);
+        store.Published.ShouldBeEmpty();
+        store.StoredRecipients.ShouldBeEmpty();
+        store.StoredSenders.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task A_stored_sender_mail_day_beyond_tomorrow_is_logged_as_a_warning_and_today_starts_the_tally_afresh()
     {
         var store = new InMemoryPharmacyStore();

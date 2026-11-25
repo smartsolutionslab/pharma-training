@@ -46,6 +46,24 @@ public class CommitLostRaceTests
         ShouldHaveLostTo(Deadlock, await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken));
     }
 
+    /// <summary>
+    /// A save whose wait for a lock ran past its transaction's <c>lock_timeout</c> (55P03, which Organisation sets for
+    /// the rows its invitation mails count on, #375) is lost like a deadlock, however it is wrapped: nothing was saved,
+    /// and the same request may succeed when tried again.
+    /// </summary>
+    [Theory]
+    [InlineData(Bare)]
+    [InlineData(InsideAnotherException)]
+    [InlineData(AtAStatement)]
+    [InlineData(AtTheCommitEfCoreOwns)]
+    [InlineData(BehindAnotherFailureInAnAggregate)]
+    public async Task A_save_postgresql_ended_because_a_lock_wait_ran_past_the_lock_timeout_is_lost_to_a_deadlock(string wrapping)
+    {
+        await using var services = OutboxFailingWith(Wrapped(Ended(PostgresErrorCodes.LockNotAvailable), wrapping));
+
+        ShouldHaveLostTo(Deadlock, await new EditorialUnitOfWork(services).TryCommitAsync(TestContext.Current.CancellationToken));
+    }
+
     [Fact]
     public async Task A_save_that_moved_a_row_version_is_lost_to_a_version_that_moved_on()
     {

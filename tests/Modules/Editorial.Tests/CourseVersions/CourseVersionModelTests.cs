@@ -77,6 +77,22 @@ public sealed class CourseVersionModelTests : IDisposable
         text.GetColumnType().ShouldBe("text");
     }
 
+    /// <summary>
+    /// A version's return history is never changed once stored (ADR 0013), so deleting a version that has one is refused
+    /// rather than erasing the history with it (#192's review).
+    /// </summary>
+    [Fact]
+    public void Deleting_a_version_never_deletes_its_return_history()
+    {
+        var returns = context.Model.FindEntityType(typeof(CourseVersionReturn));
+        returns.ShouldNotBeNull();
+
+        var key = returns.GetForeignKeys().ShouldHaveSingleItem();
+
+        key.PrincipalEntityType.ClrType.ShouldBe(typeof(CourseVersion));
+        key.DeleteBehavior.ShouldBe(DeleteBehavior.Restrict);
+    }
+
     /// <summary>The runner fails on a model without its migration: the columns come with <c>AddChapterPdfText</c>.</summary>
     [Fact]
     public void The_model_has_no_change_its_migrations_lack()

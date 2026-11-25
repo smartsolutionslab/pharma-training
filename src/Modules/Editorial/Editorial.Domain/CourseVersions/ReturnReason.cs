@@ -3,7 +3,8 @@ using System.Diagnostics.CodeAnalysis;
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 
 /// <summary>
-/// Why an editor returned a version to draft, trimmed: 1 to <see cref="MaxLength"/> characters after trimming, not blank,
+/// Why an editor returned a version to draft, trimmed: 1 to <see cref="MaxLength"/> characters after trimming, counted as
+/// Unicode scalar values (an emoji outside the BMP is one, not two UTF-16 code units), not blank,
 /// and plain text that holds no control character but a line break or a tab and no format character (bidi overrides,
 /// zero-width characters), line or paragraph separator, private-use or unassigned code point, or unpaired surrogate.
 /// Markup is kept as written: it is the editor's own text, answered as a string. <see cref="From"/> guards a value the code already trusts;
@@ -37,6 +38,6 @@ public sealed record ReturnReason : IValueObject<string>
     private static bool IsValid(string value)
     {
         var text = value.Trim();
-        return text.Length is > 0 and <= MaxLength && PlainText.IsPlain(text, allowLineBreaksAndTabs: true);
+        return text.Length > 0 && text.EnumerateRunes().Count() <= MaxLength && PlainText.IsPlain(text, allowLineBreaksAndTabs: true);
     }
 }
