@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
+import { signIn } from './signIn';
 
 // The frosted surfaces (the header, the sidebar, dialogs and the command palette) are translucent, so the contrast of
 // their text depends on the page behind them, which only a browser composes: axe's colour-contrast rule checks each of
@@ -16,11 +17,7 @@ for (const theme of ['light', 'dark'] as const) {
     await page.addInitScript((choice) => {
       localStorage.setItem('theme', choice);
     }, theme);
-    await page.goto('/');
-    await page.getByLabel('Username or email').fill('developer');
-    await page.getByLabel('Password', { exact: true }).fill('developer');
-    await page.getByRole('button', { name: 'Sign In' }).click();
-    await expect(page.getByText('Angemeldet als developer')).toBeVisible();
+    await signIn(page);
     const html = page.locator('html');
     if (theme === 'dark') {
       await expect(html).toHaveClass(/\bdark\b/);

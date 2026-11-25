@@ -2,11 +2,9 @@ using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Storage;
 using SmartSolutionsLab.PharmaTraining.Contracts.Certification;
 using SmartSolutionsLab.PharmaTraining.Contracts.Organisation;
-using SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Documents;
+using SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Erasures;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Certificates;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.ErasedPersons;
-using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Memberships;
-using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Retention;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Consumers;
 
@@ -17,8 +15,9 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Con
 /// <b>retained</b> while some membership of theirs covers its issue (start inclusive, end exclusive, docs/adr/0032) and
 /// that membership's pharmacy still keeps it for its own retention period (<see cref="Certificate.IsKeptByPharmaciesAt"/>,
 /// docs/adr/0034, 0039), so it stays in a pharmacy's
-/// view and export and answers the public verification, name and PDF included; every other one is <b>removed</b>. The
-/// PDFs of the removed ones are deleted first, each by its derived name whether or not one was stored (a render in
+/// view and export and answers the public verification, name and PDF included; every other one is <b>removed</b>
+/// (<see cref="ErasedCertificates"/>, the rule the purge of retained certificates applies again later). The PDFs of the
+/// removed ones are deleted first, each by its derived name whether or not one was stored (a render in
 /// flight may write it), then their rows go with the commit, so a run that fails between the two leaves no PDF without
 /// its row and the retry deletes what is left. The holder's name is forgotten on every membership of theirs, whose rows
 /// stay: their periods choose the retained certificates. Before the commit it purges the stored membership messages
@@ -74,23 +73,8 @@ public sealed class PersonErasureRequestedV1Consumer(
         var persons = await memberships.OfPersonAsync(person, cancellationToken);
         var endings = await memberships.EndingsOfPersonAsync(person, cancellationToken);
 
-        var keptFor = new Dictionary<PharmacyId, RetentionPeriod>();
-        foreach (var pharmacy in persons.Select(membership => membership.Pharmacy).Distinct())
-        {
-            keptFor[pharmacy] = (await retention.FindAsync(pharmacy, cancellationToken)).Match(stored => stored.Period, () => RetentionPeriod.Default);
-        }
-
-        var removed = held.Where(certificate => !IsRetained(certificate, persons, endings, keptFor, now)).ToList();
-        foreach (var certificate in removed)
-        {
-            // Blobs first: a failure here leaves every row, so the retry finds what is left to delete.
-            await blobs.DeleteAsync(CertificateDocuments.NameFor(certificate.Id), cancellationToken);
-        }
-
-        foreach (var certificate in removed)
-        {
-            certificates.Remove(certificate);
-        }
+        var removed = await ErasedCertificates.NoLongerKeptAsync(held, persons, endings, retention, now, cancellationToken);
+        await ErasedCertificates.RemoveAsync(removed, blobs, certificates, cancellationToken);
 
         foreach (var membership in persons)
         {
@@ -102,19 +86,4 @@ public sealed class PersonErasureRequestedV1Consumer(
         await unitOfWork.PublishAsync(new CertificationErasureCompletedV1(message.ErasureId));
         await unitOfWork.CommitAsync(cancellationToken);
     }
-
-    /// <summary>
-    /// Whether a pharmacy still has the certificate in its view at <paramref name="now"/>: some membership of its holder
-    /// covers its issue, and that membership's pharmacy still keeps it for the period it chose (docs/adr/0039), the rules
-    /// <see cref="ICertificateStore.IssuedInPharmacyAsync"/> applies.
-    /// </summary>
-    private static bool IsRetained(
-        Certificate certificate,
-        IReadOnlyList<Membership> persons,
-        IReadOnlyList<MembershipEnding> endings,
-        Dictionary<PharmacyId, RetentionPeriod> keptFor,
-        Timestamp now) =>
-        persons.Any(membership =>
-            membership.Covers(certificate.IssuedAt, endings.FirstOrDefault(ending => ending.Id == membership.Id))
-            && certificate.IsKeptByPharmaciesAt(now, keptFor[membership.Pharmacy]));
 }

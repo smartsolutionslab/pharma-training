@@ -1,17 +1,10 @@
-import { expect, type Page, test } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { signIn } from './signIn';
 
 // No route is mocked: the host registers the pharmacy and answers the developer's memberships. Each run adds one, so
 // the developer may already be a member of none, one or several pharmacies; the test finds its own by a unique name.
 
 /** Signs in as the local user developer, on the start page. */
-async function signIn(page: Page) {
-  await page.goto('/');
-  await page.getByLabel('Username or email').fill('developer');
-  await page.getByLabel('Password', { exact: true }).fill('developer');
-  await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.getByText('Angemeldet als developer')).toBeVisible();
-}
-
 test('a signed-in user registers a pharmacy and works in it, after a reload too', async ({ page }) => {
   const name = `E2E Apotheke ${Date.now()}`;
   await signIn(page);

@@ -24,6 +24,9 @@ public sealed partial class AspireFixture : IAsyncLifetime
     /// <summary>The per-address limit on public certificate verification of this run, per day.</summary>
     public const int CertificationVerificationDailyLimit = 1000;
 
+    /// <summary>How often Certification purges erased persons' certificates in this run (#115, slice 5), down from a day.</summary>
+    public static readonly TimeSpan ErasedCertificatePurgeInterval = TimeSpan.FromSeconds(1);
+
     /// <summary>How many invitations one user may accept a minute in this run (docs/adr/0004), raised from the default 10.</summary>
     public const int OrganisationAcceptsPerMinute = 30;
 
@@ -94,6 +97,11 @@ public sealed partial class AspireFixture : IAsyncLifetime
         var certification = builder.CreateResourceBuilder(builder.Resources.OfType<ProjectResource>().Single(resource => resource.Name == "certification"));
         certification.WithEnvironment("Certification__VerificationLimits__PerMinute", CertificationVerificationLimit.ToString(CultureInfo.InvariantCulture));
         certification.WithEnvironment("Certification__VerificationLimits__PerDay", CertificationVerificationDailyLimit.ToString(CultureInfo.InvariantCulture));
+
+        // Certification purges an erased person's retained certificates once no pharmacy keeps them (#115, slice 5), once a
+        // day by default; the run purges every ErasedCertificatePurgeInterval, so PersonErasureTests sees a shortened
+        // period take effect within seconds.
+        certification.WithEnvironment("Certification__ErasedCertificatePurge__Interval", ErasedCertificatePurgeInterval.ToString("c", CultureInfo.InvariantCulture));
 
         // The accept tests accept as employee-a up to about 15 times in quick succession, more than the default 10 a minute
         // (docs/adr/0004), so the run raises the per-minute accept limit to OrganisationAcceptsPerMinute; every user stays

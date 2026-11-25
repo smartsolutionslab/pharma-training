@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
+import { signIn } from './signIn';
 
 // The test page of a course version (#25), as the realm's local user `editor` (realm role editor) works on it against
 // the AppHost. Each test starts a course of its own, so runs never share a version. Keycloak's login is English.
@@ -8,11 +9,7 @@ import { expect, type Locator, type Page, test } from '@playwright/test';
 
 /** Signs in as editor and starts a course from the inbox; resolves on its first version's page. */
 async function startCourse(page: Page, title: string) {
-  await page.goto('/');
-  await page.getByLabel('Username or email').fill('editor');
-  await page.getByLabel('Password', { exact: true }).fill('editor');
-  await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.getByText('Angemeldet als editor')).toBeVisible();
+  await signIn(page, 'editor');
   await page.goto('/editorial');
   await page.getByRole('button', { name: 'Neue Schulung' }).first().click();
   const dialog = page.getByRole('dialog', { name: 'Neue Schulung anlegen' });

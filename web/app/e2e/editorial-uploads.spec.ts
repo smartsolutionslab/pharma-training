@@ -2,6 +2,7 @@ import { open, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
+import { signIn } from './signIn';
 
 // PDF and video chapters, as the realm's local user `editor` (realm role editor) adds them against the AppHost: the file
 // goes straight from the browser to the AppHost's Azurite with one PUT to the upload URL the host issued (spec 2.6), and
@@ -10,11 +11,7 @@ import { expect, type Page, test } from '@playwright/test';
 
 /** Signs in as editor and starts a course from the inbox; resolves on its first version's page. */
 async function startCourse(page: Page, title: string) {
-  await page.goto('/');
-  await page.getByLabel('Username or email').fill('editor');
-  await page.getByLabel('Password', { exact: true }).fill('editor');
-  await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.getByText('Angemeldet als editor')).toBeVisible();
+  await signIn(page, 'editor');
   await page.goto('/editorial');
   await page.getByRole('button', { name: 'Neue Schulung' }).first().click();
   const dialog = page.getByRole('dialog', { name: 'Neue Schulung anlegen' });

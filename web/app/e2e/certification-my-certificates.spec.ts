@@ -1,5 +1,6 @@
-import { type APIRequestContext, expect, type Page, test } from '@playwright/test';
+import { type APIRequestContext, expect, test } from '@playwright/test';
 import { accessToken, call, courseTitle, pharmacyName, publishCourse, registerPharmacy } from './compliance';
+import { signIn } from './signIn';
 
 // The learner's certificates (#296, Z1) against the AppHost, with no route mocked. Through the host's API, the realm's
 // local user editor publishes a course of one text chapter and one question (publishCourse), the developer becomes a
@@ -125,14 +126,6 @@ async function waitUntilDocumentReady(request: APIRequestContext, title: string)
   return certificateId;
 }
 
-async function signInAsDeveloper(page: Page) {
-  await page.goto('/');
-  await page.getByLabel('Username or email').fill('developer');
-  await page.getByLabel('Password', { exact: true }).fill('developer');
-  await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.getByText('Angemeldet als developer')).toBeVisible();
-}
-
 test('a learner opens the PDF of a certificate whose document is ready, in the same tab', async ({ page, request }) => {
   test.setTimeout(240_000);
   const title = courseTitle('Bestätigung');
@@ -141,7 +134,7 @@ test('a learner opens the PDF of a certificate whose document is ready, in the s
   await passCourse(request, title);
   const certificateId = await waitUntilDocumentReady(request, title);
 
-  await signInAsDeveloper(page);
+  await signIn(page);
   await page.goto('/certification');
   await expect(page.getByRole('heading', { level: 1, name: 'Meine Teilnahmebestätigungen' })).toBeVisible();
   const row = page.getByRole('row').filter({ has: page.getByRole('cell', { name: title, exact: true }) });

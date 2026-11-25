@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { signIn } from './signIn';
 
 // A tablet held upright (docs/domain/README.md, "Geräte"): the desktop sidebar's breakpoint, 768 px.
 test.use({ viewport: { width: 768, height: 1024 } });
@@ -25,15 +26,12 @@ const pharmacies = [
   },
 ];
 
-async function signIn(page: Page) {
+/** Signs in as the developer, a member of the two pharmacies above. */
+async function signInToTwoPharmacies(page: Page) {
   await page.route(/\/api\/organisation\/pharmacies\/mine(\?|$)/, (route) =>
     route.fulfill({ json: { items: pharmacies, totalCount: pharmacies.length, page: 1, pageSize: 100 } }),
   );
-  await page.goto('/');
-  await page.getByLabel('Username or email').fill('developer');
-  await page.getByLabel('Password', { exact: true }).fill('developer');
-  await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.getByText('Angemeldet als developer')).toBeVisible();
+  await signIn(page);
 }
 
 /** Whether the page is wider than the viewport, so the user would scroll sideways. */
@@ -43,7 +41,7 @@ const scrollsSideways = (page: Page) =>
 test('on a tablet the user chooses a pharmacy, switches to another, and it stays chosen after a reload', async ({
   page,
 }) => {
-  await signIn(page);
+  await signInToTwoPharmacies(page);
 
   await page
     .getByRole('region', { name: 'Wählen Sie Ihre Apotheke' })

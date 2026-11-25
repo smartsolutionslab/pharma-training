@@ -1,7 +1,5 @@
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Logging;
 
 namespace Microsoft.Extensions.DependencyInjection;
 
@@ -21,13 +19,7 @@ public static class AnnouncementSweeps
         Ensure.That(services).IsNotNull();
 
         var settings = AnnouncementSweepSettings.From(configuration, module);
-        services.TryAddSingleton(TimeProvider.System);
         services.AddKeyedSingleton<AnnouncementSweepSettings>(typeof(TCommand), settings);
-        services.AddHostedService(provider => new PeriodicCommandService<TCommand>(
-            settings.Interval,
-            provider.GetRequiredService<IServiceScopeFactory>(),
-            provider.GetRequiredService<TimeProvider>(),
-            provider.GetRequiredService<ILogger<PeriodicCommandService<TCommand>>>()));
-        return services;
+        return services.AddPeriodicCommand<TCommand>(settings.Interval);
     }
 }
