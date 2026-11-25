@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -57,14 +58,22 @@ public static class Extensions
         builder.Logging.AddFilter(HostingDiagnostics, LogLevel.None);
         builder.Services.AddTransient<IStartupFilter, RequestLogScopeStartupFilter>();
 
-        // A route marked RedactedRoute records its template as url.path, never the path it was called with (#311).
+        // A route marked RedactedRoute records its template as url.path, never the path it was called with; a request no
+        // route took (no endpoint, or ASP.NET Core's 404 or 405, as for a HEAD to a marked route) records its first segment
+        // alone, as its path may still carry the credential (#311). The edge sets EnrichWithHttpRequest; anything that adds
+        // to either callback chains onto it rather than replacing it, or the redaction is lost.
         builder.Services.Configure<AspNetCoreTraceInstrumentationOptions>(options =>
             options.EnrichWithHttpResponse = (activity, response) =>
             {
-                if (response.HttpContext.GetEndpoint()?.Metadata.GetMetadata<RedactedRoute>() is not null
-                    && RequestPaths.Template(response.HttpContext) is { } template)
+                var context = response.HttpContext;
+                var endpoint = context.GetEndpoint();
+                if (endpoint?.Metadata.GetMetadata<RedactedRoute>() is not null && RequestPaths.Template(context) is { } template)
                 {
                     activity.SetTag("url.path", template);
+                }
+                else if (endpoint is not RouteEndpoint || response.StatusCode is StatusCodes.Status404NotFound or StatusCodes.Status405MethodNotAllowed)
+                {
+                    activity.SetTag("url.path", RequestPaths.FirstSegment(context.Request.Path.Value));
                 }
             });
 

@@ -16,7 +16,7 @@
 - **A. The edge records the module, not the path.** Its server span's `url.path` keeps `/api` where the call came under it, and the first segment after it: `/api/certification/…`. Every call it makes keeps its first segment in `url.full`: `http://certification/certification/…`. The rule is `AddPathRedactedTelemetry` (`src/Edge/Wiring/TelemetryRedaction.cs`). The service's own span, in the same trace, says which route it was.
 - **C. A route marked `RedactedRoute` records its template.**
   - `RedactedRoute` is plain endpoint metadata in the Kernel, so a module's Api and ServiceDefaults both see it and nothing new is referenced.
-  - ServiceDefaults sets such a route's span `url.path` to the route's template.
+  - ServiceDefaults sets such a route's span `url.path` to the route's template. A request no route took (no endpoint, or ASP.NET Core's 404 or 405, as for a `HEAD` or an extra segment on a marked route) records its first segment alone, since its path may still carry the credential.
   - Certification's verification is marked. A module marks any further route whose path carries a credential the same way, where it is mapped: `.WithMetadata(new RedactedRoute())`.
 - **E. A request's log scope holds the route's template.**
   - ServiceDefaults never opens hosting's request scope: it opens only while `Microsoft.AspNetCore.Hosting.Diagnostics` logs, so that category is set to `None` in code.
