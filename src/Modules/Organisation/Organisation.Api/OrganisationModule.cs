@@ -19,7 +19,7 @@ public sealed class OrganisationModule : IModule
         services.AddSingleton(OrganisationLimits.InvitationMailsFrom(configuration));
         services.AddSingleton(OrganisationLimits.RecipientAndSenderMailsFrom(configuration));
 
-        // Organisation deletes an erased person's Keycloak account (#115 slice 6, docs/adr/0040): its host says so with
+        // Organisation deletes an erased person's Keycloak account (#115 slice 6, docs/adr/0041): its host says so with
         // <ManagesAccounts>, from which the AppHost gives it Keycloak:Accounts. A host without that section (a test host,
         // another module's) registers no IAccounts, and the start-up check of the settings never runs there.
         if (configuration.GetSection(KeycloakAccountsSettings.Section).Exists())

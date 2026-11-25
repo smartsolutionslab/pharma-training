@@ -8,7 +8,7 @@
     <!-- The AppHost gives this service the mail settings; its module sends the invitation mail (docs/adr/0004). -->
     <SendsMail>true</SendsMail>
     <!-- The AppHost gives this service Keycloak's admin API and the erasure client's secret; its module deletes an erased
-         person's account (docs/adr/0040). -->
+         person's account (docs/adr/0041). -->
     <ManagesAccounts>true</ManagesAccounts>
   </PropertyGroup>
 

@@ -4,7 +4,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application;
 /// The realm roles of the platform's own staff, as both realms name them (<c>src/AppHost/realms/realm.json</c>,
 /// <c>src/AppHost/keycloak/realm.json</c>): support, the editors and the managers. They are not the pharmacy roles
 /// Organisation holds. Organisation's policies require them by these names, and an erasure never deletes an account that
-/// holds one (owner decision on #115, docs/adr/0040): an administrator removes it by hand.
+/// holds one (owner decision on #115, docs/adr/0041): an administrator removes it by hand.
 /// </summary>
 public static class StaffRoles
 {
