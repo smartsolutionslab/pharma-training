@@ -1,7 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
-using SmartSolutionsLab.PharmaTraining.Contracts;
 using SmartSolutionsLab.PharmaTraining.Modules.Assessment.Application.IntegrationEvents;
 using SmartSolutionsLab.PharmaTraining.Modules.Assessment.Domain.Examinations;
 using SmartSolutionsLab.PharmaTraining.Modules.Assessment.Domain.Examinations.Events;
@@ -37,15 +36,15 @@ public sealed class ReannounceTestFailuresHandler(
         return Success(Unit.Value);
     }
 
-    /// <summary>TestFailedV1 for a failed attempt; none for a passed one, whose announcement is its ExaminationPassed's.</summary>
-    private async Task<Option<IntegrationEvent>> AnnouncementOfAsync(UnannouncedEvent found, CancellationToken cancellationToken)
+    /// <summary>TestFailedV1 for a failed attempt; the marker alone for a passed one, whose announcement is its ExaminationPassed's.</summary>
+    private async Task<SweptEvent> AnnouncementOfAsync(UnannouncedEvent found, CancellationToken cancellationToken)
     {
         var stored = await unannounced.LoadAsync(found, cancellationToken);
         if (stored.Event.Outcome != AttemptOutcome.Failed)
         {
-            return Option<IntegrationEvent>.None;
+            return SweptEvents.MarkOnly();
         }
 
-        return Option<IntegrationEvent>.Some(stored.Event.ToIntegrationEvent(stored.Examination));
+        return SweptEvents.Announce(stored.Event.ToIntegrationEvent(stored.Examination));
     }
 }

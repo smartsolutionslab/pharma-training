@@ -1,7 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
-using SmartSolutionsLab.PharmaTraining.Contracts;
 using SmartSolutionsLab.PharmaTraining.Modules.Assessment.Application.IntegrationEvents;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Assessment.Application.Commands.ReannounceTestPasses;
@@ -41,9 +40,9 @@ public sealed class ReannounceTestPassesHandler(
     }
 
     /// <summary>The announcement of a stored test pass: TestPassedV1, the submit's mapping, so PassedAt is the stored one.</summary>
-    private async Task<Option<IntegrationEvent>> AnnouncementOfAsync(UnannouncedEvent stored, CancellationToken cancellationToken)
+    private async Task<SweptEvent> AnnouncementOfAsync(UnannouncedEvent stored, CancellationToken cancellationToken)
     {
         var passed = await unannounced.LoadAsync(stored, cancellationToken);
-        return Option<IntegrationEvent>.Some(passed.ToIntegrationEvent());
+        return SweptEvents.Announce(passed.ToIntegrationEvent());
     }
 }

@@ -1,7 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
-using SmartSolutionsLab.PharmaTraining.Contracts;
 using SmartSolutionsLab.PharmaTraining.Modules.Assessment.Application.IntegrationEvents;
 using SmartSolutionsLab.PharmaTraining.Modules.Assessment.Domain.Examinations.Events;
 
@@ -36,9 +35,9 @@ public sealed class ReannounceExhaustionsHandler(
         return Success(Unit.Value);
     }
 
-    private async Task<Option<IntegrationEvent>> AnnouncementOfAsync(UnannouncedEvent found, CancellationToken cancellationToken)
+    private async Task<SweptEvent> AnnouncementOfAsync(UnannouncedEvent found, CancellationToken cancellationToken)
     {
         var stored = await unannounced.LoadAsync(found, cancellationToken);
-        return Option<IntegrationEvent>.Some(stored.Event.ToIntegrationEvent(stored.Examination));
+        return SweptEvents.Announce(stored.Event.ToIntegrationEvent(stored.Examination));
     }
 }
