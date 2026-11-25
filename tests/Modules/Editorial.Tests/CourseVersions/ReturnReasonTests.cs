@@ -61,6 +61,23 @@ public class ReturnReasonTests
         Should.Throw<GuardException>(() => ReturnReason.From(new string('a', 1001)));
     }
 
+    /// <summary>
+    /// The limit counts characters, as the message and ADR 0013 say: 1000 emoji outside the BMP are 2000 UTF-16 code
+    /// units, and still 1000 characters (#192's review).
+    /// </summary>
+    [Fact]
+    public void A_reason_of_the_maximum_length_in_characters_outside_the_basic_plane_is_accepted()
+    {
+        var reason = string.Concat(Enumerable.Repeat("\U0001F600", 1000));
+
+        ReturnReason.TryFrom(reason, out var accepted).ShouldBeTrue();
+        accepted.ShouldNotBeNull().Value.ShouldBe(reason);
+    }
+
+    [Fact]
+    public void A_reason_one_character_outside_the_basic_plane_longer_than_the_maximum_is_refused() =>
+        ReturnReason.TryFrom(string.Concat(Enumerable.Repeat("\U0001F600", 1001)), out _).ShouldBeFalse();
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

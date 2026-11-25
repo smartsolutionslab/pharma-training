@@ -34,8 +34,8 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Api.Endpoints;
 public sealed class WorkflowEndpoints : IEndpoint
 {
     /// <summary>
-    /// The most bytes the return route reads of a body: a reason of 1000 characters, each escaped as <c>\uXXXX</c>,
-    /// is at most 6000 bytes and its envelope a few more, so no valid reason is refused.
+    /// The most bytes the return route reads of a body: a reason of 1000 characters, each escaped as <c>\uXXXX</c>
+    /// (a character outside the BMP as two), is at most 12 000 bytes and its envelope a few more, so no valid reason is refused.
     /// </summary>
     private const int ReturnRequestLimit = 16_384;
 
