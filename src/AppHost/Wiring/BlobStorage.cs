@@ -1,5 +1,6 @@
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Azure;
+using Azure.Provisioning.Storage;
 
 namespace Aspire.Hosting;
 
@@ -23,6 +24,16 @@ public static class BlobStorage
 
         var storage = builder.AddAzureStorage(Name)
             .RunAsEmulator(emulator => emulator.WithDataVolume().WithImageTag(AzuriteTag));
-        return builder.ExecutionContext.IsPublishMode ? storage.ClearDefaultRoleAssignments() : storage;
+        if (!builder.ExecutionContext.IsPublishMode)
+        {
+            return storage;
+        }
+
+        // An upload URL is a create-only SAS (sp=c), which Azure also takes as the destination of Put Blob From URL and Copy
+        // Blob: its holder could copy a blob from anywhere into the container instead of uploading it. The account accepts
+        // copy sources in its own Entra tenant alone, so a module's own copies (IBlobCopies) still run (#159, docs/adr/0002).
+        return storage.ClearDefaultRoleAssignments()
+            .ConfigureInfrastructure(infrastructure =>
+                infrastructure.GetProvisionableResources().OfType<StorageAccount>().Single().AllowedCopyScope = AllowedCopyScope.Aad);
     }
 }
