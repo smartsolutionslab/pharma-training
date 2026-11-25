@@ -14,7 +14,6 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Http.Json;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.AspNetCore.Routing;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.Net.Http.Headers;
 using Microsoft.OpenApi;
@@ -53,8 +52,8 @@ public sealed class WorkflowEndpoints : IEndpoint
         // code like a blank one, and only after authorization, the caller's person and the caller's name. Accepts metadata would make
         // routing answer 415 to another content type before either, so the document's required body comes from an
         // operation transformer instead.
-        endpoints.MapPost("/course-versions/{id:guid}/return", (Guid id, HttpRequest http, ClaimsPrincipal user, IDispatcher dispatcher, CancellationToken cancellationToken) =>
-            ByEditorAsync(id, user, editor => ReturnAsync(id, http, user, editor, dispatcher, cancellationToken)))
+        endpoints.MapPost("/course-versions/{id:guid}/return", (Guid id, HttpRequest http, ClaimsPrincipal user, IOptions<JsonOptions> json, IDispatcher dispatcher, CancellationToken cancellationToken) =>
+            ByEditorAsync(id, user, editor => ReturnAsync(id, http, json.Value.SerializerOptions, user, editor, dispatcher, cancellationToken)))
             .AddOpenApiOperationTransformer(DescribeReturnBodyAsync)
             .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(ReturnRequestLimit))
             .RequireAuthorization(EditorialPolicyNames.Edit);
@@ -72,7 +71,7 @@ public sealed class WorkflowEndpoints : IEndpoint
     /// A return by a caller without a usable name, or with a reason the caller got wrong, is refused before it is
     /// dispatched, the name first; any other is dispatched with both trimmed.
     /// </summary>
-    private static async Task<Result<Unit, ApiError>> ReturnAsync(Guid id, HttpRequest http, ClaimsPrincipal user, PersonId editor, IDispatcher dispatcher, CancellationToken cancellationToken)
+    private static async Task<Result<Unit, ApiError>> ReturnAsync(Guid id, HttpRequest http, JsonSerializerOptions options, ClaimsPrincipal user, PersonId editor, IDispatcher dispatcher, CancellationToken cancellationToken)
     {
         var name = EditorialCaller.NameOf(user);
         if (!name.HasValue)
@@ -80,7 +79,7 @@ public sealed class WorkflowEndpoints : IEndpoint
             return Failure(CourseVersionFailures.ReviewerNameMissing());
         }
 
-        var request = await ReadAsync(http, cancellationToken);
+        var request = await ReadAsync(http, options, cancellationToken);
         if (!ReturnReason.TryFrom(request?.Reason, out var reason))
         {
             return Failure(CourseVersionFailures.InvalidReturnReason());
@@ -109,14 +108,13 @@ public sealed class WorkflowEndpoints : IEndpoint
     /// The body, or null when it is no JSON in UTF-8 (JSON's own charset, the only one accepted here) or cannot be read
     /// as the request. A body larger than <see cref="ReturnRequestLimit"/> fails while it is read, and the host answers 413.
     /// </summary>
-    private static async Task<ReturnEditorialCourseVersionRequest?> ReadAsync(HttpRequest http, CancellationToken cancellationToken)
+    private static async Task<ReturnEditorialCourseVersionRequest?> ReadAsync(HttpRequest http, JsonSerializerOptions options, CancellationToken cancellationToken)
     {
         if (!http.HasJsonContentType() || !IsUtf8(http))
         {
             return null;
         }
 
-        var options = http.HttpContext.RequestServices.GetRequiredService<IOptions<JsonOptions>>().Value.SerializerOptions;
         try
         {
             return await JsonSerializer.DeserializeAsync<ReturnEditorialCourseVersionRequest>(http.Body, options, cancellationToken);
