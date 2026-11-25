@@ -18,8 +18,8 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Consume
 /// </para>
 /// <para>
 /// It is idempotent by state, not by <c>Metadata.EventIdentifier</c>: a redelivery keeps the first tombstone, finds the
-/// names gone, and announces the completion again, which Organisation records once. Two deliveries racing on the
-/// tombstone's key make one commit fail; its retry finds the tombstone.
+/// names gone, and announces the completion again, which Organisation records once. Two deliveries at once wait for
+/// each other under the hold, so the second finds the first's tombstone.
 /// </para>
 /// </summary>
 public sealed class PersonErasureRequestedV1Consumer(IReviewerNames names, IErasedPersonStore erased, IEditorialUnitOfWork unitOfWork, TimeProvider time)
