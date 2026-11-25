@@ -86,6 +86,56 @@ public class PersonErasureRequestedV1ConsumerTests
         blobs.Deleted.ShouldBe([CertificateDocuments.NameFor(removed.Id)]);
     }
 
+    /// <summary>A pharmacy that keeps certificates ten years (docs/adr/0039) still has a seven-year-old one in its view.</summary>
+    [Fact]
+    public async Task A_certificate_older_than_five_years_is_retained_while_the_covering_pharmacy_keeps_it_longer()
+    {
+        retention.Keep(pharmacy, 10);
+        Member(person, pharmacy, MembershipStart);
+        var retained = Stored(Issue(person, Issued), withDocument: true);
+        time.SetUtcNow(Issued.AddYears(7));
+
+        await Consumer().HandleAsync(Requested(person), TestContext.Current.CancellationToken);
+
+        certificates.Stored.ShouldHaveSingleItem().ShouldBeSameAs(retained);
+        blobs.Deleted.ShouldBeEmpty();
+    }
+
+    /// <summary>A pharmacy that keeps certificates two years no longer has a three-year-old one in its view.</summary>
+    [Fact]
+    public async Task A_certificate_younger_than_five_years_is_removed_once_the_covering_pharmacys_shorter_period_ran_out()
+    {
+        retention.Keep(pharmacy, 2);
+        Member(person, pharmacy, MembershipStart);
+        var removed = Stored(Issue(person, Issued), withDocument: true);
+        time.SetUtcNow(Issued.AddYears(3));
+
+        await Consumer().HandleAsync(Requested(person), TestContext.Current.CancellationToken);
+
+        certificates.Stored.ShouldBeEmpty();
+        blobs.Deleted.ShouldBe([CertificateDocuments.NameFor(removed.Id)]);
+    }
+
+    /// <summary>
+    /// The person was a member of two pharmacies when it was issued: one keeps two years, the other the default five. Three
+    /// years on, the second still has it in its view, so it is retained; six years on, neither has.
+    /// </summary>
+    [Theory]
+    [InlineData(3, true)]
+    [InlineData(6, false)]
+    public async Task A_certificate_covered_in_two_pharmacies_is_retained_while_either_keeps_it(int yearsLater, bool isRetained)
+    {
+        retention.Keep(pharmacy, 2);
+        Member(person, pharmacy, MembershipStart);
+        Member(person, otherPharmacy, MembershipStart);
+        Stored(Issue(person, Issued), withDocument: true);
+        time.SetUtcNow(Issued.AddYears(yearsLater));
+
+        await Consumer().HandleAsync(Requested(person), TestContext.Current.CancellationToken);
+
+        certificates.Stored.Count.ShouldBe(isRetained ? 1 : 0);
+    }
+
     /// <summary>
     /// The person worked in one pharmacy from 1 January to 1 February 2027 and in another from 1 April on. Certificates
     /// issued at the first start and during the second are retained; one issued before any membership, one at the first
