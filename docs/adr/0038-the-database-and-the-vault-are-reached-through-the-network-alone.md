@@ -31,7 +31,9 @@
   - The endpoint itself is `src/AppHost/network/blob-endpoint.bicep`, a module of its own. The account comes after the environment (its CORS rule names the environment's domain), and the environment after the network, so the network cannot wait for the account.
 - **The Container Apps environment is injected into `aca-subnet`.** It takes the subnet's id from the network's output (`InjectInto`, in the environment's `ConfigureInfrastructure`). Its ingress stays external, so `host` and `auth` answer the internet as before. Every app now reaches the server's and the vault's names at their private addresses.
 - **The server has no public endpoint:** `publicNetworkAccess: 'Disabled'`, and every firewall rule removed, `AllowAllAzureIps` included (`DenyPublicAccess`, in the server's `ConfigureInfrastructure`).
-- **The vault has no public endpoint:** `publicNetworkAccess: 'Disabled'`, `networkAcls` deny by default and let no trusted service bypass them.
+- **The vault has no public endpoint:** `publicNetworkAccess: 'Disabled'`, and `networkAcls` deny by default with bypass `None`. No trusted-service bypass would help:
+  - Container Apps is not one of Key Vault's trusted services, so a Key Vault reference resolves through the network and the private zone alone;
+  - the deployment's writes of secrets (`Microsoft.KeyVault/vaults/secrets` in Bicep) go through Azure Resource Manager's management plane, which the vault's firewall does not filter.
 - **Operators reach the database from inside the environment,** through a temporary Container App in it that runs `psql` (README, "Operators inside the network"). Keycloak's administration (`az containerapp exec … keycloak`) is unchanged: `exec` goes through Azure's control plane, not the network.
 - Once Aspire's networking API is no longer for evaluation, the template can give way to it. The publish-mode tests (`AppHostPrivateNetworkTests`) state the outcome, not the means.
 
@@ -42,9 +44,10 @@
 - The registry and the environment's own storage account (the broker's Azure Files volume) keep their public endpoints too. Both answer Entra identities alone. The owner moved them out of #149; #412 reviews them after the first deploy.
 - **An environment's network is fixed when it is created.** Container Apps cannot move an existing environment into a subnet. An environment deployed before this change must be deleted and deployed again, data restored into a new server. None exists yet (#129).
 - What only the first deploy shows (#129), each with its fix in the AppHost:
-  - that Container Apps resolve the vault's Key Vault references through the private endpoint;
-  - that the deployment's own writes of secrets into the vault (`Microsoft.KeyVault/vaults/secrets` in Bicep, through Azure Resource Manager) pass the vault's firewall without a trusted-service bypass. If they do not, `Bypass` becomes `AzureServices`;
+  - that Container Apps resolve the vault's Key Vault references through the private endpoint. A reference that does not resolve points at the zone `privatelink.vaultcore.azure.net`, its link to the network, or the endpoint's DNS record, never at the bypass, which stays `None` (#415);
+  - that the deployment's own writes of secrets into the vault pass, as management-plane writes should;
   - that the init containers' migrations reach the server by its private address on their first run;
   - that the services' blob calls resolve to the blob endpoint, while a browser's upload and read still reach the public endpoint.
 - Reading a vault secret by hand (`az keyvault secret show`) from outside the network no longer works. A secret an operator needs is read from inside the environment, as a Key Vault reference of the temporary app.
-- Neither the generated Bicep nor the template was compiled with the Bicep CLI here. `aspire deploy` compiles it on the first run.
+- The templates look their subnets up by name, and the blobs' zone falls back to public DNS for a name it holds no record of (`resolutionPolicy: 'NxDomainRedirect'`). Another storage account's blob host, which Azure also resolves through `privatelink.blob`, still resolves from inside the network (#415).
+- CI's publish jobs compile every published Bicep file, these templates included (`az bicep build`).
