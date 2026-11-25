@@ -1,3 +1,6 @@
 # The board protocol and the review gate run from .github/, so a change there needs its owner's review
 # (docs/adr/fabric/base-fabric.md). Require code owner review in the branch protection of main.
 /.github/ @notonlywhite
+# Claude Code runs the hooks in .claude/settings.json by itself, as root in a cloud session, before the first turn;
+# .claude/agents and .claude/skills steer every agent. A change there needs its owner's review too.
+/.claude/ @notonlywhite

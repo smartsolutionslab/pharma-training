@@ -18,14 +18,21 @@ if ! command -v dockerd > /dev/null; then
   exit 0
 fi
 
-setsid nohup dockerd > /tmp/dockerd.log 2>&1 < /dev/null &
+# A fresh file of the hook's own, not a fixed /tmp path that a symlink could redirect.
+log="$(mktemp -t dockerd.XXXXXX.log)"
+setsid nohup dockerd > "$log" 2>&1 < /dev/null &
+daemon=$!
 
 for _ in $(seq 1 60); do
   if docker info > /dev/null 2>&1; then
     exit 0
   fi
+  if ! kill -0 "$daemon" 2> /dev/null; then
+    echo "session-start: dockerd exited at once; see $log." >&2
+    exit 0
+  fi
   sleep 1
 done
 
-echo "session-start: dockerd did not answer within 60 s; see /tmp/dockerd.log." >&2
+echo "session-start: dockerd did not answer within 60 s; see $log." >&2
 exit 0
