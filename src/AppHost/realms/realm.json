@@ -208,7 +208,7 @@
       "username": "service-account-pharma-training-erasure",
       "enabled": true,
       "serviceAccountClientId": "pharma-training-erasure",
-      "clientRoles": { "realm-management": ["manage-users", "query-clients"] }
+      "clientRoles": { "realm-management": ["manage-users"] }
     }
   ]
 }
