@@ -6,7 +6,6 @@ using SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Command
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.DTOs;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Queries.GetRetentionPeriod;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Memberships;
-using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Retention;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -17,8 +16,8 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Api.Endpoints;
 /// <summary>
 /// How many years a pharmacy keeps a certificate in its view (#391, docs/adr/0039), read and set by its manager. Open to
 /// every signed-in person: whether they may is decided by the handler from Certification's copy of their membership in
-/// the pharmacy and its current role (docs/adr/0003), not by a realm role. The period's range is checked here, where the
-/// request's years become a <see cref="RetentionPeriod"/>.
+/// the pharmacy and its current role (docs/adr/0003), not by a realm role. The handler checks who is calling before it
+/// checks the years, so a caller who may not set the period learns nothing from what they sent (#422).
 /// </summary>
 public sealed class RetentionPeriodEndpoints : IEndpoint
 {
@@ -60,28 +59,19 @@ public sealed class RetentionPeriodEndpoints : IEndpoint
         IDispatcher dispatcher,
         CancellationToken cancellationToken)
     {
-        var caller = CertificationCaller.PersonOf(user);
-        if (!caller.HasValue)
-        {
-            return Refused(CertificateFailures.IdentityIncomplete());
-        }
-
-        // The empty Guid is no pharmacy; nobody is a member of it.
-        if (id == Guid.Empty)
-        {
-            return Refused(ExportFailures.PharmacyNotFound(id));
-        }
-
         Ensure.That(request).IsNotNull();
-        if (request.Years is not { } years || !RetentionPeriod.TryFrom(years, out var period))
-        {
-            return Refused(RetentionFailures.InvalidPeriod());
-        }
-
-        var command = new SetRetentionPeriod(PharmacyId.From(id), period, caller.Value);
+        var command = new SetRetentionPeriod(PharmacyOf(id), RequestedRetentionYears.From(request.Years), CertificationCaller.PersonOf(user));
         return (await dispatcher.SendAsync(command, cancellationToken)).ToNoContentHttpResult();
     }
 
-    private static Results<NoContent, ProblemHttpResult> Refused(ApiError error) =>
-        Result<Unit, ApiError>.Failure(error).ToNoContentHttpResult();
+    /// <summary>The pharmacy the route names; the empty Guid names none, which the handler answers 404.</summary>
+    private static Option<PharmacyId> PharmacyOf(Guid id)
+    {
+        if (id == Guid.Empty)
+        {
+            return Option<PharmacyId>.None;
+        }
+
+        return Option<PharmacyId>.Some(PharmacyId.From(id));
+    }
 }

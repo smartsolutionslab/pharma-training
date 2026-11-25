@@ -9,7 +9,9 @@ namespace SmartSolutionsLab.PharmaTraining.Architecture.Tests.Rules;
 /// name in an <c>env</c> or by a script that writes it (the per-module broker passwords), so the two workflows cannot
 /// drift and no list is kept here. A parameter set by name comes from the environment's secret or variable of the same
 /// name in upper snake case (<c>Parameters__postgres-password</c> from <c>secrets.POSTGRES_PASSWORD</c>), and no module
-/// is named: the per-module ones are found from the service hosts, as the AppHost finds them.
+/// is named: the per-module ones are found from the service hosts, as the AppHost finds them. What one environment declares
+/// alone (staging's Mailpit, production's relay, #130) publish.yml sets in a step guarded by that environment's name,
+/// <c>if: matrix.environment == 'production'</c>; only the deploying job of that environment must set it.
 /// </summary>
 public sealed partial class DeployWorkflowSetsEveryPublishedParameter : IArchitectureRule
 {
@@ -33,7 +35,6 @@ public sealed partial class DeployWorkflowSetsEveryPublishedParameter : IArchite
             return [$"{deployProblem} It deploys staging and production and must set every parameter publish.yml sets."];
         }
 
-        var required = Workflows.Jobs(publish).SelectMany(job => ParametersSet(publish, job.Job)).ToHashSet(StringComparer.Ordinal);
         var jobs = Workflows.Jobs(deploy).Where(job => Workflows.Value(job.Job, "environment") is not null).ToList();
         if (jobs.Count == 0)
         {
@@ -43,6 +44,8 @@ public sealed partial class DeployWorkflowSetsEveryPublishedParameter : IArchite
         List<string> violations = [];
         foreach (var (id, job) in jobs)
         {
+            var environment = Workflows.Scalar(job, "environment") ?? string.Empty;
+            var required = Workflows.Jobs(publish).SelectMany(publishJob => ParametersSet(publish, publishJob.Job, environment)).ToHashSet(StringComparer.Ordinal);
             var set = ParametersSet(deploy, job).ToHashSet(StringComparer.Ordinal);
             violations.AddRange(required
                 .Where(parameter => !set.Contains(parameter))
@@ -55,6 +58,14 @@ public sealed partial class DeployWorkflowSetsEveryPublishedParameter : IArchite
             .Where(entry => !FromItsOwnName(entry.Name, entry.Value))
             .Select(entry => $"deploy.yml sets {entry.Name} to '{entry.Value}'; it comes from ${{{{ secrets.{Conventional(entry.Name)} }}}} or ${{{{ vars.{Conventional(entry.Name)} }}}}."));
 
+        // A guard naming an environment no deploy job has (a typo such as 'prod') would drop its parameters silently (#442).
+        var environments = jobs.Select(job => Workflows.Scalar(job.Job, "environment") ?? string.Empty).ToHashSet(StringComparer.Ordinal);
+        violations.AddRange(Workflows.Jobs(publish)
+            .SelectMany(job => Workflows.Steps(job.Job))
+            .Select(step => EnvironmentGuard().Match(Workflows.Scalar(step, "if") ?? string.Empty))
+            .Where(guard => guard.Success && !environments.Contains(guard.Groups["environment"].Value))
+            .Select(guard => $"publish.yml guards a step by the environment '{guard.Groups["environment"].Value}', which no job of deploy.yml deploys; its parameters would be required of none."));
+
         var modules = ModuleNames();
         violations.AddRange(Workflows.Jobs(deploy)
             .SelectMany(job => ParametersSet(deploy, job.Job))
@@ -65,14 +76,26 @@ public sealed partial class DeployWorkflowSetsEveryPublishedParameter : IArchite
         return violations;
     }
 
-    /// <summary>Every <c>Parameters__*</c> a job sets: the workflow's, the job's and its steps' <c>env</c>, and what its scripts write.</summary>
-    private static IEnumerable<string> ParametersSet(YamlNode workflow, YamlNode job) =>
-        Workflows.Env(workflow).Concat(Workflows.Env(job)).Concat(Workflows.Steps(job).SelectMany(Workflows.Env))
+    /// <summary>
+    /// Every <c>Parameters__*</c> a job sets: the workflow's, the job's and its steps' <c>env</c>, and what its scripts
+    /// write. Given an environment, a step guarded by another environment's name (<c>if: matrix.environment == 'x'</c>)
+    /// is left out.
+    /// </summary>
+    private static IEnumerable<string> ParametersSet(YamlNode workflow, YamlNode job, string? environment = null)
+    {
+        var steps = Workflows.Steps(job).Where(step => environment is null || ForEnvironment(step, environment)).ToList();
+        return Workflows.Env(workflow).Concat(Workflows.Env(job)).Concat(steps.SelectMany(Workflows.Env))
             .Select(entry => entry.Name)
             .Where(name => name.StartsWith(Prefix, StringComparison.Ordinal))
-            .Concat(Workflows.Steps(job)
+            .Concat(steps
                 .Select(step => Workflows.Scalar(step, "run") ?? string.Empty)
                 .SelectMany(script => Written().Matches(script).Select(match => match.Value)));
+    }
+
+    /// <summary>A step runs for the environment unless it is guarded by another environment's name.</summary>
+    private static bool ForEnvironment(YamlNode step, string environment) =>
+        EnvironmentGuard().Match(Workflows.Scalar(step, "if") ?? string.Empty) is not { Success: true } guard
+            || guard.Groups["environment"].Value == environment;
 
     private static IEnumerable<(string Name, string Value)> EnvSources(YamlNode workflow) =>
         Workflows.Env(workflow).Concat(Workflows.Jobs(workflow).SelectMany(job =>
@@ -108,6 +131,9 @@ public sealed partial class DeployWorkflowSetsEveryPublishedParameter : IArchite
     /// <summary>A parameter a script names (<c>Parameters__messaging-$module-password=...</c>), up to its <c>=</c>.</summary>
     [GeneratedRegex(@"Parameters__[A-Za-z0-9_.${}-]+")]
     private static partial Regex Written();
+
+    [GeneratedRegex(@"^\s*matrix\.environment\s*==\s*'(?<environment>[a-z]+)'\s*$")]
+    private static partial Regex EnvironmentGuard();
 
     [GeneratedRegex("<ModuleName>([^<]+)</ModuleName>")]
     private static partial Regex ModuleName();

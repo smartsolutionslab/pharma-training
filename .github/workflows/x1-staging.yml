@@ -1,0 +1,68 @@
+name: x1-staging
+
+# The MVP 1 flow end to end (#55, X1: register, invite, assign, learn, test, certificate, matrix) against the deployed
+# staging environment, never production (#130). deploy.yml runs it after each staging deploy; it can also be started by
+# hand (Actions, x1-staging, Run workflow). Nothing here deploys or signs in to Azure.
+#
+# The test creates its own users at set-up through Keycloak's admin API, as the staging-only confidential client x1-runner
+# (realm-management manage-users alone; README, "One-time setup"), and deletes them afterwards, however the run ends. It
+# reads the invitation mail from staging's Mailpit, behind its basic auth. It keeps no trace and uploads nothing, since a
+# trace would hold those secrets (StagingEndToEndRunKeepsNoTraces). Its pharmacy and course stay on staging, named
+# for the run (README, "What to check after the first deploy").
+on:
+  workflow_dispatch:
+  # Called by deploy.yml with no secrets: its job reads them from the staging environment it names
+  # (StagingEndToEndRunTakesNoSecretsFromItsCaller).
+  workflow_call:
+
+# One run at a time against staging; a second waits.
+concurrency:
+  group: x1-staging
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  x1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: staging
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - run: pnpm install --frozen-lockfile
+        working-directory: web
+      - run: pnpm exec playwright install --with-deps chromium
+        working-directory: web/app
+      # Every value comes from the staging environment: the web app's origin (FRONTEND_URL, as deploy.yml publishes it),
+      # Keycloak's and Mailpit's public addresses, Mailpit's basic auth (user:password, as staging's Mailpit takes it) and
+      # x1-runner's secret. A missing one is named, never its value.
+      - name: X1 against staging
+        working-directory: web/app
+        env:
+          E2E_BASE_URL: ${{ vars.FRONTEND_URL }}
+          E2E_KEYCLOAK_URL: ${{ vars.X1_KEYCLOAK_URL }}
+          E2E_MAILPIT_URL: ${{ vars.X1_MAILPIT_URL }}
+          E2E_MAILPIT_AUTH: ${{ secrets.MAILPIT_UI_AUTH }}
+          E2E_X1_CLIENT_SECRET: ${{ secrets.X1_RUNNER_SECRET }}
+        run: |
+          missing=0
+          for name in E2E_BASE_URL E2E_KEYCLOAK_URL E2E_MAILPIT_URL E2E_MAILPIT_AUTH E2E_X1_CLIENT_SECRET; do
+            if [ -z "${!name}" ]; then
+              echo "::error::$name is empty; set the staging environment's variable or secret it comes from (x1-staging.yml)."
+              missing=1
+            fi
+          done
+          test "$missing" -eq 0
+          # No trace, and nothing uploaded: a trace records x1-runner's secret, the admin tokens, Mailpit's basic auth
+          # and the passwords typed into Keycloak, and GitHub masks secrets in this log but not in an artifact anyone
+          # who can read the repository downloads (StagingEndToEndRunKeepsNoTraces). A failure is read from this log.
+          pnpm exec playwright test e2e/mvp1-register-to-certificate.spec.ts --trace off
