@@ -13,6 +13,8 @@ using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.InvitationSen
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies.Events;
 
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Tests.InvitationRecipients;
+
 namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Tests.Pharmacies;
 
 /// <summary>A manager sends a fresh link: the old one stops working, and the invitation runs for another 14 days.</summary>
@@ -319,7 +321,7 @@ public class RenewInvitationTests
         var pharmacy = TestPharmacies.Register(Owner);
         var invitation = pharmacy.Invite(MembershipId.New(), Invitee, JobFunction.Pta, MembershipRole.Employee, Timestamp.From(Start), InvitationMailLimits.Default).Value;
         pharmacy.Stored(store);
-        store.StoredRecipients.Add(InvitationRecipient.FirstMailed(Invitee, Timestamp.From(Start.AddMinutes(8))));
+        store.StoredRecipients.Add(StoredRecipients.MailedAt(Invitee, Timestamp.From(Start.AddMinutes(8))));
 
         var refused = await Handler(store, new FakeTimeProvider(Start.AddMinutes(10)))
             .HandleAsync(new RenewInvitation(pharmacy.Id, invitation, Owner), TestContext.Current.CancellationToken);
@@ -355,6 +357,24 @@ public class RenewInvitationTests
         store.StoredSenders.ShouldHaveSingleItem().MailsThatDay.Value.ShouldBe(1);
     }
 
+    /// <summary>As for an invitation (review of #395): a renewal refused once its rows are held rolls back at once.</summary>
+    [Fact]
+    public async Task A_renewal_refused_once_its_rows_are_held_rolls_back_at_once()
+    {
+        var store = new InMemoryPharmacyStore();
+        var pharmacy = TestPharmacies.Register(Owner);
+        var invitation = pharmacy.Invite(MembershipId.New(), Invitee, JobFunction.Pta, MembershipRole.Employee, Timestamp.From(Start), InvitationMailLimits.Default).Value;
+        pharmacy.Stored(store);
+        store.StoredRecipients.Add(StoredRecipients.MailedAt(Invitee, Timestamp.From(Start.AddMinutes(8))));
+
+        var refused = await Handler(store, new FakeTimeProvider(Start.AddMinutes(12)))
+            .HandleAsync(new RenewInvitation(pharmacy.Id, invitation, Owner), TestContext.Current.CancellationToken);
+
+        refused.Error.Code.ShouldBe("organisation.recipient-mailed-recently");
+        store.Rollbacks.ShouldBe(1, "a refusal left its held rows to the end of the scope");
+        store.Commits.ShouldBe(0);
+    }
+
     [Fact]
     public async Task A_renewal_within_its_own_cooldown_is_still_invitation_renewed_too_soon()
     {
@@ -362,7 +382,7 @@ public class RenewInvitationTests
         var pharmacy = TestPharmacies.Register(Owner);
         var invitation = pharmacy.Invite(MembershipId.New(), Invitee, JobFunction.Pta, MembershipRole.Employee, Timestamp.From(Start), InvitationMailLimits.Default).Value;
         pharmacy.Stored(store);
-        store.StoredRecipients.Add(InvitationRecipient.FirstMailed(Invitee, Timestamp.From(Start)));
+        store.StoredRecipients.Add(StoredRecipients.MailedAt(Invitee, Timestamp.From(Start)));
         var capOfOne = new RecipientAndSenderMailLimits(RecipientCooldown.From(TimeSpan.FromMinutes(10)), DailyMailCap.From(1));
         store.StoredSenders.Add(InvitationSender.FirstMailed(Owner, Timestamp.From(Start)));
 

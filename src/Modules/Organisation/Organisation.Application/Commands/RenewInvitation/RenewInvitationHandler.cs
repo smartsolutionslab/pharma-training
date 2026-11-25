@@ -52,6 +52,9 @@ public sealed class RenewInvitationHandler(
         var counted = await InvitationMailCounting.CountAsync(recipients, senders, recipientAndSenderLimits, logger, command.Pharmacy, renewed.Email, command.By, now, cancellationToken);
         if (counted.IsFailure)
         {
+            // Ends the transaction the count opened now, so a request waiting for a row it held goes on at once rather
+            // than when the scope disposes the context (docs/adr/0004).
+            await unitOfWork.RollbackAsync(cancellationToken);
             return Failure(counted.Error);
         }
 

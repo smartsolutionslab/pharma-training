@@ -16,4 +16,11 @@ public interface IOrganisationUnitOfWork : IUnitOfWork
         await CommitAsync(cancellationToken);
         return Success(Unit.Value);
     }
+
+    /// <summary>
+    /// Rolls back the transaction the stores opened for a command that will not commit, with the rows it holds and any it
+    /// inserted (docs/adr/0004), so a request waiting for one of them goes on at once instead of when the request's scope
+    /// disposes the context. It does nothing when no transaction is open, and the command commits nothing after it.
+    /// </summary>
+    Task RollbackAsync(CancellationToken cancellationToken);
 }

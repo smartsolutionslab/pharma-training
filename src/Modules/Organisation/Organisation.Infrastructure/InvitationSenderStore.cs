@@ -16,9 +16,9 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Infrastructure;
 /// transaction is inserting) or at the lock, and goes on with the row as the first committed it, so a sender's very
 /// first two mails no longer collide on the key and concurrent counts no longer lose on the row version (#369). The row
 /// version stays as a backstop. The sender's row is held after the recipient's, never before (#375), and a wait for it
-/// past <see cref="InvitationMailRows.LockTimeout"/> is a lost race. A command that does not commit, refused or not,
-/// leaves its transaction, with the lock and any new row, to end when the request's scope disposes the context, which
-/// rolls it back.
+/// past <see cref="InvitationMailRows.LockTimeout"/> is a lost race. A command that does not commit rolls its
+/// transaction back, with the lock and any new row: at once when it is refused, and otherwise when the request's scope
+/// disposes the context.
 /// </para>
 /// </summary>
 public sealed class InvitationSenderStore(OrganisationDbContext context) : IInvitationSenderStore

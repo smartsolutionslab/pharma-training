@@ -647,7 +647,7 @@
   {
     "code": "organisation.concurrent-save",
     "status": 409,
-    "message": "Another change to the pharmacy was saved at the same moment; try again."
+    "message": "Another request was being saved at the same moment; nothing was saved. Try again."
   },
   {
     "code": "organisation.email-not-verified",
