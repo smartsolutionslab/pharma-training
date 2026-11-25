@@ -13,12 +13,16 @@ public class ErasedCertificatePurgeSettingsTests
 {
     private const string IntervalKey = "Certification:ErasedCertificatePurge:Interval";
 
+    /// <summary>
+    /// Hourly, not daily: the first pass runs one interval after the host starts, so a service restarted more often
+    /// than once a day would never purge with a daily default.
+    /// </summary>
     [Fact]
-    public void Without_configuration_the_purge_runs_once_a_day()
+    public void Without_configuration_the_purge_runs_once_an_hour()
     {
         var settings = ErasedCertificatePurgeSettings.From(new ConfigurationBuilder().Build());
 
-        settings.Interval.ShouldBe(TimeSpan.FromDays(1));
+        settings.Interval.ShouldBe(TimeSpan.FromHours(1));
     }
 
     [Theory]
