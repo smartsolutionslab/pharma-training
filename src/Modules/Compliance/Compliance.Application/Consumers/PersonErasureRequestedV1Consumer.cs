@@ -20,7 +20,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application.Consum
 /// <para>
 /// It is idempotent by state, not by <c>Metadata.EventIdentifier</c>: a redelivery finds the tombstone, the names gone
 /// and the assignments cancelled, changes nothing, and announces the completion again, which Organisation records once.
-/// Two deliveries racing on the tombstone's key make one commit fail; its retry finds the tombstone.
+/// Two deliveries at once wait for each other under the hold, so the second finds the first's tombstone.
 /// </para>
 /// </summary>
 public sealed class PersonErasureRequestedV1Consumer(

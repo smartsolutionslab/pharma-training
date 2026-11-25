@@ -4,7 +4,7 @@ import { pdfText, qrLinkIn } from './certificatePdf';
 import { courseTitle, daysAhead, germanDate, germanLongDate, pharmacyName } from './compliance';
 import { acceptOn, invitationLink, mailText, recordAcceptances } from './invitations';
 import { signIn, submitSignIn } from './signIn';
-import { fullName, x1Cast } from './x1Users';
+import { fullName, x1Cast, type X1Cast } from './x1Users';
 
 // MVP 1 end to end (#55, X1), with no route mocked, in three browsers of their own, locally against the AppHost and on
 // staging after each deploy (#130, x1-staging.yml). The owner (Olaf Owner, no realm role) registers a pharmacy and invites
@@ -148,6 +148,13 @@ async function submit(page: Page) {
   await expect(page).toHaveURL(/\/assessment\/sessions\/[^/]+\/result$/);
 }
 
+// The run's users, removed after the test however it ends, a timeout included: Playwright runs an afterEach hook after a
+// failed or timed-out test too (#442). Nothing for the local users.
+let removeCast: X1Cast['dispose'] = async () => {};
+test.afterEach(async () => {
+  await removeCast();
+});
+
 test('MVP 1: an owner registers and invites, an editor publishes, the employee passes, the certificate verifies and the matrix shows it completed', async ({
   page,
   browser,
@@ -155,6 +162,7 @@ test('MVP 1: an owner registers and invites, an editor publishes, the employee p
 }) => {
   test.setTimeout(360_000);
   const cast = await x1Cast();
+  removeCast = cast.dispose;
   const employee = fullName(cast.employee);
   const employeeAddress = cast.employee.email;
   const pharmacy = pharmacyName('MVP 1');
@@ -405,7 +413,5 @@ test('MVP 1: an owner registers and invites, an editor publishes, the employee p
     });
   } finally {
     await Promise.all([editor.context.close(), learner.context.close(), visitor.context.close()]);
-    // The run's users go, however it ended (on staging; the local users stay).
-    await cast.dispose();
   }
 });

@@ -198,6 +198,23 @@ public partial class BrokerBindingsTests(AspireFixture aspire)
         bindings.ShouldContain(binding => binding.Source == learningCompleted && binding.Destination == OrganisationQueue && binding.DestinationType == "queue");
     }
 
+    /// <summary>#115 (slice 4): Certification erases a person on Organisation's request too, and Organisation records its completion.</summary>
+    [Fact]
+    public async Task The_erasure_request_is_bound_to_certifications_queue_and_its_completion_to_organisations()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var management = await ManagementClientAsync(cancellationToken);
+        const string requested = "SmartSolutionsLab.PharmaTraining.Contracts.Organisation.PersonErasureRequestedV1";
+        const string completed = "SmartSolutionsLab.PharmaTraining.Contracts.Certification.CertificationErasureCompletedV1";
+
+        await WaitForBindingAsync(management, requested, "certification", cancellationToken);
+        await WaitForBindingAsync(management, completed, OrganisationQueue, cancellationToken);
+
+        var bindings = await BindingsAsync(management, cancellationToken);
+        bindings.ShouldContain(binding => binding.Source == requested && binding.Destination == "certification" && binding.DestinationType == "queue");
+        bindings.ShouldContain(binding => binding.Source == completed && binding.Destination == OrganisationQueue && binding.DestinationType == "queue");
+    }
+
     /// <summary>Learning reopens the failed chapters when Assessment announces the attempts used up (#42).</summary>
     [Fact]
     public async Task Learnings_queue_is_bound_to_the_exhaustion()

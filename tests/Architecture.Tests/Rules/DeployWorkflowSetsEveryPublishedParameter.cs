@@ -58,6 +58,14 @@ public sealed partial class DeployWorkflowSetsEveryPublishedParameter : IArchite
             .Where(entry => !FromItsOwnName(entry.Name, entry.Value))
             .Select(entry => $"deploy.yml sets {entry.Name} to '{entry.Value}'; it comes from ${{{{ secrets.{Conventional(entry.Name)} }}}} or ${{{{ vars.{Conventional(entry.Name)} }}}}."));
 
+        // A guard naming an environment no deploy job has (a typo such as 'prod') would drop its parameters silently (#442).
+        var environments = jobs.Select(job => Workflows.Scalar(job.Job, "environment") ?? string.Empty).ToHashSet(StringComparer.Ordinal);
+        violations.AddRange(Workflows.Jobs(publish)
+            .SelectMany(job => Workflows.Steps(job.Job))
+            .Select(step => EnvironmentGuard().Match(Workflows.Scalar(step, "if") ?? string.Empty))
+            .Where(guard => guard.Success && !environments.Contains(guard.Groups["environment"].Value))
+            .Select(guard => $"publish.yml guards a step by the environment '{guard.Groups["environment"].Value}', which no job of deploy.yml deploys; its parameters would be required of none."));
+
         var modules = ModuleNames();
         violations.AddRange(Workflows.Jobs(deploy)
             .SelectMany(job => ParametersSet(deploy, job.Job))

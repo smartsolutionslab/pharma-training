@@ -1,7 +1,9 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using SmartSolutionsLab.PharmaTraining.Contracts.Organisation;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Consumers;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Certificates;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Memberships;
+using SmartSolutionsLab.PharmaTraining.Modules.Certification.Tests.Erasures;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Tests.Memberships;
 
@@ -51,7 +53,7 @@ public class MembershipEndedV1ConsumerTests
         var pharmacyId = Guid.CreateVersion7();
 
         await new MembershipEndedV1Consumer(store, store).HandleAsync(MembershipEvents.Ended(membershipId, personId, pharmacyId), TestContext.Current.CancellationToken);
-        await new MembershipStartedV1Consumer(store, store).HandleAsync(MembershipEvents.Started(membershipId, personId, pharmacyId, "Ada"), TestContext.Current.CancellationToken);
+        await new MembershipStartedV1Consumer(store, new InMemoryErasedPersonStore(), store, NullLogger<MembershipStartedV1Consumer>.Instance).HandleAsync(MembershipEvents.Started(membershipId, personId, pharmacyId, "Ada"), TestContext.Current.CancellationToken);
 
         store.Endings.ShouldHaveSingleItem().Id.ShouldBe(MembershipId.From(membershipId));
         store.Memberships.ShouldHaveSingleItem().Id.ShouldBe(MembershipId.From(membershipId));
@@ -62,7 +64,7 @@ public class MembershipEndedV1ConsumerTests
     {
         var store = new InMemoryMembershipStore();
         var started = MembershipEvents.Started(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), "Ada");
-        await new MembershipStartedV1Consumer(store, store).HandleAsync(started, TestContext.Current.CancellationToken);
+        await new MembershipStartedV1Consumer(store, new InMemoryErasedPersonStore(), store, NullLogger<MembershipStartedV1Consumer>.Instance).HandleAsync(started, TestContext.Current.CancellationToken);
 
         await new MembershipEndedV1Consumer(store, store).HandleAsync(MembershipEvents.Ended(started.MembershipId, started.PersonId, started.PharmacyId), TestContext.Current.CancellationToken);
 

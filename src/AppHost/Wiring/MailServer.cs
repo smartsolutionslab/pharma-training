@@ -33,7 +33,8 @@ public sealed class MailServer
 
     private const string MailpitImage = "axllent/mailpit";
 
-    private const string MailpitTag = "v1.33";
+    // An exact patch, the same in run mode and on staging, so what runs changes only with a change here (#442).
+    private const string MailpitTag = "v1.33.1";
 
     private readonly IResourceBuilder<ContainerResource>? mailpit;
 
@@ -72,7 +73,7 @@ public sealed class MailServer
 
         if (!secrets.IsPublishing)
         {
-            var mailpit = builder.AddContainer("mailpit", "axllent/mailpit", "v1.33")
+            var mailpit = builder.AddContainer("mailpit", MailpitImage, MailpitTag)
                 .WithHttpEndpoint(port: 8025, targetPort: 8025)
                 .WithEndpoint(targetPort: 1025, name: "smtp")
                 .WithHttpHealthCheck("/livez");

@@ -143,12 +143,12 @@ public class PublishedRealmTests
                 ["from"] = "${SMTP_FROM}",
                 ["user"] = "${SMTP_USERNAME}",
                 ["password"] = "${SMTP_PASSWORD}",
-                ["port"] = "${SMTP_PORT}",
-                ["starttls"] = "${SMTP_STARTTLS}",
+                ["port"] = "${SMTP_PORT:587}",
+                ["starttls"] = "${SMTP_STARTTLS:true}",
                 ["ssl"] = "false",
-                ["auth"] = "${SMTP_AUTH}",
+                ["auth"] = "${SMTP_AUTH:true}",
             },
-            "The published realm's smtpServer must name the deployment's SMTP server, its port, STARTTLS and authentication through Keycloak's environment, and never SSL on connect.");
+            "The published realm's smtpServer must name the deployment's SMTP server, its port, STARTTLS and authentication through Keycloak's environment, defaulting to the relay's 587 with STARTTLS and authentication when a variable is missing (#442), and never SSL on connect.");
     }
 
     // The staging end-to-end run's client (#130) is created on staging by the runbook alone, never imported: a realm that

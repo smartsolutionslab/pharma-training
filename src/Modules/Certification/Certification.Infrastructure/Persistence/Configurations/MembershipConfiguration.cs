@@ -19,8 +19,8 @@ public sealed class MembershipConfiguration : IEntityTypeConfiguration<Membershi
         builder.Property(membership => membership.Id).HasColumnName("id").ValueGeneratedNever();
         builder.Property(membership => membership.Person).HasColumnName("person_id").IsRequired();
         builder.Property(membership => membership.Pharmacy).HasColumnName("pharmacy_id").IsRequired();
-        // As long as Organisation allows a display name to be.
-        builder.Property(membership => membership.HolderName).HasColumnName("holder_name").HasMaxLength(HolderName.MaxLength).IsRequired();
+        // As long as Organisation allows a display name to be; NULL once the person was erased (#115).
+        builder.Property(membership => membership.HolderName).HasColumnName("holder_name").HasMaxLength(HolderName.MaxLength).IsRequired(false);
         builder.Property(membership => membership.Role).HasColumnName("role").HasConversion<string>().HasMaxLength(EnumLength).IsRequired();
         builder.Property(membership => membership.StartedAt).HasColumnName("started_at").IsRequired();
 

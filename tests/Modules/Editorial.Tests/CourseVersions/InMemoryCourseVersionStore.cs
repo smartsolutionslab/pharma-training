@@ -27,6 +27,9 @@ internal sealed class InMemoryCourseVersionStore : ICourseVersionStore, IEditori
     /// <summary>The calls about a person, in order: "hold", "is-erased", and "forget" from the erasure's reviewer names.</summary>
     public List<string> PersonCalls { get; } = [];
 
+    /// <summary>Loads of a version and the calls about a person, in the order they were made (#115).</summary>
+    public List<string> Journal { get; } = [];
+
     /// <summary>Each person held, in the order held.</summary>
     public List<PersonId> Held { get; } = [];
 
@@ -62,9 +65,17 @@ internal sealed class InMemoryCourseVersionStore : ICourseVersionStore, IEditori
         return Task.FromResult(Option<PagedResult<CourseVersionReturn>>.Some(new PagedResult<CourseVersionReturn>(items, matching.Count, page.Value, pageSize.Value)));
     }
 
-    public Task<Option<CourseVersion>> FindAsync(CourseVersionId id, CancellationToken cancellationToken) => Find(id);
+    public Task<Option<CourseVersion>> FindAsync(CourseVersionId id, CancellationToken cancellationToken)
+    {
+        Journal.Add("load");
+        return Find(id);
+    }
 
-    public Task<Option<CourseVersion>> FindForUpdateAsync(CourseVersionId id, CancellationToken cancellationToken) => Find(id);
+    public Task<Option<CourseVersion>> FindForUpdateAsync(CourseVersionId id, CancellationToken cancellationToken)
+    {
+        Journal.Add("load");
+        return Find(id);
+    }
 
     /// <summary>The committed version with that number for the course; what is added but not committed is not seen.</summary>
     public Task<Option<CourseVersionId>> FindByNumberAsync(CourseId course, VersionNumber number, CancellationToken cancellationToken) =>
@@ -113,6 +124,7 @@ internal sealed class InMemoryCourseVersionStore : ICourseVersionStore, IEditori
     public Task HoldAsync(PersonId person, CancellationToken cancellationToken)
     {
         PersonCalls.Add("hold");
+        Journal.Add("hold");
         Held.Add(person);
         return Task.CompletedTask;
     }
@@ -120,6 +132,7 @@ internal sealed class InMemoryCourseVersionStore : ICourseVersionStore, IEditori
     public Task<bool> IsErasedAsync(PersonId person, CancellationToken cancellationToken)
     {
         PersonCalls.Add("is-erased");
+        Journal.Add("is-erased");
         return Task.FromResult(ErasedPersons.Any(erased => erased.Person == person));
     }
 
