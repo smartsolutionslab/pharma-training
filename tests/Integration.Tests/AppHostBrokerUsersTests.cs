@@ -45,6 +45,10 @@ public class AppHostBrokerUsersTests(AspireFixture aspire)
 
     private const string ComplianceErasureCompleted = Contracts + "Compliance.ComplianceErasureCompletedV1";
 
+    private const string EditorialErasureCompleted = Contracts + "Editorial.EditorialErasureCompletedV1";
+
+    private const string LearningErasureCompleted = Contracts + "Learning.LearningErasureCompletedV1";
+
     /// <summary>The default exchange's name in RabbitMQ's permissions.</summary>
     private const string DefaultExchange = "amq.default";
 
@@ -65,21 +69,21 @@ public class AppHostBrokerUsersTests(AspireFixture aspire)
         },
         {
             "editorial",
-            ["editorial", ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired, TestDefinitionPublished],
-            ["editorial", ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired, TestDefinitionPublished],
-            ["editorial"]
+            ["editorial", ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired, EditorialErasureCompleted, TestDefinitionPublished, PersonErasureRequested],
+            ["editorial", ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired, EditorialErasureCompleted, TestDefinitionPublished],
+            ["editorial", PersonErasureRequested]
         },
         {
             "learning",
-            ["learning", ContentCompleted, LearningSessionStarted, AttemptsExhausted, TestPassed, ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired, MembershipChanged, MembershipEnded, MembershipStarted],
-            ["learning", ContentCompleted, LearningSessionStarted],
-            ["learning", AttemptsExhausted, TestPassed, ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired, MembershipChanged, MembershipEnded, MembershipStarted]
+            ["learning", ContentCompleted, LearningErasureCompleted, LearningSessionStarted, AttemptsExhausted, TestPassed, ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired, MembershipChanged, MembershipEnded, MembershipStarted, PersonErasureRequested],
+            ["learning", ContentCompleted, LearningErasureCompleted, LearningSessionStarted],
+            ["learning", AttemptsExhausted, TestPassed, ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired, MembershipChanged, MembershipEnded, MembershipStarted, PersonErasureRequested]
         },
         {
             "organisation",
-            ["organisation", ComplianceErasureCompleted, MembershipChanged, MembershipEnded, MembershipStarted, PersonErasureRequested, Contracts + "Organisation.PharmacyRegisteredV1"],
+            ["organisation", ComplianceErasureCompleted, EditorialErasureCompleted, LearningErasureCompleted, MembershipChanged, MembershipEnded, MembershipStarted, PersonErasureRequested, Contracts + "Organisation.PharmacyRegisteredV1"],
             ["organisation", MembershipChanged, MembershipEnded, MembershipStarted, PersonErasureRequested, Contracts + "Organisation.PharmacyRegisteredV1"],
-            ["organisation", ComplianceErasureCompleted]
+            ["organisation", ComplianceErasureCompleted, EditorialErasureCompleted, LearningErasureCompleted]
         },
     };
 
