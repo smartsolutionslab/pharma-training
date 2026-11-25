@@ -23,7 +23,14 @@ public class OrganisationMailRecipientAndSenderLimitsTests(AspireFixture aspire)
 
     private const string Sender = "editor-b";
 
+    private const int RaceAttempts = 3;
+
     private static readonly Uri Pharmacies = new("/organisation/pharmacies", UriKind.Relative);
+
+    // How long the gate waits for the second of two racing invitations once the first waits for it. The first's wait
+    // counts against the store's lock timeout (5 seconds) from the moment it starts, so the gate lets go well before
+    // that, whether the second has come or not; a race whose second came too late is run again, at most so many times.
+    private static readonly TimeSpan RaceWindow = TimeSpan.FromSeconds(2);
 
     // How long a test lets a request wait for a row a gate holds: well past the store's lock timeout of a few seconds, so
     // a request that would wait for the gate forever fails the test instead of hanging it.
@@ -176,7 +183,8 @@ public class OrganisationMailRecipientAndSenderLimitsTests(AspireFixture aspire)
     /// recipients' table until both wait on it, and both are let go together. The row is created once and held by the
     /// first until it commits, so the second waits for it and then counts on the row as the first committed it: within
     /// the address's cooldown, as it would be alone, it is told 429 organisation.recipient-mailed-recently, never 409
-    /// already-exists. Only the first is stored, counted and mailed.
+    /// already-exists. Only the first is stored, counted and mailed. One manager invites from both pharmacies, so the
+    /// sender's row orders them too (#381).
     /// </summary>
     [Fact]
     public async Task Of_two_pharmacies_inviting_one_new_address_at_once_the_first_is_stored_and_mailed_and_the_second_waits_and_is_told_the_address_was_mailed_recently()
@@ -184,52 +192,21 @@ public class OrganisationMailRecipientAndSenderLimitsTests(AspireFixture aspire)
         var cancellationToken = TestContext.Current.CancellationToken;
         using var owner = await aspire.CreateHostClientAsync("owner");
         var person = await database.SubjectOfAsync("owner");
-        var first = await RegisterAsync(owner, cancellationToken);
-        var second = await RegisterAsync(owner, cancellationToken);
-        var address = Invitee();
         // The sender's row is made by an invitation from a third pharmacy. Its mail is sent by a consumer that saves that
         // pharmacy once more after the request has answered; from first or second, that save could move the pharmacy on
         // under the race below and answer it 409 organisation.pharmacy-changed instead of the cooldown's 429.
         var elsewhere = await RegisterAsync(owner, cancellationToken);
         await InviteAsync(owner, elsewhere, Invitee(), cancellationToken);
-        var senderMails = await database.SenderMailsThatDayAsync(person, cancellationToken);
 
-        HttpResponseMessage[] responses;
-        await using (var gate = await database.LockInvitationRecipientsAsync(cancellationToken))
+        var raced = false;
+        for (var attempt = 0; attempt < RaceAttempts && !raced; attempt++)
         {
-            var one = owner.PostAsJsonAsync(InvitationsUri(first), Invitation(address), cancellationToken);
-            var other = owner.PostAsJsonAsync(InvitationsUri(second), Invitation(address), cancellationToken);
-            await database.WaitUntilBlockedAsync(gate, 2, cancellationToken);
-            await gate.CommitAsync(cancellationToken);
-            responses = await Task.WhenAll(one, other);
+            var first = await RegisterAsync(owner, cancellationToken);
+            var second = await RegisterAsync(owner, cancellationToken);
+            raced = await InviteOneNewAddressAtOnceAsync((owner, first), (owner, second), [person], cancellationToken);
         }
 
-        try
-        {
-            List<string> answers = [];
-            foreach (var response in responses)
-            {
-                answers.Add($"{(int)response.StatusCode} {await response.Content.ReadAsStringAsync(cancellationToken)}");
-            }
-
-            var described = string.Join(" | ", answers);
-            responses.Select(response => response.StatusCode).ShouldBe([HttpStatusCode.Created, HttpStatusCode.TooManyRequests], ignoreOrder: true, described);
-            // The second read the database's clock before it waited, a moment before the first counted its mail, so its
-            // wait is the cooldown plus that moment, rounded up to whole seconds.
-            await ShouldBeRefusedLaterAsync(responses.Single(response => response.StatusCode != HttpStatusCode.Created), RecipientMailedRecently, TimeSpan.FromMinutes(10).Add(TimeSpan.FromSeconds(5)), cancellationToken);
-            var stored = (await database.StatusesOfAsync(first, address, cancellationToken)).Concat(await database.StatusesOfAsync(second, address, cancellationToken));
-            stored.ShouldBe(["Invited"], described);
-            (await database.RecipientLastMailedAtAsync(address, cancellationToken)).ShouldNotBeNull(described);
-            (await database.SenderMailsThatDayAsync(person, cancellationToken)).ShouldBe(senderMails + 1, $"only the first invitation may count on its sender; {described}");
-            (await mailpit.MessagesToAsync(address, 1, cancellationToken)).ShouldHaveSingleItem("the refused invitation must send no mail");
-        }
-        finally
-        {
-            foreach (var response in responses)
-            {
-                response.Dispose();
-            }
-        }
+        raced.ShouldBeTrue($"in {RaceAttempts} attempts the second invitation never came to the gate within {RaceWindow} of the first");
     }
 
     /// <summary>
@@ -324,6 +301,74 @@ public class OrganisationMailRecipientAndSenderLimitsTests(AspireFixture aspire)
             var described = string.Join(" | ", answers);
             responses.Select(response => response.StatusCode).ShouldBe([HttpStatusCode.Created, HttpStatusCode.Created], described);
             (await database.SenderMailsThatDayAsync(person, cancellationToken)).ShouldBe(2, $"both first mails must count on the one new row; {described}");
+        }
+        finally
+        {
+            foreach (var response in responses)
+            {
+                response.Dispose();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Invites one new address from both pharmacies while the gate holds the recipients' table, lets both go together and
+    /// checks the outcome: one 201, one 429 organisation.recipient-mailed-recently, one invitation stored, counted on the
+    /// address and on its sender alone, and one mail. Answers whether both waited at the gate together, which only then
+    /// raced. The first to wait starts its lock timeout as it does, so the gate waits <see cref="RaceWindow"/> at most for
+    /// the second and then lets go regardless: a second that came later finds the first's row and is refused all the
+    /// same, but ran no race, and the caller tries again.
+    /// </summary>
+    private async Task<bool> InviteOneNewAddressAtOnceAsync(
+        (HttpClient Client, Guid Pharmacy) one,
+        (HttpClient Client, Guid Pharmacy) other,
+        IReadOnlyList<Guid> senders,
+        CancellationToken cancellationToken)
+    {
+        var address = Invitee();
+        var senderMails = 0;
+        foreach (var sender in senders)
+        {
+            senderMails += await database.SenderMailsThatDayAsync(sender, cancellationToken);
+        }
+
+        bool raced;
+        HttpResponseMessage[] responses;
+        await using (var gate = await database.LockInvitationRecipientsAsync(cancellationToken))
+        {
+            var first = one.Client.PostAsJsonAsync(InvitationsUri(one.Pharmacy), Invitation(address), cancellationToken);
+            var second = other.Client.PostAsJsonAsync(InvitationsUri(other.Pharmacy), Invitation(address), cancellationToken);
+            await database.WaitUntilAnyBlockedAsync(gate, cancellationToken);
+            raced = await database.TryWaitUntilBlockedAsync(gate, 2, RaceWindow, cancellationToken);
+            await gate.CommitAsync(cancellationToken);
+            responses = await Task.WhenAll(first, second);
+        }
+
+        try
+        {
+            List<string> answers = [];
+            foreach (var response in responses)
+            {
+                answers.Add($"{(int)response.StatusCode} {await response.Content.ReadAsStringAsync(cancellationToken)}");
+            }
+
+            var described = $"{string.Join(" | ", answers)} (both waited at the gate: {raced})";
+            responses.Select(response => response.StatusCode).ShouldBe([HttpStatusCode.Created, HttpStatusCode.TooManyRequests], ignoreOrder: true, described);
+            // The second read the database's clock before it waited, a moment before the first counted its mail, so its
+            // wait is the cooldown plus that moment, rounded up to whole seconds.
+            await ShouldBeRefusedLaterAsync(responses.Single(response => response.StatusCode != HttpStatusCode.Created), RecipientMailedRecently, TimeSpan.FromMinutes(10).Add(TimeSpan.FromSeconds(5)), cancellationToken);
+            var stored = (await database.StatusesOfAsync(one.Pharmacy, address, cancellationToken)).Concat(await database.StatusesOfAsync(other.Pharmacy, address, cancellationToken));
+            stored.ShouldBe(["Invited"], described);
+            (await database.RecipientLastMailedAtAsync(address, cancellationToken)).ShouldNotBeNull(described);
+            var counted = 0;
+            foreach (var sender in senders)
+            {
+                counted += await database.SenderMailsThatDayAsync(sender, cancellationToken);
+            }
+
+            counted.ShouldBe(senderMails + 1, $"only the first invitation may count on its sender; {described}");
+            (await mailpit.MessagesToAsync(address, 1, cancellationToken)).ShouldHaveSingleItem("the refused invitation must send no mail");
+            return raced;
         }
         finally
         {
