@@ -167,5 +167,29 @@ public class ErasePersonTests
         pharmacy.Membership(membership).Email.ShouldBe(address);
     }
 
+    [Fact]
+    public void Forgetting_keeps_the_name_of_another_person_who_held_the_address_and_clears_the_address()
+    {
+        var person = PersonId.From(Guid.CreateVersion7());
+        var other = PersonId.From(Guid.CreateVersion7());
+        var address = EmailAddress.From("shared-inbox@example.org");
+        var pharmacy = TestPharmacies.Register(Owner);
+        var othersMembership = MembershipId.New();
+        var token = Token();
+        pharmacy.Invite(othersMembership, address, JobFunction.Pta, MembershipRole.Employee, TestPharmacies.RegisteredAt, InvitationMailLimits.Default).IsSuccess.ShouldBeTrue();
+        pharmacy.IssueInvitationLink(othersMembership, token, TestPharmacies.RegisteredAt).IsSuccess.ShouldBeTrue();
+        pharmacy.AcceptInvitation(token, other, DisplayName.From("Quentin Other"), address, TestPharmacies.RegisteredAt).IsSuccess.ShouldBeTrue();
+        pharmacy.EndMembership(othersMembership, TestPharmacies.RegisteredAt.PlusDays(1)).IsSuccess.ShouldBeTrue();
+        pharmacy.ClearDomainEvents();
+
+        var skipped = pharmacy.ForgetPerson(person, [address]);
+
+        skipped.ShouldBeEmpty();
+        var others = pharmacy.Membership(othersMembership);
+        others.Name.ShouldBe(DisplayName.From("Quentin Other"), "another person's name is not the erased person's data");
+        others.Person.ShouldBe(other);
+        others.Email.ShouldBeNull("the address is the erased person's data, whoever's membership holds it");
+    }
+
     private static InvitationToken Token() => InvitationToken.From(RandomNumberGenerator.GetHexString(64));
 }

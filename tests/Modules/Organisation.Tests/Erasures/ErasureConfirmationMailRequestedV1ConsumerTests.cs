@@ -134,6 +134,64 @@ public class ErasureConfirmationMailRequestedV1ConsumerTests
     }
 
     [Fact]
+    public async Task An_address_the_server_refuses_for_good_is_given_up_and_the_erasure_goes_on()
+    {
+        var setup = ReleasedPersonWithTwoAddresses();
+        mails.SendAsync(Arg.Is<OutgoingMail>(mail => mail.To == setup.Second.Value), Arg.Any<CancellationToken>())
+            .ThrowsAsync(RecipientRefused());
+
+        await Consumer().HandleAsync(new ErasureConfirmationMailRequestedV1(setup.Erasure.Id.Value, person.Value), TestContext.Current.CancellationToken);
+
+        await mails.Received(1).SendAsync(Arg.Is<OutgoingMail>(mail => mail.To == setup.First.Value), Arg.Any<CancellationToken>());
+        foreach (var membership in store.Stored.SelectMany(pharmacy => pharmacy.Memberships).Where(m => m.Person == person))
+        {
+            membership.Name.ShouldBeNull();
+            membership.Email.ShouldBeNull();
+        }
+
+        setup.Elsewhere.Membership(setup.RevokedInvitation).Email.ShouldBeNull();
+        store.StoredRecipients.ShouldBeEmpty();
+        store.StoredSenders.ShouldBeEmpty();
+        setup.Erasure.Confirmation.ShouldBe(ErasureConfirmation.Mailed, "one address was mailed");
+        setup.Erasure.Steps.ShouldHaveSingleItem().Module.ShouldBe(ErasureModule.Organisation);
+        store.Published.ShouldHaveSingleItem().ShouldBe(new PersonErasureRequestedV1(setup.Erasure.Id.Value, person.Value));
+        store.Commits.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task A_person_whose_every_address_is_refused_for_good_is_still_forgotten_and_announced()
+    {
+        var setup = ReleasedPersonWithTwoAddresses();
+        mails.SendAsync(Arg.Any<OutgoingMail>(), Arg.Any<CancellationToken>()).ThrowsAsync(RecipientRefused());
+
+        await Consumer().HandleAsync(new ErasureConfirmationMailRequestedV1(setup.Erasure.Id.Value, person.Value), TestContext.Current.CancellationToken);
+
+        setup.Home.Membership(setup.HomeMembership).Name.ShouldBeNull();
+        setup.Home.Membership(setup.HomeMembership).Email.ShouldBeNull();
+        setup.Erasure.Confirmation.ShouldBe(ErasureConfirmation.NoAddress, "no address could be mailed");
+        setup.Erasure.Steps.ShouldHaveSingleItem().Module.ShouldBe(ErasureModule.Organisation);
+        store.Published.ShouldHaveSingleItem().ShouldBe(new PersonErasureRequestedV1(setup.Erasure.Id.Value, person.Value));
+        store.Commits.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task A_refusal_that_is_not_a_refused_recipient_forgets_nothing_and_rethrows()
+    {
+        var setup = ReleasedPersonWithTwoAddresses();
+        var refused = new MailNotSentException("The SMTP server refused the mail at MessageNotAccepted with 554 TransactionFailed.", mayHaveBeenDelivered: false);
+        mails.SendAsync(Arg.Is<OutgoingMail>(mail => mail.To == setup.Second.Value), Arg.Any<CancellationToken>()).ThrowsAsync(refused);
+
+        var thrown = await Should.ThrowAsync<MailNotSentException>(
+            () => Consumer().HandleAsync(new ErasureConfirmationMailRequestedV1(setup.Erasure.Id.Value, person.Value), TestContext.Current.CancellationToken));
+
+        thrown.ShouldBeSameAs(refused);
+        setup.Home.Membership(setup.HomeMembership).Name.ShouldBe(DisplayName.From("Erika Erased"));
+        setup.Erasure.Confirmation.ShouldBe(ErasureConfirmation.Pending);
+        store.Published.ShouldBeEmpty();
+        store.Commits.ShouldBe(0);
+    }
+
+    [Fact]
     public async Task Recipients_and_the_sender_are_removed()
     {
         var setup = ReleasedPersonWithTwoAddresses();
@@ -161,6 +219,10 @@ public class ErasureConfirmationMailRequestedV1ConsumerTests
         store.Commits.ShouldBe(0);
         logger.Collector.Count.ShouldBeGreaterThan(0, "a dropped message is logged");
     }
+
+    /// <summary>What the mail sender throws when the server refuses the recipient for good (550 5.1.1 on RCPT TO).</summary>
+    private static MailNotSentException RecipientRefused() =>
+        new("The SMTP server refused the mail at RecipientNotAccepted with 550 MailboxUnavailable.", mayHaveBeenDelivered: false, recipientRefused: true);
 
     private ErasureConfirmationMailRequestedV1Consumer Consumer() => new(store, store, store, store, store, mails, time, logger);
 

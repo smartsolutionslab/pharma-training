@@ -46,13 +46,15 @@ public class RequestErasureTests
     {
         var person = PersonId.From(Guid.CreateVersion7());
         var elsewhere = TestPharmacies.Register(Owner, "Markt-Apotheke");
-        TestPharmacies.AddMember(elsewhere, person, MembershipRole.Employee);
+        var employee = TestPharmacies.AddMember(elsewhere, person, MembershipRole.Employee);
         elsewhere.Stored(store);
         TestPharmacies.Register(person, "Einzige-Leitung-Apotheke").Stored(store);
 
         var refused = await Handler().HandleAsync(new RequestErasure(person, Support), TestContext.Current.CancellationToken);
 
         refused.Error.Code.ShouldBe("organisation.erasure-refused-last-manager");
+        elsewhere.Membership(employee).Status.ShouldBe(MembershipStatus.Active, "a refusal ends no membership, not even in a pharmacy checked before the refusing one");
+        elsewhere.DomainEvents.ShouldBeEmpty();
         store.Commits.ShouldBe(0);
         store.Published.ShouldBeEmpty();
         store.StoredErasures.ShouldBeEmpty();
