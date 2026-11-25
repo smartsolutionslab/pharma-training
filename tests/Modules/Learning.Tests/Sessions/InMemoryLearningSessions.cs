@@ -13,8 +13,8 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Tests.Sessions;
 /// folded through the projection, so it follows every save at once, as Marten's inline projection does. It is also the
 /// module's unit of work: what is published is sent only once committed. <see cref="Steps"/> records saves, publishes
 /// and commits in the order they happened. <see cref="LoseNextSave"/> makes the next save lose a race on its stream, as
-/// an append does when another one landed since the session was loaded: <see cref="TrySaveAsync"/> answers
-/// <see langword="false"/>, and <see cref="SaveAsync"/> throws, as Marten's expected-version check does.
+/// an append does when another one landed since the session was loaded, or as a deadlock when given one:
+/// <see cref="TrySaveAsync"/> answers how it lost, and <see cref="SaveAsync"/> throws, as Marten's expected-version check does.
 /// </summary>
 internal sealed class InMemoryLearningSessions : ILearningAggregateStore, ILearningSessions, ILearningUnitOfWork
 {
@@ -68,7 +68,7 @@ internal sealed class InMemoryLearningSessions : ILearningAggregateStore, ILearn
         return Task.CompletedTask;
     }
 
-    /// <summary>What the module's store answers once it opts in to lost races: <see langword="false"/> with nothing stored and the aggregate left unmarked.</summary>
+    /// <summary>What the module's store answers once it opts in to lost races: how the race was lost, with nothing stored and the aggregate left unmarked.</summary>
     public Task<Result<Unit, LostRace>> TrySaveAsync(IEventSourced aggregate, CancellationToken cancellationToken)
     {
         if (loseNextSave)
