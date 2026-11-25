@@ -41,24 +41,6 @@ public sealed class MembershipStore(CertificationDbContext context) : IMembershi
         return [.. found.Select(membership => membership.CurrentRole([.. changes.Where(change => change.Membership == membership.Id)]))];
     }
 
-    public async Task<IReadOnlyList<MembershipPeriod>> PeriodsInPharmacyAsync(PharmacyId pharmacy, CancellationToken cancellationToken)
-    {
-        var found = await context.Set<Membership>()
-            .AsNoTracking()
-            .Where(membership => membership.Pharmacy == pharmacy)
-            .Select(membership => new
-            {
-                membership.Person,
-                membership.StartedAt,
-                EndedAt = context.Set<MembershipEnding>()
-                    .Where(ending => ending.Id == membership.Id)
-                    .Select(ending => ending.EndedAt)
-                    .FirstOrDefault(),
-            })
-            .ToListAsync(cancellationToken);
-        return [.. found.Select(membership => MembershipPeriod.Of(membership.Person, membership.StartedAt, membership.EndedAt))];
-    }
-
     public async Task<Option<HolderName>> FindHolderNameAsync(PersonId person, CancellationToken cancellationToken) =>
         await context.Set<Membership>()
             .AsNoTracking()

@@ -12,8 +12,11 @@ import { type AssessmentFailure, assessmentFailure } from './assessmentErrors';
 export type SaveState =
   { kind: 'idle' | 'saving' | 'saved' | 'keepOne' } | { kind: 'failed'; failure: AssessmentFailure };
 
-/** How often a 409 examination-changed is sent again by itself (ADR 0016: sending again is safe). */
+/** How often a 409 examination-changed or concurrent-save is sent again by itself (ADR 0016: sending again is safe). */
 const resends = 3;
+
+/** The refusals sent again: the examination moved on, or PostgreSQL ended the save as a deadlock; neither stored anything. */
+const resent = ['assessment.examination-changed', 'assessment.concurrent-save'];
 
 const idle: SaveState = { kind: 'idle' };
 
@@ -109,7 +112,7 @@ export function useAnswerSaver(
           optionIds: draft,
         });
       } catch (error) {
-        if (error instanceof ApiError && error.code === 'assessment.examination-changed' && attempt < resends) {
+        if (error instanceof ApiError && resent.includes(error.code ?? '') && attempt < resends) {
           continue;
         }
         fail(questionId, draft, error);

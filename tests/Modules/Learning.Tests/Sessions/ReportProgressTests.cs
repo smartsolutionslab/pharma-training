@@ -1,3 +1,4 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using System.Net;
 using Microsoft.Extensions.Time.Testing;
 using SmartSolutionsLab.PharmaTraining.Contracts.Learning;
@@ -310,6 +311,22 @@ public class ReportProgressTests
         sessions.Published.ShouldBeEmpty();
         sessions.Commits.ShouldBe(0);
         sessions.Steps.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task A_report_whose_save_deadlocked_answers_409_concurrent_save_and_records_nothing()
+    {
+        var session = await StartedAsync();
+        var stored = sessions.Streams[session.Value].Count;
+        time.Advance(FilmDuration);
+        sessions.LoseNextSave(LostRaces.Deadlocked("40P01"));
+
+        var reported = await ReportAsync(session, Film, 60);
+
+        reported.IsFailure.ShouldBeTrue("the deadlocked append was answered as a success");
+        reported.Error.Code.ShouldBe("learning.concurrent-save");
+        sessions.Streams[session.Value].Count.ShouldBe(stored);
+        announced.Added.ShouldBeEmpty();
     }
 
     [Fact]

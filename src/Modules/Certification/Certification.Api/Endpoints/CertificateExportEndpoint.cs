@@ -11,7 +11,7 @@ using Microsoft.AspNetCore.Routing;
 namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Api.Endpoints;
 
 /// <summary>
-/// A pharmacy's certificates for a period as a ZIP, downloaded as an attachment (#52, docs/adr/0031). Open to every
+/// A pharmacy's certificates for a period as a ZIP, downloaded as an attachment (#52, docs/adr/0032). Open to every
 /// signed-in person: whether they may is decided by the handler from Certification's copy of their membership in the
 /// pharmacy and its current role (docs/adr/0003), not by a realm role. The archive is written into the response body as
 /// it is assembled, and never stored.

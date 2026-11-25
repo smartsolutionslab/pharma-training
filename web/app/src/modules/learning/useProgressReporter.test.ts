@@ -329,6 +329,22 @@ test('a session that changed meanwhile is read again and the report sent once mo
   expect(reporter.failed.value).toBe(false);
 });
 
+// A report PostgreSQL ended as a deadlock with another save (#162): nothing was stored, so it is sent once more too.
+test('a report that deadlocked with another save is sent once more', async () => {
+  host.mockImplementationOnce(async () => refusal(409, 'learning.concurrent-save'));
+  const { reporter } = renderReporter();
+
+  reporter.report(introduction.chapterId, 40);
+
+  await waitFor(() =>
+    expect(bodies()).toEqual([
+      { chapterId: introduction.chapterId, percent: 40 },
+      { chapterId: introduction.chapterId, percent: 40 },
+    ]),
+  );
+  expect(reporter.failed.value).toBe(false);
+});
+
 test('a session that changed again is not sent a third time', async () => {
   host.mockImplementation(async () => refusal(409, 'learning.session-changed'));
   const { reporter } = renderReporter();

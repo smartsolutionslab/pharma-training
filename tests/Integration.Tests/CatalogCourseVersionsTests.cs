@@ -265,6 +265,38 @@ public class CatalogCourseVersionsTests(AspireFixture aspire)
         (await ListedAsync(client, courseId, cancellationToken)).ShouldBeEmpty();
     }
 
+    /// <summary>
+    /// The accepted race (ADR 0033): the newer version's retirement arrives before its publish. Until the publish arrives,
+    /// the older version reads current and the course is listed with it; once it arrives, the end state is the in-order
+    /// one: the older reads superseded, the newer retired, and the course is not listed.
+    /// </summary>
+    [Fact]
+    public async Task A_newer_versions_retirement_arriving_before_its_publish_ends_as_if_the_events_arrived_in_order()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await aspire.CreateHostClientAsync("developer");
+        var courseId = Guid.CreateVersion7();
+        var older = Published(courseId, Guid.CreateVersion7(), 1);
+        var newer = Published(courseId, Guid.CreateVersion7(), 2);
+        await SendAsync(PublishedType, older, Guid.CreateVersion7(), cancellationToken);
+        await WaitUntilReadableAsync(client, older.CourseVersionId, cancellationToken);
+        var retirement = Guid.CreateVersion7();
+        await SendAsync(RetiredType, Retired(courseId, newer.CourseVersionId), retirement, cancellationToken);
+        await WaitUntilHandledAsync(retirement, cancellationToken);
+
+        (await ReadAsync(client, older.CourseVersionId, cancellationToken)).Status.ShouldBe("Current");
+        (await ListedAsync(client, courseId, cancellationToken)).ShouldHaveSingleItem().CourseVersionId.ShouldBe(older.CourseVersionId);
+
+        await SendAsync(PublishedType, newer, Guid.CreateVersion7(), cancellationToken);
+        await WaitUntilReadableAsync(client, newer.CourseVersionId, cancellationToken);
+
+        (await ReadAsync(client, older.CourseVersionId, cancellationToken)).Status.ShouldBe("Superseded");
+        var newerRead = await ReadAsync(client, newer.CourseVersionId, cancellationToken);
+        newerRead.Status.ShouldBe("Retired");
+        newerRead.IsRetired.ShouldBeTrue();
+        (await ListedAsync(client, courseId, cancellationToken)).ShouldBeEmpty();
+    }
+
     [Fact]
     public async Task A_superseded_version_that_is_retired_reads_as_retired()
     {

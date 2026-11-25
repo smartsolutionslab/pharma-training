@@ -157,7 +157,8 @@ public class AssessmentAttemptsTests(AspireFixture aspire)
             foreach (var refused in responses.Where(response => response.StatusCode != HttpStatusCode.Created))
             {
                 refused.StatusCode.ShouldBe(HttpStatusCode.Conflict, await refused.Content.ReadAsStringAsync(cancellationToken));
-                (await EditorialWorkflow.CodeOfAsync(refused, cancellationToken)).ShouldBeOneOf("assessment.examination-not-unlocked", "assessment.examination-changed");
+                // A start that lost the race on the stream is told it changed; one PostgreSQL ended as a deadlock is told to try again.
+                (await EditorialWorkflow.CodeOfAsync(refused, cancellationToken)).ShouldBeOneOf("assessment.examination-not-unlocked", "assessment.examination-changed", "assessment.concurrent-save");
             }
         }
         finally

@@ -36,9 +36,10 @@ public sealed class StartAttemptHandler(IAssessmentAggregateStore store, ITestDe
             return Failure(ExaminationFailures.From(started.Error));
         }
 
-        if (!await store.TrySaveAsync(examination, cancellationToken))
+        var saved = await store.TrySaveAsync(examination, cancellationToken);
+        if (saved.IsFailure)
         {
-            return Failure(ExaminationFailures.Changed(command.Examination.Value));
+            return Failure(ExaminationFailures.LostRace(saved.Error, command.Examination.Value));
         }
 
         return Success(attempt);

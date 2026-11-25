@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using SmartSolutionsLab.PharmaTraining.Contracts;
 using SmartSolutionsLab.PharmaTraining.Contracts.Assessment;
 using SmartSolutionsLab.PharmaTraining.Contracts.Learning;
@@ -72,5 +73,5 @@ public class ExhaustionCycleTests
         };
 
     private Task DeliverAsync(ContentCompletedV1 completed) =>
-        new ContentCompletedV1Consumer(fixture.Store, handled, handled, fixture.Time).HandleAsync(completed, Token);
+        new ContentCompletedV1Consumer(fixture.Store, handled, handled, fixture.Time, NullLogger<ContentCompletedV1Consumer>.Instance).HandleAsync(completed, Token);
 }

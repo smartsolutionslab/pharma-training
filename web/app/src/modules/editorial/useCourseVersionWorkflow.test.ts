@@ -106,7 +106,8 @@ describe.each(steps)('%s', (_name, take, path, body) => {
     expect(stale(queryClient, unrelatedKey)).toBe(false);
   });
 
-  test('refused, answers the error and marks only the version stale', async () => {
+  // A conflict may mean another tab returned the version meanwhile (#376): its returns are read again with it.
+  test('refused for a conflict, answers the error and marks the version and its returns stale, not the inbox', async () => {
     host.mockImplementation(async () => refusal(409, 'editorial.course-version-changed'));
     const { workflow, queryClient } = renderWorkflow();
 
@@ -117,7 +118,7 @@ describe.each(steps)('%s', (_name, take, path, body) => {
     expect(error.status).toBe(409);
     expect(error.code).toBe('editorial.course-version-changed');
     expect(stale(queryClient, versionKey)).toBe(true);
-    expect(stale(queryClient, returnsKey)).toBe(false);
+    expect(stale(queryClient, returnsKey)).toBe(true);
     for (const key of inboxKeys) {
       expect(stale(queryClient, key)).toBe(false);
     }

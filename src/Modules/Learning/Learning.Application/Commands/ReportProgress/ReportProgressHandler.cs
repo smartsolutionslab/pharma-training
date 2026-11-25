@@ -75,9 +75,10 @@ public sealed class ReportProgressHandler(
             .ToList();
         // Of two reports that loaded the same version of the stream, only one append lands; the other one stores and
         // announces nothing.
-        if (!await store.TrySaveAsync(session, cancellationToken))
+        var saved = await store.TrySaveAsync(session, cancellationToken);
+        if (saved.IsFailure)
         {
-            return Failure(LearningSessionFailures.Changed(command.Session.Value));
+            return Failure(LearningSessionFailures.LostRace(saved.Error, command.Session.Value));
         }
 
         // The append has landed: a caller who goes away now must not cancel the announcement, or it is lost for good

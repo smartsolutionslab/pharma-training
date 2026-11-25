@@ -29,12 +29,6 @@ public interface IMembershipStore
     Task<IReadOnlyList<MembershipRole>> ActiveRolesAsync(PersonId person, PharmacyId pharmacy, CancellationToken cancellationToken);
 
     /// <summary>
-    /// The period of every membership stored for the pharmacy, ended or not, with the instant its ending says it ended. An
-    /// ending whose membership has not arrived gives no period.
-    /// </summary>
-    Task<IReadOnlyList<MembershipPeriod>> PeriodsInPharmacyAsync(PharmacyId pharmacy, CancellationToken cancellationToken);
-
-    /// <summary>
     /// The name of the person's membership that started last, ended or not, and of the one with the highest id where two
     /// started at once; none while no membership of the person has arrived.
     /// </summary>

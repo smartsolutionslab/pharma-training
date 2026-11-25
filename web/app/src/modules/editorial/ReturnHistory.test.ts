@@ -390,6 +390,23 @@ test('another version starts again at its first page', async () => {
   });
 });
 
+// While another version's returns are on their way, the previous version's pager is not offered (#376): its "Weiter"
+// would ask for the other version's second page.
+test("while another version's returns load, the previous version's pager is not offered", async () => {
+  total = 45;
+  const { rerender } = renderHistory();
+  await screen.findByText(markup.reason);
+  expect(screen.getByRole('button', { name: t('dataTable.next') })).toBeEnabled();
+  const before = asked().length;
+  answer = (id, page) => (id === otherVersionId ? new Promise<Response>(() => undefined) : listed(id, page));
+
+  await rerender({ versionId: otherVersionId });
+
+  await waitFor(() => expect(asked().length).toBeGreaterThan(before));
+  expect(screen.queryByRole('button', { name: t('dataTable.next') })).toBeNull();
+  expect(screen.queryByText(markup.reason)).not.toBeInTheDocument();
+});
+
 test('coming back to a version shows its first page, not the page it was turned to before', async () => {
   const user = userEvent.setup();
   total = 45;
