@@ -6,14 +6,15 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Api;
 /// <summary>
 /// How often Certification purges the retained certificates of erased persons that no pharmacy keeps any longer (#115,
 /// slice 5), read once at startup from <c>Certification:ErasedCertificatePurge:Interval</c>. A blank or absent value
-/// takes the default, once a day; a value that does not parse in the invariant <c>c</c> format (<c>[d.]hh:mm:ss</c>) or
+/// takes the default, once an hour (the first pass comes one interval after the host starts, so a
+/// longer default might never run on a service restarted often); a value that does not parse in the invariant <c>c</c> format (<c>[d.]hh:mm:ss</c>) or
 /// lies outside one second to seven days stops the host, naming the key, the value and what it accepts.
 /// </summary>
 public sealed record ErasedCertificatePurgeSettings
 {
     public const string IntervalKey = "Certification:ErasedCertificatePurge:Interval";
 
-    public static readonly TimeSpan DefaultInterval = TimeSpan.FromDays(1);
+    public static readonly TimeSpan DefaultInterval = TimeSpan.FromHours(1);
 
     private static readonly TimeSpan LeastInterval = TimeSpan.FromSeconds(1);
 
