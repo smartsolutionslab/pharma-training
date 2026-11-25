@@ -157,6 +157,13 @@ async function send({ years: chosen }: RetentionPeriod, pharmacyId: string) {
   }
 }
 
+/**
+ * How many presses have been checked, whether the check passed or not, and so were sent or dropped. It stands on the
+ * section's root, which stays while another pharmacy's period is read, so a test can tell when a press's check has
+ * ended without waiting a while.
+ */
+const checked = ref(0);
+
 /** Sends once, however often the button is pressed: a press while one is on its way does nothing. */
 async function submit(event: Event) {
   if (busy.value) {
@@ -167,11 +174,13 @@ async function submit(event: Event) {
   const pressedFor = pharmacy.id;
   await handleSubmit(
     async (values) => {
+      checked.value += 1;
       if (pressed === generation && pressedFor === pharmacy.id) {
         await send(values, pressedFor);
       }
     },
     () => {
+      checked.value += 1;
       if (pressed === generation) {
         void focusField();
       }
@@ -181,43 +190,45 @@ async function submit(event: Event) {
 </script>
 
 <template>
-  <section v-if="shown !== undefined" :aria-labelledby="titleId" class="flex flex-col gap-4">
-    <h2 :id="titleId" class="text-body font-semibold">{{ t('certification.retention.title') }}</h2>
-    <p class="text-body">{{ t('certification.retention.intro', { pharmacy: pharmacy.name }) }}</p>
-    <p :id="currentId" class="text-body font-medium tabular-nums">{{ status }}</p>
-    <p :id="noteId" class="text-caption text-muted-foreground">{{ t('certification.retention.retroactive') }}</p>
-    <form class="flex flex-col gap-4" novalidate @submit="submit">
-      <div class="flex flex-col gap-2">
-        <label :for="field" class="text-body font-medium">{{ t('certification.retention.years') }}</label>
-        <Input
-          :id="field"
-          v-model="years"
-          v-bind="yearsAttributes"
-          type="number"
-          inputmode="numeric"
-          step="1"
-          :min="retentionYears.min"
-          :max="retentionYears.max"
-          aria-required="true"
-          :aria-invalid="fieldError ? true : undefined"
-          :aria-describedby="fieldError ? `${currentId} ${noteId} ${errorId}` : `${currentId} ${noteId}`"
-          class="max-w-40 tabular-nums"
-        />
-        <p v-if="fieldError" :id="errorId" role="alert" class="text-caption text-destructive">{{ fieldError }}</p>
-      </div>
-      <div>
-        <Button
-          type="submit"
-          :aria-disabled="busy ? 'true' : undefined"
-          :aria-busy="busy ? 'true' : undefined"
-          class="aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
-        >
-          {{ sending ? t('certification.retention.saving') : t('certification.retention.submit') }}
-        </Button>
-      </div>
-      <p role="status" class="sr-only">
-        <template v-if="sending">{{ t('certification.retention.saving') }}</template>
-      </p>
-    </form>
-  </section>
+  <div class="contents" :data-presses-checked="checked">
+    <section v-if="shown !== undefined" :aria-labelledby="titleId" class="flex flex-col gap-4">
+      <h2 :id="titleId" class="text-body font-semibold">{{ t('certification.retention.title') }}</h2>
+      <p class="text-body">{{ t('certification.retention.intro', { pharmacy: pharmacy.name }) }}</p>
+      <p :id="currentId" class="text-body font-medium tabular-nums">{{ status }}</p>
+      <p :id="noteId" class="text-caption text-muted-foreground">{{ t('certification.retention.retroactive') }}</p>
+      <form class="flex flex-col gap-4" novalidate @submit="submit">
+        <div class="flex flex-col gap-2">
+          <label :for="field" class="text-body font-medium">{{ t('certification.retention.years') }}</label>
+          <Input
+            :id="field"
+            v-model="years"
+            v-bind="yearsAttributes"
+            type="number"
+            inputmode="numeric"
+            step="1"
+            :min="retentionYears.min"
+            :max="retentionYears.max"
+            aria-required="true"
+            :aria-invalid="fieldError ? true : undefined"
+            :aria-describedby="fieldError ? `${currentId} ${noteId} ${errorId}` : `${currentId} ${noteId}`"
+            class="max-w-40 tabular-nums"
+          />
+          <p v-if="fieldError" :id="errorId" role="alert" class="text-caption text-destructive">{{ fieldError }}</p>
+        </div>
+        <div>
+          <Button
+            type="submit"
+            :aria-disabled="busy ? 'true' : undefined"
+            :aria-busy="busy ? 'true' : undefined"
+            class="aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+          >
+            {{ sending ? t('certification.retention.saving') : t('certification.retention.submit') }}
+          </Button>
+        </div>
+        <p role="status" class="sr-only">
+          <template v-if="sending">{{ t('certification.retention.saving') }}</template>
+        </p>
+      </form>
+    </section>
+  </div>
 </template>

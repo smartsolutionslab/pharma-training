@@ -173,6 +173,8 @@ const section = () => screen.findByRole('region', { name: 'Aufbewahrungsfrist' }
 const yearsField = () => screen.getByLabelText('Aufbewahrungsfrist in Jahren');
 const saveButton = () => screen.getByRole('button', { name: 'Frist speichern' });
 const noSection = () => expect(screen.queryByRole('heading', { name: 'Aufbewahrungsfrist' })).toBeNull();
+/** How many presses of "Frist speichern" the section has checked, and so sent or dropped. */
+const pressesChecked = () => document.querySelector('[data-presses-checked]')?.getAttribute('data-presses-checked');
 
 describe('the retention period section', () => {
   test('with the default of five years shows its heading, "Derzeit 5 Jahre (Standard)", the note and the field at 5', async () => {
@@ -570,8 +572,8 @@ describe('a period the form refuses', () => {
     await waitFor(() => expect(retentionReads()).toContain(`/api/certification/pharmacies/${dom.id}/retention-period`));
     // The press's check ends while the new pharmacy's period is still on its way, which is the window it must not
     // send in; then that period arrives.
-    await vi.waitFor(() => expect(host.mock.calls.length).toBeGreaterThan(0));
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await waitFor(() => expect(pressesChecked()).toBe('1'));
+    noSection();
     releaseDom();
 
     await waitFor(() => expect(yearsField()).toHaveValue(12));
