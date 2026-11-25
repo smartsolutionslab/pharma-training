@@ -390,7 +390,7 @@ public class RepublishCourseVersionsTests
     /// <summary>The next version of a published one, drafted, submitted and published through the handlers; it supersedes the other.</summary>
     private async Task<CourseVersion> PublishedNextAsync(CourseVersion published)
     {
-        var drafted = await new DraftNextVersionHandler(store, store).HandleAsync(new DraftNextVersion(published.Id, Author), TestContext.Current.CancellationToken);
+        var drafted = await new DraftNextVersionHandler(store, store, store).HandleAsync(new DraftNextVersion(published.Id, Author), TestContext.Current.CancellationToken);
         drafted.IsSuccess.ShouldBeTrue();
         var next = store.Stored.Single(version => version.Id.Value == drafted.Value);
         next.SubmitForReview(Author).IsSuccess.ShouldBeTrue();

@@ -88,10 +88,25 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         PersonId editor,
         Func<ChapterId> newChapterId,
         Func<QuestionId> newQuestionId,
-        Func<AnswerOptionId> newOptionId)
+        Func<AnswerOptionId> newOptionId) =>
+        DraftNext(id, editor, newChapterId, newQuestionId, newOptionId, new HashSet<PersonId>());
+
+    /// <summary>
+    /// <see cref="DraftNext(CourseVersionId, PersonId, Func{ChapterId}, Func{QuestionId}, Func{AnswerOptionId})"/>, leaving
+    /// out the names of <paramref name="erasedReviewers"/> (#115): a question one of them approved is copied approved,
+    /// under their id, without the name kept beside it.
+    /// </summary>
+    public Result<CourseVersion, DomainError> DraftNext(
+        CourseVersionId id,
+        PersonId editor,
+        Func<ChapterId> newChapterId,
+        Func<QuestionId> newQuestionId,
+        Func<AnswerOptionId> newOptionId,
+        IReadOnlySet<PersonId> erasedReviewers)
     {
         Ensure.That(newChapterId).IsNotNull();
         Ensure.That(newQuestionId).IsNotNull();
+        Ensure.That(erasedReviewers).IsNotNull();
 
         if (Status != CourseVersionStatus.Published)
         {
@@ -107,7 +122,7 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
             next.chapters.Add(copy);
         }
 
-        next.questions.AddRange(questions.Select(question => question.CopyFor(newQuestionId(), chapterIds[question.Chapter], newOptionId)));
+        next.questions.AddRange(questions.Select(question => question.CopyFor(newQuestionId(), chapterIds[question.Chapter], newOptionId, erasedReviewers)));
         next.FirstApprovedAt = next.questions
             .Select(question => question.ReviewedAt)
             .OfType<Timestamp>()
@@ -389,8 +404,11 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
         return Success(Unit.Value);
     }
 
-    /// <summary>An editor signs off a question: recorded with who, under which display name, and when, shown to auditors (story E7, #205).</summary>
-    public Result<Unit, DomainError> ApproveQuestion(QuestionId id, PersonId editor, ReviewerName name, Timestamp now)
+    /// <summary>
+    /// An editor signs off a question: recorded with who, under which display name, and when, shown to auditors (story E7,
+    /// #205). The name is null for an editor who is erased (#115): the approval stands under their id alone.
+    /// </summary>
+    public Result<Unit, DomainError> ApproveQuestion(QuestionId id, PersonId editor, ReviewerName? name, Timestamp now)
     {
         if (Status is not (CourseVersionStatus.Draft or CourseVersionStatus.InReview))
         {
@@ -451,11 +469,10 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
     /// <summary>
     /// Sends the version back to its editors and hands back the record of who did, under which name, when and why, which
     /// the caller stores in the same save; the version keeps the latest editor and time. Returning is not bound by four
-    /// eyes.
+    /// eyes. The name is null for an editor who is erased (#115): the return stands under their id alone, with its reason.
     /// </summary>
-    public Result<CourseVersionReturn, CourseVersionWorkflowError> ReturnToDraft(PersonId editor, ReviewerName name, ReturnReason reason, Timestamp now)
+    public Result<CourseVersionReturn, CourseVersionWorkflowError> ReturnToDraft(PersonId editor, ReviewerName? name, ReturnReason reason, Timestamp now)
     {
-        Ensure.That(name).IsNotNull();
         Ensure.That(reason).IsNotNull();
 
         if (Status != CourseVersionStatus.InReview)

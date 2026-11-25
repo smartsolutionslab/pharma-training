@@ -48,9 +48,10 @@ public static partial class Messaging
     /// and its <c>conf.d</c>, so a process of an earlier boot of the same container could have left a symlink at either
     /// directory or at either file: the boot fails unless both directories are directories of their own, each file's path
     /// is cleared before it is written, a write never replaces a regular file that reappeared meanwhile (<c>noclobber</c>,
-    /// which bash applies to regular files alone), each file gets its mode as it is created (a <c>umask</c> of 027 for the
-    /// two writes, never <c>chmod</c>, which would follow a symlink; RabbitMQ itself still starts with 077), and a
-    /// symlink's owner is changed rather than its target's. It then starts the image's own entrypoint in its place without
+    /// which bash applies to regular files alone), each file is created under the script's <c>umask</c> of 077 (so it is
+    /// root's alone until handed over, and RabbitMQ starts with 077 too), and, as root, its owner is changed rather than a
+    /// symlink's target's and its mode set to 0640 by <c>chmod</c> on the regular file just written, which also undoes
+    /// whatever a default ACL left on <c>conf.d</c> would have given it. It then starts the image's own entrypoint in its place without
     /// the admin's password or any <c>BROKER_*</c> variable, as <c>env</c> lists them: bash does not see one whose name is
     /// not a shell identifier, so it could not unset it, yet would hand it on. The image starts as root and its entrypoint
     /// runs RabbitMQ as the user rabbitmq.
@@ -86,14 +87,15 @@ public static partial class Messaging
         done
         unset value users
         case "$definitions" in *@@*) refuse "The broker definitions hold a placeholder that names no variable; a placeholder is @@<VARIABLE>@@ of letters, digits and _.";; esac
-        if [ "$(id -u)" = 0 ]; then umask 027; fi
         rm -f /tmp/rabbitmq-definitions.json
         printf '%s' "$definitions" > /tmp/rabbitmq-definitions.json
         unset definitions
         rm -f /etc/rabbitmq/conf.d/90-definitions.conf
         printf 'load_definitions = /tmp/rabbitmq-definitions.json\n' > /etc/rabbitmq/conf.d/90-definitions.conf
-        umask 077
-        if [ "$(id -u)" = 0 ]; then chown -h root:rabbitmq /tmp/rabbitmq-definitions.json /etc/rabbitmq/conf.d/90-definitions.conf; fi
+        if [ "$(id -u)" = 0 ]; then
+          chown -h root:rabbitmq /tmp/rabbitmq-definitions.json /etc/rabbitmq/conf.d/90-definitions.conf
+          chmod 0640 /tmp/rabbitmq-definitions.json /etc/rabbitmq/conf.d/90-definitions.conf
+        fi
         unset RABBITMQ_DEFAULT_PASS
         drop=()
         while IFS= read -r -d '' entry; do

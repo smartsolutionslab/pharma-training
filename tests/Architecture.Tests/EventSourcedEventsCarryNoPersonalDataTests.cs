@@ -83,6 +83,6 @@ public class EventSourcedEventsCarryNoPersonalDataTests
     {
         var names = EventSourcedEventsCarryNoPersonalData.EventsOfEventSourcedModules().Select(type => type.Name).ToList();
 
-        names.ShouldBe(["LearningSessionStartedV1", "ContentCompletedV1", "TestPassedV1", "TestFailedV1", "AttemptsExhaustedV1"], ignoreOrder: true);
+        names.ShouldBe(["LearningSessionStartedV1", "ContentCompletedV1", "LearningErasureCompletedV1", "TestPassedV1", "TestFailedV1", "AttemptsExhaustedV1"], ignoreOrder: true);
     }
 }

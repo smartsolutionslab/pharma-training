@@ -139,7 +139,7 @@ public class ReturnToDraftTests
         var lostRace = Substitute.For<IEditorialUnitOfWork>();
         lostRace.TryCommitAsync(Arg.Any<CancellationToken>()).Returns(Failure(LostRaces.VersionMovedOn()));
 
-        var returned = await new ReturnToDraftHandler(store, lostRace, time).HandleAsync(new ReturnToDraft(version.Id, Reviewer, ReviewersName, Reason), TestContext.Current.CancellationToken);
+        var returned = await new ReturnToDraftHandler(store, store, lostRace, time).HandleAsync(new ReturnToDraft(version.Id, Reviewer, ReviewersName, Reason), TestContext.Current.CancellationToken);
 
         returned.Error.ShouldBe(new CourseVersionChanged(version.Id.Value));
         returned.Error.Code.ShouldBe("editorial.course-version-changed");
@@ -147,5 +147,5 @@ public class ReturnToDraftTests
         store.Returns.ShouldBeEmpty();
     }
 
-    private ReturnToDraftHandler Handler() => new(store, store, time);
+    private ReturnToDraftHandler Handler() => new(store, store, store, time);
 }
