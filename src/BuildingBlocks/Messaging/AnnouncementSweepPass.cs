@@ -1,6 +1,5 @@
 using System.Data.Common;
 using Microsoft.Extensions.Logging;
-using SmartSolutionsLab.PharmaTraining.Contracts;
 
 namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 
@@ -57,13 +56,15 @@ public sealed partial class AnnouncementSweepPass
 
     /// <param name="find">Answers at most <c>limit</c> unannounced events stored from <c>storedFrom</c> to <c>storedUntil</c>, after the sequence <c>after</c>, oldest first.</param>
     /// <param name="announcementOf">
-    /// The announcement of a found event, or none when the event has none of its own and needs only its marker; throws
-    /// when the event cannot be read or mapped, and with a <see cref="DbException"/> when the database fails.
+    /// What to do with a found event: <see cref="SweptEvents.Announce"/> its announcement, or
+    /// <see cref="SweptEvents.MarkOnly"/> when it has none of its own and needs only its marker; throws (or answers
+    /// <see cref="SweptEvents.Unreadable"/>) when the event cannot be read or mapped, and throws a
+    /// <see cref="DbException"/> when the database fails.
     /// </param>
     /// <param name="cancellationToken">Ends the pass.</param>
     public async Task RunAsync(
         Func<DateTimeOffset, DateTimeOffset, long, int, CancellationToken, Task<IReadOnlyList<UnannouncedEvent>>> find,
-        Func<UnannouncedEvent, CancellationToken, Task<Option<IntegrationEvent>>> announcementOf,
+        Func<UnannouncedEvent, CancellationToken, Task<SweptEvent>> announcementOf,
         CancellationToken cancellationToken)
     {
         Ensure.That(find).IsNotNull();
@@ -82,20 +83,20 @@ public sealed partial class AnnouncementSweepPass
         {
             await foreach (var stored in pages)
             {
-                if (await AnnouncementOfAsync(stored, announcementOf, unreadable, cancellationToken) is not { } announcement)
+                switch (await SweptEventOfAsync(stored, announcementOf, cancellationToken))
                 {
-                    continue;
-                }
-
-                if (announcement.HasValue)
-                {
-                    await unitOfWork.PublishAsync(announcement.Value);
-                }
-
-                mark(stored, now);
-                if (announcement.HasValue)
-                {
-                    LogReannounced(logger, eventType, stored.StreamId, stored.StreamVersion, stored.StoredAt);
+                    case AnnounceSweptEvent announce:
+                        await unitOfWork.PublishAsync(announce.Announcement);
+                        mark(stored, now);
+                        LogReannounced(logger, eventType, stored.StreamId, stored.StreamVersion, stored.StoredAt);
+                        break;
+                    case MarkSweptEventOnly:
+                        mark(stored, now);
+                        break;
+                    case UnreadableSweptEvent skipped:
+                        // Noted by its type alone: a message about the stored data may quote it, and it is about a learner.
+                        unreadable.Add(stored, skipped.Failure);
+                        continue;
                 }
 
                 await unitOfWork.CommitAsync(cancellationToken);
@@ -114,14 +115,13 @@ public sealed partial class AnnouncementSweepPass
     }
 
     /// <summary>
-    /// The announcement of a stored event, none when it needs its marker alone, or null when it cannot be read or mapped:
-    /// noted for the pass's one Warning and skipped, and the pass reads on past it. It keeps no marker, so every pass tries
-    /// it again until the lookback. A database failure is no unreadable data: it ends the pass.
+    /// What to do with a stored event, as <paramref name="announcementOf"/> answers it, or
+    /// <see cref="UnreadableSweptEvent"/> when it throws because the event cannot be read or mapped. A database failure is
+    /// no unreadable data: it ends the pass.
     /// </summary>
-    private static async Task<Option<IntegrationEvent>?> AnnouncementOfAsync(
+    private static async Task<SweptEvent> SweptEventOfAsync(
         UnannouncedEvent stored,
-        Func<UnannouncedEvent, CancellationToken, Task<Option<IntegrationEvent>>> announcementOf,
-        UnreadableEvents unreadable,
+        Func<UnannouncedEvent, CancellationToken, Task<SweptEvent>> announcementOf,
         CancellationToken cancellationToken)
     {
         try
@@ -130,9 +130,7 @@ public sealed partial class AnnouncementSweepPass
         }
         catch (Exception exception) when (exception is not (OperationCanceledException or DbException))
         {
-            // Noted by its type alone: a message about the stored data may quote it, and it is about a learner.
-            unreadable.Add(stored, exception);
-            return null;
+            return SweptEvents.Unreadable(exception);
         }
     }
 
