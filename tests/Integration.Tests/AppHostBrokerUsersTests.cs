@@ -73,8 +73,8 @@ public class AppHostBrokerUsersTests(AspireFixture aspire)
         },
         {
             "organisation",
-            ["organisation", MembershipChanged, MembershipEnded, MembershipStarted, Contracts + "Organisation.PharmacyRegisteredV1"],
-            ["organisation", MembershipChanged, MembershipEnded, MembershipStarted, Contracts + "Organisation.PharmacyRegisteredV1"],
+            ["organisation", MembershipChanged, MembershipEnded, MembershipStarted, Contracts + "Organisation.PersonErasureRequestedV1", Contracts + "Organisation.PharmacyRegisteredV1"],
+            ["organisation", MembershipChanged, MembershipEnded, MembershipStarted, Contracts + "Organisation.PersonErasureRequestedV1", Contracts + "Organisation.PharmacyRegisteredV1"],
             ["organisation"]
         },
     };

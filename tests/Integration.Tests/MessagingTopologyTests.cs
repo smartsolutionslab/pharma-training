@@ -43,8 +43,10 @@ public class MessagingTopologyTests
         consumed.ShouldNotContain(InvitationMailRequested);
         consumed.ShouldBeEmpty();
         published.ShouldNotContain(InvitationMailRequested);
+        consumed.ShouldNotContain(Contracts + "Organisation.ErasureConfirmationMailRequestedV1");
+        published.ShouldNotContain(Contracts + "Organisation.ErasureConfirmationMailRequestedV1");
         published.ShouldBe(
-            [Contracts + "Organisation.MembershipChangedV1", Contracts + "Organisation.MembershipEndedV1", Contracts + "Organisation.MembershipStartedV1", Contracts + "Organisation.PharmacyRegisteredV1"],
+            [Contracts + "Organisation.MembershipChangedV1", Contracts + "Organisation.MembershipEndedV1", Contracts + "Organisation.MembershipStartedV1", Contracts + "Organisation.PersonErasureRequestedV1", Contracts + "Organisation.PharmacyRegisteredV1"],
             ignoreOrder: false);
     }
 
