@@ -119,7 +119,16 @@ public sealed partial class SmtpMailSender : IMailSender
         {
             // The server answered with a refusal, at whichever step: it says it did not take the mail.
             // The server's text (550 5.1.1 <anna@example.org>: ...) stays out of the exception, its logs and dead letters.
-            throw new MailNotSentException($"The SMTP server refused the mail at {refused.ErrorCode} with {(int)refused.StatusCode} {refused.StatusCode}.", mayHaveBeenDelivered: false);
+            // Only a bad mailbox refuses the recipient for good, so that a caller may give the address up: a 550, 551 or 553
+            // reply to RCPT TO whose enhanced status code is 5.1.x. A refusal that is the relay's or the account's (530,
+            // 5.7.x), one without an enhanced code and a 4xx may be the server's configuration or temporary, and are retried.
+            var recipientRefused = refused.ErrorCode == SmtpErrorCode.RecipientNotAccepted
+                && refused.StatusCode is SmtpStatusCode.MailboxUnavailable or SmtpStatusCode.UserNotLocalTryAlternatePath or SmtpStatusCode.MailboxNameNotAllowed
+                && refused.Message.TrimStart().StartsWith("5.1.", StringComparison.Ordinal);
+            throw new MailNotSentException(
+                $"The SMTP server refused the mail at {refused.ErrorCode} with {(int)refused.StatusCode} {refused.StatusCode}.",
+                mayHaveBeenDelivered: false,
+                recipientRefused: recipientRefused);
         }
         catch (Exception failed)
         {

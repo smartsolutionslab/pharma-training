@@ -20,4 +20,7 @@ public interface IInvitationSenderStore
     /// commits nothing (#375).
     /// </summary>
     Task<Result<InvitationSender, LostRace>> LoadForMailAsync(PersonId id, Timestamp now, CancellationToken cancellationToken);
+
+    /// <summary>Removes the sender's tally when the unit of work commits; a sender who has none is no change.</summary>
+    Task RemoveAsync(PersonId id, CancellationToken cancellationToken);
 }

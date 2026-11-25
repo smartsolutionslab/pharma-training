@@ -303,6 +303,87 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
         return Success(Unit.Value);
     }
 
+    /// <summary>
+    /// Releases the person for erasure (#115): ends their active membership here, refused with
+    /// <see cref="LastManagerCannotLeave"/> while they are its last active manager, and revokes every open invitation to
+    /// one of their addresses. A refusal changes nothing.
+    /// </summary>
+    public Result<Unit, DomainError> ReleaseForErasure(PersonId person, IReadOnlyCollection<EmailAddress> addresses, Timestamp now)
+    {
+        Ensure.That(person).IsNotNull();
+        Ensure.That(addresses).IsNotNull();
+        Ensure.That(now).IsNotNull();
+
+        var releasable = MayReleaseForErasure(person);
+        if (releasable.IsFailure)
+        {
+            return releasable;
+        }
+
+        var active = memberships.SingleOrDefault(m => m.Person == person && m.Status == MembershipStatus.Active);
+        if (active is not null)
+        {
+            active.End(now);
+            Raise(new MembershipEnded(Id, active.Id, person, now));
+        }
+
+        foreach (var invited in memberships.Where(m => m.Status == MembershipStatus.Invited && m.Email is { } email && addresses.Contains(email)))
+        {
+            invited.Revoke();
+            Raise(new InvitationRevoked(Id, invited.Id));
+        }
+
+        return Success(Unit.Value);
+    }
+
+    /// <summary>
+    /// Whether <see cref="ReleaseForErasure"/> would release the person here, without changing anything: refused with
+    /// <see cref="LastManagerCannotLeave"/> while they are its last active manager. An erasure checks every pharmacy it
+    /// touches first, so a refusal in one leaves the others as they were too.
+    /// </summary>
+    public Result<Unit, DomainError> MayReleaseForErasure(PersonId person)
+    {
+        Ensure.That(person).IsNotNull();
+
+        if (memberships.Any(m => m.Person == person && m.IsActiveManager) && memberships.Count(m => m.IsActiveManager) == 1)
+        {
+            return Failure(PharmacyErrors.LastManagerCannotLeave(Id));
+        }
+
+        return Success(Unit.Value);
+    }
+
+    /// <summary>
+    /// Forgets the name and address of every ended or revoked membership of the person or to one of their addresses
+    /// (#115), and answers the memberships it skipped because they are still invited or active. On a membership of
+    /// another person who held one of the addresses, only the address goes: their name is not the erased person's data.
+    /// </summary>
+    public IReadOnlyList<MembershipId> ForgetPerson(PersonId person, IReadOnlyCollection<EmailAddress> addresses)
+    {
+        Ensure.That(person).IsNotNull();
+        Ensure.That(addresses).IsNotNull();
+
+        List<MembershipId> skipped = [];
+        foreach (var membership in memberships.Where(m => m.Person == person || (m.Email is { } email && addresses.Contains(email))))
+        {
+            if (membership.Status is not (MembershipStatus.Ended or MembershipStatus.Revoked))
+            {
+                skipped.Add(membership.Id);
+            }
+            else if (membership.Person == person || membership.Person is null)
+            {
+                membership.Forget();
+            }
+            else
+            {
+                // Another person's membership that held one of the addresses: the address goes, their name is theirs.
+                membership.ForgetAddress();
+            }
+        }
+
+        return skipped;
+    }
+
     /// <summary>The person's active membership here, if they have one.</summary>
     public Option<Membership> ActiveMembershipOf(PersonId person)
     {

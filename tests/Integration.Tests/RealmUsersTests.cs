@@ -32,6 +32,7 @@ public partial class RealmUsersTests(AspireFixture aspire)
     [InlineData("employee-b", "employee-b@example.com", "Ben Employee")]
     [InlineData("employee-c", "employee-c@example.com", "Clara Employee")]
     [InlineData("former-employee", "former-employee@example.com", "Frieda Former")]
+    [InlineData("support", "support@example.com", "Sam Support")]
     public async Task A_local_user_signs_in_with_a_verified_email_and_a_name(string user, string email, string name)
     {
         var token = await aspire.RequestAccessTokenAsync(user);
@@ -68,6 +69,20 @@ public partial class RealmUsersTests(AspireFixture aspire)
 
         RealmRoles(editor).ShouldContain("editor");
         RealmRoles(owner).ShouldNotContain("editor");
+    }
+
+    [Fact]
+    public async Task The_support_user_holds_the_support_role_and_the_developer_does_not()
+    {
+        var supportToken = await aspire.RequestAccessTokenAsync("support");
+        var developerToken = await aspire.RequestAccessTokenAsync("developer");
+
+        using var support = Payload(supportToken);
+        using var developer = Payload(developerToken);
+
+        RealmRoles(support).ShouldContain("support");
+        RealmRoles(support).ShouldNotContain("manager");
+        RealmRoles(developer).ShouldNotContain("support");
     }
 
     [Fact]

@@ -7,4 +7,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application;
 public static class OrganisationPolicyNames
 {
     public const string Manage = "organisation.manage";
+
+    /// <summary>Erase a person's data on request (GDPR Art. 17, #115): the support staff's permission.</summary>
+    public const string ErasePersons = "organisation.erase-persons";
 }

@@ -655,6 +655,16 @@
     "message": "Your e-mail address has not been verified. Verify it, then try again."
   },
   {
+    "code": "organisation.erasure-not-found",
+    "status": 404,
+    "message": "This erasure does not exist."
+  },
+  {
+    "code": "organisation.erasure-refused-last-manager",
+    "status": 409,
+    "message": "The person is the last active manager of a pharmacy. Make another member manager there first."
+  },
+  {
     "code": "organisation.identity-incomplete",
     "status": 403,
     "message": "The account names no person, no name or no valid e-mail address."
