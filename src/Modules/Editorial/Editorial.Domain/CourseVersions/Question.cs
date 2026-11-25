@@ -78,7 +78,7 @@ public sealed class Question : Entity<QuestionId>
         MarkUnreviewed();
     }
 
-    internal void Approve(PersonId editor, ReviewerName name, Timestamp now)
+    internal void Approve(PersonId editor, ReviewerName? name, Timestamp now)
     {
         Review = ReviewState.Approved;
         ReviewedBy = editor;
@@ -118,14 +118,17 @@ public sealed class Question : Entity<QuestionId>
         return Option<CourseVersionWorkflowError>.None;
     }
 
-    /// <summary>The question in the next version: copied, whatever its origin here, with its provenance, its approval and its edit and approval history.</summary>
-    internal Question CopyFor(QuestionId id, ChapterId chapter, Func<AnswerOptionId> newOptionId)
+    /// <summary>
+    /// The question in the next version: copied, whatever its origin here, with its provenance, its approval and its edit
+    /// and approval history. The approver's name is left out when they are one of <paramref name="erasedReviewers"/> (#115).
+    /// </summary>
+    internal Question CopyFor(QuestionId id, ChapterId chapter, Func<AnswerOptionId> newOptionId, IReadOnlySet<PersonId> erasedReviewers)
     {
         var copy = new Question(id, Text, Type, chapter, Provenance, QuestionOrigin.Copied)
         {
             Review = Review,
             ReviewedBy = ReviewedBy,
-            ReviewedByName = ReviewedByName,
+            ReviewedByName = ReviewedBy is { } approver && erasedReviewers.Contains(approver) ? null : ReviewedByName,
             ReviewedAt = ReviewedAt,
             EditHistory = EditHistory,
             ApprovalHistory = ApprovalHistory,

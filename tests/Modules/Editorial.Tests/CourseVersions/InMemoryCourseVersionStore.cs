@@ -10,8 +10,9 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Tests.CourseVersion
 /// integration events published through it are kept in <see cref="Published"/> once committed, and so are the records of
 /// the returns added through it in <see cref="Returns"/>.
 /// </summary>
-internal sealed class InMemoryCourseVersionStore : ICourseVersionStore, IEditorialUnitOfWork
+internal sealed class InMemoryCourseVersionStore : ICourseVersionStore, IEditorialUnitOfWork, IErasedPersonStore
 {
+    private readonly List<ErasedPerson> addedErasedPersons = [];
     private readonly List<CourseVersion> added = [];
     private readonly List<IntegrationEvent> pending = [];
     private readonly List<CourseVersionReturn> pendingReturns = [];
@@ -19,6 +20,15 @@ internal sealed class InMemoryCourseVersionStore : ICourseVersionStore, IEditori
     public List<CourseVersion> Stored { get; } = [];
 
     public int Commits { get; private set; }
+
+    /// <summary>The committed tombstones of erased persons (#115); a test may seed one as if committed earlier.</summary>
+    public List<ErasedPerson> ErasedPersons { get; } = [];
+
+    /// <summary>The calls about a person, in order: "hold", "is-erased", and "forget" from the erasure's reviewer names.</summary>
+    public List<string> PersonCalls { get; } = [];
+
+    /// <summary>Each person held, in the order held.</summary>
+    public List<PersonId> Held { get; } = [];
 
     /// <summary>The commits made through <see cref="CommitOneOfSeveralAsync"/>, which <see cref="Commits"/> counts too.</summary>
     public int CommitsOfSeveral { get; private set; }
@@ -100,8 +110,25 @@ internal sealed class InMemoryCourseVersionStore : ICourseVersionStore, IEditori
         return Task.CompletedTask;
     }
 
+    public Task HoldAsync(PersonId person, CancellationToken cancellationToken)
+    {
+        PersonCalls.Add("hold");
+        Held.Add(person);
+        return Task.CompletedTask;
+    }
+
+    public Task<bool> IsErasedAsync(PersonId person, CancellationToken cancellationToken)
+    {
+        PersonCalls.Add("is-erased");
+        return Task.FromResult(ErasedPersons.Any(erased => erased.Person == person));
+    }
+
+    public void Add(ErasedPerson erased) => addedErasedPersons.Add(erased);
+
     public Task CommitAsync(CancellationToken cancellationToken)
     {
+        ErasedPersons.AddRange(addedErasedPersons);
+        addedErasedPersons.Clear();
         Stored.AddRange(added);
         added.Clear();
         Published.AddRange(pending);
