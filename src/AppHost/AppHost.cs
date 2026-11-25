@@ -30,7 +30,7 @@ var keycloak = builder.AddContainer("keycloak", KeycloakPublishing.Image, Keyclo
     .WithSingleReplica()
     .WithRealmAndStore(postgres, migrations, secrets);
 // The confidential client pharma-training-erasure, whose secret Keycloak's realm import reads and the services that delete
-// an erased person's account alone (Wiring/AccountDeletion.cs, docs/adr/0040).
+// an erased person's account alone (Wiring/AccountDeletion.cs, docs/adr/0041).
 var erasureClientSecret = keycloak.WithErasureClient(secrets);
 // Published, the browser reaches Keycloak through the auth proxy alone, at https://auth.<the environment's default domain>,
 // which forwards the realm pharma-training and the static resources (Wiring/AuthProxy.cs); in run mode, Keycloak's own
@@ -149,7 +149,7 @@ foreach (var (module, project) in builder.ServiceHosts())
     }
 
     // Only a service whose project says <ManagesAccounts>true</ManagesAccounts> gets Keycloak's admin API and the erasure
-    // client's secret, which administers every account; published, the others are not granted it (docs/adr/0040).
+    // client's secret, which administers every account; published, the others are not granted it (docs/adr/0041).
     if (ServiceHostProjects.ManagesAccounts(project))
     {
         service.ManagesAccounts(keycloak, erasureClientSecret, secrets);
