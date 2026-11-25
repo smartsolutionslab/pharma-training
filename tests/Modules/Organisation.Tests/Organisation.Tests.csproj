@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../../src/Modules/Organisation/Organisation.Api/Organisation.Api.csproj" />
+    <ProjectReference Include="../../../src/ServiceDefaults/ServiceDefaults.csproj" />
     <Compile Include="../../Fakes/*.cs" Link="Fakes/%(Filename)%(Extension)" />
     <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
   </ItemGroup>

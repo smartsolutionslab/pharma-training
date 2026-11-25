@@ -111,6 +111,21 @@ internal sealed class KeycloakAdmin(AspireFixture aspire)
         granted.StatusCode.ShouldBe(HttpStatusCode.NoContent, await granted.Content.ReadAsStringAsync(cancellationToken));
     }
 
+    /// <summary>Takes the realm role from the user again, as kcadm.sh's <c>remove-roles</c> does.</summary>
+    public async Task RevokeRealmRoleAsync(Guid user, string role, CancellationToken cancellationToken)
+    {
+        using var administrator = await AdministratorAsync(cancellationToken);
+        using var read = await administrator.GetAsync(new Uri($"/admin/realms/{Realm}/roles/{Uri.EscapeDataString(role)}", UriKind.Relative), cancellationToken);
+        var body = await read.Content.ReadAsStringAsync(cancellationToken);
+        read.StatusCode.ShouldBe(HttpStatusCode.OK, body);
+        using var request = new HttpRequestMessage(HttpMethod.Delete, new Uri($"/admin/realms/{Realm}/users/{user:D}/role-mappings/realm", UriKind.Relative))
+        {
+            Content = new StringContent($"[{body}]", System.Text.Encoding.UTF8, "application/json"),
+        };
+        using var revoked = await administrator.SendAsync(request, cancellationToken);
+        revoked.StatusCode.ShouldBe(HttpStatusCode.NoContent, await revoked.Content.ReadAsStringAsync(cancellationToken));
+    }
+
     /// <summary>Deletes a test's throwaway user; one that is gone already is fine.</summary>
     public async Task DeleteUserAsync(Guid user, CancellationToken cancellationToken)
     {

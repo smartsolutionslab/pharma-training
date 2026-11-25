@@ -118,6 +118,29 @@ public class PublishedRealmTests
         account.ContainsKey("credentials").ShouldBeFalse($"{ErasureServiceAccount} must have no credentials.");
     }
 
+    /// <summary>
+    /// #462: the erasure client's token carries <c>realm-management</c>'s <c>manage-users</c> alone. With the full scope
+    /// Keycloak puts every role its service account holds into the token; <c>fullScopeAllowed</c> off and a client scope
+    /// mapping of that one role leave the token nothing else to carry.
+    /// </summary>
+    [Theory]
+    [InlineData("src/AppHost/keycloak/realm.json")]
+    [InlineData("src/AppHost/realms/realm.json")]
+    public void Both_realms_scope_the_erasure_clients_token_to_manage_users_alone(string relativePath)
+    {
+        var realm = Read(relativePath);
+        var client = Client(realm, ErasureClient);
+
+        client.ShouldNotBeNull($"{relativePath} has no client {ErasureClient}.");
+        Value(client, "fullScopeAllowed").ShouldBe("false", $"{relativePath}'s {ErasureClient} must not have the full scope.");
+        var mappings = (realm["clientScopeMappings"]?["realm-management"] as JsonArray ?? [])
+            .OfType<JsonObject>()
+            .Where(mapping => (string?)mapping["client"] == ErasureClient)
+            .ToList();
+        var mapping = mappings.ShouldHaveSingleItem($"{relativePath} must have one clientScopeMappings entry of realm-management for {ErasureClient}.");
+        Value(mapping, "roles").ShouldBe("""["manage-users"]""", $"{relativePath} must map realm-management's manage-users alone into {ErasureClient}'s scope.");
+    }
+
     [Fact]
     public void Registration_stays_closed_and_email_must_be_verified()
     {
