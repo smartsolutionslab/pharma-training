@@ -80,13 +80,37 @@ public class CertificateTests
         Issue(RecurrenceInterval.Yearly).IsKeptByPharmaciesAt(at).ShouldBe(kept);
     }
 
+    /// <summary>
+    /// #53 (docs/adr/0034): the five years are counted on the UTC calendar, as <see cref="DateTimeOffset.AddYears"/>
+    /// counts them, which the export's query repeats in SQL. 29 February ends on 28 February five years on, at its UTC
+    /// time of day, so a certificate issued late on 28 February outlasts one issued early on 29 February. One issued at
+    /// 23:30 UTC on 29 February (00:30 on 1 March in Germany) is kept by its UTC date, until 23:30 UTC on 28 February.
+    /// </summary>
+    [Theory]
+    [InlineData("2028-02-29T01:00:00Z", "2033-02-28T00:59:59.9999999Z", true)]
+    [InlineData("2028-02-29T01:00:00Z", "2033-02-28T01:00:00Z", false)]
+    [InlineData("2028-02-28T13:00:00Z", "2033-02-28T12:00:00Z", true)] // issued earlier, kept longer
+    [InlineData("2028-02-29T01:00:00Z", "2033-02-28T12:00:00Z", false)]
+    [InlineData("2028-02-29T23:30:00Z", "2033-02-28T23:29:59.9999999Z", true)] // 1 March 00:30 in Germany
+    [InlineData("2028-02-29T23:30:00Z", "2033-02-28T23:30:00Z", false)]
+    [InlineData("2027-02-28T23:30:00Z", "2032-02-29T00:00:00Z", false)] // on 29 February, 28 February is past
+    [InlineData("2027-03-01T00:30:00Z", "2032-02-29T23:59:59Z", true)]
+    public void Five_years_around_29_February_are_counted_on_the_UTC_calendar(string issuedAt, string now, bool kept)
+    {
+        var certificate = Issue(RecurrenceInterval.Yearly, Timestamp.From(DateTimeOffset.Parse(issuedAt, System.Globalization.CultureInfo.InvariantCulture)));
+
+        certificate.IsKeptByPharmaciesAt(Timestamp.From(DateTimeOffset.Parse(now, System.Globalization.CultureInfo.InvariantCulture))).ShouldBe(kept);
+    }
+
     [Fact]
     public void A_verification_code_is_never_short()
     {
         Should.Throw<GuardException>(() => VerificationCode.From("abc"));
     }
 
-    private static Certificate Issue(RecurrenceInterval validity) =>
+    private static Certificate Issue(RecurrenceInterval validity) => Issue(validity, PassedAt);
+
+    private static Certificate Issue(RecurrenceInterval validity, Timestamp passedAt) =>
         Certificate.Issue(
             CertificateId.From(Guid.CreateVersion7()),
             AttemptId.From(Guid.CreateVersion7()),
@@ -99,5 +123,5 @@ public class CertificateTests
             validity,
             ScorePercent.From(90),
             VerificationCode.From("k7Qp2xV9mL4rT8wZ1nB6cY3h"),
-            PassedAt);
+            passedAt);
 }
