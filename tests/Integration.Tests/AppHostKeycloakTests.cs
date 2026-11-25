@@ -366,8 +366,9 @@ public partial class AppHostKeycloakTests
 
     /// <summary>
     /// C6 (K8, X2): the <c>auth</c> proxy forwards the realm <c>pharma-training</c> and the static resources to Keycloak's
-    /// <c>http</c> endpoint, and nothing else: not <c>/realms/master</c>, whose token endpoint accepts the administrator's
-    /// password, not <c>/admin</c>, not the management port.
+    /// <c>http</c> endpoint, and of the admin API only the realm's users and roles (#457, for the demo seeder's and X1's
+    /// manage-users clients), and nothing else: not <c>/realms/master</c>, whose token endpoint accepts the administrator's
+    /// password, not the rest of <c>/admin</c> (the console, other realms), not the management port.
     /// </summary>
     [Fact]
     public async Task Only_the_pharma_training_realm_and_resources_reach_keycloak()
@@ -383,9 +384,14 @@ public partial class AppHostKeycloakTests
             .Where(route => route.Match.Success)
             .ToDictionary(route => route.Match.Groups["route"].Value, route => $"{route.Variable.Value}", StringComparer.Ordinal);
         routes.Values.Order(StringComparer.Ordinal).ShouldBe(
-            ["/realms/pharma-training/{**catch-all}", "/resources/{**catch-all}"],
+            [
+                "/admin/realms/pharma-training/roles/{**catch-all}",
+                "/admin/realms/pharma-training/users/{**catch-all}",
+                "/realms/pharma-training/{**catch-all}",
+                "/resources/{**catch-all}",
+            ],
             ignoreOrder: false,
-            $"The auth proxy should forward exactly the realm pharma-training and the static resources. Its routes: {string.Join(", ", routes.Select(route => $"{route.Key} {route.Value}"))}");
+            $"The auth proxy should forward exactly the realm pharma-training, its admin users and roles, and the static resources. Its routes: {string.Join(", ", routes.Select(route => $"{route.Key} {route.Value}"))}");
 
         foreach (var route in routes.Keys)
         {
