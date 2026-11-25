@@ -29,6 +29,7 @@ public sealed partial class ErasureConfirmationMailRequestedV1Consumer(
     IInvitationSenderStore senders,
     IOrganisationUnitOfWork unitOfWork,
     IMailSender mails,
+    IAccounts accounts,
     TimeProvider time,
     ILogger<ErasureConfirmationMailRequestedV1Consumer> logger)
 {
@@ -38,6 +39,7 @@ public sealed partial class ErasureConfirmationMailRequestedV1Consumer(
     private readonly IInvitationSenderStore senders = senders;
     private readonly IOrganisationUnitOfWork unitOfWork = unitOfWork;
     private readonly IMailSender mails = mails;
+    private readonly IAccounts accounts = accounts;
     private readonly TimeProvider time = time;
     private readonly ILogger<ErasureConfirmationMailRequestedV1Consumer> logger = logger;
 

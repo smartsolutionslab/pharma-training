@@ -9,6 +9,9 @@ public sealed partial record ErasureModule : IValueObject<string>
 
     public static readonly ErasureModule Organisation = new("organisation");
 
+    /// <summary>The erased person's Keycloak account, which Organisation deletes.</summary>
+    public static readonly ErasureModule Keycloak = new("keycloak");
+
     private ErasureModule(string value) => Value = value;
 
     public string Value { get; }

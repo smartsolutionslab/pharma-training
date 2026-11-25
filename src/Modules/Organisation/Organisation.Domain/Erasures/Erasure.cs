@@ -51,6 +51,9 @@ public sealed class Erasure : AggregateRoot<ErasureId>
         ConfirmationHandledAt = now;
     }
 
+    /// <summary>Whether the module's part is recorded as done.</summary>
+    public bool HasCompleted(ErasureModule module) => throw new NotImplementedException();
+
     /// <summary>Records the module's part as done; a step that is recorded already stays as it was.</summary>
     public void CompleteStep(ErasureModule module, Timestamp now)
     {

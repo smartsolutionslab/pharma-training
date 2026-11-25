@@ -15,6 +15,11 @@ public class PublishedRealmTests
 {
     private const string WebClient = "pharma-training-web";
 
+    // The confidential client Organisation deletes an erased person's account with (#115 slice 6), and its service account.
+    private const string ErasureClient = "pharma-training-erasure";
+
+    private const string ErasureServiceAccount = "service-account-pharma-training-erasure";
+
     // Keycloak's own command-line client, which every realm gets on import unless the realm declares it: public, with the
     // password grant on (the security review of #114, PR-C).
     private const string AdminCli = "admin-cli";
@@ -35,15 +40,77 @@ public class PublishedRealmTests
 
     private static readonly string[] MailDifferences = ["host", "from", "user", "password", "port", "starttls", "ssl", "auth"];
 
+    private static readonly string[] ErasureClientSettings =
+    [
+        "enabled", "publicClient", "clientAuthenticatorType", "secret", "serviceAccountsEnabled", "standardFlowEnabled",
+        "implicitFlowEnabled", "directAccessGrantsEnabled",
+    ];
+
     private static readonly string[] WebClientDifferences = ["redirectUris", "webOrigins", "directAccessGrantsEnabled"];
 
+    /// <summary>
+    /// #115 slice 6: the local users and their passwords are for development alone, and a deployment's first editor and
+    /// manager are created with kcadm.sh. The one user the published realm holds is the erasure client's service account,
+    /// which an import can grant its client role only through a user entry; it has no credentials.
+    /// </summary>
     [Fact]
-    public void The_published_realm_has_no_users()
+    public void The_published_realm_has_no_user_but_the_erasure_clients_service_account()
     {
-        var realm = Published();
+        var users = Published()["users"] as JsonArray ?? [];
 
-        realm.AsObject().ContainsKey("users").ShouldBeFalse(
-            $"src/AppHost/keycloak/realm.json holds users: {realm["users"]?.ToJsonString()}. The local users and their passwords are for development alone; a deployment's first editor and manager are created with kcadm.sh.");
+        var user = users.OfType<JsonObject>().ShouldHaveSingleItem(
+            $"src/AppHost/keycloak/realm.json should hold exactly one user, {ErasureServiceAccount}; it holds: {users.ToJsonString()}.");
+        Value(user, "username").ShouldBe(ErasureServiceAccount);
+        Value(user, "serviceAccountClientId").ShouldBe(ErasureClient);
+        user.ContainsKey("credentials").ShouldBeFalse($"{ErasureServiceAccount} must have no credentials in the published realm.");
+    }
+
+    /// <summary>
+    /// #115 slice 6 (decision D): Organisation deletes an erased person's account as the confidential client
+    /// <c>pharma-training-erasure</c>, declared in both realms with its secret from Keycloak's environment, which the
+    /// AppHost sets from the secret parameter <c>keycloak-erasure-client-secret</c>. It signs no one in.
+    /// </summary>
+    [Theory]
+    [InlineData("src/AppHost/keycloak/realm.json")]
+    [InlineData("src/AppHost/realms/realm.json")]
+    public void Both_realms_declare_the_erasure_client_confidential_with_its_secret_from_the_environment(string relativePath)
+    {
+        var client = Client(Read(relativePath), ErasureClient);
+
+        client.ShouldNotBeNull($"{relativePath} has no client {ErasureClient}.");
+        var actual = ErasureClientSettings.ToDictionary(key => key, key => Value(client, key), StringComparer.Ordinal);
+        actual.ShouldBe(
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["enabled"] = "true",
+                ["publicClient"] = "false",
+                ["clientAuthenticatorType"] = "client-secret",
+                ["secret"] = "${KEYCLOAK_ERASURE_CLIENT_SECRET}",
+                ["serviceAccountsEnabled"] = "true",
+                ["standardFlowEnabled"] = "false",
+                ["implicitFlowEnabled"] = "false",
+                ["directAccessGrantsEnabled"] = "false",
+            },
+            $"{relativePath}'s {ErasureClient} must be a confidential client with the client credentials grant alone, its secret from Keycloak's environment, never a literal.");
+    }
+
+    /// <summary>#115 slice 6: the erasure client's service account may manage users, and nothing else.</summary>
+    [Theory]
+    [InlineData("src/AppHost/keycloak/realm.json")]
+    [InlineData("src/AppHost/realms/realm.json")]
+    public void Both_realms_give_the_erasure_clients_service_account_manage_users_alone(string relativePath)
+    {
+        var users = Read(relativePath)["users"] as JsonArray ?? [];
+
+        var serviceAccounts = users.OfType<JsonObject>().Where(user => user.ContainsKey("serviceAccountClientId")).ToList();
+
+        var account = serviceAccounts.ShouldHaveSingleItem($"{relativePath} should hold exactly one service account, {ErasureServiceAccount}.");
+        Value(account, "username").ShouldBe(ErasureServiceAccount);
+        Value(account, "enabled").ShouldBe("true");
+        Value(account, "serviceAccountClientId").ShouldBe(ErasureClient);
+        Value(account, "clientRoles").ShouldBe("""{"realm-management":["manage-users"]}""", $"{ErasureServiceAccount} must hold realm-management's manage-users alone.");
+        account.ContainsKey("realmRoles").ShouldBeFalse($"{ErasureServiceAccount} must hold no realm role.");
+        account.ContainsKey("credentials").ShouldBeFalse($"{ErasureServiceAccount} must have no credentials.");
     }
 
     [Fact]

@@ -3,7 +3,9 @@ using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Extensions.Time.Testing;
 using NSubstitute.ExceptionExtensions;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Mail;
+using SmartSolutionsLab.PharmaTraining.Contracts;
 using SmartSolutionsLab.PharmaTraining.Contracts.Organisation;
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Consumers;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Erasures;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.InvitationRecipients;
@@ -18,6 +20,8 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Tests.Erasures;
 /// The confirmation mail of an erasure (#115) goes to each of the person's addresses once, before Organisation forgets
 /// them; then their names and addresses, invitation recipients and sender are gone, and the erasure is announced with
 /// Organisation's step done, in one commit. A redelivery mails nothing again, and a failed send forgets nothing.
+/// Slice 6: the same commit requests the deletion of the person's Keycloak account, and a person Organisation holds no
+/// address for is confirmed at the account's address where Keycloak verified it (Q5).
 /// </summary>
 public class ErasureConfirmationMailRequestedV1ConsumerTests
 {
@@ -27,6 +31,7 @@ public class ErasureConfirmationMailRequestedV1ConsumerTests
 
     private readonly InMemoryPharmacyStore store = new();
     private readonly IMailSender mails = Substitute.For<IMailSender>();
+    private readonly IAccounts accounts = Substitute.For<IAccounts>();
     private readonly FakeTimeProvider time = new(Start);
     private readonly FakeLogger<ErasureConfirmationMailRequestedV1Consumer> logger = new();
     private readonly List<OutgoingMail> sent = [];
@@ -40,6 +45,7 @@ public class ErasureConfirmationMailRequestedV1ConsumerTests
             sent.Add(mail);
             addressesAtSend.Add([.. store.Stored.SelectMany(pharmacy => pharmacy.Memberships).Where(m => m.Person == person).Select(m => (EmailAddress?)m.Email)]);
         }), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
+        accounts.FindAsync(Arg.Any<PersonId>(), Arg.Any<CancellationToken>()).Returns(Option<Account>.None);
     }
 
     [Fact]
@@ -73,7 +79,7 @@ public class ErasureConfirmationMailRequestedV1ConsumerTests
 
         await Consumer().HandleAsync(new ErasureConfirmationMailRequestedV1(setup.Erasure.Id.Value, person.Value), TestContext.Current.CancellationToken);
 
-        store.Published.ShouldHaveSingleItem().ShouldBe(new PersonErasureRequestedV1(setup.Erasure.Id.Value, person.Value));
+        store.Published.ShouldBe(Announced(setup.Erasure), ignoreOrder: true);
         setup.Erasure.Confirmation.ShouldBe(ErasureConfirmation.Mailed);
         setup.Erasure.ConfirmationHandledAt.ShouldBe(Timestamp.From(Start.AddMinutes(2)));
         var step = setup.Erasure.Steps.ShouldHaveSingleItem();
@@ -93,6 +99,7 @@ public class ErasureConfirmationMailRequestedV1ConsumerTests
 
         sent.Count.ShouldBe(2);
         store.Published.OfType<PersonErasureRequestedV1>().ShouldHaveSingleItem();
+        store.Published.OfType<AccountDeletionRequestedV1>().ShouldHaveSingleItem();
         store.Commits.ShouldBe(1);
         setup.Erasure.ConfirmationHandledAt.ShouldBe(Timestamp.From(Start));
         setup.Erasure.Steps.ShouldHaveSingleItem().CompletedAt.ShouldBe(Timestamp.From(Start));
@@ -110,7 +117,7 @@ public class ErasureConfirmationMailRequestedV1ConsumerTests
         erasure.Confirmation.ShouldBe(ErasureConfirmation.NoAddress);
         erasure.ConfirmationHandledAt.ShouldBe(Timestamp.From(Start));
         erasure.Steps.ShouldHaveSingleItem().Module.ShouldBe(ErasureModule.Organisation);
-        store.Published.ShouldHaveSingleItem().ShouldBe(new PersonErasureRequestedV1(erasure.Id.Value, person.Value));
+        store.Published.ShouldBe(Announced(erasure), ignoreOrder: true);
         store.Commits.ShouldBe(1);
     }
 
@@ -155,7 +162,7 @@ public class ErasureConfirmationMailRequestedV1ConsumerTests
         store.StoredSenders.ShouldBeEmpty();
         setup.Erasure.Confirmation.ShouldBe(ErasureConfirmation.Mailed, "one address was mailed");
         setup.Erasure.Steps.ShouldHaveSingleItem().Module.ShouldBe(ErasureModule.Organisation);
-        store.Published.ShouldHaveSingleItem().ShouldBe(new PersonErasureRequestedV1(setup.Erasure.Id.Value, person.Value));
+        store.Published.ShouldBe(Announced(setup.Erasure), ignoreOrder: true);
         store.Commits.ShouldBe(1);
     }
 
@@ -171,7 +178,7 @@ public class ErasureConfirmationMailRequestedV1ConsumerTests
         setup.Home.Membership(setup.HomeMembership).Email.ShouldBeNull();
         setup.Erasure.Confirmation.ShouldBe(ErasureConfirmation.NoAddress, "no address could be mailed");
         setup.Erasure.Steps.ShouldHaveSingleItem().Module.ShouldBe(ErasureModule.Organisation);
-        store.Published.ShouldHaveSingleItem().ShouldBe(new PersonErasureRequestedV1(setup.Erasure.Id.Value, person.Value));
+        store.Published.ShouldBe(Announced(setup.Erasure), ignoreOrder: true);
         store.Commits.ShouldBe(1);
     }
 
@@ -207,6 +214,108 @@ public class ErasureConfirmationMailRequestedV1ConsumerTests
         store.StoredSenders.ShouldBe([unrelatedSender]);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task The_account_deletion_is_requested_in_the_same_commit(bool organisationHoldsAnAddress)
+    {
+        var erasure = organisationHoldsAnAddress ? ReleasedPersonWithTwoAddresses().Erasure : StoredErasure();
+
+        await Consumer().HandleAsync(new ErasureConfirmationMailRequestedV1(erasure.Id.Value, person.Value), TestContext.Current.CancellationToken);
+
+        store.Published.ShouldBe(Announced(erasure), ignoreOrder: true);
+        store.Commits.ShouldBe(1, "the account's deletion is requested in the commit that announces the erasure");
+    }
+
+    [Fact]
+    public async Task Without_an_address_in_organisation_the_accounts_verified_address_is_mailed()
+    {
+        var erasure = StoredErasure();
+        var address = EmailAddress.From($"account-{person.Value:N}@example.org");
+        accounts.FindAsync(person, Arg.Any<CancellationToken>()).Returns(Option<Account>.Some(new Account(Option<EmailAddress>.Some(address), IsServiceAccount: false)));
+
+        await Consumer().HandleAsync(new ErasureConfirmationMailRequestedV1(erasure.Id.Value, person.Value), TestContext.Current.CancellationToken);
+
+        var mail = sent.ShouldHaveSingleItem();
+        mail.To.ShouldBe(address.Value);
+        mail.Subject.ShouldBe(ErasureConfirmationMails.Subject);
+        erasure.Confirmation.ShouldBe(ErasureConfirmation.Mailed, "the account's verified address took the confirmation");
+        erasure.Steps.ShouldHaveSingleItem().Module.ShouldBe(ErasureModule.Organisation);
+        store.Published.ShouldBe(Announced(erasure), ignoreOrder: true);
+        store.Commits.ShouldBe(1);
+    }
+
+    /// <summary>Keycloak has no account, or an account whose address it did not verify (read as none, docs/adr/0014): nothing is mailed.</summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task An_unverified_missing_or_absent_account_address_is_not_mailed(bool accountExists)
+    {
+        var erasure = StoredErasure();
+        if (accountExists)
+        {
+            accounts.FindAsync(person, Arg.Any<CancellationToken>()).Returns(Option<Account>.Some(new Account(Option<EmailAddress>.None, IsServiceAccount: false)));
+        }
+
+        await Consumer().HandleAsync(new ErasureConfirmationMailRequestedV1(erasure.Id.Value, person.Value), TestContext.Current.CancellationToken);
+
+        await accounts.Received(1).FindAsync(person, Arg.Any<CancellationToken>());
+        sent.ShouldBeEmpty();
+        erasure.Confirmation.ShouldBe(ErasureConfirmation.NoAddress);
+        erasure.Steps.ShouldHaveSingleItem().Module.ShouldBe(ErasureModule.Organisation);
+        store.Published.ShouldBe(Announced(erasure), ignoreOrder: true);
+        store.Commits.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task With_an_address_in_organisation_keycloak_is_not_asked()
+    {
+        var setup = ReleasedPersonWithTwoAddresses();
+
+        await Consumer().HandleAsync(new ErasureConfirmationMailRequestedV1(setup.Erasure.Id.Value, person.Value), TestContext.Current.CancellationToken);
+
+        await accounts.DidNotReceiveWithAnyArgs().FindAsync(default!, TestContext.Current.CancellationToken);
+        sent.Select(mail => mail.To).ShouldBe([setup.First.Value, setup.Second.Value], ignoreOrder: true);
+        store.Published.ShouldBe(Announced(setup.Erasure), ignoreOrder: true);
+    }
+
+    [Fact]
+    public async Task A_keycloak_failure_mails_and_forgets_nothing_and_rethrows()
+    {
+        var erasure = StoredErasure();
+        store.StoredSenders.Add(InvitationSender.FirstMailed(person, TestPharmacies.RegisteredAt));
+        var unavailable = new AccountsUnavailableException("Keycloak answered the read with 503.");
+        accounts.FindAsync(person, Arg.Any<CancellationToken>()).ThrowsAsync(unavailable);
+
+        var thrown = await Should.ThrowAsync<AccountsUnavailableException>(
+            () => Consumer().HandleAsync(new ErasureConfirmationMailRequestedV1(erasure.Id.Value, person.Value), TestContext.Current.CancellationToken));
+
+        thrown.ShouldBeSameAs(unavailable);
+        sent.ShouldBeEmpty();
+        store.StoredSenders.Select(sender => sender.Id).ShouldContain(person, "the person's sender is forgotten only after the confirmation is handled");
+        erasure.Confirmation.ShouldBe(ErasureConfirmation.Pending);
+        erasure.Steps.ShouldBeEmpty();
+        store.Published.ShouldBeEmpty();
+        store.Commits.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task An_account_address_refused_for_good_is_given_up()
+    {
+        var erasure = StoredErasure();
+        var address = EmailAddress.From($"account-{person.Value:N}@example.org");
+        accounts.FindAsync(person, Arg.Any<CancellationToken>()).Returns(Option<Account>.Some(new Account(Option<EmailAddress>.Some(address), IsServiceAccount: false)));
+        mails.SendAsync(Arg.Any<OutgoingMail>(), Arg.Any<CancellationToken>()).ThrowsAsync(RecipientRefused());
+
+        await Consumer().HandleAsync(new ErasureConfirmationMailRequestedV1(erasure.Id.Value, person.Value), TestContext.Current.CancellationToken);
+
+        await mails.Received(1).SendAsync(Arg.Is<OutgoingMail>(mail => mail.To == address.Value), Arg.Any<CancellationToken>());
+        erasure.Confirmation.ShouldBe(ErasureConfirmation.NoAddress, "the account's address refused the mail for good");
+        erasure.Steps.ShouldHaveSingleItem().Module.ShouldBe(ErasureModule.Organisation);
+        store.Published.ShouldBe(Announced(erasure), ignoreOrder: true);
+        store.Commits.ShouldBe(1);
+    }
+
     [Fact]
     public async Task An_unknown_erasure_is_dropped()
     {
@@ -225,7 +334,11 @@ public class ErasureConfirmationMailRequestedV1ConsumerTests
     private static MailNotSentException RecipientRefused() =>
         new("The SMTP server refused the mail at RecipientNotAccepted with 550 MailboxUnavailable.", mayHaveBeenDelivered: false, recipientRefused: true);
 
-    private ErasureConfirmationMailRequestedV1Consumer Consumer() => new(store, store, store, store, store, mails, time, logger);
+    private ErasureConfirmationMailRequestedV1Consumer Consumer() => new(store, store, store, store, store, mails, accounts, time, logger);
+
+    /// <summary>What the consumer publishes once it forgot the person: the erasure to every service, and the account's deletion to itself.</summary>
+    private List<IntegrationEvent> Announced(Erasure erasure) =>
+        [new PersonErasureRequestedV1(erasure.Id.Value, person.Value), new AccountDeletionRequestedV1(erasure.Id.Value, person.Value)];
 
     private Erasure StoredErasure()
     {
