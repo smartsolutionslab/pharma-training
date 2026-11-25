@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Extensions.Time.Testing;
 using NSubstitute.ExceptionExtensions;
@@ -279,24 +280,31 @@ public class ErasureConfirmationMailRequestedV1ConsumerTests
         store.Published.ShouldBe(Announced(setup.Erasure), ignoreOrder: true);
     }
 
+    /// <summary>
+    /// A failed read of the account (Q5) reads as no account address: the erasure must not stop for an address it may
+    /// not need. Nothing is mailed, the person is forgotten and both events are committed; the account's deletion then
+    /// retries Keycloak on its own. The warning names the erasure alone.
+    /// </summary>
     [Fact]
-    public async Task A_keycloak_failure_mails_and_forgets_nothing_and_rethrows()
+    public async Task A_failed_account_read_mails_nothing_and_the_erasure_goes_on()
     {
         var erasure = StoredErasure();
         store.StoredSenders.Add(InvitationSender.FirstMailed(person, TestPharmacies.RegisteredAt));
-        var unavailable = new AccountsUnavailableException("Keycloak answered the read with 503.");
-        accounts.FindAsync(person, Arg.Any<CancellationToken>()).ThrowsAsync(unavailable);
+        accounts.FindAsync(person, Arg.Any<CancellationToken>()).ThrowsAsync(new AccountsUnavailableException("Keycloak answered the read with 503."));
 
-        var thrown = await Should.ThrowAsync<AccountsUnavailableException>(
-            () => Consumer().HandleAsync(new ErasureConfirmationMailRequestedV1(erasure.Id.Value, person.Value), TestContext.Current.CancellationToken));
+        await Consumer().HandleAsync(new ErasureConfirmationMailRequestedV1(erasure.Id.Value, person.Value), TestContext.Current.CancellationToken);
 
-        thrown.ShouldBeSameAs(unavailable);
         sent.ShouldBeEmpty();
-        store.StoredSenders.Select(sender => sender.Id).ShouldContain(person, "the person's sender is forgotten only after the confirmation is handled");
-        erasure.Confirmation.ShouldBe(ErasureConfirmation.Pending);
-        erasure.Steps.ShouldBeEmpty();
-        store.Published.ShouldBeEmpty();
-        store.Commits.ShouldBe(0);
+        store.StoredSenders.ShouldBeEmpty();
+        erasure.Confirmation.ShouldBe(ErasureConfirmation.NoAddress);
+        erasure.Steps.ShouldHaveSingleItem().Module.ShouldBe(ErasureModule.Organisation);
+        store.Published.ShouldBe(Announced(erasure), ignoreOrder: true);
+        store.Commits.ShouldBe(1);
+        var warning = logger.Collector.GetSnapshot().ShouldHaveSingleItem();
+        warning.Level.ShouldBe(LogLevel.Warning);
+        warning.Message.ShouldContain(erasure.Id.Value.ToString());
+        warning.Message.ShouldNotContain(person.Value.ToString());
+        warning.Message.ShouldNotContain("@");
     }
 
     [Fact]
