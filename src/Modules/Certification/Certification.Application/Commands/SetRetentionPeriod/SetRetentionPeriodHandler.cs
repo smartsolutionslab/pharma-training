@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Memberships;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Retention;
@@ -9,9 +10,13 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Com
 /// the caller is a person (403); the pharmacy id is not empty and the caller has an active membership in it (404); every
 /// such membership's current role grants <see cref="Capability.ManageRetention"/> (403, docs/adr/0003); the requested
 /// years are a period of 2 to 30 (400). So only a caller who may set the period learns what it may be. The period
-/// replaces the one the pharmacy held in one upsert; the last set wins.
+/// replaces the one the pharmacy held in one upsert; the last set wins. A period that differs from the one stored is
+/// logged with the pharmacy, both periods and the caller's person id (#422); a refused or unchanged one is not.
 /// </summary>
-public sealed class SetRetentionPeriodHandler(IMembershipStore memberships, IPharmacyRetentionStore retention)
+public sealed partial class SetRetentionPeriodHandler(
+    IMembershipStore memberships,
+    IPharmacyRetentionStore retention,
+    ILogger<SetRetentionPeriodHandler> logger)
     : ICommandHandler<SetRetentionPeriod, Result<Unit, ApiError>>
 {
     public async Task<Result<Unit, ApiError>> HandleAsync(SetRetentionPeriod command, CancellationToken cancellationToken)
@@ -42,7 +47,20 @@ public sealed class SetRetentionPeriodHandler(IMembershipStore memberships, IPha
             return Failure(RetentionFailures.InvalidPeriod());
         }
 
+        // Read for the log only; the upsert below still replaces whatever is stored, so the last set wins.
+        var previous = (await retention.FindAsync(pharmacy, cancellationToken))
+            .Match<int?>(kept => kept.Period.Value, () => null);
+
         await retention.SetAsync(PharmacyRetention.Chosen(pharmacy, period), cancellationToken);
+
+        if (previous != period.Value)
+        {
+            PeriodSet(logger, pharmacy.Value, previous, period.Value, caller.Value);
+        }
+
         return Success(Unit.Value);
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Pharmacy {Pharmacy} keeps certificates for {Years} years, {PreviousYears} before; set by person {Person}.")]
+    private static partial void PeriodSet(ILogger logger, Guid pharmacy, int? previousYears, int years, Guid person);
 }
