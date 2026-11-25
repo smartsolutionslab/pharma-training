@@ -226,7 +226,7 @@ The services and Keycloak are built from images whose bases come from `mcr.micro
    ./kcadm.sh get clients/$(./kcadm.sh get clients -r pharma-training -q clientId=x1-runner --fields id --format csv --noquotes)/client-secret -r pharma-training
    ```
 
-   Put the secret the last command shows into staging's `X1_RUNNER_SECRET` (`gh secret set X1_RUNNER_SECRET --env staging`), then `clear` the terminal and remove `~/.keycloak/kcadm.config`. Set `X1_KEYCLOAK_URL` and `X1_MAILPIT_URL` too (step 5 of the one-time setup). To rotate the secret, `./kcadm.sh create clients/<id>/client-secret -r pharma-training` and set it again.
+   Put the secret the last command shows into staging's `X1_RUNNER_SECRET` (`gh secret set X1_RUNNER_SECRET --env staging`), then `clear` the terminal and remove `~/.keycloak/kcadm.config`. `x1-runner` may set any staging user's password, so its secret is only as safe as the `staging` environment: keep that environment's deployment branches and tags limited to `main` and `deploy/*` (step 4, checked by `check-deploy-environments.sh`), so a workflow changed on another branch never receives it. `x1-staging.yml` keeps no trace and uploads nothing, since a trace would hold the secret. Set `X1_KEYCLOAK_URL` and `X1_MAILPIT_URL` too (step 5 of the one-time setup). To rotate the secret, `./kcadm.sh create clients/<id>/client-secret -r pharma-training` and set it again.
 
 ### What to check after the first deploy
 

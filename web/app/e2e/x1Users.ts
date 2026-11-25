@@ -1,12 +1,13 @@
 import { randomBytes } from 'node:crypto';
-import { type APIRequestContext, expect } from '@playwright/test';
+import { type APIRequestContext, expect, request as requests } from '@playwright/test';
 import { unique } from './invitations';
 
 // The users the MVP 1 flow (X1, #55) signs in as. In run mode they are the realm's local users, whose password is their
 // name. Against staging (#130) there are no local users: the test creates its own at set-up through Keycloak's admin API,
 // as the staging-only confidential client x1-runner (realm-management manage-users alone, created by the runbook, never
 // in a realm file), and deletes them afterwards, however the run ends. E2E_X1_CLIENT_SECRET, x1-runner's secret, says
-// which: set, the test creates them.
+// which: set, the test creates them. Its calls to the admin API go through a request context of their own, which no
+// trace records: the page's would put x1-runner's secret and the admin tokens into a trace of the test.
 
 const keycloak = process.env.E2E_KEYCLOAK_URL ?? 'http://localhost:8080';
 const clientId = 'x1-runner';
@@ -41,7 +42,7 @@ const local = (username: string, firstName: string, lastName: string): X1User =>
 });
 
 /** The cast for this run: the realm's local users, or, with x1-runner's secret, three users of the run's own. */
-export async function x1Cast(request: APIRequestContext): Promise<X1Cast> {
+export async function x1Cast(): Promise<X1Cast> {
   if (clientSecret === '') {
     return {
       owner: local('owner', 'Olaf', 'Owner'),
@@ -52,22 +53,27 @@ export async function x1Cast(request: APIRequestContext): Promise<X1Cast> {
     };
   }
 
+  const request = await requests.newContext();
   const run = unique('x1').toLowerCase();
   const created: string[] = [];
   // Every user made is deleted, even when deleting another fails; a fresh token, since the flow outlasts one.
   const dispose = async () => {
-    if (created.length === 0) {
-      return;
-    }
-    const token = await adminToken(request);
-    const failed: string[] = [];
-    for (const id of created) {
-      const deleted = await request.delete(`${admin}/users/${id}`, { headers: { Authorization: token } });
-      if (![204, 404].includes(deleted.status())) {
-        failed.push(`${id} (${deleted.status()})`);
+    try {
+      if (created.length === 0) {
+        return;
       }
+      const token = await adminToken(request);
+      const failed: string[] = [];
+      for (const id of created) {
+        const deleted = await request.delete(`${admin}/users/${id}`, { headers: { Authorization: token } });
+        if (![204, 404].includes(deleted.status())) {
+          failed.push(`${id} (${deleted.status()})`);
+        }
+      }
+      expect(failed, `these users were not deleted: ${failed.join(', ')}`).toEqual([]);
+    } finally {
+      await request.dispose();
     }
-    expect(failed, `these users were not deleted: ${failed.join(', ')}`).toEqual([]);
   };
   try {
     const token = await adminToken(request);

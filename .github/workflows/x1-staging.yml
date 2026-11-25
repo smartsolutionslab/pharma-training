@@ -6,7 +6,8 @@ name: x1-staging
 #
 # The test creates its own users at set-up through Keycloak's admin API, as the staging-only confidential client x1-runner
 # (realm-management manage-users alone; README, "One-time setup"), and deletes them afterwards, however the run ends. It
-# reads the invitation mail from staging's Mailpit, behind its basic auth. Its pharmacy and course stay on staging, named
+# reads the invitation mail from staging's Mailpit, behind its basic auth. It keeps no trace and uploads nothing, since a
+# trace would hold those secrets (StagingEndToEndRunKeepsNoTraces). Its pharmacy and course stay on staging, named
 # for the run (README, "What to check after the first deploy").
 on:
   workflow_dispatch:
@@ -59,11 +60,7 @@ jobs:
             fi
           done
           test "$missing" -eq 0
-          pnpm exec playwright test e2e/mvp1-register-to-certificate.spec.ts --trace retain-on-failure
-      - if: failure()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: x1-staging-results
-          path: web/app/test-results/
-          retention-days: 7
-          if-no-files-found: ignore
+          # No trace, and nothing uploaded: a trace records x1-runner's secret, the admin tokens, Mailpit's basic auth
+          # and the passwords typed into Keycloak, and GitHub masks secrets in this log but not in an artifact anyone
+          # who can read the repository downloads (StagingEndToEndRunKeepsNoTraces). A failure is read from this log.
+          pnpm exec playwright test e2e/mvp1-register-to-certificate.spec.ts --trace off

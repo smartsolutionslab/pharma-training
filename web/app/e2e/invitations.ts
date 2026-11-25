@@ -1,4 +1,4 @@
-import { type APIRequestContext, expect, type Page } from '@playwright/test';
+import { type APIRequestContext, expect, type Page, request as requests } from '@playwright/test';
 
 // The running application's identity provider and mail catcher, at the ports the AppHost gives them in run mode; on
 // staging their public addresses, and Mailpit's inbox behind its basic auth, user:password (#130).
@@ -50,9 +50,21 @@ type Summary = { ID: string; Subject: string };
 
 /**
  * The text of the one mail to the address whose subject contains the marker, from Mailpit's API; waits for it, since
- * the application sends mail from a consumer, after the request that asked for it has been answered.
+ * the application sends mail from a consumer, after the request that asked for it has been answered. Behind basic auth
+ * (staging) the calls go through a request context of their own, which no trace records, so the auth stays out of one.
  */
-export async function mailText(request: APIRequestContext, to: string, marker: string) {
+export async function mailText(pageRequest: APIRequestContext, to: string, marker: string) {
+  const request = mailpitAuth === '' ? pageRequest : await requests.newContext();
+  try {
+    return await readMail(request, to, marker);
+  } finally {
+    if (request !== pageRequest) {
+      await request.dispose();
+    }
+  }
+}
+
+async function readMail(request: APIRequestContext, to: string, marker: string) {
   let id: string | undefined;
   await expect
     .poll(

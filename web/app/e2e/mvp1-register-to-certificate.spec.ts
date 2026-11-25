@@ -162,7 +162,7 @@ test('MVP 1: an owner registers and invites, an editor publishes, the employee p
   baseURL,
 }) => {
   test.setTimeout(360_000);
-  const cast = await x1Cast(page.request);
+  const cast = await x1Cast();
   const employee = fullName(cast.employee);
   const employeeAddress = cast.employee.email;
   const pharmacy = pharmacyName('MVP 1');
