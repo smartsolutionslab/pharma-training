@@ -22,7 +22,10 @@ public sealed partial class MembershipStartedV1Consumer(IMemberStore members, IE
         Ensure.That((int)message.JobFunction, nameof(message.JobFunction)).Satisfies(value => Enum.IsDefined((JobFunctionV1)value), "is no job function Compliance knows.");
         Ensure.That((int)message.Role, nameof(message.Role)).Satisfies(value => Enum.IsDefined((MembershipRoleV1)value), "is no role Compliance knows.");
 
-        // A person erased (#115) stays erased: a redelivery or a replayed dead letter must not write the name back.
+        // A person erased (#115) stays erased: a redelivery or a replayed dead letter must not write the name back. The
+        // person is held first, so an erasure running at the same time cannot commit its tombstone between this check
+        // and the write below.
+        await erased.HoldAsync(PersonId.From(message.PersonId), cancellationToken);
         if (await erased.IsErasedAsync(PersonId.From(message.PersonId), cancellationToken))
         {
             ErasedPersonDropped(logger, message.MembershipId);

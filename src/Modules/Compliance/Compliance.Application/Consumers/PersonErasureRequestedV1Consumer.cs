@@ -12,8 +12,11 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application.Consum
 /// the person (an unknown one too, so a membership that arrives late cannot write the name), forgets the name on every
 /// member and change of theirs, cancels their open and in-progress assignments in every pharmacy as
 /// <see cref="MembershipEndedV1Consumer"/> does (by the person, for <see cref="ChangeReason.MembershipEnded"/>, at
-/// Compliance's clock), purges the stored membership messages that hold their id, and commits it all with the
-/// announcement once.
+/// Compliance's clock), and commits that with the announcement in one commit. Before the commit it purges the stored
+/// membership messages that hold their id; the purge runs on a connection of its own and commits by itself, so a
+/// redelivery purges again. The person is held from the first read to the commit
+/// (<see cref="IErasedPersonStore.HoldAsync"/>), as the membership consumers hold them, so neither can slip a name or a
+/// tombstone between the other's read and commit.
 /// <para>
 /// It is idempotent by state, not by <c>Metadata.EventIdentifier</c>: a redelivery finds the tombstone, the names gone
 /// and the assignments cancelled, changes nothing, and announces the completion again, which Organisation records once.
@@ -48,6 +51,9 @@ public sealed class PersonErasureRequestedV1Consumer(
         var person = PersonId.From(message.PersonId);
         var now = Timestamp.From(time.GetUtcNow());
 
+        // Held before anything of the person is read, so a membership event running at the same time either commits its
+        // name before these reads (and it is erased here) or waits and then finds the tombstone.
+        await erased.HoldAsync(person, cancellationToken);
         if (!await erased.IsErasedAsync(person, cancellationToken))
         {
             erased.Add(ErasedPerson.Of(person, now));
