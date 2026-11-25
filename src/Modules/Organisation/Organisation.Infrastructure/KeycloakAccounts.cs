@@ -11,8 +11,9 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Infrastructure;
 /// <summary>
 /// The people's accounts over Keycloak's admin API, as the client <c>pharma-training-erasure</c>: it mints a token with
 /// the client credentials grant for each call, then reads or deletes <c>/admin/realms/{realm}/users/{id}</c>; a read also
-/// reads the user's effective realm roles (<c>/role-mappings/realm/composite</c>) with the same token, so a staff account
-/// is marked (<see cref="StaffRoles"/>). A client's service account is marked by <c>serviceAccountClientId</c> or by the
+/// reads the user's effective realm roles (<c>/role-mappings/realm/composite</c>) and their effective roles of the
+/// <c>realm-management</c> client (<c>/role-mappings/clients/{id}/composite</c>) with the same token, so a staff account
+/// (<see cref="StaffRoles"/>) or a delegated realm administrator is marked. A client's service account is marked by <c>serviceAccountClientId</c> or by the
 /// username Keycloak gives every one, <c>service-account-{clientId}</c>, since the admin API may leave the field out.
 /// Erasures are rare, so no token is kept. The token request is a POST and gets one attempt (owner decision A on #115): a transient
 /// failure throws, and Wolverine retries the consumer, which is idempotent; the read and the delete are retried by the
@@ -22,6 +23,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Infrastructure;
 public sealed class KeycloakAccounts(HttpClient http, IOptions<KeycloakAccountsSettings> settings) : IAccounts
 {
     private const string ServiceAccountPrefix = "service-account-";
+    private const string RealmManagementClientId = "realm-management";
 
     private readonly HttpClient http = http;
     private readonly IOptions<KeycloakAccountsSettings> settings = settings;
@@ -99,8 +101,9 @@ public sealed class KeycloakAccounts(HttpClient http, IOptions<KeycloakAccountsS
             && name.StartsWith(ServiceAccountPrefix, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
-    /// Whether the user's effective realm roles, composites resolved, include a staff role; none when the user is gone
-    /// by now. An answer of another shape throws: a guard that cannot read the roles must not let the account be deleted.
+    /// Whether the user's effective realm roles, composites resolved, include a staff role, or the user holds a role of the
+    /// <c>realm-management</c> client; none when the user is gone by now. An answer of another shape throws: a guard that
+    /// cannot read the roles must not let the account be deleted.
     /// </summary>
     private async Task<Option<bool>> HoldsStaffRoleAsync(PersonId person, string token, CancellationToken cancellationToken)
     {
@@ -119,30 +122,122 @@ public sealed class KeycloakAccounts(HttpClient http, IOptions<KeycloakAccountsS
 
         await using var body = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var roles = await JsonDocument.ParseAsync(body, cancellationToken: cancellationToken);
-        if (roles.RootElement.ValueKind != JsonValueKind.Array)
+        var staff = false;
+        foreach (var name in RoleNames(roles.RootElement, "roles"))
         {
-            throw Unreadable();
+            staff |= StaffRoles.Includes(name);
         }
 
-        var staff = false;
-        foreach (var role in roles.RootElement.EnumerateArray())
+        var admin = await HoldsRealmManagementRoleAsync(person, token, cancellationToken);
+        if (!admin.HasValue)
+        {
+            return Option<bool>.None;
+        }
+
+        return Option<bool>.Some(staff || admin.Value);
+    }
+
+    /// <summary>
+    /// Whether the user holds any role of the <c>realm-management</c> client, composites resolved: a delegated realm
+    /// administrator, who is staff though they may hold no staff realm role. None when the user is gone by now. It fails
+    /// closed like the realm read: any other status, or an answer of another shape, throws.
+    /// </summary>
+    private async Task<Option<bool>> HoldsRealmManagementRoleAsync(PersonId person, string token, CancellationToken cancellationToken)
+    {
+        var client = await RealmManagementClientAsync(token, cancellationToken);
+        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri($"{UserUri(person).AbsoluteUri}/role-mappings/clients/{Uri.EscapeDataString(client)}/composite"));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        using var response = await http.SendAsync(request, cancellationToken);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return Option<bool>.None;
+        }
+
+        if (response.StatusCode != HttpStatusCode.OK)
+        {
+            throw Unavailable("client roles", response.StatusCode);
+        }
+
+        await using var body = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var roles = await JsonDocument.ParseAsync(body, cancellationToken: cancellationToken);
+        return Option<bool>.Some(RoleNames(roles.RootElement, "client roles").Count > 0);
+    }
+
+    /// <summary>The internal id of the realm's <c>realm-management</c> client; exactly one client of that id must answer.</summary>
+    private async Task<string> RealmManagementClientAsync(string token, CancellationToken cancellationToken)
+    {
+        var current = settings.Value;
+        using var request = new HttpRequestMessage(
+            HttpMethod.Get,
+            new Uri($"{Address(current)}/admin/realms/{Uri.EscapeDataString(current.Realm)}/clients?clientId={RealmManagementClientId}"));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        using var response = await http.SendAsync(request, cancellationToken);
+        if (response.StatusCode != HttpStatusCode.OK)
+        {
+            throw Unavailable("client lookup", response.StatusCode);
+        }
+
+        await using var body = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var clients = await JsonDocument.ParseAsync(body, cancellationToken: cancellationToken);
+        if (clients.RootElement.ValueKind != JsonValueKind.Array)
+        {
+            throw Unreadable("client lookup");
+        }
+
+        List<string> ids = [];
+        foreach (var client in clients.RootElement.EnumerateArray())
+        {
+            if (client.ValueKind == JsonValueKind.Object
+                && client.TryGetProperty("clientId", out var clientId)
+                && clientId.ValueKind == JsonValueKind.String
+                && clientId.GetString() == RealmManagementClientId)
+            {
+                if (!client.TryGetProperty("id", out var id)
+                    || id.ValueKind != JsonValueKind.String
+                    || id.GetString() is not { Length: > 0 } value)
+                {
+                    throw Unreadable("client lookup");
+                }
+
+                ids.Add(value);
+            }
+        }
+
+        if (ids.Count != 1)
+        {
+            throw Unreadable("client lookup");
+        }
+
+        return ids[0];
+    }
+
+    /// <summary>The names of an array of role representations; any other shape throws, naming the step.</summary>
+    private static List<string> RoleNames(JsonElement roles, string step)
+    {
+        if (roles.ValueKind != JsonValueKind.Array)
+        {
+            throw Unreadable(step);
+        }
+
+        List<string> names = [];
+        foreach (var role in roles.EnumerateArray())
         {
             if (role.ValueKind != JsonValueKind.Object
                 || !role.TryGetProperty("name", out var name)
                 || name.ValueKind != JsonValueKind.String
                 || name.GetString() is not { } value)
             {
-                throw Unreadable();
+                throw Unreadable(step);
             }
 
-            staff |= StaffRoles.Includes(value);
+            names.Add(value);
         }
 
-        return Option<bool>.Some(staff);
+        return names;
     }
 
-    private static AccountsUnavailableException Unreadable() =>
-        new("Keycloak answered the account roles read in a shape Organisation does not read.");
+    private static AccountsUnavailableException Unreadable(string step) =>
+        new($"Keycloak answered the account {step} read in a shape Organisation does not read.");
 
     private static AccountsUnavailableException Unavailable(string step, HttpStatusCode status) =>
         new($"Keycloak answered the account {step} with {((int)status).ToString(CultureInfo.InvariantCulture)} ({status}).");

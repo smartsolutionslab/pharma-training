@@ -82,6 +82,6 @@ public sealed partial class AccountDeletionRequestedV1Consumer(
     [LoggerMessage(Level = LogLevel.Error, Message = "Erasure {Erasure} names a client's service account in Keycloak, which is never deleted; its step keycloak stays open.")]
     private static partial void ServiceAccount(ILogger logger, Guid erasure);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "Erasure {Erasure} names a staff account in Keycloak (a realm role support, editor or manager), which an erasure never deletes; its step keycloak stays open until an administrator removes the account.")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "Erasure {Erasure} names a staff account in Keycloak (a realm role support, editor or manager, or a realm-management role), which an erasure never deletes; its step keycloak stays open until an administrator removes the account.")]
     private static partial void StaffAccount(ILogger logger, Guid erasure);
 }
