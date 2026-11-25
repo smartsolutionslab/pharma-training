@@ -1,6 +1,10 @@
 import { computed, type MaybeRefOrGetter, toValue, unref } from 'vue';
 import { z } from 'zod';
-import { useGetEditorialCourseVersionsIdReturns } from '@/api/generated';
+import {
+  getGetEditorialCourseVersionsIdReturnsQueryKey,
+  useGetEditorialCourseVersionsIdReturns,
+} from '@/api/generated';
+import { startsWithKey } from '@/api/queryKeys';
 
 /** The return history's page size: the host's default. */
 export const returnsPageSize = 20;
@@ -19,7 +23,10 @@ export function useCourseVersionReturns(versionId: MaybeRefOrGetter<string>, pag
   const { data, isPending, isPlaceholderData, isError } = useGetEditorialCourseVersionsIdReturns(id, params, {
     query: {
       enabled,
-      placeholderData: (previous, previousQuery) => (previousQuery?.queryKey[2] === id.value ? previous : undefined),
+      placeholderData: (previous, previousQuery) =>
+        startsWithKey(previousQuery?.queryKey, getGetEditorialCourseVersionsIdReturnsQueryKey(id.value))
+          ? previous
+          : undefined,
     },
   });
   return {

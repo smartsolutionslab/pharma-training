@@ -21,7 +21,11 @@ export function useDraftNextVersion(versionId: MaybeRefOrGetter<string>) {
       onSuccess: (_id, _variables, _result, { client }) =>
         client.invalidateQueries({
           queryKey: getGetEditorialCourseVersionsQueryKey(),
-          predicate: ({ queryKey }) => typeof queryKey[2] !== 'string',
+          // An inbox page's key is the inbox's own with its parameters after it; a version's own key goes on with its id.
+          predicate: ({ queryKey }) =>
+            queryKey
+              .slice(getGetEditorialCourseVersionsQueryKey().length)
+              .every((part) => typeof part === 'object' && part !== null),
         }),
       onError: (_error, { id }, _result, { client }) =>
         client.invalidateQueries({ queryKey: getGetEditorialCourseVersionsIdQueryKey(id) }),
