@@ -206,6 +206,13 @@ ADR 0005 lists what is first observed in Azure, each with its fix in the AppHost
 
 Nothing in this repository has run against Azure before #129; record what you observed on #129 and in ADR 0005.
 
+### Deploy a release that adds a marker
+
+A release whose migration backfills `announced_events` for a type the sweeps did not sweep before (Learning's and Assessment's `AddAnnouncedEvents`, #277; Assessment's `AddAnnouncedFailuresAndExhaustions`, #307) leaves a gap while the previous revision still runs: an event that revision stores after the migration ran has no marker, and the new sweep announces it a second time once the grace period has passed. For an `ExaminationExhausted` that is a second lock in Learning ([ADR 0016](docs/adr/0016-lost-appends-to-a-stream-answer-409-through-the-use-case.md)). An environment that never ran a revision without the marker, such as one deployed for the first time with it, has no gap. Otherwise:
+
+1. Deploy it when nobody submits a test or reports progress (outside training hours), and note when the run starts.
+2. Once every app shows only the new revision active (`az containerapp revision list -g <resource group> -n <app> -o table`), search the services' logs for the sweep's Warning `Re-announced <type> of stream <stream> at version <version>, stored at <time> without its announcement.` with a stored time between the run's start and that moment. Each one is an announcement that went out twice. Record each on the release's issue with its stream and version, so that whoever owns Learning can correct the lock it counted twice.
+
 ### Roll back
 
 A deploy replaces every Container App's revision; the previous ones stay listed and can be activated, but the database stays where the newer revision left it.
