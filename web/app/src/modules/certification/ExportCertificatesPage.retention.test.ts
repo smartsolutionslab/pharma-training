@@ -402,7 +402,10 @@ describe('saving a period', () => {
     await section();
     setLanguage('en-GB', { remember: false });
 
-    await enterYears(user, '7');
+    // After the switch the field is labelled in English; typing into the German label could not find it.
+    const field = await screen.findByLabelText('Retention period in years');
+    await user.clear(field);
+    await user.type(field, '7');
     await user.click(await screen.findByRole('button', { name: 'Save period' }));
 
     await waitFor(() => expect(notify.success).toHaveBeenCalledWith('The retention period is now 7 years.'));
