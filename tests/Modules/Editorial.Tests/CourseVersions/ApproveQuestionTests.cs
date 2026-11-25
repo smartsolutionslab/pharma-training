@@ -153,7 +153,7 @@ public class ApproveQuestionTests
         store.Commits.ShouldBe(0);
     }
 
-    private ApproveQuestionHandler Handler() => new(store, store, time);
+    private ApproveQuestionHandler Handler() => new(store, store, store, time);
 
     private (CourseVersion Version, QuestionId Question) DraftHolding(Func<ChapterId, DraftedQuestion> draft)
     {

@@ -16,6 +16,7 @@ internal sealed class InMemoryMembershipCopies : IMembershipCopies, ILearningUni
     private readonly List<MemberCopy> addedMembers = [];
     private readonly List<MembershipEndingCopy> addedEndings = [];
     private readonly List<MembershipChangeCopy> addedChanges = [];
+    private readonly List<IntegrationEvent> pending = [];
 
     public List<MemberCopy> Members { get; } = [];
 
@@ -24,6 +25,9 @@ internal sealed class InMemoryMembershipCopies : IMembershipCopies, ILearningUni
     public List<MembershipChangeCopy> Changes { get; } = [];
 
     public int Commits { get; private set; }
+
+    /// <summary>The integration events published through the unit of work and committed with it.</summary>
+    public List<IntegrationEvent> Published { get; } = [];
 
     public Task<bool> ExistsAsync(MembershipId membership, CancellationToken cancellationToken) =>
         Task.FromResult(Members.Any(member => member.Id == membership.Value));
@@ -53,7 +57,11 @@ internal sealed class InMemoryMembershipCopies : IMembershipCopies, ILearningUni
 
     public void Hold(MembershipEndingCopy ending) => Endings.Add(ending);
 
-    public Task PublishAsync(IntegrationEvent integrationEvent) => Task.CompletedTask;
+    public Task PublishAsync(IntegrationEvent integrationEvent)
+    {
+        pending.Add(integrationEvent);
+        return Task.CompletedTask;
+    }
 
     public Task CommitAsync(CancellationToken cancellationToken)
     {
@@ -63,6 +71,8 @@ internal sealed class InMemoryMembershipCopies : IMembershipCopies, ILearningUni
         addedEndings.Clear();
         Changes.AddRange(addedChanges);
         addedChanges.Clear();
+        Published.AddRange(pending);
+        pending.Clear();
         Commits++;
         return Task.CompletedTask;
     }
