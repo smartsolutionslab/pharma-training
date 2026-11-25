@@ -3,9 +3,15 @@ using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.ReturnToDraft;
 
-public sealed class ReturnToDraftHandler(ICourseVersionStore versions, IEditorialUnitOfWork unitOfWork, TimeProvider time)
+/// <summary>
+/// Returns a version to draft and stores the record of the return under the editor's id and display name; an editor
+/// Editorial has erased (#115) is recorded under their id alone, with the reason.
+/// </summary>
+public sealed class ReturnToDraftHandler(ICourseVersionStore versions, IErasedPersonStore erased, IEditorialUnitOfWork unitOfWork, TimeProvider time)
     : ICommandHandler<ReturnToDraft, Result<Unit, ApiError>>
 {
+    private readonly IErasedPersonStore erased = erased;
+
     public async Task<Result<Unit, ApiError>> HandleAsync(ReturnToDraft command, CancellationToken cancellationToken)
     {
         Ensure.That(command).IsNotNull();
@@ -16,7 +22,13 @@ public sealed class ReturnToDraftHandler(ICourseVersionStore versions, IEditoria
             return Failure(CourseVersionFailures.NotFound(command.Version.Value));
         }
 
-        var returned = found.Value.ReturnToDraft(command.Editor, command.EditorName, command.Reason, Timestamp.From(time.GetUtcNow()));
+        // Held until the commit, as the erasure holds them, so the name is either forgotten after this return or not
+        // stored at all: an erased editor's account and token can outlive their erasure (#115). Held after the load,
+        // which reads in a snapshot transaction of its own; the hold begins the transaction the commit ends.
+        await erased.HoldAsync(command.Editor, cancellationToken);
+        var name = await erased.IsErasedAsync(command.Editor, cancellationToken) ? null : command.EditorName;
+
+        var returned = found.Value.ReturnToDraft(command.Editor, name, command.Reason, Timestamp.From(time.GetUtcNow()));
         if (returned.IsFailure)
         {
             return Failure(CourseVersionFailures.From(returned.Error));

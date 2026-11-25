@@ -26,6 +26,10 @@ public class MessagingTopologyTests
 
     private const string ComplianceErasureCompleted = Contracts + "Compliance.ComplianceErasureCompletedV1";
 
+    private const string EditorialErasureCompleted = Contracts + "Editorial.EditorialErasureCompletedV1";
+
+    private const string LearningErasureCompleted = Contracts + "Learning.LearningErasureCompletedV1";
+
     private const string ContentCompleted = Contracts + "Learning.ContentCompletedV1";
 
     private const string LearningSessionStarted = Contracts + "Learning.LearningSessionStartedV1";
@@ -39,14 +43,14 @@ public class MessagingTopologyTests
         published.ShouldBeEmpty();
     }
 
-    /// <summary>#115: Organisation announces the erasure to every service and records Compliance's completion as a step.</summary>
+    /// <summary>#115: Organisation announces the erasure to every service and records Compliance's, Editorial's and Learning's completions as steps.</summary>
     [Fact]
-    public void Organisation_publishes_its_membership_pharmacy_and_erasure_events_consumes_compliances_erasure_completion_and_leaves_its_local_mail_requests_off_the_broker()
+    public void Organisation_publishes_its_membership_pharmacy_and_erasure_events_consumes_every_erasure_completion_and_leaves_its_local_mail_requests_off_the_broker()
     {
         var (consumed, published) = MessagingTopology.Of("organisation");
 
         consumed.ShouldNotContain(InvitationMailRequested);
-        consumed.ShouldBe([ComplianceErasureCompleted], ignoreOrder: false);
+        consumed.ShouldBe([ComplianceErasureCompleted, EditorialErasureCompleted, LearningErasureCompleted], ignoreOrder: false);
         published.ShouldNotContain(InvitationMailRequested);
         consumed.ShouldNotContain(Contracts + "Organisation.ErasureConfirmationMailRequestedV1");
         published.ShouldNotContain(Contracts + "Organisation.ErasureConfirmationMailRequestedV1");
@@ -55,13 +59,14 @@ public class MessagingTopologyTests
             ignoreOrder: false);
     }
 
+    /// <summary>#115: Editorial consumes the erasure request, its only event from another module, and announces its completion.</summary>
     [Fact]
-    public void Editorial_publishes_the_test_definition_and_the_released_files_beside_the_course_versions()
+    public void Editorial_publishes_the_test_definition_the_released_files_and_its_erasure_completion_beside_the_course_versions_and_consumes_the_erasure_request()
     {
         var (consumed, published) = MessagingTopology.Of("editorial");
 
-        consumed.ShouldBeEmpty();
-        published.ShouldBe([ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired, TestDefinitionPublished], ignoreOrder: false);
+        consumed.ShouldBe([PersonErasureRequested], ignoreOrder: false);
+        published.ShouldBe([ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired, EditorialErasureCompleted, TestDefinitionPublished], ignoreOrder: false);
     }
 
     [Fact]
@@ -96,9 +101,9 @@ public class MessagingTopologyTests
         var (consumed, published) = MessagingTopology.Of("learning");
 
         consumed.ShouldBe(
-            [Contracts + "Assessment.AttemptsExhaustedV1", Contracts + "Assessment.TestPassedV1", ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired, Contracts + "Organisation.MembershipChangedV1", Contracts + "Organisation.MembershipEndedV1", Contracts + "Organisation.MembershipStartedV1"],
+            [Contracts + "Assessment.AttemptsExhaustedV1", Contracts + "Assessment.TestPassedV1", ChapterFilesReleased, CourseVersionPublished, CourseVersionRetired, Contracts + "Organisation.MembershipChangedV1", Contracts + "Organisation.MembershipEndedV1", Contracts + "Organisation.MembershipStartedV1", PersonErasureRequested],
             ignoreOrder: false);
-        published.ShouldBe([Contracts + "Learning.ContentCompletedV1", Contracts + "Learning.LearningSessionStartedV1"], ignoreOrder: false);
+        published.ShouldBe([Contracts + "Learning.ContentCompletedV1", LearningErasureCompleted, Contracts + "Learning.LearningSessionStartedV1"], ignoreOrder: false);
     }
 
     /// <summary>#42: Learning reopens the failed chapters on the exhaustion and finishes the session on the passed test.</summary>
@@ -118,7 +123,7 @@ public class MessagingTopologyTests
 
         consumed.ShouldContain(CourseVersionPublished);
         consumed.ShouldContain(CourseVersionRetired);
-        published.ShouldBe([ContentCompleted, LearningSessionStarted], ignoreOrder: false);
+        published.ShouldBe([ContentCompleted, LearningErasureCompleted, LearningSessionStarted], ignoreOrder: false);
     }
 
     [Fact]

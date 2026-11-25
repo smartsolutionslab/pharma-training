@@ -17,6 +17,13 @@ public interface IEditorialUnitOfWork : IUnitOfWork
     }
 
     /// <summary>
+    /// Rolls back the transaction the stores opened (the hold of a person, #115) after a commit that lost, so the command
+    /// can read again outside the aborted transaction. It does nothing when no transaction is open; a unit of work that
+    /// never opens one keeps this one.
+    /// </summary>
+    Task RollbackAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    /// <summary>
     /// Saves like <see cref="IUnitOfWork.CommitAsync"/> and sends at once exactly the events published since the scope's
     /// last commit, for the one use case that commits several times in a scope: the republish (ADR 0019). Nothing it
     /// saves can lose a race. Every other use case commits with <see cref="IUnitOfWork.CommitAsync"/> or

@@ -1,4 +1,5 @@
 using Npgsql;
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Persistence;
 
 namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 
@@ -9,18 +10,18 @@ namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 /// </summary>
 public sealed class PersonalMessagePurge(NpgsqlDataSource dataSource) : IPersonalMessagePurge
 {
-    // Wolverine's storage in the module's database (ModuleMessageStorage.Schema); the outbox, wolverine_outgoing_envelopes,
-    // is never touched: what is in it is still to be sent. An incoming envelope is purged only once it is handled, so a
-    // message still waiting is delivered.
+    // Wolverine's storage in the module's database, in the schema the MigrationRunner builds it in; the outbox,
+    // wolverine_outgoing_envelopes, is never touched: what is in it is still to be sent. An incoming envelope is purged
+    // only once it is handled, so a message still waiting is delivered.
     private const string DeadLetters =
-        """
-        DELETE FROM wolverine.wolverine_dead_letters
+        $"""
+        DELETE FROM {ModuleMessageStorage.Schema}.wolverine_dead_letters
          WHERE message_type = ANY(@types) AND position(convert_to(@id, 'UTF8') in body) > 0
         """;
 
     private const string HandledEnvelopes =
-        """
-        DELETE FROM wolverine.wolverine_incoming_envelopes
+        $"""
+        DELETE FROM {ModuleMessageStorage.Schema}.wolverine_incoming_envelopes
          WHERE status = 'Handled' AND message_type = ANY(@types) AND position(convert_to(@id, 'UTF8') in body) > 0
         """;
 
