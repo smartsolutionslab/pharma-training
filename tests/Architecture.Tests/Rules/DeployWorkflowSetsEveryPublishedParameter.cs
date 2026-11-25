@@ -66,6 +66,14 @@ public sealed partial class DeployWorkflowSetsEveryPublishedParameter : IArchite
             .Where(guard => guard.Success && !environments.Contains(guard.Groups["environment"].Value))
             .Select(guard => $"publish.yml guards a step by the environment '{guard.Groups["environment"].Value}', which no job of deploy.yml deploys; its parameters would be required of none."));
 
+        // A guard comparing the environment in any other form (!=, ${{ }}, &&) is one this rule cannot read: refused, not
+        // passed (#445). A condition that only uses the environment's name (hashFiles(format(..., matrix.environment))) is none.
+        violations.AddRange(Workflows.Jobs(publish)
+            .SelectMany(job => Workflows.Steps(job.Job))
+            .Select(step => Workflows.Scalar(step, "if") ?? string.Empty)
+            .Where(condition => EnvironmentComparison().IsMatch(condition) && !EnvironmentGuard().IsMatch(condition))
+            .Select(condition => $"publish.yml guards a step by '{condition}', which this rule cannot read; write it as matrix.environment == '<environment>'."));
+
         var modules = ModuleNames();
         violations.AddRange(Workflows.Jobs(deploy)
             .SelectMany(job => ParametersSet(deploy, job.Job))
@@ -134,6 +142,9 @@ public sealed partial class DeployWorkflowSetsEveryPublishedParameter : IArchite
 
     [GeneratedRegex(@"^\s*matrix\.environment\s*==\s*'(?<environment>[a-z]+)'\s*$")]
     private static partial Regex EnvironmentGuard();
+
+    [GeneratedRegex(@"matrix\.environment\s*[!=]=|[!=]=\s*matrix\.environment")]
+    private static partial Regex EnvironmentComparison();
 
     [GeneratedRegex("<ModuleName>([^<]+)</ModuleName>")]
     private static partial Regex ModuleName();

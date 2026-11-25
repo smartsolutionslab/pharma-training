@@ -33,4 +33,7 @@ internal sealed class InMemoryCourseVersionStore : ICourseVersionStore, ICertifi
         Commits++;
         return Task.CompletedTask;
     }
+
+    /// <summary>Nothing here is held or saved apart from a commit, so there is nothing to give up.</summary>
+    public Task AbandonAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }

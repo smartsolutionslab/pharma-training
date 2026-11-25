@@ -33,8 +33,10 @@ public sealed class MailServer
 
     private const string MailpitImage = "axllent/mailpit";
 
-    // An exact patch, the same in run mode and on staging, so what runs changes only with a change here (#442).
-    private const string MailpitTag = "v1.33.1";
+    // Mailpit v1.33.1's multi-platform index digest, the same in run mode and on staging, so what runs changes only with a
+    // change here and a tag pushed again cannot change it (#442, #445). Aspire names the image by its digest alone; to
+    // move it, take the new tag's digest from Docker Hub and name the version here.
+    private const string MailpitDigest = "aef2aacc11f075ec0fb6874275ee4a421e688e11a96ebb296134d1735c7761ce";
 
     private readonly IResourceBuilder<ContainerResource>? mailpit;
 
@@ -73,7 +75,8 @@ public sealed class MailServer
 
         if (!secrets.IsPublishing)
         {
-            var mailpit = builder.AddContainer("mailpit", MailpitImage, MailpitTag)
+            var mailpit = builder.AddContainer("mailpit", MailpitImage)
+                .WithImageSHA256(MailpitDigest)
                 .WithHttpEndpoint(port: 8025, targetPort: 8025)
                 .WithEndpoint(targetPort: 1025, name: "smtp")
                 .WithHttpHealthCheck("/livez");
@@ -175,7 +178,8 @@ public sealed class MailServer
     private static MailServer AddStagingMailpit(IDistributedApplicationBuilder builder, DeploymentSecrets secrets, IResourceBuilder<ParameterResource> from)
     {
         var inboxAuth = secrets.Secret("mailpit-ui-auth");
-        var mailpit = builder.AddContainer("mailpit", MailpitImage, MailpitTag)
+        var mailpit = builder.AddContainer("mailpit", MailpitImage)
+            .WithImageSHA256(MailpitDigest)
             .WithHttpEndpoint(targetPort: 8025, name: "http")
             .WithExternalHttpEndpoints()
             .WithEndpoint(targetPort: MailpitSmtpPort, name: "smtp", scheme: "tcp")
