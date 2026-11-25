@@ -1180,6 +1180,9 @@ export const de = {
       'capability-missing': 'Ihre Rolle in dieser Apotheke erlaubt das nicht.',
       'email-not-verified':
         'Ihre E-Mail-Adresse ist noch nicht bestätigt. Bestätigen Sie sie über den Link in der Bestätigungs-E-Mail und versuchen Sie es dann erneut.',
+      'erasure-not-found': 'Diese Löschung gibt es nicht.',
+      'erasure-refused-last-manager':
+        'Die Person ist die letzte aktive Leitung einer Apotheke. Ernennen Sie dort zuerst ein anderes Mitglied zur Leitung.',
       'identity-incomplete': 'Ihr Konto nennt keinen Namen oder keine gültige E-Mail-Adresse. Ergänzen Sie Ihr Profil.',
       'invalid-email': 'Die E-Mail-Adresse fehlt, ist zu lang oder ist keine.',
       'invalid-invitation-token':

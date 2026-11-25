@@ -45,4 +45,14 @@ public sealed class InvitationRecipientStore(OrganisationDbContext context) : II
 
         return Success(await context.Set<InvitationRecipient>().SingleAsync(recipient => recipient.Id == missing.Id, cancellationToken));
     }
+
+    public async Task RemoveAsync(InvitationRecipientId id, CancellationToken cancellationToken)
+    {
+        Ensure.That(id).IsNotNull();
+
+        if (await context.Set<InvitationRecipient>().SingleOrDefaultAsync(recipient => recipient.Id == id, cancellationToken) is { } recipient)
+        {
+            context.Remove(recipient);
+        }
+    }
 }

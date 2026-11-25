@@ -20,4 +20,7 @@ public interface IInvitationRecipientStore
     /// having changed nothing, and the command commits nothing.
     /// </summary>
     Task<Result<InvitationRecipient, LostRace>> LoadForMailAsync(EmailAddress address, CancellationToken cancellationToken);
+
+    /// <summary>Removes the recipient when the unit of work commits; a recipient that is not stored is no change.</summary>
+    Task RemoveAsync(InvitationRecipientId id, CancellationToken cancellationToken);
 }

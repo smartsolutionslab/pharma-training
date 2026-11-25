@@ -16,7 +16,7 @@ partial class OrganisationModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261124010310_AddInvitationRecipientsAndSenders";
+    public override string LastMigrationId => "20261125023525_AddErasures";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -27,6 +27,41 @@ partial class OrganisationModelSnapshot : ModelSnapshot
             .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
         NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Erasures.Erasure", b =>
+            {
+                b.Property<Guid>("Id")
+                    .HasColumnType("uuid")
+                    .HasColumnName("id");
+
+                b.Property<string>("Confirmation")
+                    .IsRequired()
+                    .HasMaxLength(20)
+                    .HasColumnType("character varying(20)")
+                    .HasColumnName("confirmation");
+
+                b.Property<DateTimeOffset?>("ConfirmationHandledAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("confirmation_handled_at");
+
+                b.Property<DateTimeOffset>("RequestedAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("requested_at");
+
+                b.Property<Guid>("RequestedBy")
+                    .HasColumnType("uuid")
+                    .HasColumnName("requested_by");
+
+                b.Property<uint>("RowVersion")
+                    .IsConcurrencyToken()
+                    .ValueGeneratedOnAddOrUpdate()
+                    .HasColumnType("xid")
+                    .HasColumnName("xmin");
+
+                b.HasKey("Id");
+
+                b.ToTable("erasures", "organisation");
+            });
 
         modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.InvitationRecipients.InvitationRecipient", b =>
             {
@@ -81,7 +116,6 @@ partial class OrganisationModelSnapshot : ModelSnapshot
                     .HasColumnName("id");
 
                 b.Property<string>("Email")
-                    .IsRequired()
                     .HasMaxLength(254)
                     .HasColumnType("character varying(254)")
                     .HasColumnName("email");
@@ -218,6 +252,34 @@ partial class OrganisationModelSnapshot : ModelSnapshot
                 b.HasKey("Id");
 
                 b.ToTable("samples", "organisation");
+            });
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Erasures.Erasure", b =>
+            {
+                b.OwnsMany("SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Erasures.ErasureStep", "Steps", b1 =>
+                    {
+                        b1.Property<Guid>("ErasureId")
+                            .HasColumnType("uuid")
+                            .HasColumnName("erasure_id");
+
+                        b1.Property<string>("Module")
+                            .HasMaxLength(40)
+                            .HasColumnType("character varying(40)")
+                            .HasColumnName("module");
+
+                        b1.Property<DateTimeOffset>("CompletedAt")
+                            .HasColumnType("timestamp with time zone")
+                            .HasColumnName("completed_at");
+
+                        b1.HasKey("ErasureId", "Module");
+
+                        b1.ToTable("erasure_steps", "organisation");
+
+                        b1.WithOwner()
+                            .HasForeignKey("ErasureId");
+                    });
+
+                b.Navigation("Steps");
             });
 
         modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies.Membership", b =>

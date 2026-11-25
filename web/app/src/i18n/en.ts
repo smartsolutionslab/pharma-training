@@ -1147,6 +1147,9 @@ export const en: MessageSchema = {
       'capability-missing': 'Your role in this pharmacy does not allow this.',
       'email-not-verified':
         'Your email address has not been verified yet. Verify it with the link in the verification email, then try again.',
+      'erasure-not-found': 'This erasure does not exist.',
+      'erasure-refused-last-manager':
+        'The person is the last active manager of a pharmacy. Make another member manager there first.',
       'identity-incomplete': 'Your account gives no name or valid email address. Complete your profile.',
       'invalid-email': 'The email address is missing, too long or not an email address.',
       'invalid-invitation-token':

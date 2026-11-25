@@ -321,7 +321,7 @@ public partial class InvitationMailRequestedV1ConsumerTests
             founder.Id,
             Owner,
             DisplayName.From("Olaf Owner"),
-            founder.Email,
+            founder.Email!,
             JobFunction.Pharmacist,
             TestPharmacies.RegisteredAt);
         revoked.Invite(membership, Anna, JobFunction.Pta, MembershipRole.Employee, TestPharmacies.RegisteredAt, InvitationMailLimits.Default).IsSuccess.ShouldBeTrue();
@@ -345,7 +345,7 @@ public partial class InvitationMailRequestedV1ConsumerTests
             founder.Id,
             Owner,
             DisplayName.From("Olaf Owner"),
-            founder.Email,
+            founder.Email!,
             JobFunction.Pharmacist,
             TestPharmacies.RegisteredAt);
         renewed.Invite(membership, Anna, JobFunction.Pta, MembershipRole.Employee, TestPharmacies.RegisteredAt, InvitationMailLimits.Default).IsSuccess.ShouldBeTrue();
