@@ -1,4 +1,5 @@
 using Aspire.Hosting.ApplicationModel;
+using Aspire.Hosting.Dotnet;
 
 namespace Aspire.Hosting;
 
@@ -35,8 +36,8 @@ public static class AccountDeletion
     /// Gives a service that deletes accounts Keycloak's internal address (published, Keycloak's internal URL: the auth
     /// proxy forwards no <c>/admin</c>), the realm, the client's id and its secret, under <c>Keycloak__Accounts__*</c>.
     /// </summary>
-    public static IResourceBuilder<ProjectResource> ManagesAccounts(
-        this IResourceBuilder<ProjectResource> service,
+    public static IResourceBuilder<DotnetProjectResource> ManagesAccounts(
+        this IResourceBuilder<DotnetProjectResource> service,
         IResourceBuilder<ContainerResource> keycloak,
         IResourceBuilder<ParameterResource> secret,
         DeploymentSecrets secrets)

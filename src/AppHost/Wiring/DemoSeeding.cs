@@ -1,4 +1,5 @@
 using Aspire.Hosting.ApplicationModel;
+using Aspire.Hosting.Dotnet;
 
 namespace Aspire.Hosting;
 
@@ -25,7 +26,7 @@ public static class DemoSeeding
     /// published, the environment's name (<c>aspire publish -e</c>); in run mode <c>local</c>, whatever the AppHost's own
     /// environment is called.
     /// </summary>
-    public static IResourceBuilder<ProjectResource> WithDeploymentName(this IResourceBuilder<ProjectResource> edge)
+    public static IResourceBuilder<DotnetProjectResource> WithDeploymentName(this IResourceBuilder<DotnetProjectResource> edge)
     {
         ArgumentNullException.ThrowIfNull(edge);
 
@@ -35,7 +36,7 @@ public static class DemoSeeding
 
     public static IDistributedApplicationBuilder AddDemoSeeder(
         this IDistributedApplicationBuilder builder,
-        IResourceBuilder<ProjectResource> host,
+        IResourceBuilder<DotnetProjectResource> host,
         IResourceBuilder<IResourceWithEndpoints> web,
         IResourceBuilder<ContainerResource> keycloak)
     {
@@ -51,7 +52,7 @@ public static class DemoSeeding
 
         var mailpit = builder.Resources.OfType<ContainerResource>().Single(resource => resource.Name == "mailpit");
         var administratorPassword = builder.Resources.OfType<ParameterResource>().Single(resource => resource.Name == "keycloak-password");
-        builder.AddProject<Projects.DemoSeeder>(Name)
+        builder.AddDotnetProject(Name, "../DemoSeeder/DemoSeeder.csproj")
             .WithEnvironment("DemoSeeder__Target", "Local")
             .WithEnvironment("DemoSeeder__EdgeUrl", host.GetEndpoint("http"))
             .WithEnvironment("DemoSeeder__WebOrigin", web.GetEndpoint("http"))

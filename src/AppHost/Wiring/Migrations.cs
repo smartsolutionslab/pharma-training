@@ -1,5 +1,6 @@
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Azure;
+using Aspire.Hosting.Dotnet;
 using Azure.Provisioning;
 using Azure.Provisioning.AppContainers;
 using Azure.Provisioning.Expressions;
@@ -26,6 +27,9 @@ public static class Migrations
 {
     private const string Name = "migrations";
 
+    // The MigrationRunner, relative to the AppHost's directory; Aspire builds it before it runs it.
+    private const string ProjectPath = "../MigrationRunner/MigrationRunner.csproj";
+
     private const string ModuleVariable = "Migrations__Module";
 
     // The schema a role-only run makes its role the owner of (MigrationRun.OwnedSchemaSetting).
@@ -37,7 +41,7 @@ public static class Migrations
     private const string ApplicationVariable = "ConnectionStrings__application";
 
     /// <summary>Published, the <c>migrations</c> job that carries the MigrationRunner's image; nothing in run mode.</summary>
-    public static IResourceBuilder<ProjectResource>? AddMigrations(this IDistributedApplicationBuilder builder)
+    public static IResourceBuilder<DotnetProjectResource>? AddMigrations(this IDistributedApplicationBuilder builder)
     {
         ArgumentNullException.ThrowIfNull(builder);
 
@@ -48,7 +52,7 @@ public static class Migrations
 
         // No reference and no environment of its own: no secret, no Key Vault reference and no identity besides the
         // registry's, which pulls the image. Its only purpose is that the image is built and pushed.
-        return builder.AddProject<Projects.MigrationRunner>(Name)
+        return builder.AddDotnetProject(Name, ProjectPath)
             .PublishAsAzureContainerAppJob((_, job) =>
             {
                 job.Configuration.TriggerType = ContainerAppJobTriggerType.Manual;
@@ -63,11 +67,11 @@ public static class Migrations
     /// mode as a project the service waits for, published as the service's init container running
     /// <paramref name="migrations"/>' image.
     /// </summary>
-    public static IResourceBuilder<ProjectResource> RunsMigrationsFirst(
-        this IResourceBuilder<ProjectResource> service,
+    public static IResourceBuilder<DotnetProjectResource> RunsMigrationsFirst(
+        this IResourceBuilder<DotnetProjectResource> service,
         string module,
         IResourceBuilder<IResourceWithConnectionString> database,
-        IResourceBuilder<ProjectResource>? migrations,
+        IResourceBuilder<DotnetProjectResource>? migrations,
         DeploymentSecrets secrets)
     {
         ArgumentNullException.ThrowIfNull(service);
@@ -77,7 +81,7 @@ public static class Migrations
 
         if (!service.ApplicationBuilder.ExecutionContext.IsPublishMode)
         {
-            var runner = service.ApplicationBuilder.AddProject<Projects.MigrationRunner>($"{module}-migrations")
+            var runner = service.ApplicationBuilder.AddDotnetProject($"{module}-migrations", ProjectPath)
                 .WithConnectionStringsOnly(secrets)
                 .WithReference(database, "database")
                 .WithEnvironment(ModuleVariable, module)
@@ -102,7 +106,7 @@ public static class Migrations
         this IResourceBuilder<ContainerResource> app,
         string schema,
         IResourceBuilder<IResourceWithConnectionString> database,
-        IResourceBuilder<ProjectResource>? migrations,
+        IResourceBuilder<DotnetProjectResource>? migrations,
         DeploymentSecrets secrets)
     {
         ArgumentNullException.ThrowIfNull(app);
@@ -130,7 +134,7 @@ public static class Migrations
     /// </summary>
     private static IResourceBuilder<T> RunsInitContainer<T>(
         this IResourceBuilder<T> app,
-        IResourceBuilder<ProjectResource> migrations,
+        IResourceBuilder<DotnetProjectResource> migrations,
         IResourceBuilder<IResourceWithConnectionString> database,
         DeploymentSecrets secrets,
         string mode,

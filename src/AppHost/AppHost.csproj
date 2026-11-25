@@ -1,4 +1,4 @@
-<Project Sdk="Aspire.AppHost.Sdk/13.6.5">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -9,6 +9,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.AppHost" />
+    <PackageReference Include="Aspire.Hosting.Dotnet" />
     <PackageReference Include="Aspire.Hosting.RabbitMQ" />
     <PackageReference Include="Aspire.Hosting.PostgreSQL" />
     <PackageReference Include="Aspire.Hosting.JavaScript" />
@@ -25,17 +27,6 @@
     <PackageReference Include="Azure.Storage.Blobs" />
     <!-- Reads the modules' Application assemblies and the contracts as metadata, never loading them (Wiring/MessagingTopology.cs). -->
     <PackageReference Include="System.Reflection.MetadataLoadContext" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="../MigrationRunner/MigrationRunner.csproj" />
-    <ProjectReference Include="../Edge/Edge.csproj" />
-    <!-- Run mode only: the demo data seeder (Wiring/DemoSeeding.cs, docs/adr/0042). -->
-    <ProjectReference Include="../DemoSeeder/DemoSeeder.csproj" />
-    <!-- Every service host, found by convention. Each gets a generated Projects.<Module>Service type, named after its folder
-         (src/Services/<Module>/Host), so Aspire starts it from this build with dotnet run and no build of its own instead of building
-         it again at every start (Wiring/ServiceHostProjects.cs). -->
-    <ProjectReference Include="../Services/*/Host/Host.csproj" AspireProjectMetadataTypeName="$([System.IO.Path]::GetFileName($([System.IO.Path]::GetDirectoryName($([System.IO.Path]::GetDirectoryName(%(FullPath)))))))Service" />
   </ItemGroup>
 
   <!-- Every module's Application and the contracts, built but neither referenced nor run: the broker grants each service's user

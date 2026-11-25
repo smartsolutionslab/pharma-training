@@ -1,4 +1,5 @@
 using Aspire.Hosting.ApplicationModel;
+using Aspire.Hosting.Dotnet;
 
 namespace Aspire.Hosting;
 
@@ -14,7 +15,7 @@ public static class IngressForwarding
 {
     private const string Variable = "ASPNETCORE_FORWARDEDHEADERS_ENABLED";
 
-    public static IResourceBuilder<ProjectResource> TrustsTheIngressHop(this IResourceBuilder<ProjectResource> project)
+    public static IResourceBuilder<DotnetProjectResource> TrustsTheIngressHop(this IResourceBuilder<DotnetProjectResource> project)
     {
         ArgumentNullException.ThrowIfNull(project);
 

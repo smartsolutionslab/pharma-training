@@ -1,5 +1,6 @@
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
+using Aspire.Hosting.Dotnet;
 using Aspire.Hosting.Testing;
 
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
@@ -24,10 +25,12 @@ public class AppHostDemoSeederTests
         timeout.CancelAfter(ModelTimeout);
         await using (var builder = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AppHost>(timeout.Token))
         {
-            var seeder = builder.Resources.OfType<ProjectResource>().SingleOrDefault(resource => resource.Name == Seeder);
+            var seeder = builder.Resources.OfType<DotnetProjectResource>().SingleOrDefault(resource => resource.Name == Seeder);
             seeder.ShouldNotBeNull($"Run mode has no {Seeder} project by default.");
             Path.GetFileName(seeder.GetProjectMetadata().ProjectPath).ShouldBe("DemoSeeder.csproj");
-            seeder.Annotations.OfType<WaitAnnotation>().Select(wait => wait.Resource.Name).ShouldBe(["host", "keycloak", "web"], ignoreOrder: true, "The seeder starts once the edge (which waits for every service), Keycloak and the web app are up.");
+            // Aspire's own resources (__dotnet-project-build, the coordinated build every .NET project waits for) are left out.
+            seeder.Annotations.OfType<WaitAnnotation>().Select(wait => wait.Resource.Name).Where(name => !name.StartsWith("__", StringComparison.Ordinal))
+                .ShouldBe(["host", "keycloak", "web"], ignoreOrder: true, "The seeder starts once the edge (which waits for every service), Keycloak and the web app are up.");
 
             var environment = await EnvironmentAsync(builder, seeder);
             environment.ShouldContainKey("DemoSeeder__Target");
@@ -58,7 +61,7 @@ public class AppHostDemoSeederTests
         {
             await using var published = await PublishedAppHost.ModelAsync(environment, TestContext.Current.CancellationToken);
             published.Resources.Select(resource => resource.Name).ShouldNotContain(Seeder, $"Publishing {environment} contains the demo seeder.");
-            published.Resources.OfType<ProjectResource>()
+            published.Resources.OfType<DotnetProjectResource>()
                 .Select(project => Path.GetFileName(project.GetProjectMetadata().ProjectPath))
                 .ShouldNotContain("DemoSeeder.csproj", $"Publishing {environment} contains the demo seeder's project.");
         }
@@ -94,7 +97,7 @@ public class AppHostDemoSeederTests
     public async Task Published_the_edge_is_told_the_environment_it_was_published_for(string environment)
     {
         await using var builder = await PublishedAppHost.ModelAsync(environment, TestContext.Current.CancellationToken);
-        var host = builder.Resources.OfType<ProjectResource>().Single(resource => resource.Name == "host");
+        var host = builder.Resources.OfType<DotnetProjectResource>().Single(resource => resource.Name == "host");
 
         var variables = await EnvironmentAsync(builder, host);
 
@@ -108,7 +111,7 @@ public class AppHostDemoSeederTests
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         timeout.CancelAfter(ModelTimeout);
         await using var builder = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AppHost>(timeout.Token);
-        var host = builder.Resources.OfType<ProjectResource>().Single(resource => resource.Name == "host");
+        var host = builder.Resources.OfType<DotnetProjectResource>().Single(resource => resource.Name == "host");
 
         var variables = await EnvironmentAsync(builder, host);
 
@@ -132,7 +135,7 @@ public class AppHostDemoSeederTests
         return string.Join(" | ", messages);
     }
 
-    private static async Task<Dictionary<string, object>> EnvironmentAsync(IDistributedApplicationTestingBuilder builder, ProjectResource resource)
+    private static async Task<Dictionary<string, object>> EnvironmentAsync(IDistributedApplicationTestingBuilder builder, DotnetProjectResource resource)
     {
         var context = new EnvironmentCallbackContext(builder.ExecutionContext, resource, cancellationToken: TestContext.Current.CancellationToken);
         foreach (var callback in resource.Annotations.OfType<EnvironmentCallbackAnnotation>())

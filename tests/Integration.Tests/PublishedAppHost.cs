@@ -1,3 +1,4 @@
+using Aspire.Hosting.Dotnet;
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Testing;
@@ -87,8 +88,8 @@ public static class PublishedAppHost
     }
 
     /// <summary>Every module's service host, found as the AppHost finds them: src/Services/*/Host/Host.csproj.</summary>
-    public static List<ProjectResource> Services(IDistributedApplicationTestingBuilder builder) =>
-        [.. builder.Resources.OfType<ProjectResource>()
+    public static List<DotnetProjectResource> Services(IDistributedApplicationTestingBuilder builder) =>
+        [.. builder.Resources.OfType<DotnetProjectResource>()
             .Where(project => IsServiceHost(project.GetProjectMetadata().ProjectPath))
             .OrderBy(project => project.Name, StringComparer.Ordinal)];
 

@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
+using Aspire.Hosting.Dotnet;
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Testing;
@@ -63,12 +64,28 @@ public sealed partial class AspireFixture : IAsyncLifetime
         // process of its own against this run's endpoints.
         var builder = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AppHost>(["--DemoSeeder:Enabled=false"], timeout.Token);
 
-        // Tests start from empty containers: never a developer's data, never a password a volume remembers.
+        // Tests start from empty containers: never a developer's data, never a password a volume remembers. The containers
+        // end with the run, never a developer's persistent ones, which run mode keeps between runs (ContainerLifetimes).
         foreach (var resource in builder.Resources)
         {
             foreach (var volume in resource.Annotations.OfType<ContainerMountAnnotation>().Where(mount => mount.Type == ContainerMountType.Volume).ToList())
             {
                 resource.Annotations.Remove(volume);
+            }
+
+            foreach (var lifetime in resource.Annotations.OfType<ContainerLifetimeAnnotation>().ToList())
+            {
+                resource.Annotations.Remove(lifetime);
+            }
+
+            // A developer's persistent Keycloak and Mailpit keep their fixed host ports (8080, 8025) after the AppHost
+            // stops, so the run's containers take ports of their own; the tests read every address from the app.
+            if (resource.Annotations.OfType<ContainerImageAnnotation>().Any())
+            {
+                foreach (var endpoint in resource.Annotations.OfType<EndpointAnnotation>())
+                {
+                    endpoint.Port = null;
+                }
             }
         }
 
@@ -81,7 +98,7 @@ public sealed partial class AspireFixture : IAsyncLifetime
         // EditorialModelLimitsTests reaches it with editor-b, a user only they call the model as. Every other test shares
         // the editor's budget, which this leaves far above what they use (a handful of calls per endpoint in the whole run),
         // and above the default 10 a minute, so no test is refused for another's calls.
-        var editorial = builder.CreateResourceBuilder(builder.Resources.OfType<ProjectResource>().Single(resource => resource.Name == "editorial"));
+        var editorial = builder.CreateResourceBuilder(builder.Resources.OfType<DotnetProjectResource>().Single(resource => resource.Name == "editorial"));
         foreach (var setting in new[] { "ContentReview__PerMinute", "ContentReview__PerDay", "TestDraft__PerMinute", "TestDraft__PerDay" })
         {
             editorial.WithEnvironment($"Editorial__ModelLimits__{setting}", EditorialModelLimit.ToString(CultureInfo.InvariantCulture));
@@ -96,7 +113,7 @@ public sealed partial class AspireFixture : IAsyncLifetime
         // CertificationVerificationTests reaches it in a few dozen calls, and the day far above it, so the minute alone
         // refuses. Every local caller reaches Certification from one address, the edge's, so every call of the run shares
         // one count: only that collection calls /certification/verify, and it leaves the minute's window reset.
-        var certification = builder.CreateResourceBuilder(builder.Resources.OfType<ProjectResource>().Single(resource => resource.Name == "certification"));
+        var certification = builder.CreateResourceBuilder(builder.Resources.OfType<DotnetProjectResource>().Single(resource => resource.Name == "certification"));
         certification.WithEnvironment("Certification__VerificationLimits__PerMinute", CertificationVerificationLimit.ToString(CultureInfo.InvariantCulture));
         certification.WithEnvironment("Certification__VerificationLimits__PerDay", CertificationVerificationDailyLimit.ToString(CultureInfo.InvariantCulture));
 
@@ -108,7 +125,7 @@ public sealed partial class AspireFixture : IAsyncLifetime
         // The accept tests accept as employee-a up to about 15 times in quick succession, more than the default 10 a minute
         // (docs/adr/0004), so the run raises the per-minute accept limit to OrganisationAcceptsPerMinute; every user stays
         // under it, and only OrganisationAcceptLimitTests accepts as visitor, to reach it.
-        var organisation = builder.CreateResourceBuilder(builder.Resources.OfType<ProjectResource>().Single(resource => resource.Name == "organisation"));
+        var organisation = builder.CreateResourceBuilder(builder.Resources.OfType<DotnetProjectResource>().Single(resource => resource.Name == "organisation"));
         organisation.WithEnvironment("Organisation__AcceptLimit__PerMinute", OrganisationAcceptsPerMinute.ToString(CultureInfo.InvariantCulture));
 
         // Every invite and renewal as owner counts on owner's one sender tally (#265), about 50 a run and growing, more
@@ -124,7 +141,7 @@ public sealed partial class AspireFixture : IAsyncLifetime
         // announcement is ever taken for a lost one.
         foreach (var (service, module) in new[] { ("learning", "Learning"), ("assessment", "Assessment") })
         {
-            var sweeping = builder.CreateResourceBuilder(builder.Resources.OfType<ProjectResource>().Single(resource => resource.Name == service));
+            var sweeping = builder.CreateResourceBuilder(builder.Resources.OfType<DotnetProjectResource>().Single(resource => resource.Name == service));
             sweeping.WithEnvironment($"{module}__AnnouncementSweep__Interval", AnnouncementSweepInterval.ToString("c", CultureInfo.InvariantCulture));
             sweeping.WithEnvironment($"{module}__AnnouncementSweep__GracePeriod", AnnouncementGracePeriod.ToString("c", CultureInfo.InvariantCulture));
         }
@@ -135,7 +152,7 @@ public sealed partial class AspireFixture : IAsyncLifetime
         // persons, and every test that plants a tombstone uses a fresh person, so no other test's row is ever swept.
         foreach (var (service, module) in new[] { ("compliance", "Compliance"), ("learning", "Learning"), ("certification", "Certification") })
         {
-            builder.CreateResourceBuilder(builder.Resources.OfType<ProjectResource>().Single(resource => resource.Name == service))
+            builder.CreateResourceBuilder(builder.Resources.OfType<DotnetProjectResource>().Single(resource => resource.Name == service))
                 .WithEnvironment($"{module}__ErasedPersonMessageSweep__Interval", ErasedPersonMessageSweepInterval.ToString("c", CultureInfo.InvariantCulture));
         }
 

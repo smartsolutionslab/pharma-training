@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Aspire.Hosting.Dotnet;
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Azure;
@@ -289,9 +290,9 @@ public class AppHostPublishParametersTests
         services.Where(SendsMail).ShouldNotBeEmpty("no service host's project says <SendsMail>true</SendsMail>");
     }
 
-    private static bool SendsMail(ProjectResource service) => ServiceHostMail.SendsMail(service.GetProjectMetadata().ProjectPath);
+    private static bool SendsMail(DotnetProjectResource service) => ServiceHostMail.SendsMail(service.GetProjectMetadata().ProjectPath);
 
-    private static bool LinksToFrontend(ProjectResource service) => ServiceHostMail.LinksToFrontend(service.GetProjectMetadata().ProjectPath);
+    private static bool LinksToFrontend(DotnetProjectResource service) => ServiceHostMail.LinksToFrontend(service.GetProjectMetadata().ProjectPath);
 
     private static ParameterResource Parameter(IDistributedApplicationTestingBuilder builder, string name)
     {
