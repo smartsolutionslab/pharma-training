@@ -1,6 +1,8 @@
 using SmartSolutionsLab.PharmaTraining.Contracts;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Certificates;
+using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Memberships;
+using SmartSolutionsLab.PharmaTraining.Modules.Certification.Tests.Memberships;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Tests.Certificates;
 
@@ -13,6 +15,17 @@ internal sealed class InMemoryCertificateStore : ICertificateStore, ICertificati
 {
     private readonly List<Certificate> added = [];
     private readonly List<IntegrationEvent> queued = [];
+    private readonly InMemoryMembershipStore? memberships;
+
+    public InMemoryCertificateStore()
+    {
+    }
+
+    /// <summary>A store whose export reads choose certificates by the memberships in <paramref name="memberships"/>.</summary>
+    public InMemoryCertificateStore(InMemoryMembershipStore memberships)
+    {
+        this.memberships = memberships;
+    }
 
     public List<Certificate> Stored { get; } = [];
 
@@ -22,6 +35,9 @@ internal sealed class InMemoryCertificateStore : ICertificateStore, ICertificati
 
     /// <summary>How often a certificate was looked up by its verification code.</summary>
     public int VerificationLookups { get; private set; }
+
+    /// <summary>How many certificates the reads for exports returned in all, as the database would load them (#367).</summary>
+    public int CertificatesReadForExports { get; private set; }
 
     public Task<bool> ExistsForAttemptAsync(AttemptId attempt, CancellationToken cancellationToken) =>
         Task.FromResult(Stored.Any(certificate => certificate.Attempt == attempt));
@@ -45,15 +61,27 @@ internal sealed class InMemoryCertificateStore : ICertificateStore, ICertificati
         return Task.FromResult(Option<Certificate>.Some(found));
     }
 
-    /// <summary>The holders' certificates issued from <paramref name="issuedFrom"/> on and before <paramref name="issuedBefore"/>, oldest first, then by id, as the store in Infrastructure reads them.</summary>
-    public Task<IReadOnlyList<Certificate>> IssuedToAsync(IReadOnlyCollection<PersonId> holders, Timestamp issuedFrom, Timestamp issuedBefore, CancellationToken cancellationToken)
+    /// <summary>
+    /// The certificates issued from <paramref name="issuedFrom"/> on and before <paramref name="issuedBefore"/> whose holder
+    /// had a membership in the pharmacy at the instant of issue (started at or before it, no ending of it at or before it),
+    /// oldest first, then by id, at most <paramref name="limit"/>, as the store in Infrastructure reads them; none without a
+    /// membership store.
+    /// </summary>
+    public Task<IReadOnlyList<Certificate>> IssuedInPharmacyAsync(PharmacyId pharmacy, Timestamp issuedFrom, Timestamp issuedBefore, int limit, CancellationToken cancellationToken)
     {
-        IReadOnlyList<Certificate> issued = Stored
-            .Where(certificate => holders.Contains(certificate.Holder) && issuedFrom <= certificate.IssuedAt && certificate.IssuedAt < issuedBefore)
+        var issued = Stored
+            .Where(certificate => issuedFrom <= certificate.IssuedAt && certificate.IssuedAt < issuedBefore)
+            .Where(certificate => memberships is not null && memberships.Memberships.Any(membership =>
+                membership.Pharmacy == pharmacy
+                && membership.Person == certificate.Holder
+                && membership.StartedAt <= certificate.IssuedAt
+                && !memberships.Endings.Any(ending => ending.Id == membership.Id && ending.EndedAt <= certificate.IssuedAt)))
             .OrderBy(certificate => certificate.IssuedAt.Value)
             .ThenBy(certificate => certificate.Id.Value)
+            .Take(limit)
             .ToList();
-        return Task.FromResult(issued);
+        CertificatesReadForExports += issued.Count;
+        return Task.FromResult<IReadOnlyList<Certificate>>(issued);
     }
 
     /// <summary>

@@ -5,6 +5,11 @@
     "message": "Something with that name or key already exists."
   },
   {
+    "code": "assessment.concurrent-save",
+    "status": 409,
+    "message": "Another change to the examination was saved at the same moment; try again."
+  },
+  {
     "code": "assessment.examination-changed",
     "status": 409,
     "message": "The examination changed in the meantime; try again."
@@ -553,6 +558,11 @@
     "code": "learning.chapter-not-in-course",
     "status": 422,
     "message": "This chapter does not belong to this course version."
+  },
+  {
+    "code": "learning.concurrent-save",
+    "status": 409,
+    "message": "Another change to the learning session was saved at the same moment; try again."
   },
   {
     "code": "learning.course-version-not-found",

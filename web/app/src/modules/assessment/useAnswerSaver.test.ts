@@ -187,6 +187,21 @@ test('a 409 examination-changed is sent again by itself, and the answer is saved
   );
 });
 
+// A save PostgreSQL ended as a deadlock with another (#162): nothing was stored, so it is sent again like a changed one.
+test('a 409 concurrent-save is sent again by itself, and the answer is saved', async () => {
+  let calls = 0;
+  answering = async () => {
+    calls += 1;
+    return calls <= 2 ? refusal(409, 'assessment.concurrent-save') : saved();
+  };
+  const { saver } = renderSaver();
+
+  saver.choose(durationQuestion.id, [thirtySeconds]);
+
+  await waitFor(() => expect(saver.stateOf(durationQuestion.id)).toEqual({ kind: 'saved' }));
+  expect(sent()).toHaveLength(3);
+});
+
 test('examination-changed is sent again up to 3 times, then the save has failed and the draft stays', async () => {
   answering = async () => refusal(409, 'assessment.examination-changed');
   const { saver } = renderSaver();

@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Text;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Storage;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Exports;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Certificates;
@@ -121,6 +122,58 @@ public class CertificateExportArchiveTests
 
         var entries = Read(body.Written);
         entries.Select(entry => entry.Name).ShouldBe(["index.csv", $"pdf/{certificate.Id.Value:D}.pdf"]);
+    }
+
+    /// <summary>
+    /// #367: once the index has gone out the response has started, so a blob that cannot be opened must end it without the
+    /// central directory; the bytes sent are then no readable ZIP, never a valid archive missing a PDF.
+    /// </summary>
+    [Fact]
+    public async Task A_blob_that_fails_to_open_leaves_no_readable_zip()
+    {
+        var certificate = ExportCertificates.Stored(Holder, new DateTimeOffset(2025, 5, 10, 9, 0, 0, TimeSpan.Zero));
+        var archive = new CertificateExportArchive(Period(), [certificate], FailingBlobReads.AtOpen());
+        await using var body = new AsyncOnlyStream();
+
+        await Should.ThrowAsync<IOException>(() => archive.WriteAsync(body, TestContext.Current.CancellationToken));
+
+        body.Written.ShouldNotBeEmpty("the index went out first, so the response had started");
+        Should.Throw<InvalidDataException>(() => Read(body.Written));
+    }
+
+    /// <summary>#367: a blob whose connection is lost while it is copied ends the response without the central directory too.</summary>
+    [Fact]
+    public async Task A_blob_that_fails_while_it_is_copied_leaves_no_readable_zip()
+    {
+        var certificate = ExportCertificates.Stored(Holder, new DateTimeOffset(2025, 5, 10, 9, 0, 0, TimeSpan.Zero));
+        var archive = new CertificateExportArchive(Period(), [certificate], FailingBlobReads.WhileCopying());
+        await using var body = new AsyncOnlyStream();
+
+        await Should.ThrowAsync<IOException>(() => archive.WriteAsync(body, TestContext.Current.CancellationToken));
+
+        body.Written.ShouldNotBeEmpty("the index went out first, so the response had started");
+        Should.Throw<InvalidDataException>(() => Read(body.Written));
+    }
+
+    /// <summary>
+    /// #367: the index and the archive decide "has a PDF" by one condition, so a row marked stored without a location
+    /// (which the domain never writes, but a database can hold) is pending in both.
+    /// </summary>
+    [Fact]
+    public async Task The_index_names_exactly_the_pdfs_the_archive_holds()
+    {
+        var pending = ExportCertificates.Pending(Holder, new DateTimeOffset(2025, 5, 10, 9, 0, 0, TimeSpan.Zero));
+        var stored = Stored(new DateTimeOffset(2025, 5, 20, 9, 0, 0, TimeSpan.Zero));
+        var withoutLocation = ExportCertificates.StoredWithoutLocation(Holder, new DateTimeOffset(2025, 6, 1, 9, 0, 0, TimeSpan.Zero));
+
+        var entries = await EntriesOfAsync(new CertificateExportArchive(Period(), [pending, stored, withoutLocation], blobs));
+
+        var index = Encoding.UTF8.GetString(entries[0].Content, 3, entries[0].Content.Length - 3);
+        var named = index[..^2].Split("\r\n").Skip(1)
+            .Select(row => row.Split(';')[^1])
+            .Where(pdf => pdf != CertificateExportIndex.PendingMarker)
+            .ToList();
+        named.ShouldBe(entries.Skip(1).Select(entry => entry.Name).ToList());
     }
 
     private static ExportPeriod Period() => ExportPeriod.Of(new DateOnly(2025, 5, 1), new DateOnly(2025, 6, 30)).Value;

@@ -50,18 +50,6 @@ internal sealed class InMemoryMembershipStore : IMembershipStore, ICertification
         return Task.FromResult(roles);
     }
 
-    public Task<IReadOnlyList<MembershipPeriod>> PeriodsInPharmacyAsync(PharmacyId pharmacy, CancellationToken cancellationToken)
-    {
-        IReadOnlyList<MembershipPeriod> periods = Memberships
-            .Where(membership => membership.Pharmacy == pharmacy)
-            .Select(membership => MembershipPeriod.Of(
-                membership.Person,
-                membership.StartedAt,
-                Endings.FirstOrDefault(ending => ending.Id == membership.Id)?.EndedAt))
-            .ToList();
-        return Task.FromResult(periods);
-    }
-
     public Task<Option<HolderName>> FindHolderNameAsync(PersonId person, CancellationToken cancellationToken) =>
         Task.FromResult(Memberships
             .Where(membership => membership.Person == person)

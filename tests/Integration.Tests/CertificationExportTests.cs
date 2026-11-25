@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using Npgsql;
 using static SmartSolutionsLab.PharmaTraining.Integration.Tests.CertificationIssuing;
 using static SmartSolutionsLab.PharmaTraining.Integration.Tests.EditorialWorkflow;
 using static SmartSolutionsLab.PharmaTraining.Integration.Tests.LearningSessions;
@@ -172,6 +173,84 @@ public class CertificationExportTests(AspireFixture aspire)
         export.IndexRows[1].Split(';')[4].ShouldBe("2025-05-01");
         export.IndexRows[2].Split(';')[4].ShouldBe("2025-06-30");
         export.PdfsShouldBePdfs();
+    }
+
+    /// <summary>
+    /// The membership rule as the database applies it (#367 moves it into the query): a member who worked in the pharmacy
+    /// from 1 March to 1 May 2025 and again from 1 August. Of their certificates passed exactly at the first start, exactly
+    /// at the first end, between the two memberships and during the second, the first and the last are exported. A member
+    /// of another pharmacy only, and a person of whom only an ending (no start) reached this pharmacy, have none exported.
+    /// </summary>
+    [Fact]
+    public async Task Only_certificates_from_a_membership_in_this_pharmacy_are_exported_start_inclusive_end_exclusive()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var developer = await aspire.CreateHostClientAsync("developer");
+        var pharmacy = await ManagedPharmacyAsync(developer, cancellationToken);
+        var firstStart = new DateTimeOffset(2025, 3, 1, 8, 0, 0, TimeSpan.Zero);
+        var firstEnd = new DateTimeOffset(2025, 5, 1, 8, 0, 0, TimeSpan.Zero);
+        var first = StartedIn(Guid.CreateVersion7(), pharmacy, "Employee", firstStart);
+        var second = StartedIn(first.PersonId, pharmacy, "Employee", new DateTimeOffset(2025, 8, 1, 8, 0, 0, TimeSpan.Zero));
+        await CertificationDatabase.DeliverAsync(aspire, StartedType, first, cancellationToken);
+        await CertificationDatabase.DeliverAsync(aspire, EndedType, EndedAt(first, firstEnd), cancellationToken);
+        await CertificationDatabase.DeliverAsync(aspire, StartedType, second, cancellationToken);
+        var elsewhere = StartedIn(Guid.CreateVersion7(), Guid.CreateVersion7(), "Employee", LongAgo);
+        await CertificationDatabase.DeliverAsync(aspire, StartedType, elsewhere, cancellationToken);
+        var endedOnly = new EndedEvent(Guid.CreateVersion7(), Guid.CreateVersion7(), pharmacy, new DateTimeOffset(2025, 12, 1, 8, 0, 0, TimeSpan.Zero), NewMetadata());
+        await CertificationDatabase.DeliverAsync(aspire, EndedType, endedOnly, cancellationToken);
+
+        // Certification names a certificate's holder after one of their memberships, so this person has one elsewhere.
+        var namedElsewhere = StartedIn(endedOnly.PersonId, Guid.CreateVersion7(), "Employee", LongAgo);
+        await CertificationDatabase.DeliverAsync(aspire, StartedType, namedElsewhere, cancellationToken);
+        var published = Published();
+        await CertificationDatabase.DeliverAsync(aspire, PublishedType, published, cancellationToken);
+        var atStart = await PassAsync(first, published, firstStart, cancellationToken);
+        var atEnd = await PassAsync(first, published, firstEnd, cancellationToken);
+        var between = await PassAsync(first, published, new DateTimeOffset(2025, 6, 15, 10, 0, 0, TimeSpan.Zero), cancellationToken);
+        var during = await PassAsync(first, published, new DateTimeOffset(2025, 9, 1, 10, 0, 0, TimeSpan.Zero), cancellationToken);
+        var ofElsewhere = await PassAsync(elsewhere, published, new DateTimeOffset(2025, 6, 15, 10, 0, 0, TimeSpan.Zero), cancellationToken);
+        var ofEndedOnly = await PassAsync(namedElsewhere, published, new DateTimeOffset(2025, 6, 15, 10, 0, 0, TimeSpan.Zero), cancellationToken);
+        await CertificationDatabase.WaitUntilCountAsync(aspire, StoredOfHolder, first.PersonId, 4, cancellationToken);
+
+        var export = await ExportAsync(developer, pharmacy, "2025-01-01", "2025-12-31", cancellationToken);
+
+        export.ExportedIds().ShouldBe([atStart, during]);
+        export.Entries.Select(entry => entry.Name).ShouldBe(["index.csv", $"pdf/{atStart:D}.pdf", $"pdf/{during:D}.pdf"]);
+        export.ShouldNotMention(atEnd);
+        export.ShouldNotMention(between);
+        export.ShouldNotMention(ofElsewhere);
+        export.ShouldNotMention(ofEndedOnly);
+        export.PdfsShouldBePdfs();
+    }
+
+    /// <summary>
+    /// #367: a row marked stored without a location (the domain never writes it, but nothing in the database refuses it)
+    /// has no PDF in the archive, so the index says its PDF is pending, as the single download does.
+    /// </summary>
+    [Fact]
+    public async Task A_certificate_marked_stored_without_a_location_is_listed_as_pending_and_has_no_pdf()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var developer = await aspire.CreateHostClientAsync("developer");
+        var pharmacy = await ManagedPharmacyAsync(developer, cancellationToken);
+        var member = StartedIn(Guid.CreateVersion7(), pharmacy, "Employee", LongAgo);
+        await CertificationDatabase.DeliverAsync(aspire, StartedType, member, cancellationToken);
+        var published = Published();
+        await CertificationDatabase.DeliverAsync(aspire, PublishedType, published, cancellationToken);
+        var certificate = await PassAsync(member, published, new DateTimeOffset(2025, 5, 10, 10, 0, 0, TimeSpan.Zero), cancellationToken);
+        await CertificationDatabase.WaitUntilCountAsync(aspire, StoredOfHolder, member.PersonId, 1, cancellationToken);
+        await using (var connection = await CertificationDatabase.OpenAsync(aspire, cancellationToken))
+        {
+            await using var command = new NpgsqlCommand("update certification.certificates set document_location = null where id = @id", connection);
+            command.Parameters.AddWithValue("id", certificate);
+            (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1);
+        }
+
+        var export = await ExportAsync(developer, pharmacy, "2025-01-01", "2025-12-31", cancellationToken);
+
+        export.ExportedIds().ShouldBe([certificate]);
+        export.IndexRows[1].ShouldEndWith(";noch nicht erstellt");
+        export.Entries.Select(entry => entry.Name).ShouldNotContain($"pdf/{certificate:D}.pdf");
     }
 
     private static Uri Export(Guid pharmacy, string query) => new($"/certification/pharmacies/{pharmacy:D}/certificates/export{query}", UriKind.Relative);

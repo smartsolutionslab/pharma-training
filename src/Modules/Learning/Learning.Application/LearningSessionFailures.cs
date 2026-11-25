@@ -1,3 +1,4 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using System.Net;
 using SmartSolutionsLab.PharmaTraining.Modules.Learning.Domain.LearningSessions;
 
@@ -18,6 +19,16 @@ public static class LearningSessionFailures
 
     /// <summary>A report that lost the append race on its session's stream.</summary>
     public static ApiError Changed(Guid id) => new LearningSessionChanged(id);
+
+    /// <summary>Another save came at the same moment and PostgreSQL ended this one; try again.</summary>
+    public static ApiError ConcurrentSave() => new LearningConcurrentSave();
+
+    /// <summary>How a save of the stream lost a race: a stream that moved on is the changed code, a deadlock a concurrent save.</summary>
+    public static ApiError LostRace(LostRace race, Guid id) => race switch
+    {
+        VersionMovedOn => Changed(id),
+        SaveDeadlocked => ConcurrentSave(),
+    };
 
     /// <summary>
     /// A refused progress report: a finished session conflicts with it; a chapter it does not hold, or video progress

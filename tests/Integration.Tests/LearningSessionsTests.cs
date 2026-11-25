@@ -358,9 +358,11 @@ public class LearningSessionsTests(AspireFixture aspire)
                     response.StatusCode.ShouldBeOneOf([HttpStatusCode.OK, HttpStatusCode.Conflict], body);
                 }
 
+                // A report that lost the race on its stream is told the session changed; one PostgreSQL ended as a deadlock
+                // with another report's save (the inline projections write in the same transaction) is told to try again.
                 if (response.StatusCode == HttpStatusCode.Conflict)
                 {
-                    (await CodeOfAsync(response, cancellationToken)).ShouldBe("learning.session-changed");
+                    (await CodeOfAsync(response, cancellationToken)).ShouldBeOneOf("learning.session-changed", "learning.concurrent-save");
                 }
 
                 if (response.StatusCode == HttpStatusCode.UnprocessableEntity)

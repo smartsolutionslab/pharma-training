@@ -1,4 +1,5 @@
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Certificates;
+using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Memberships;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Application;
 
@@ -21,10 +22,11 @@ public interface ICertificateStore
     Task<Option<Certificate>> FindByVerificationCodeAsync(VerificationCode code, CancellationToken cancellationToken);
 
     /// <summary>
-    /// The holders' certificates issued from <paramref name="issuedFrom"/> on and before <paramref name="issuedBefore"/>,
-    /// read without tracking, oldest first, then by id.
+    /// The certificates issued from <paramref name="issuedFrom"/> on and before <paramref name="issuedBefore"/> whose holder
+    /// had a membership in the pharmacy at the instant of issue (started at or before it, not ended at or before it; an ending
+    /// without a stored start is no membership), read without tracking, oldest first, then by id, at most <paramref name="limit"/>.
     /// </summary>
-    Task<IReadOnlyList<Certificate>> IssuedToAsync(IReadOnlyCollection<PersonId> holders, Timestamp issuedFrom, Timestamp issuedBefore, CancellationToken cancellationToken);
+    Task<IReadOnlyList<Certificate>> IssuedInPharmacyAsync(PharmacyId pharmacy, Timestamp issuedFrom, Timestamp issuedBefore, int limit, CancellationToken cancellationToken);
 
     /// <summary>
     /// A page of the holder's certificates, read without tracking, newest first (issued later, then the larger id), and

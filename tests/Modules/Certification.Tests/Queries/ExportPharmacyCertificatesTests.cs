@@ -23,10 +23,15 @@ public class ExportPharmacyCertificatesTests
     private static readonly DateTimeOffset LongAgo = new(2020, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
     private readonly InMemoryMembershipStore memberships = new();
-    private readonly InMemoryCertificateStore certificates = new();
+    private readonly InMemoryCertificateStore certificates;
     private readonly InMemoryBlobReads blobs = new();
     private readonly PharmacyId pharmacy = PharmacyId.From(Guid.CreateVersion7());
     private readonly PersonId manager = PersonId.From(Guid.CreateVersion7());
+
+    public ExportPharmacyCertificatesTests()
+    {
+        certificates = new InMemoryCertificateStore(memberships);
+    }
 
     [Fact]
     public async Task A_caller_who_is_no_person_is_forbidden()
@@ -396,6 +401,30 @@ public class ExportPharmacyCertificatesTests
         Issue(member, new DateTimeOffset(2025, 5, 1, 9, 0, 0, TimeSpan.Zero));
 
         (await ExportedAsync()).Count.ShouldBe(2000);
+    }
+
+    /// <summary>
+    /// #367: the membership rule is applied where the certificates are read, so an export that is refused for holding too
+    /// many never loads more than one certificate beyond the limit, however many its members hold from other times.
+    /// </summary>
+    [Fact]
+    public async Task The_export_reads_at_most_one_certificate_more_than_it_may_hold()
+    {
+        Start(manager, MembershipRole.Manager, LongAgo);
+        var joiner = PersonId.From(Guid.CreateVersion7());
+        Start(joiner, MembershipRole.Employee, new DateTimeOffset(2025, 6, 1, 8, 0, 0, TimeSpan.Zero));
+        var beforeJoining = new DateTimeOffset(2025, 1, 2, 9, 0, 0, TimeSpan.Zero);
+        for (var i = 0; i < 3000; i++)
+        {
+            Issue(joiner, beforeJoining.AddMinutes(i));
+        }
+
+        IssueMany(CertificateExportArchive.MaxCertificates + 5);
+
+        var export = await HandleAsync(manager.Value);
+
+        ShouldBeRefused(export, HttpStatusCode.BadRequest, "certification.export-too-large");
+        certificates.CertificatesReadForExports.ShouldBeLessThanOrEqualTo(CertificateExportArchive.MaxCertificates + 1);
     }
 
     [Fact]

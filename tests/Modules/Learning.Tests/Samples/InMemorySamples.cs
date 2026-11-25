@@ -1,3 +1,4 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.EventSourcing;
 using SmartSolutionsLab.PharmaTraining.Contracts;
 using SmartSolutionsLab.PharmaTraining.Modules.Learning.Application;
@@ -32,11 +33,11 @@ internal sealed class InMemorySamples : ILearningAggregateStore, ISampleSummarie
         return Task.FromResult(Option<TAggregate>.Some(aggregate));
     }
 
-    /// <summary>Saves like <see cref="SaveAsync"/>; a sample's stream never loses a race here, so it answers true.</summary>
-    public async Task<bool> TrySaveAsync(IEventSourced aggregate, CancellationToken cancellationToken)
+    /// <summary>Saves like <see cref="SaveAsync"/>; a sample's stream never loses a race here, so it answers success.</summary>
+    public async Task<Result<Unit, LostRace>> TrySaveAsync(IEventSourced aggregate, CancellationToken cancellationToken)
     {
         await SaveAsync(aggregate, cancellationToken);
-        return true;
+        return Success(Unit.Value);
     }
 
     public Task SaveAsync(IEventSourced aggregate, CancellationToken cancellationToken)

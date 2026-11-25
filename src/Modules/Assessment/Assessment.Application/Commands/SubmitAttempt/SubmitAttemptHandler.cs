@@ -59,9 +59,10 @@ public sealed class SubmitAttemptHandler(IAssessmentAggregateStore store, ITestD
         // each event at: the examination's version before the save plus its place among the pending events, counted from 1.
         var announcements = AnnouncementsOf(examination);
         var stored = StreamVersionsOf(examination);
-        if (!await store.TrySaveAsync(examination, cancellationToken))
+        var saved = await store.TrySaveAsync(examination, cancellationToken);
+        if (saved.IsFailure)
         {
-            return Failure(ExaminationFailures.Changed(command.Examination.Value));
+            return Failure(ExaminationFailures.LostRace(saved.Error, command.Examination.Value));
         }
 
         // The append has landed: a caller who goes away now must not cancel the announcement, or it is lost for good,
