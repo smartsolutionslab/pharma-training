@@ -1,4 +1,6 @@
 using System.Net;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Testing;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Commands.SetRetentionPeriod;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Certificates;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Memberships;
@@ -21,6 +23,7 @@ public class SetRetentionPeriodTests
     private readonly InMemoryPharmacyRetentionStore retention = new();
     private readonly PharmacyId pharmacy = PharmacyId.From(Guid.CreateVersion7());
     private readonly PersonId manager = PersonId.From(Guid.CreateVersion7());
+    private readonly FakeLogger<SetRetentionPeriodHandler> logger = new();
 
     [Fact]
     public async Task A_manager_sets_the_pharmacys_period()
@@ -186,11 +189,116 @@ public class SetRetentionPeriodTests
         ShouldBeRefused(result, HttpStatusCode.Forbidden, "certification.capability-missing");
     }
 
+    /// <summary>
+    /// #422, confirmed by the owner: a period that changes is logged once, with the pharmacy, the years it held before,
+    /// the years it holds now and the person who set it, the pseudonym that stays after erasure (docs/adr/0036).
+    /// </summary>
+    [Fact]
+    public async Task A_changed_period_is_logged_with_the_pharmacy_both_periods_and_the_caller()
+    {
+        Start(MembershipRole.Manager);
+        retention.Keep(pharmacy, 7);
+
+        await HandleAsync(3);
+
+        var record = logger.Collector.GetSnapshot().ShouldHaveSingleItem();
+        record.Level.ShouldBe(LogLevel.Information);
+        record.GetStructuredStateValue("Pharmacy").ShouldBe(pharmacy.Value.ToString());
+        record.GetStructuredStateValue("PreviousYears").ShouldBe("7");
+        record.GetStructuredStateValue("Years").ShouldBe("3");
+        record.GetStructuredStateValue("Person").ShouldBe(manager.Value.ToString());
+    }
+
+    /// <summary>The pharmacy's first period is logged with no years before it: it held none, only the default.</summary>
+    [Fact]
+    public async Task A_first_period_is_logged_without_previous_years()
+    {
+        Start(MembershipRole.Manager);
+
+        await HandleAsync(7);
+
+        var record = logger.Collector.GetSnapshot().ShouldHaveSingleItem();
+        record.Level.ShouldBe(LogLevel.Information);
+        record.GetStructuredStateValue("Pharmacy").ShouldBe(pharmacy.Value.ToString());
+        record.GetStructuredStateValue("PreviousYears").ShouldBeNull();
+        record.GetStructuredStateValue("Years").ShouldBe("7");
+        record.GetStructuredStateValue("Person").ShouldBe(manager.Value.ToString());
+    }
+
+    [Fact]
+    public async Task A_period_set_to_the_years_already_stored_is_not_logged()
+    {
+        Start(MembershipRole.Manager);
+        retention.Keep(pharmacy, 7);
+
+        var result = await HandleAsync(7);
+
+        result.IsSuccess.ShouldBeTrue(result.IsFailure ? result.Error.Code : string.Empty);
+        logger.Collector.GetSnapshot().ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData(31)]
+    [InlineData(7)]
+    [InlineData(null)]
+    public async Task A_period_an_employee_sends_is_not_logged(int? years)
+    {
+        Start(MembershipRole.Employee);
+
+        await HandleAsync(years);
+
+        logger.Collector.GetSnapshot().ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData(31)]
+    [InlineData(7)]
+    public async Task A_period_someone_who_is_no_member_sends_is_not_logged(int years)
+    {
+        Start(MembershipRole.Manager, PharmacyId.From(Guid.CreateVersion7()));
+
+        await HandleAsync(years);
+
+        logger.Collector.GetSnapshot().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task A_period_from_a_caller_who_is_no_person_is_not_logged()
+    {
+        Start(MembershipRole.Manager);
+
+        await HandleAsync(Option<PharmacyId>.Some(pharmacy), 7, Option<PersonId>.None);
+
+        logger.Collector.GetSnapshot().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task A_period_for_the_empty_pharmacy_id_is_not_logged()
+    {
+        await HandleAsync(Option<PharmacyId>.None, 7, Option<PersonId>.Some(manager));
+
+        logger.Collector.GetSnapshot().ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(31)]
+    [InlineData(null)]
+    public async Task A_period_outside_two_to_thirty_years_is_not_logged(int? years)
+    {
+        Start(MembershipRole.Manager);
+        retention.Keep(pharmacy, 7);
+
+        await HandleAsync(years);
+
+        logger.Collector.GetSnapshot().ShouldBeEmpty();
+    }
+
     private Task<Result<Unit, ApiError>> HandleAsync(int? years) =>
         HandleAsync(Option<PharmacyId>.Some(pharmacy), years, Option<PersonId>.Some(manager));
 
     private Task<Result<Unit, ApiError>> HandleAsync(Option<PharmacyId> where, int? years, Option<PersonId> caller) =>
-        new SetRetentionPeriodHandler(memberships, retention)
+        new SetRetentionPeriodHandler(memberships, retention, logger)
             .HandleAsync(new SetRetentionPeriod(where, RequestedRetentionYears.From(years), caller), TestContext.Current.CancellationToken);
 
     private MembershipId Start(MembershipRole role, PharmacyId? where = null)
