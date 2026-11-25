@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Yarp.ReverseProxy.Configuration;
 using Yarp.ReverseProxy.Forwarder;
@@ -149,6 +150,24 @@ public class ForwardedBodiesTests
         using var proxy = new Proxy(long.MaxValue, kestrelLimit: null);
 
         var refusal = await Should.ThrowAsync<OptionsValidationException>(proxy.ValidateOnStartAsync);
+
+        refusal.Message.ShouldContain("Edge:MaxBufferedRequestBodyBytes");
+    }
+
+    [Fact]
+    public void A_limit_above_a_kestrel_request_body_limit_set_in_configuration_stops_the_edge_at_startup_naming_the_setting()
+    {
+        var settings = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["Kestrel:Limits:MaxRequestBodySize"] = "2000000",
+            ["Edge:MaxBufferedRequestBodyBytes"] = "2000001",
+        };
+        using var webRoot = WebRoot.WithTheApp();
+
+        // The edge stops before it forwards anything, so no module service answers at this address.
+        using var edge = new EdgeWithWebRoot(Environments.Production, webRoot.Path, new Uri("http://127.0.0.1:9"), settings);
+
+        var refusal = Should.Throw<OptionsValidationException>(() => edge.Services);
 
         refusal.Message.ShouldContain("Edge:MaxBufferedRequestBodyBytes");
     }

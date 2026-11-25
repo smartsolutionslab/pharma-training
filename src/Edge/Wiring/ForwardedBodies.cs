@@ -1,4 +1,6 @@
+using System.Globalization;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using SmartSolutionsLab.PharmaTraining.Edge.Forwarding;
@@ -23,8 +25,8 @@ public static class ForwardedBodies
         proxy.Services.AddOptions<BufferedBodyOptions>()
             .BindConfiguration(BufferedBodyOptions.Section)
             .Validate(limits => limits.MaxBufferedRequestBodyBytes > 0, "Edge:MaxBufferedRequestBodyBytes must be a positive number of bytes.")
-            .Validate<IOptions<KestrelServerOptions>>(
-                (limits, kestrel) => limits.MaxBufferedRequestBodyBytes <= LargestLimit(kestrel.Value),
+            .Validate<IOptions<KestrelServerOptions>, IConfiguration>(
+                (limits, kestrel, configuration) => limits.MaxBufferedRequestBodyBytes <= LargestLimit(kestrel.Value, configuration),
                 "Edge:MaxBufferedRequestBodyBytes must not exceed Kestrel's MaxRequestBodySize (30 000 000 bytes unless Kestrel:Limits:MaxRequestBodySize lowers it): Kestrel refuses a larger body first.")
             .ValidateOnStart();
         proxy.Services.TryAddSingleton<ContinueExpectingRequestTransform>();
@@ -34,7 +36,19 @@ public static class ForwardedBodies
         return proxy;
     }
 
+    private const string ConfiguredKestrelLimit = "Kestrel:Limits:MaxRequestBodySize";
+
     // A limit above Kestrel's own is never reached, since Kestrel answers 413 first. Without one, the edge still reads
-    // one byte past its limit, so long.MaxValue itself would overflow.
-    private static long LargestLimit(KestrelServerOptions kestrel) => kestrel.Limits.MaxRequestBodySize ?? long.MaxValue - 1;
+    // one byte past its limit, so long.MaxValue itself would overflow. A limit set in Kestrel's configuration section is
+    // not yet in KestrelServerOptions when this validation runs, so it is read from the configuration as well.
+    private static long LargestLimit(KestrelServerOptions kestrel, IConfiguration configuration)
+    {
+        var largest = kestrel.Limits.MaxRequestBodySize ?? long.MaxValue - 1;
+        if (long.TryParse(configuration[ConfiguredKestrelLimit], NumberStyles.Integer, CultureInfo.InvariantCulture, out var configured))
+        {
+            return Math.Min(largest, configured);
+        }
+
+        return largest;
+    }
 }
