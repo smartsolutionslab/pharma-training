@@ -163,6 +163,7 @@ export const en: MessageSchema = {
       saving: 'Saving…',
       saved: 'The retention period is now {years} years.',
       failed: 'The retention period could not be saved. Try again.',
+      changed: 'The retention period was changed meanwhile. Check the value and save again.',
     },
     mine: {
       columns: {

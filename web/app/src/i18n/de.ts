@@ -175,6 +175,7 @@ export const de = {
       saving: 'Wird gespeichert…',
       saved: 'Die Aufbewahrungsfrist beträgt jetzt {years} Jahre.',
       failed: 'Die Aufbewahrungsfrist konnte nicht gespeichert werden. Versuchen Sie es erneut.',
+      changed: 'Die Aufbewahrungsfrist wurde inzwischen geändert. Prüfen Sie den Wert und speichern Sie erneut.',
     },
     mine: {
       columns: {
