@@ -12,6 +12,10 @@ public sealed class Membership : Entity<MembershipId>
     {
     }
 
+    /// <summary>
+    /// The invited address, the account's after the accept. An invited or active membership always holds one; an ended or
+    /// revoked one holds none once the person's erasure forgot it (<see cref="Forget"/>, #115), and its column is nullable.
+    /// </summary>
     public EmailAddress Email { get; private set; } = default!;
 
     /// <summary>
@@ -76,6 +80,13 @@ public sealed class Membership : Entity<MembershipId>
     {
         Status = MembershipStatus.Ended;
         EndedAt = now;
+    }
+
+    /// <summary>Forgets the person's name and address (#115); the PersonId stays behind as the pseudonym.</summary>
+    internal void Forget()
+    {
+        Name = null;
+        Email = null!; // only a closed membership is forgotten, and nothing reads a closed membership's address
     }
 
     internal void Change(JobFunction jobFunction, MembershipRole role)

@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Erasures;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Infrastructure.Persistence;
@@ -9,9 +10,15 @@ public sealed class ErasureStore(OrganisationDbContext context) : IErasureStore
 {
     private readonly OrganisationDbContext context = context;
 
-    public void Add(Erasure erasure) => throw new NotImplementedException();
+    public void Add(Erasure erasure) => context.Add(erasure);
 
-    public Task<Option<Erasure>> LoadAsync(ErasureId id, CancellationToken cancellationToken) => throw new NotImplementedException();
+    public async Task<Option<Erasure>> LoadAsync(ErasureId id, CancellationToken cancellationToken) =>
+        await context.Set<Erasure>().SingleOrDefaultAsync(erasure => erasure.Id == id, cancellationToken) is { } erasure
+            ? Option<Erasure>.Some(erasure)
+            : Option<Erasure>.None;
 
-    public Task<Option<Erasure>> FindAsync(ErasureId id, CancellationToken cancellationToken) => throw new NotImplementedException();
+    public async Task<Option<Erasure>> FindAsync(ErasureId id, CancellationToken cancellationToken) =>
+        await context.Set<Erasure>().AsNoTracking().SingleOrDefaultAsync(erasure => erasure.Id == id, cancellationToken) is { } erasure
+            ? Option<Erasure>.Some(erasure)
+            : Option<Erasure>.None;
 }

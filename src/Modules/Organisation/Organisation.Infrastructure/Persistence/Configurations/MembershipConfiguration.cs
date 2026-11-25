@@ -23,7 +23,8 @@ public sealed class MembershipConfiguration : IEntityTypeConfiguration<Membershi
         // The identifier and the value objects map to their backing values by convention (module.ddd-depth: strict).
         builder.Property(membership => membership.Id).HasColumnName("id").ValueGeneratedNever();
         builder.Property<PharmacyId>(PharmacyId).HasColumnName("pharmacy_id").IsRequired();
-        builder.Property(membership => membership.Email).HasColumnName("email").HasMaxLength(EmailAddress.MaxLength).IsRequired();
+        // None once a person's erasure forgot it (#115), and only on an ended or revoked row, which the unique index leaves out.
+        builder.Property(membership => membership.Email).HasColumnName("email").HasMaxLength(EmailAddress.MaxLength).IsRequired(false);
         // Rows from before versions were kept are each at their invitation's first version.
         builder.Property(membership => membership.InvitationVersion).HasColumnName("invitation_version").HasDefaultValue(InvitationVersion.First).IsRequired();
         // Rows from before versions were kept are each at version 1: no change was ever announced for them.

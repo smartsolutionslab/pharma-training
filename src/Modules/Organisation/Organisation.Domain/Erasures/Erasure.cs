@@ -28,11 +28,40 @@ public sealed class Erasure : AggregateRoot<ErasureId>
 
     public IReadOnlyList<ErasureStep> Steps => steps;
 
-    public static Erasure Request(ErasureId id, PersonId requestedBy, Timestamp now) => throw new NotImplementedException();
+    public static Erasure Request(ErasureId id, PersonId requestedBy, Timestamp now)
+    {
+        Ensure.That(id).IsNotNull();
+        Ensure.That(requestedBy).IsNotNull();
+        Ensure.That(now).IsNotNull();
+        return new Erasure(id, requestedBy, now);
+    }
 
     /// <summary>Records what became of the confirmation mail; one that is handled already stays as it was.</summary>
-    public void ConfirmationHandled(ErasureConfirmation confirmation, Timestamp now) => throw new NotImplementedException();
+    public void ConfirmationHandled(ErasureConfirmation confirmation, Timestamp now)
+    {
+        Ensure.That((int)confirmation, nameof(confirmation)).Satisfies(value => value != (int)ErasureConfirmation.Pending, "A handled confirmation is mailed or had no address.");
+        Ensure.That(now).IsNotNull();
+
+        if (Confirmation != ErasureConfirmation.Pending)
+        {
+            return;
+        }
+
+        Confirmation = confirmation;
+        ConfirmationHandledAt = now;
+    }
 
     /// <summary>Records the module's part as done; a step that is recorded already stays as it was.</summary>
-    public void CompleteStep(ErasureModule module, Timestamp now) => throw new NotImplementedException();
+    public void CompleteStep(ErasureModule module, Timestamp now)
+    {
+        Ensure.That(module).IsNotNull();
+        Ensure.That(now).IsNotNull();
+
+        if (steps.Any(step => step.Module == module))
+        {
+            return;
+        }
+
+        steps.Add(ErasureStep.Completed(module, now));
+    }
 }

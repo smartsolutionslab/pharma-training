@@ -97,9 +97,28 @@ public sealed class PharmacyStore(OrganisationDbContext context) : IPharmacyStor
     private IQueryable<Pharmacy> WithMemberships() =>
         context.Set<Pharmacy>().AsNoTracking().Include(pharmacy => pharmacy.Memberships);
 
-    public Task<IReadOnlyList<Pharmacy>> LoadTouchingPersonAsync(PersonId person, IReadOnlyCollection<EmailAddress> addresses, CancellationToken cancellationToken) =>
-        throw new NotImplementedException();
+    public async Task<IReadOnlyList<Pharmacy>> LoadTouchingPersonAsync(PersonId person, IReadOnlyCollection<EmailAddress> addresses, CancellationToken cancellationToken)
+    {
+        Ensure.That(person).IsNotNull();
+        Ensure.That(addresses).IsNotNull();
 
-    public Task<IReadOnlyList<EmailAddress>> AddressesOfAsync(PersonId person, CancellationToken cancellationToken) =>
-        throw new NotImplementedException();
+        List<EmailAddress> wanted = [.. addresses];
+        return await context.Set<Pharmacy>()
+            .Include(pharmacy => pharmacy.Memberships)
+            .Where(pharmacy => pharmacy.Memberships.Any(membership => membership.Person == person || wanted.Contains(membership.Email!)))
+            .OrderBy(pharmacy => pharmacy.Id)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<EmailAddress>> AddressesOfAsync(PersonId person, CancellationToken cancellationToken)
+    {
+        Ensure.That(person).IsNotNull();
+
+        return await context.Set<Membership>()
+            .AsNoTracking()
+            .Where(membership => membership.Person == person && membership.Email != null)
+            .Select(membership => membership.Email!)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+    }
 }

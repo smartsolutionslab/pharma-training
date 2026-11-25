@@ -7,9 +7,13 @@ public sealed record ErasureId : IValueObject<Guid>
 
     public Guid Value { get; }
 
-    public static ErasureId New() => throw new NotImplementedException();
+    public static ErasureId New() => new(Guid.CreateVersion7());
 
-    public static ErasureId From(Guid value) => throw new NotImplementedException();
+    public static ErasureId From(Guid value)
+    {
+        Ensure.That(value).IsNotEmpty();
+        return new ErasureId(value);
+    }
 
     public override string ToString() => Value.ToString();
 }

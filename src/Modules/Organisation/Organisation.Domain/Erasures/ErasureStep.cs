@@ -14,4 +14,6 @@ public sealed class ErasureStep
     public ErasureModule Module { get; }
 
     public Timestamp CompletedAt { get; }
+
+    internal static ErasureStep Completed(ErasureModule module, Timestamp completedAt) => new(module, completedAt);
 }
