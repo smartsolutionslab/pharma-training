@@ -45,7 +45,9 @@ public sealed class DraftNextVersionHandler(ICourseVersionStore versions, IErase
         if (saved.IsFailure)
         {
             // The commit lost (a deadlock or a serialization failure). If another editor drafted this number meanwhile,
-            // say so; a unique violation never reaches here, it answers 409 already-exists.
+            // say so; a unique violation never reaches here, it answers 409 already-exists. The lost commit aborted the
+            // transaction that holds the copied reviewers (#115), so it is rolled back before the number is read again.
+            await unitOfWork.RollbackAsync(cancellationToken);
             var concurrent = await versions.FindByNumberAsync(next.Course, next.Number, cancellationToken);
             if (concurrent.HasValue)
             {
