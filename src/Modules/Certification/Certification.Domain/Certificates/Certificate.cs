@@ -9,8 +9,11 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Certific
 /// </summary>
 public sealed class Certificate : AggregateRoot<CertificateId>
 {
-    // Decision "Aufbewahrung" (docs/domain/README.md): five years from issue; a period per pharmacy is a follow-up.
-    private const int PharmacyRetentionYears = 5;
+    /// <summary>
+    /// Decision "Aufbewahrung" (docs/domain/README.md): pharmacies keep a certificate five years from issue; a period per
+    /// pharmacy is a follow-up. The export's query in Infrastructure counts the same years (docs/adr/0034).
+    /// </summary>
+    public const int PharmacyRetentionYears = 5;
 
     private Certificate(
         CertificateId id,

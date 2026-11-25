@@ -281,6 +281,79 @@ public class CertificationExportTests(AspireFixture aspire)
         export.PdfsShouldBePdfs();
     }
 
+    /// <summary>
+    /// Retention as the database applies it (#53 after #367): the query that reads at most 2001 certificates leaves out
+    /// the ones the pharmacy no longer keeps, so a period holding 2000 kept certificates and five older than five years is
+    /// exported whole, not refused as too large, and without the five. The 2005 rows are copies of one passed certificate,
+    /// with their PDFs pending, so the archive holds the index alone.
+    /// </summary>
+    [Fact]
+    public async Task Certificates_older_than_five_years_do_not_count_towards_the_limit()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var developer = await aspire.CreateHostClientAsync("developer");
+        var pharmacy = await ManagedPharmacyAsync(developer, cancellationToken);
+        var member = StartedIn(Guid.CreateVersion7(), pharmacy, "Employee", LongAgo);
+        await CertificationDatabase.DeliverAsync(aspire, StartedType, member, cancellationToken);
+        var published = Published();
+        await CertificationDatabase.DeliverAsync(aspire, PublishedType, published, cancellationToken);
+        var fiveYearsAgo = TimeProvider.System.GetUtcNow().AddYears(-5);
+        var template = await PassAsync(member, published, fiveYearsAgo.AddDays(1), cancellationToken);
+        await CertificationDatabase.WaitUntilCountAsync(aspire, StoredOfHolder, member.PersonId, 1, cancellationToken);
+        await CopyAsync(template, 2000 - 1, fiveYearsAgo.AddDays(1).AddSeconds(1), cancellationToken);
+        await CopyAsync(template, 5, fiveYearsAgo.AddDays(-1), cancellationToken);
+        var expired = await IssuedBeforeAsync(member.PersonId, fiveYearsAgo, cancellationToken);
+
+        var export = await ExportAsync(developer, pharmacy, DayOf(fiveYearsAgo.AddDays(-3)), DayOf(fiveYearsAgo.AddDays(3)), cancellationToken);
+
+        expired.Count.ShouldBe(5);
+        var exported = export.ExportedIds();
+        exported.Count.ShouldBe(2000);
+        exported.ShouldContain(template);
+        exported.ShouldNotContain(id => expired.Contains(id));
+    }
+
+    /// <summary>
+    /// Stores <paramref name="count"/> copies of the certificate, one second apart from <paramref name="firstIssuedAt"/> on,
+    /// each with its own id, attempt and verification code, and its PDF pending.
+    /// </summary>
+    private async Task CopyAsync(Guid template, int count, DateTimeOffset firstIssuedAt, CancellationToken cancellationToken)
+    {
+        await using var connection = await CertificationDatabase.OpenAsync(aspire, cancellationToken);
+        await using var command = new NpgsqlCommand(
+            """
+            insert into certification.certificates (id, attempt_id, holder_id, holder_name, course_id, course_version_id, course_title,
+                course_version_number, score_percent, issued_at, valid_until, verification_code, document_state, document_location)
+            select gen_random_uuid(), gen_random_uuid(), holder_id, holder_name, course_id, course_version_id, course_title,
+                course_version_number, score_percent, @first + (n - 1) * interval '1 second', valid_until,
+                md5(random()::text || n::text), 'Pending', null
+            from certification.certificates, generate_series(1, @count) as n
+            where id = @template
+            """,
+            connection);
+        command.Parameters.AddWithValue("first", firstIssuedAt);
+        command.Parameters.AddWithValue("count", count);
+        command.Parameters.AddWithValue("template", template);
+        (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(count);
+    }
+
+    /// <summary>The ids of the holder's certificates issued before the instant.</summary>
+    private async Task<List<Guid>> IssuedBeforeAsync(Guid holder, DateTimeOffset instant, CancellationToken cancellationToken)
+    {
+        await using var connection = await CertificationDatabase.OpenAsync(aspire, cancellationToken);
+        await using var command = new NpgsqlCommand("select id from certification.certificates where holder_id = @holder and issued_at < @instant", connection);
+        command.Parameters.AddWithValue("holder", holder);
+        command.Parameters.AddWithValue("instant", instant);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        List<Guid> ids = [];
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            ids.Add(reader.GetGuid(0));
+        }
+
+        return ids;
+    }
+
     private static string DayOf(DateTimeOffset instant) => instant.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
 
     private static Uri Export(Guid pharmacy, string query) => new($"/certification/pharmacies/{pharmacy:D}/certificates/export{query}", UriKind.Relative);

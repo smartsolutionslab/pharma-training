@@ -24,9 +24,11 @@ public interface ICertificateStore
     /// <summary>
     /// The certificates issued from <paramref name="issuedFrom"/> on and before <paramref name="issuedBefore"/> whose holder
     /// had a membership in the pharmacy at the instant of issue (started at or before it, not ended at or before it; an ending
-    /// without a stored start is no membership), read without tracking, oldest first, then by id, at most <paramref name="limit"/>.
+    /// without a stored start is no membership), and that pharmacies still keep at <paramref name="keptAt"/>
+    /// (<see cref="Certificate.IsKeptByPharmaciesAt"/>, docs/adr/0034), read without tracking, oldest first, then by id, at
+    /// most <paramref name="limit"/>. The limit counts only the certificates kept.
     /// </summary>
-    Task<IReadOnlyList<Certificate>> IssuedInPharmacyAsync(PharmacyId pharmacy, Timestamp issuedFrom, Timestamp issuedBefore, int limit, CancellationToken cancellationToken);
+    Task<IReadOnlyList<Certificate>> IssuedInPharmacyAsync(PharmacyId pharmacy, Timestamp issuedFrom, Timestamp issuedBefore, Timestamp keptAt, int limit, CancellationToken cancellationToken);
 
     /// <summary>
     /// A page of the holder's certificates, read without tracking, newest first (issued later, then the larger id), and

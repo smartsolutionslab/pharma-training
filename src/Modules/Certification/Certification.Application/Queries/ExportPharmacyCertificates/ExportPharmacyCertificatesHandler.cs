@@ -47,11 +47,10 @@ public sealed class ExportPharmacyCertificatesHandler(IMembershipStore membershi
             return Failure(period.Error);
         }
 
-        var issued = await certificates.IssuedInPharmacyAsync(pharmacy, period.Value.Start, period.Value.End, CertificateExportArchive.MaxCertificates + 1, cancellationToken);
-
-        // Retention (#53, docs/adr/0034): a certificate the pharmacy no longer keeps does not appear in the export.
+        // Retention (#53, docs/adr/0034) is applied in the query, before the limit is counted: a certificate the pharmacy
+        // no longer keeps neither appears in the export nor makes it too large.
         var now = Timestamp.From(time.GetUtcNow());
-        List<Certificate> chosen = [.. issued.Where(certificate => certificate.IsKeptByPharmaciesAt(now))];
+        var chosen = await certificates.IssuedInPharmacyAsync(pharmacy, period.Value.Start, period.Value.End, now, CertificateExportArchive.MaxCertificates + 1, cancellationToken);
         if (chosen.Count > CertificateExportArchive.MaxCertificates)
         {
             return Failure(ExportFailures.TooLarge());
