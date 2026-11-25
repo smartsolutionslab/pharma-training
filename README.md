@@ -87,6 +87,8 @@ The development realm allows self-registration: Keycloak's login page has a Regi
 
 Keycloak imports the realm only when it does not exist yet, and keeps it in a data volume. After `realm.json` changes (a role, a user, a realm setting such as registration), an existing local Keycloak keeps the old realm: stop the AppHost, find the volume with `docker volume ls` (its name contains `keycloak`), remove it with `docker volume rm <name>`, and start the AppHost again.
 
+The realm's confidential client `pharma-training-erasure`, with which Organisation deletes an erased person's account (#115, [ADR 0040](docs/adr/0040-the-erased-persons-keycloak-account-is-deleted-by-organisations-service-account.md)), came with that change too: a volume whose realm was imported before it has no such client, and every erasure then stops short of the step `keycloak`, its message dead-lettered after the retries. Its secret is the AppHost's parameter `keycloak-erasure-client-secret`, generated once and kept in the AppHost's user secrets like Keycloak's administrator password; the import reads it once. Remove the volume as above whenever you clear the AppHost's user secrets, or the imported client keeps the old secret and Organisation's token request is refused.
+
 ## Test
 
 ```bash
@@ -228,6 +230,20 @@ The services and Keycloak are built from images whose bases come from `mcr.micro
    ```
 
    Put the secret the last command shows into staging's `X1_RUNNER_SECRET` (`gh secret set X1_RUNNER_SECRET --env staging`), then `clear` the terminal and remove `~/.keycloak/kcadm.config`. `x1-runner` may set any staging user's password, so its secret is only as safe as the `staging` environment: keep that environment's deployment branches and tags limited to `main` and `deploy/*` (step 4, checked by `check-deploy-environments.sh`), so a workflow changed on another branch never receives it. `x1-staging.yml` keeps no trace and uploads nothing, since a trace would hold the secret. Set `X1_KEYCLOAK_URL` and `X1_MAILPIT_URL` too (step 5 of the one-time setup). To rotate the secret, `./kcadm.sh create clients/<id>/client-secret -r pharma-training` and set it again.
+
+6. **An environment whose realm was imported before the erasure client existed** (#115, [ADR 0040](docs/adr/0040-the-erased-persons-keycloak-account-is-deleted-by-organisations-service-account.md)). Keycloak imports `realm.json` once, so an environment it was imported into before `pharma-training-erasure` was declared lacks the client Organisation deletes an erased person's account with, and every erasure stops short of the step `keycloak` (its message is dead-lettered after the retries and can be replayed once the client exists). Create it in Keycloak's container, as the administrator, with the same settings as the realm file:
+
+   ```bash
+   cd /opt/keycloak/bin
+   ./kcadm-otp.sh login <your name>
+   ./kcadm.sh create clients -r pharma-training -s clientId=pharma-training-erasure -s enabled=true -s publicClient=false \
+     -s clientAuthenticatorType=client-secret -s serviceAccountsEnabled=true -s standardFlowEnabled=false \
+     -s directAccessGrantsEnabled=false -s implicitFlowEnabled=false
+   ./kcadm.sh add-roles -r pharma-training --uusername service-account-pharma-training-erasure --cclientid realm-management --rolename manage-users
+   ./kcadm.sh get clients/$(./kcadm.sh get clients -r pharma-training -q clientId=pharma-training-erasure --fields id --format csv --noquotes)/client-secret -r pharma-training
+   ```
+
+   Put the secret the last command shows into the environment's `KEYCLOAK_ERASURE_CLIENT_SECRET` (`gh secret set KEYCLOAK_ERASURE_CLIENT_SECRET --env <environment>`), `clear` the terminal, remove `~/.keycloak/kcadm.config`, and deploy, so Organisation reads it. The secret may delete every account of the realm: only Keycloak and Organisation read it. To rotate it, `./kcadm.sh create clients/<id>/client-secret -r pharma-training`, set the new value and deploy; an environment imported after this client existed took its secret from `KEYCLOAK_ERASURE_CLIENT_SECRET` at the import, and is rotated the same way.
 
 ### What to check after the first deploy
 
