@@ -136,4 +136,12 @@ internal sealed class InMemoryCertificateStore : ICertificateStore, ICertificati
         Commits++;
         return Task.CompletedTask;
     }
+
+    /// <summary>Forgets what was added, removed and published since the last commit, as a rollback does.</summary>
+    public void Discard()
+    {
+        added.Clear();
+        removed.Clear();
+        queued.Clear();
+    }
 }

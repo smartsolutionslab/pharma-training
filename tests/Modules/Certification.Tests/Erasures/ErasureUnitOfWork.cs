@@ -8,7 +8,8 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Tests.Erasures;
 /// <summary>
 /// Certification's unit of work over the three stores an erasure touches: a commit saves the tombstones, the memberships
 /// and the certificates (the removed ones go) and sends what was published, in the certificate store's
-/// <see cref="InMemoryCertificateStore.Published"/>; it is written down in the journal as <c>commit</c>.
+/// <see cref="InMemoryCertificateStore.Published"/>; it is written down in the journal as <c>commit</c>. Abandoning forgets what the three stores hold unsaved and is
+/// written down as <c>abandon</c>.
 /// </summary>
 internal sealed class ErasureUnitOfWork(
     InMemoryCertificateStore certificates,
@@ -32,5 +33,14 @@ internal sealed class ErasureUnitOfWork(
         await memberships.CommitAsync(cancellationToken);
         await certificates.CommitAsync(cancellationToken);
         Commits++;
+    }
+
+    public Task AbandonAsync(CancellationToken cancellationToken)
+    {
+        journal.Add("abandon");
+        erased.Discard();
+        memberships.Discard();
+        certificates.Discard();
+        return Task.CompletedTask;
     }
 }

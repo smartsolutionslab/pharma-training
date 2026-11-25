@@ -89,4 +89,12 @@ internal sealed class InMemoryMembershipStore : IMembershipStore, ICertification
         Commits++;
         return Task.CompletedTask;
     }
+
+    /// <summary>Forgets what was added since the last commit, as a rollback does.</summary>
+    public void Discard()
+    {
+        addedMemberships.Clear();
+        addedEndings.Clear();
+        addedChanges.Clear();
+    }
 }

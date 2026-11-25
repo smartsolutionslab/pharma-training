@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Extensions.Time.Testing;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Commands.PurgeErasedCertificates;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Documents;
@@ -29,6 +31,7 @@ public class PurgeErasedCertificatesHandlerTests
     private readonly RecordingBlobDeletes blobs;
     private readonly ErasureUnitOfWork unitOfWork;
     private readonly FakeTimeProvider time = new(Issued);
+    private readonly FakeLogger<PurgeErasedCertificatesHandler> logger = new();
     private readonly PersonId person = PersonId.From(Guid.CreateVersion7());
     private readonly PersonId otherPerson = PersonId.From(Guid.CreateVersion7());
     private readonly PharmacyId pharmacy = PharmacyId.From(Guid.CreateVersion7());
@@ -181,6 +184,37 @@ public class PurgeErasedCertificatesHandlerTests
         certificates.Stored.ShouldHaveSingleItem().ShouldBeSameAs(kept);
     }
 
+    /// <summary>
+    /// #446 review: a person whose purge keeps failing (here a PDF the storage refuses to delete) must not hold up the
+    /// purge of everyone after them in id order. Their work is abandoned, rolled back with their hold, and logged by their
+    /// id alone; the next person is purged in a transaction of their own, and the next pass tries the failed one again.
+    /// </summary>
+    [Fact]
+    public async Task A_person_whose_purge_fails_is_abandoned_and_logged_and_the_persons_after_them_are_still_purged()
+    {
+        var (first, second) = person.Value.CompareTo(otherPerson.Value) < 0 ? (person, otherPerson) : (otherPerson, person);
+        Member(first, pharmacy, MembershipStart);
+        Member(second, otherPharmacy, MembershipStart);
+        var stuck = Stored(Issue(first, Issued));
+        var purged = Stored(Issue(second, Issued));
+        erased.Tombstone(first, Issued.AddYears(4));
+        erased.Tombstone(second, Issued.AddYears(4));
+        blobs.Failing.Add(CertificateDocuments.NameFor(stuck.Id));
+        time.SetUtcNow(Issued.AddYears(7));
+
+        var result = await Handler().HandleAsync(new PurgeErasedCertificates(), TestContext.Current.CancellationToken);
+
+        result.IsSuccess.ShouldBeTrue();
+        certificates.Stored.ShouldHaveSingleItem().ShouldBeSameAs(stuck, "the failed person's certificate stays for the next pass");
+        blobs.Deleted.ShouldBe([CertificateDocuments.NameFor(purged.Id)]);
+        unitOfWork.Commits.ShouldBe(1);
+        journal.IndexOf("abandon").ShouldBeLessThan(journal.LastIndexOf("hold"), "the failed person is abandoned before the next one is held");
+        var logged = logger.Collector.GetSnapshot().ShouldHaveSingleItem();
+        logged.Level.ShouldBe(LogLevel.Error);
+        logged.Message.ShouldContain(first.Value.ToString());
+        logged.Exception.ShouldBeOfType<InvalidOperationException>();
+    }
+
     [Fact]
     public async Task A_pass_with_nothing_to_purge_succeeds_and_changes_nothing()
     {
@@ -235,7 +269,7 @@ public class PurgeErasedCertificatesHandlerTests
         return passes;
     }
 
-    private PurgeErasedCertificatesHandler Handler() => new(erased, certificates, memberships, retention, blobs, unitOfWork, time);
+    private PurgeErasedCertificatesHandler Handler() => new(erased, certificates, memberships, retention, blobs, unitOfWork, time, logger);
 
     /// <summary>A membership of the person in the pharmacy from the instant on, stored as if committed earlier.</summary>
     private void Member(PersonId of, PharmacyId at, DateTimeOffset startedAt) =>

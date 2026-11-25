@@ -76,4 +76,7 @@ internal sealed class InMemoryErasedPersonStore : IErasedPersonStore
         Stored.AddRange(added);
         added.Clear();
     }
+
+    /// <summary>Forgets the tombstones added since the last commit, as a rollback does.</summary>
+    public void Discard() => added.Clear();
 }

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Storage;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Erasures;
@@ -20,7 +21,8 @@ public sealed class PurgeErasedCertificatesHandler(
     IPharmacyRetentionStore retention,
     IBlobDeletes blobs,
     ICertificationUnitOfWork unitOfWork,
-    TimeProvider time)
+    TimeProvider time,
+    ILogger<PurgeErasedCertificatesHandler> logger)
     : ICommandHandler<PurgeErasedCertificates, Result<Unit, ApiError>>
 {
     private readonly IErasedPersonStore erased = erased;
@@ -34,6 +36,7 @@ public sealed class PurgeErasedCertificatesHandler(
     public async Task<Result<Unit, ApiError>> HandleAsync(PurgeErasedCertificates command, CancellationToken cancellationToken)
     {
         Ensure.That(command).IsNotNull();
+        Ensure.That(logger).IsNotNull();
 
         var now = Timestamp.From(time.GetUtcNow());
         var holders = await erased.HoldingCertificatesAsync(cancellationToken);
