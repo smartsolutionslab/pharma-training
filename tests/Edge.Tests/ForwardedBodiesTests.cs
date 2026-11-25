@@ -19,6 +19,9 @@ public class ForwardedBodiesTests
 {
     private const int Mebibyte = 1_048_576;
 
+    // Kestrel's MaxRequestBodySize unless something lowers it.
+    private const long KestrelDefaultLimit = 30_000_000;
+
     [Fact]
     public async Task An_anonymous_callers_body_of_unknown_length_is_streamed_without_being_read_at_the_edge()
     {
@@ -120,6 +123,44 @@ public class ForwardedBodiesTests
         await Should.ThrowAsync<OptionsValidationException>(proxy.ValidateOnStartAsync);
     }
 
+    [Fact]
+    public async Task A_limit_above_kestrels_request_body_limit_stops_the_edge_at_startup_naming_the_setting()
+    {
+        using var proxy = new Proxy(KestrelDefaultLimit + 1);
+
+        var refusal = await Should.ThrowAsync<OptionsValidationException>(proxy.ValidateOnStartAsync);
+
+        refusal.Message.ShouldContain("Edge:MaxBufferedRequestBodyBytes");
+    }
+
+    [Fact]
+    public async Task A_limit_above_a_lowered_kestrel_request_body_limit_stops_the_edge_at_startup()
+    {
+        using var proxy = new Proxy(2_000_001, kestrelLimit: 2_000_000);
+
+        var refusal = await Should.ThrowAsync<OptionsValidationException>(proxy.ValidateOnStartAsync);
+
+        refusal.Message.ShouldContain("Edge:MaxBufferedRequestBodyBytes");
+    }
+
+    [Fact]
+    public async Task The_largest_limit_without_a_kestrel_request_body_limit_stops_the_edge_at_startup()
+    {
+        using var proxy = new Proxy(long.MaxValue, kestrelLimit: null);
+
+        var refusal = await Should.ThrowAsync<OptionsValidationException>(proxy.ValidateOnStartAsync);
+
+        refusal.Message.ShouldContain("Edge:MaxBufferedRequestBodyBytes");
+    }
+
+    [Fact]
+    public async Task A_limit_equal_to_kestrels_request_body_limit_starts_the_edge()
+    {
+        using var proxy = new Proxy(KestrelDefaultLimit);
+
+        await Should.NotThrowAsync(proxy.ValidateOnStartAsync);
+    }
+
     private static DefaultHttpContext Caller(Stream body, bool signedIn)
     {
         var context = new DefaultHttpContext();
@@ -149,7 +190,13 @@ public class ForwardedBodiesTests
         {
         }
 
-        public Proxy(string? limit = null)
+        /// <summary>The proxy services under a Kestrel whose <c>MaxRequestBodySize</c> is <paramref name="kestrelLimit"/> (null: none).</summary>
+        public Proxy(long limit, long? kestrelLimit)
+            : this(limit.ToString(System.Globalization.CultureInfo.InvariantCulture), kestrel => kestrel.Limits.MaxRequestBodySize = kestrelLimit)
+        {
+        }
+
+        public Proxy(string? limit = null, Action<Microsoft.AspNetCore.Server.Kestrel.Core.KestrelServerOptions>? kestrel = null)
         {
             Dictionary<string, string?> settings = [];
             if (limit is not null)
@@ -160,6 +207,11 @@ public class ForwardedBodiesTests
             var collection = new ServiceCollection();
             collection.AddLogging();
             collection.AddSingleton<IConfiguration>(new ConfigurationBuilder().AddInMemoryCollection(settings).Build());
+            if (kestrel is not null)
+            {
+                collection.Configure(kestrel);
+            }
+
             collection.AddReverseProxy().ForwardBodiesBehindContinue();
             services = collection.BuildServiceProvider();
         }
