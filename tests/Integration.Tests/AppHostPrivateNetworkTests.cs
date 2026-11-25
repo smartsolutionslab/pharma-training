@@ -3,7 +3,8 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// <summary>
 /// Published, the Container Apps environment runs in a virtual network of its own, and PostgreSQL and the Key Vault are
 /// reached through private endpoints in it alone: neither has a public endpoint, and the server has no firewall rule
-/// letting in every Azure address (#149, docs/adr/0038).
+/// letting in every Azure address. The services reach Blob Storage through a private endpoint too, while its public
+/// endpoint stays for the browsers' SAS uploads and reads (#149, the owner's decision (a); docs/adr/0038).
 /// </summary>
 public class AppHostPrivateNetworkTests
 {
@@ -52,7 +53,9 @@ public class AppHostPrivateNetworkTests
     [InlineData(PublishedAppHost.Staging, "vault")]
     [InlineData(PublishedAppHost.Production, "postgresqlServer")]
     [InlineData(PublishedAppHost.Production, "vault")]
-    public async Task The_server_and_the_vault_are_reached_through_a_private_endpoint(string environment, string groupId)
+    [InlineData(PublishedAppHost.Staging, "blob")]
+    [InlineData(PublishedAppHost.Production, "blob")]
+    public async Task The_server_the_vault_and_the_blobs_are_reached_through_a_private_endpoint(string environment, string groupId)
     {
         var bicep = await PublishedAppHost.PublishAsync(environment, TestContext.Current.CancellationToken);
 
@@ -66,5 +69,20 @@ public class AppHostPrivateNetworkTests
         bicep.Files.Values.ShouldContain(
             file => file.Contains("'Microsoft.Network/privateDnsZones@", StringComparison.Ordinal),
             "A private endpoint needs a private DNS zone, or the apps resolve the public address.");
+    }
+
+    // Browsers upload to and read from the account directly with the SAS URLs the services sign (docs/adr/0002), so its
+    // public endpoint stays: the services' own traffic goes through the private endpoint.
+    [Theory]
+    [InlineData(PublishedAppHost.Staging)]
+    [InlineData(PublishedAppHost.Production)]
+    public async Task The_storage_account_keeps_its_public_endpoint_for_the_browsers(string environment)
+    {
+        var bicep = await PublishedAppHost.PublishAsync(environment, TestContext.Current.CancellationToken);
+
+        var storage = bicep.Module("storage");
+
+        storage.ShouldNotContain("publicNetworkAccess: 'Disabled'");
+        storage.ShouldNotContain("defaultAction: 'Deny'");
     }
 }
