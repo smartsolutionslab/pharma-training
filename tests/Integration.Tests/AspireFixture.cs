@@ -36,6 +36,9 @@ public sealed partial class AspireFixture : IAsyncLifetime
     /// <summary>How long the sweeps leave a stored event to its handler in this run (#277), lowered from the default two minutes.</summary>
     public static readonly TimeSpan AnnouncementGracePeriod = TimeSpan.FromSeconds(5);
 
+    /// <summary>How often Compliance's, Learning's and Certification's sweeps of erased persons' messages run in this run (#439), lowered from the default minute.</summary>
+    public static readonly TimeSpan ErasedPersonMessageSweepInterval = TimeSpan.FromSeconds(1);
+
     // Twice the largest start-up of the green CI runs listed in #134 (204 s), rounded up to the minute. Before #126 the
     // edge and every service host were rebuilt at each start, which took 3.5 to over 5 minutes; now every project starts
     // from the AppHost's build. The fixture logs each run's start-up beside this limit.
@@ -114,6 +117,16 @@ public sealed partial class AspireFixture : IAsyncLifetime
             var sweeping = builder.CreateResourceBuilder(builder.Resources.OfType<ProjectResource>().Single(resource => resource.Name == service));
             sweeping.WithEnvironment($"{module}__AnnouncementSweep__Interval", AnnouncementSweepInterval.ToString("c", CultureInfo.InvariantCulture));
             sweeping.WithEnvironment($"{module}__AnnouncementSweep__GracePeriod", AnnouncementGracePeriod.ToString("c", CultureInfo.InvariantCulture));
+        }
+
+        // The sweeps of erased persons' messages (#439) remove the dead letters and handled envelopes of a tombstoned
+        // person's membership messages every interval. The default minute would keep ErasedPersonMessageSweepTests
+        // waiting, so the run sweeps every ErasedPersonMessageSweepInterval. A sweep only ever removes rows of tombstoned
+        // persons, and every test that plants a tombstone uses a fresh person, so no other test's row is ever swept.
+        foreach (var (service, module) in new[] { ("compliance", "Compliance"), ("learning", "Learning"), ("certification", "Certification") })
+        {
+            builder.CreateResourceBuilder(builder.Resources.OfType<ProjectResource>().Single(resource => resource.Name == service))
+                .WithEnvironment($"{module}__ErasedPersonMessageSweep__Interval", ErasedPersonMessageSweepInterval.ToString("c", CultureInfo.InvariantCulture));
         }
 
         app = await builder.BuildAsync(timeout.Token);
