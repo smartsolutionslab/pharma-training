@@ -32,7 +32,7 @@ public class ErasedCertificatePurgeSettingsTests
     {
         var settings = ErasedCertificatePurgeSettings.From(Configured(value));
 
-        settings.Interval.ShouldBe(TimeSpan.FromDays(1));
+        settings.Interval.ShouldBe(TimeSpan.FromHours(1));
     }
 
     [Theory]
