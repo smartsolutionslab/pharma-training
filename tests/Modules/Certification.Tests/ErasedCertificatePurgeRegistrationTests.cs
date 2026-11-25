@@ -42,6 +42,10 @@ public class ErasedCertificatePurgeRegistrationTests
         services.AddSingleton<TimeProvider>(new FakeTimeProvider());
         services.AddSingleton(Substitute.For<IHostEnvironment>());
         services.AddSingleton<Microsoft.Extensions.AI.IChatClient>(_ => new SmartSolutionsLab.PharmaTraining.Tests.Fakes.FakeChatClient("unused"));
+
+        // The host's messaging registers the purge the module's sweep of erased persons' messages uses (#439); the
+        // module's container alone stands in for it.
+        services.AddSingleton(Substitute.For<IPersonalMessagePurge>());
         new CertificationModule().AddServices(services, configuration);
         return services;
     }

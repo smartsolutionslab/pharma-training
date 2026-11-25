@@ -42,9 +42,6 @@ public sealed class PersonErasureRequestedV1Consumer(
     ICertificationUnitOfWork unitOfWork,
     TimeProvider time)
 {
-    /// <summary>The messages Certification stores that carry a person's name; <c>TestPassedV1</c> carries the id only.</summary>
-    private static readonly IReadOnlyCollection<Type> PersonalMessages = [typeof(MembershipStartedV1), typeof(MembershipChangedV1)];
-
     private readonly ICertificateStore certificates = certificates;
     private readonly IMembershipStore memberships = memberships;
     private readonly IPharmacyRetentionStore retention = retention;
@@ -84,7 +81,7 @@ public sealed class PersonErasureRequestedV1Consumer(
             membership.EraseHolderName();
         }
 
-        await purge.PurgeAsync(person.Value, PersonalMessages, cancellationToken);
+        await purge.PurgeAsync(person.Value, PersonalMessages.Types, cancellationToken);
 
         await unitOfWork.PublishAsync(new CertificationErasureCompletedV1(message.ErasureId));
         await unitOfWork.CommitAsync(cancellationToken);

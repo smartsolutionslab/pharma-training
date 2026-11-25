@@ -18,7 +18,10 @@ internal static class CertificationDatabase
     /// <summary>Sends the event under a new envelope id and waits until Certification's inbox has handled it.</summary>
     public static async Task DeliverAsync<T>(AspireFixture aspire, string type, T message, CancellationToken cancellationToken)
     {
+        // A tombstoned person's membership message is dropped and its handled envelope swept (#439), maybe before a
+        // poll sees it Handled, so the sweep waits until this barrier is past.
         var messageId = Guid.CreateVersion7();
+        await using var pause = await ErasedPersonSweepPause.StartAsync(aspire, "certification", type, cancellationToken);
         await SendAsync(aspire, type, message, messageId, cancellationToken);
         await WaitUntilHandledAsync(aspire, messageId, cancellationToken);
     }
