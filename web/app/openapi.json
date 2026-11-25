@@ -5111,7 +5111,8 @@
       "FrontendConfiguration": {
         "required": [
           "oidcAuthority",
-          "clientId"
+          "clientId",
+          "environment"
         ],
         "type": "object",
         "properties": {
@@ -5119,6 +5120,9 @@
             "type": "string"
           },
           "clientId": {
+            "type": "string"
+          },
+          "environment": {
             "type": "string"
           }
         }

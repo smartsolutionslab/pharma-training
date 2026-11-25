@@ -7,7 +7,9 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// <summary>
 /// The demo seeder (#457) is a project the AppHost starts in run mode alone, after the edge, Keycloak and the web app, with
 /// target Local; on by default, off with <c>DemoSeeder:Enabled=false</c>. Published, staging and production alike, it is no
-/// resource at all.
+/// resource at all. A value of <c>DemoSeeder:Enabled</c> that is not a bool stops the AppHost, naming the key, rather than
+/// leave the seeder on (#457 PR 2). The edge is told the environment it was published for (<c>Edge__Environment</c>), which
+/// its <c>/api/config.json</c> reports and the seeder checks before it sends a credential to staging.
 /// </summary>
 public class AppHostDemoSeederTests
 {
@@ -60,6 +62,74 @@ public class AppHostDemoSeederTests
                 .Select(project => Path.GetFileName(project.GetProjectMetadata().ProjectPath))
                 .ShouldNotContain("DemoSeeder.csproj", $"Publishing {environment} contains the demo seeder's project.");
         }
+    }
+
+    [Theory]
+    [InlineData("off")]
+    [InlineData("0")]
+    [InlineData("no")]
+    [InlineData("yes")]
+    public async Task A_value_of_DemoSeeder_Enabled_that_is_not_a_bool_stops_the_apphost_naming_the_key(string value)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(ModelTimeout);
+        Exception? failure = null;
+        try
+        {
+            await using var builder = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AppHost>([$"--DemoSeeder:Enabled={value}"], timeout.Token);
+            builder.Resources.Select(resource => resource.Name).ShouldNotContain(Seeder, $"DemoSeeder:Enabled={value} left the seeder on.");
+        }
+        catch (Exception exception) when (exception is not ShouldAssertException && !timeout.IsCancellationRequested)
+        {
+            failure = exception;
+        }
+
+        failure.ShouldNotBeNull($"DemoSeeder:Enabled={value} is not a bool; the AppHost should stop, naming the key, rather than run with the seeder on or off by a guess.");
+        Messages(failure).ShouldContain("DemoSeeder:Enabled", Case.Sensitive, $"The AppHost stopped, but without naming the key: {Messages(failure)}");
+    }
+
+    [Theory]
+    [InlineData(PublishedAppHost.Staging)]
+    [InlineData(PublishedAppHost.Production)]
+    public async Task Published_the_edge_is_told_the_environment_it_was_published_for(string environment)
+    {
+        await using var builder = await PublishedAppHost.ModelAsync(environment, TestContext.Current.CancellationToken);
+        var host = builder.Resources.OfType<ProjectResource>().Single(resource => resource.Name == "host");
+
+        var variables = await EnvironmentAsync(builder, host);
+
+        variables.ShouldContainKey("Edge__Environment", $"Published ({environment}), the edge is not told its environment, so /api/config.json cannot report it and the demo seeder cannot tell staging from production. Its environment: {string.Join(", ", variables.Keys.Order(StringComparer.Ordinal))}");
+        variables["Edge__Environment"].ShouldBe(environment, $"Published ({environment}), the edge should report the environment it was published for.");
+    }
+
+    [Fact]
+    public async Task Run_mode_tells_the_edge_an_environment_that_is_neither_staging_nor_production()
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(ModelTimeout);
+        await using var builder = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AppHost>(timeout.Token);
+        var host = builder.Resources.OfType<ProjectResource>().Single(resource => resource.Name == "host");
+
+        var variables = await EnvironmentAsync(builder, host);
+
+        variables.ShouldContainKey("Edge__Environment", "In run mode the edge is not told its environment; /api/config.json reports it in every mode.");
+        variables["Edge__Environment"].ToString().ShouldNotBeNullOrWhiteSpace();
+        variables["Edge__Environment"].ToString()!.ToUpperInvariant().ShouldNotBeOneOf(["STAGING", "PRODUCTION"], "Run mode's edge must never report a deployed environment.");
+    }
+
+    private static string Messages(Exception exception)
+    {
+        List<string> messages = [];
+        for (var each = exception; each is not null; each = each.InnerException)
+        {
+            messages.Add($"{each.GetType().Name}: {each.Message}");
+            if (each is AggregateException aggregate)
+            {
+                messages.AddRange(aggregate.InnerExceptions.Select(inner => $"{inner.GetType().Name}: {inner.Message}"));
+            }
+        }
+
+        return string.Join(" | ", messages);
     }
 
     private static async Task<Dictionary<string, object>> EnvironmentAsync(IDistributedApplicationTestingBuilder builder, ProjectResource resource)

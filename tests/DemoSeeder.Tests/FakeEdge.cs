@@ -35,6 +35,15 @@ public sealed class FakeEdge(FakeKeycloak identity, FakeMailpit mail, FakeTimePr
 
     private readonly Dictionary<string, string> persons = [with(StringComparer.Ordinal)];
 
+    /// <summary>
+    /// The deployment <c>/api/config.json</c> reports in <c>environment</c>, as the AppHost hands the edge its environment's
+    /// name; run mode's by default. Null leaves the field out, as an edge from before #457 PR 2 answers.
+    /// </summary>
+    public string? ReportedEnvironment { get; set; } = "Development";
+
+    /// <summary>The realm <c>/api/config.json</c> reports in <c>oidcAuthority</c>: the fake Keycloak's, at its loopback origin, by default.</summary>
+    public string ReportedAuthority { get; set; } = FakeKeycloak.RealmUrl;
+
     /// <summary>How many times the edge stored something.</summary>
     public int Changes { get; private set; }
 
@@ -122,7 +131,13 @@ public sealed class FakeEdge(FakeKeycloak identity, FakeMailpit mail, FakeTimePr
         var method = request.Method.Method;
         if (method == "GET" && path == "/config.json")
         {
-            return new FakeAnswer("/config.json", null, FakeResponses.Ok(new { oidcAuthority = FakeKeycloak.RealmUrl, clientId = FakeKeycloak.ClientId }));
+            var configuration = new JsonObject { ["oidcAuthority"] = ReportedAuthority, ["clientId"] = FakeKeycloak.ClientId };
+            if (ReportedEnvironment is not null)
+            {
+                configuration["environment"] = ReportedEnvironment;
+            }
+
+            return new FakeAnswer("/config.json", null, FakeResponses.Ok(configuration));
         }
 
         var user = identity.UserOf(request.Headers.Authorization?.ToString());

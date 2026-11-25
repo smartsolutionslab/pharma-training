@@ -7,11 +7,9 @@ namespace SmartSolutionsLab.PharmaTraining.DemoSeeder;
 /// </summary>
 internal static class Seeder
 {
-    public static async Task<int> SeedAsync(SeedPlan plan, SeederSettings settings, HttpClient http, TimeProvider time, TextWriter output, CancellationToken cancellationToken)
+    public static async Task<int> SeedAsync(SeedPlan plan, SeederSettings settings, EdgeRealm realm, HttpClient http, TimeProvider time, TextWriter output, CancellationToken cancellationToken)
     {
-        var configuration = await EdgeClient.ConfigurationAsync(http, settings.EdgeUrl, cancellationToken);
-        var authority = new Uri(Json.Required(configuration, "oidcAuthority", "GET /api/config.json"));
-        var clientId = Json.Required(configuration, "clientId", "GET /api/config.json");
+        var (authority, clientId) = realm;
         var count = new SeedCount();
         var poller = new Poller(time, settings.PollTimeout);
 
@@ -28,7 +26,7 @@ internal static class Seeder
         var edge = new EdgeClient(http, settings.EdgeUrl, (user, token) => signIn.SignInAsync(user, settings.PasswordOf(user), token), poller);
         var users = plan.Users.ToDictionary(user => user.Username, StringComparer.Ordinal);
 
-        var pharmacies = new PharmacySeeding(edge, new Mailbox(http, settings.MailpitUrl, poller), users, count, output);
+        var pharmacies = new PharmacySeeding(edge, new Mailbox(http, settings.MailpitUrl, settings.MailpitAuth, poller), users, count, output);
         foreach (var pharmacy in plan.Pharmacies)
         {
             await pharmacies.EnsureAsync(pharmacy, cancellationToken);

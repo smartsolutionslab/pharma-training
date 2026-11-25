@@ -8,7 +8,9 @@ namespace SmartSolutionsLab.PharmaTraining.Edge.Tests;
 /// E2 and X6: the browser learns its identity provider from the edge at runtime, before it signs in, so one web build serves
 /// every environment. <c>GET /config.json</c> answers <c>FrontendConfiguration</c>, <c>{"oidcAuthority":
 /// &lt;Authentication:Authority&gt;, "clientId": "pharma-training-web"}</c>, to anyone, under <c>/api</c> too (where the
-/// generated client asks), and the OpenAPI document describes it, so the client is generated for it.
+/// generated client asks), and the OpenAPI document describes it, so the client is generated for it. It also reports
+/// <c>environment</c>, the deployment the AppHost published the edge for (<c>Edge:Environment</c>: staging, production),
+/// which the demo seeder checks before it sends a credential to staging (#457 PR 2).
 /// </summary>
 public class FrontendConfigurationTests
 {
@@ -17,7 +19,7 @@ public class FrontendConfigurationTests
     [InlineData("/api/config.json")]
     public async Task The_edge_tells_the_browser_its_identity_provider_at_runtime(string path)
     {
-        await using var edge = await EdgeHost.ServingTheAppAsync(Environments.Production);
+        await using var edge = await EdgeHost.ServingTheAppAsync(Environments.Production, Deployment("staging"));
         using var client = edge.CreateClient();
 
         using var response = await client.SendAsync(Requests.Data(path), TestContext.Current.CancellationToken);
@@ -27,9 +29,25 @@ public class FrontendConfigurationTests
         response.Content.Headers.ContentType?.MediaType.ShouldBe("application/json", $"GET {path} should answer JSON.");
         var configuration = JsonNode.Parse(body) as JsonObject;
         configuration.ShouldNotBeNull($"GET {path} answered no JSON object: {body}");
-        string.Join(", ", configuration.Select(member => member.Key).Order(StringComparer.Ordinal)).ShouldBe("clientId, oidcAuthority", $"GET {path} should answer oidcAuthority and clientId alone: {body}");
+        string.Join(", ", configuration.Select(member => member.Key).Order(StringComparer.Ordinal)).ShouldBe("clientId, environment, oidcAuthority", $"GET {path} should answer oidcAuthority, clientId and environment alone: {body}");
         configuration["oidcAuthority"]?.GetValue<string>().ShouldBe(EdgeHost.Authority, "oidcAuthority should be the edge's own Authentication:Authority.");
         configuration["clientId"]?.GetValue<string>().ShouldBe("pharma-training-web", "clientId should be the realm's web client.");
+    }
+
+    [Theory]
+    [InlineData("staging")]
+    [InlineData("production")]
+    public async Task The_edge_reports_the_deployment_it_was_published_for(string environment)
+    {
+        await using var edge = await EdgeHost.ServingTheAppAsync(Environments.Production, Deployment(environment));
+        using var client = edge.CreateClient();
+
+        using var response = await client.SendAsync(Requests.Data("/api/config.json"), TestContext.Current.CancellationToken);
+
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, $"An anonymous GET /api/config.json answered {(int)response.StatusCode}: {body}");
+        var reported = (JsonNode.Parse(body) as JsonObject)?["environment"]?.GetValue<string>();
+        reported.ShouldBe(environment, $"With Edge:Environment {environment}, /api/config.json should report environment {environment}, which the demo seeder refuses unless it is staging: {body}");
     }
 
     [Fact]
@@ -50,11 +68,14 @@ public class FrontendConfigurationTests
 
         var schema = document?["components"]?["schemas"]?["FrontendConfiguration"];
         schema.ShouldNotBeNull("The OpenAPI document has no schema FrontendConfiguration.");
-        string.Join(", ", schema?["properties"]?.AsObject().Select(property => property.Key).Order(StringComparer.Ordinal) ?? Enumerable.Empty<string>()).ShouldBe("clientId, oidcAuthority", "FrontendConfiguration should have oidcAuthority and clientId alone.");
-        string.Join(", ", schema?["required"]?.AsArray().Select(name => name?.GetValue<string>()).Order(StringComparer.Ordinal) ?? Enumerable.Empty<string?>()).ShouldBe("clientId, oidcAuthority", "Both of FrontendConfiguration's properties should be required, so the generated type has no optional members.");
-        foreach (var property in new[] { "oidcAuthority", "clientId" })
+        string.Join(", ", schema?["properties"]?.AsObject().Select(property => property.Key).Order(StringComparer.Ordinal) ?? Enumerable.Empty<string>()).ShouldBe("clientId, environment, oidcAuthority", "FrontendConfiguration should have oidcAuthority, clientId and environment alone.");
+        string.Join(", ", schema?["required"]?.AsArray().Select(name => name?.GetValue<string>()).Order(StringComparer.Ordinal) ?? Enumerable.Empty<string?>()).ShouldBe("clientId, environment, oidcAuthority", "Every one of FrontendConfiguration's properties should be required, so the generated type has no optional members.");
+        foreach (var property in new[] { "oidcAuthority", "clientId", "environment" })
         {
             schema?["properties"]?[property]?["type"]?.ToJsonString().ShouldBe("\"string\"", $"FrontendConfiguration.{property} should be a string that is never null.");
         }
     }
+
+    /// <summary>The setting the AppHost gives the edge: the environment it publishes (aspire publish -e).</summary>
+    private static Dictionary<string, string> Deployment(string environment) => new(StringComparer.Ordinal) { ["Edge:Environment"] = environment };
 }
