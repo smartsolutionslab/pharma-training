@@ -115,8 +115,8 @@ public sealed partial class ErasureConfirmationMailRequestedV1Consumer(
     /// Q5 (#115): where Organisation holds no address of the person, the confirmation goes to their Keycloak account's
     /// address, only where Keycloak verified it (docs/adr/0014); no account, or none verified, means no mail. That address
     /// is used for the mail alone, and nothing in Organisation is forgotten by it (owner decision C, docs/adr/0041). A
-    /// read Keycloak fails reads as no address: it is logged by the erasure's id alone and the erasure goes on, since the
-    /// account's deletion retries Keycloak on its own.
+    /// read Keycloak fails, with an error answer or no connection at all, reads as no address: it is logged by the
+    /// erasure's id alone and the erasure goes on, since the account's deletion retries Keycloak on its own.
     /// </summary>
     private async Task<IReadOnlyList<EmailAddress>> AccountAddressAsync(ErasureId erasure, PersonId person, CancellationToken cancellationToken)
     {
@@ -125,7 +125,7 @@ public sealed partial class ErasureConfirmationMailRequestedV1Consumer(
         {
             account = await accounts.FindAsync(person, cancellationToken);
         }
-        catch (AccountsUnavailableException)
+        catch (Exception exception) when (exception is AccountsUnavailableException or HttpRequestException)
         {
             AccountUnread(logger, erasure.Value);
             return [];
