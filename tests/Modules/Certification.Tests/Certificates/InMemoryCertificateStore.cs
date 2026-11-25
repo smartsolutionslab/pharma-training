@@ -14,6 +14,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Tests.Certifica
 internal sealed class InMemoryCertificateStore : ICertificateStore, ICertificationUnitOfWork
 {
     private readonly List<Certificate> added = [];
+    private readonly List<Certificate> removed = [];
     private readonly List<IntegrationEvent> queued = [];
     private readonly InMemoryMembershipStore? memberships;
 
@@ -32,6 +33,9 @@ internal sealed class InMemoryCertificateStore : ICertificateStore, ICertificati
     public List<IntegrationEvent> Published { get; } = [];
 
     public int Commits { get; private set; }
+
+    /// <summary>Where the reads of a holder's certificates are written down, in order with the rest of a test's (#115); none by default.</summary>
+    public List<string>? Journal { get; set; }
 
     /// <summary>How often a certificate was looked up by its verification code.</summary>
     public int VerificationLookups { get; private set; }
@@ -102,6 +106,15 @@ internal sealed class InMemoryCertificateStore : ICertificateStore, ICertificati
 
     public void Add(Certificate certificate) => added.Add(certificate);
 
+    public Task<IReadOnlyList<Certificate>> OfHolderAsync(PersonId holder, CancellationToken cancellationToken)
+    {
+        Journal?.Add("read-certificates");
+        IReadOnlyList<Certificate> holders = [.. Stored.Where(certificate => certificate.Holder == holder)];
+        return Task.FromResult(holders);
+    }
+
+    public void Remove(Certificate certificate) => removed.Add(certificate);
+
     public Task PublishAsync(IntegrationEvent integrationEvent)
     {
         queued.Add(integrationEvent);
@@ -112,6 +125,8 @@ internal sealed class InMemoryCertificateStore : ICertificateStore, ICertificati
     {
         Stored.AddRange(added);
         added.Clear();
+        Stored.RemoveAll(removed.Contains);
+        removed.Clear();
         Published.AddRange(queued);
         queued.Clear();
         Commits++;

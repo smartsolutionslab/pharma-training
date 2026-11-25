@@ -14,8 +14,12 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.Consumer
 /// announces the completion again, which Organisation records once. An unknown person completes too.
 /// </para>
 /// </summary>
-public sealed class PersonErasureRequestedV1Consumer(IPersonalMessagePurge purge, ILearningUnitOfWork unitOfWork)
+public sealed class PersonErasureRequestedV1Consumer(IErasedPersonStore erased, IPersonalMessagePurge purge, ILearningUnitOfWork unitOfWork, TimeProvider time)
 {
+    // Not used yet: the #421 review's red tests (#115) ask for the person to be held and tombstoned at Learning's clock.
+    private readonly IErasedPersonStore erased = erased;
+    private readonly TimeProvider time = time;
+
     /// <summary>The messages Learning stores that carry a person's name.</summary>
     private static readonly IReadOnlyCollection<Type> PersonalMessages = [typeof(MembershipStartedV1), typeof(MembershipChangedV1)];
 

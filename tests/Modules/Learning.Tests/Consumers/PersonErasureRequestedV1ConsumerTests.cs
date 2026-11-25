@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Time.Testing;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.Contracts.Learning;
 using SmartSolutionsLab.PharmaTraining.Contracts.Organisation;
@@ -14,10 +15,13 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Tests.Consumers;
 /// </summary>
 public class PersonErasureRequestedV1ConsumerTests
 {
+    private static readonly DateTimeOffset Start = new(2027, 5, 3, 10, 0, 0, TimeSpan.Zero);
+
     private readonly InMemoryMembershipCopies copies = new();
     private readonly IPersonalMessagePurge purge = Substitute.For<IPersonalMessagePurge>();
     private readonly Guid person = Guid.CreateVersion7();
     private readonly Guid erasure = Guid.CreateVersion7();
+    private readonly FakeTimeProvider time = new(Start);
 
     [Fact]
     public async Task The_stored_membership_start_and_change_messages_holding_the_persons_id_are_purged()
@@ -95,7 +99,40 @@ public class PersonErasureRequestedV1ConsumerTests
         copies.Commits.ShouldBe(0);
     }
 
-    private PersonErasureRequestedV1Consumer Consumer() => new(purge, copies);
+    /// <summary>#421 review: Learning tombstones the person, an unknown one too, at its own clock, so a membership message arriving later is dropped.</summary>
+    [Fact]
+    public async Task The_person_is_tombstoned_at_learnings_clock_once_committed()
+    {
+        time.SetUtcNow(Start.AddHours(2));
+
+        await Consumer().HandleAsync(Requested(), TestContext.Current.CancellationToken);
+
+        var tombstone = copies.ErasedPersons.ShouldHaveSingleItem();
+        tombstone.PersonId.ShouldBe(person);
+        tombstone.ErasedAt.ShouldBe(Start.AddHours(2));
+    }
+
+    [Fact]
+    public async Task The_erasure_holds_the_person_before_it_asks_whether_they_were_erased()
+    {
+        await Consumer().HandleAsync(Requested(), TestContext.Current.CancellationToken);
+
+        copies.PersonCalls.ShouldBe(["hold", "is-erased"], "a membership event running at the same time must not slip between the check and the tombstone");
+    }
+
+    [Fact]
+    public async Task A_redelivery_keeps_the_first_tombstone_as_it_was()
+    {
+        var requested = Requested();
+        await Consumer().HandleAsync(requested, TestContext.Current.CancellationToken);
+        time.Advance(TimeSpan.FromMinutes(5));
+
+        await Consumer().HandleAsync(requested, TestContext.Current.CancellationToken);
+
+        copies.ErasedPersons.ShouldHaveSingleItem().ErasedAt.ShouldBe(Start);
+    }
+
+    private PersonErasureRequestedV1Consumer Consumer() => new(copies, purge, copies, time);
 
     private PersonErasureRequestedV1 Requested() => new(erasure, person);
 }

@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging;
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.Contracts.Organisation;
 using SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.ReadModels;
 using SmartSolutionsLab.PharmaTraining.Modules.Learning.Domain.Memberships;
@@ -16,8 +18,19 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.Consumer
 /// The handler takes the message and a cancellation token only; everything else comes by constructor, since the
 /// AppHost's messaging topology reads every parameter type of a consumer's handler (docs/adr/0011).
 /// </remarks>
-public sealed class MembershipChangedV1Consumer(IMembershipCopies memberships, ILearningUnitOfWork unitOfWork)
+public sealed class MembershipChangedV1Consumer(
+    IMembershipCopies memberships,
+    IErasedPersonStore erased,
+    IPersonalMessagePurge purge,
+    ILearningUnitOfWork unitOfWork,
+    ILogger<MembershipChangedV1Consumer> logger)
 {
+    // Not used yet: the #421 review's red tests (#115) ask for an erased person to be held, checked and dropped, logged
+    // without the name, and the dropped message's stored copies purged.
+    private readonly IErasedPersonStore erased = erased;
+    private readonly IPersonalMessagePurge purge = purge;
+    private readonly ILogger<MembershipChangedV1Consumer> logger = logger;
+
     public async Task HandleAsync(MembershipChangedV1 message, CancellationToken cancellationToken)
     {
         // Refused here, each by its name, so a poison message dead-letters with a reason that says which field. Name,

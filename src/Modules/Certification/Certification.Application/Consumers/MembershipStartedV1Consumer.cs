@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using SmartSolutionsLab.PharmaTraining.Contracts.Organisation;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Certificates;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Memberships;
@@ -11,8 +12,12 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Con
 /// second delivery changes nothing, and the first one wins. The job function is not kept, so not checked.
 /// It deduplicates on the membership id, not on <c>Metadata.EventIdentifier</c>: for a fact only ever inserted that is stronger, since it also absorbs a re-publish under a new identifier.
 /// </summary>
-public sealed class MembershipStartedV1Consumer(IMembershipStore memberships, ICertificationUnitOfWork unitOfWork)
+public sealed class MembershipStartedV1Consumer(IMembershipStore memberships, IErasedPersonStore erased, ICertificationUnitOfWork unitOfWork, ILogger<MembershipStartedV1Consumer> logger)
 {
+    // Not used yet: slice 4's red tests (#115) ask for an erased person to be held, checked and dropped, logged without the name.
+    private readonly IErasedPersonStore erased = erased;
+    private readonly ILogger<MembershipStartedV1Consumer> logger = logger;
+
     public async Task HandleAsync(MembershipStartedV1 message, CancellationToken cancellationToken)
     {
         // Refused here, each by its name, so a poison message dead-letters with a reason that says which field.

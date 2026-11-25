@@ -23,6 +23,7 @@ public static class BlobStorageRegistration
         services.TryAddSingleton<IBlobCopies>(_ => new AzureBlobCopies(configuration));
         services.TryAddSingleton<IBlobWrites>(_ => new AzureBlobWrites(configuration));
         services.TryAddSingleton<IBlobReads>(_ => new AzureBlobReads(configuration));
+        services.TryAddSingleton<IBlobDeletes>(_ => new AzureBlobDeletes(configuration));
         return services;
     }
 }

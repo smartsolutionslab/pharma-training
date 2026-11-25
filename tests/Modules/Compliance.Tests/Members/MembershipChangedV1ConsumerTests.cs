@@ -1,3 +1,4 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using Microsoft.Extensions.Logging.Abstractions;
 using SmartSolutionsLab.PharmaTraining.Contracts.Organisation;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application.Consumers;
@@ -16,7 +17,7 @@ public class MembershipChangedV1ConsumerTests
         var pharmacyId = Guid.CreateVersion7();
         var changed = MembershipEvents.Changed(membershipId, personId, pharmacyId, "Ada Byron", JobFunctionV1.Pka, MembershipRoleV1.Manager, 2);
 
-        await new MembershipChangedV1Consumer(store, store, store, NullLogger<MembershipChangedV1Consumer>.Instance).HandleAsync(changed, TestContext.Current.CancellationToken);
+        await new MembershipChangedV1Consumer(store, store, Substitute.For<IPersonalMessagePurge>(), store, NullLogger<MembershipChangedV1Consumer>.Instance).HandleAsync(changed, TestContext.Current.CancellationToken);
 
         var change = store.Changes.ShouldHaveSingleItem();
         change.Membership.ShouldBe(MembershipId.From(membershipId));
@@ -35,7 +36,7 @@ public class MembershipChangedV1ConsumerTests
     public async Task A_change_delivered_twice_is_stored_once_and_nothing_more_is_committed()
     {
         var store = new InMemoryMemberStore();
-        var consumer = new MembershipChangedV1Consumer(store, store, store, NullLogger<MembershipChangedV1Consumer>.Instance);
+        var consumer = new MembershipChangedV1Consumer(store, store, Substitute.For<IPersonalMessagePurge>(), store, NullLogger<MembershipChangedV1Consumer>.Instance);
         var first = MembershipEvents.Changed(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), "Ada Byron", JobFunctionV1.Pka, MembershipRoleV1.Manager, 2);
 
         await consumer.HandleAsync(first, TestContext.Current.CancellationToken);
@@ -53,7 +54,7 @@ public class MembershipChangedV1ConsumerTests
     public async Task Two_changes_of_one_membership_are_stored_as_two_rows()
     {
         var store = new InMemoryMemberStore();
-        var consumer = new MembershipChangedV1Consumer(store, store, store, NullLogger<MembershipChangedV1Consumer>.Instance);
+        var consumer = new MembershipChangedV1Consumer(store, store, Substitute.For<IPersonalMessagePurge>(), store, NullLogger<MembershipChangedV1Consumer>.Instance);
         var membershipId = Guid.CreateVersion7();
         var personId = Guid.CreateVersion7();
         var pharmacyId = Guid.CreateVersion7();
@@ -75,10 +76,10 @@ public class MembershipChangedV1ConsumerTests
         var personId = Guid.CreateVersion7();
         var pharmacyId = Guid.CreateVersion7();
 
-        await new MembershipChangedV1Consumer(store, store, store, NullLogger<MembershipChangedV1Consumer>.Instance).HandleAsync(
+        await new MembershipChangedV1Consumer(store, store, Substitute.For<IPersonalMessagePurge>(), store, NullLogger<MembershipChangedV1Consumer>.Instance).HandleAsync(
             MembershipEvents.Changed(membershipId, personId, pharmacyId, "Ada", JobFunctionV1.Pta, MembershipRoleV1.Manager, 2),
             TestContext.Current.CancellationToken);
-        await new MembershipStartedV1Consumer(store, store, store, NullLogger<MembershipStartedV1Consumer>.Instance).HandleAsync(
+        await new MembershipStartedV1Consumer(store, store, Substitute.For<IPersonalMessagePurge>(), store, NullLogger<MembershipStartedV1Consumer>.Instance).HandleAsync(
             MembershipEvents.Started(membershipId, personId, pharmacyId, "Ada"),
             TestContext.Current.CancellationToken);
 
@@ -105,7 +106,7 @@ public class MembershipChangedV1ConsumerTests
             MembershipRoleV1.Manager,
             2);
 
-        var refused = await Should.ThrowAsync<GuardException>(() => new MembershipChangedV1Consumer(store, store, store, NullLogger<MembershipChangedV1Consumer>.Instance).HandleAsync(changed, TestContext.Current.CancellationToken));
+        var refused = await Should.ThrowAsync<GuardException>(() => new MembershipChangedV1Consumer(store, store, Substitute.For<IPersonalMessagePurge>(), store, NullLogger<MembershipChangedV1Consumer>.Instance).HandleAsync(changed, TestContext.Current.CancellationToken));
 
         refused.ParamName.ShouldBe(field);
         store.Changes.ShouldBeEmpty();
@@ -120,7 +121,7 @@ public class MembershipChangedV1ConsumerTests
         var store = new InMemoryMemberStore();
         var changed = MembershipEvents.Changed(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), "Ada", JobFunctionV1.Pta, MembershipRoleV1.Manager, version);
 
-        var refused = await Should.ThrowAsync<GuardException>(() => new MembershipChangedV1Consumer(store, store, store, NullLogger<MembershipChangedV1Consumer>.Instance).HandleAsync(changed, TestContext.Current.CancellationToken));
+        var refused = await Should.ThrowAsync<GuardException>(() => new MembershipChangedV1Consumer(store, store, Substitute.For<IPersonalMessagePurge>(), store, NullLogger<MembershipChangedV1Consumer>.Instance).HandleAsync(changed, TestContext.Current.CancellationToken));
 
         refused.ParamName.ShouldBe(nameof(MembershipChangedV1.Version));
         store.Changes.ShouldBeEmpty();
@@ -137,7 +138,7 @@ public class MembershipChangedV1ConsumerTests
         var store = new InMemoryMemberStore();
         var changed = MembershipEvents.Changed(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), displayName!, JobFunctionV1.Pta, MembershipRoleV1.Manager, 2);
 
-        var refused = await Should.ThrowAsync<GuardException>(() => new MembershipChangedV1Consumer(store, store, store, NullLogger<MembershipChangedV1Consumer>.Instance).HandleAsync(changed, TestContext.Current.CancellationToken));
+        var refused = await Should.ThrowAsync<GuardException>(() => new MembershipChangedV1Consumer(store, store, Substitute.For<IPersonalMessagePurge>(), store, NullLogger<MembershipChangedV1Consumer>.Instance).HandleAsync(changed, TestContext.Current.CancellationToken));
 
         refused.ParamName.ShouldBe(nameof(MembershipChangedV1.DisplayName));
         store.Changes.ShouldBeEmpty();
@@ -150,7 +151,7 @@ public class MembershipChangedV1ConsumerTests
         var store = new InMemoryMemberStore();
         var changed = MembershipEvents.Changed(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), new string('a', 101), JobFunctionV1.Pta, MembershipRoleV1.Manager, 2);
 
-        var refused = await Should.ThrowAsync<GuardException>(() => new MembershipChangedV1Consumer(store, store, store, NullLogger<MembershipChangedV1Consumer>.Instance).HandleAsync(changed, TestContext.Current.CancellationToken));
+        var refused = await Should.ThrowAsync<GuardException>(() => new MembershipChangedV1Consumer(store, store, Substitute.For<IPersonalMessagePurge>(), store, NullLogger<MembershipChangedV1Consumer>.Instance).HandleAsync(changed, TestContext.Current.CancellationToken));
 
         refused.ParamName.ShouldBe(nameof(MembershipChangedV1.DisplayName));
         store.Changes.ShouldBeEmpty();
@@ -163,7 +164,7 @@ public class MembershipChangedV1ConsumerTests
         var store = new InMemoryMemberStore();
         var changed = MembershipEvents.Changed(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), "Ada", JobFunctionV1.Pta, (MembershipRoleV1)99, 2);
 
-        var refused = await Should.ThrowAsync<GuardException>(() => new MembershipChangedV1Consumer(store, store, store, NullLogger<MembershipChangedV1Consumer>.Instance).HandleAsync(changed, TestContext.Current.CancellationToken));
+        var refused = await Should.ThrowAsync<GuardException>(() => new MembershipChangedV1Consumer(store, store, Substitute.For<IPersonalMessagePurge>(), store, NullLogger<MembershipChangedV1Consumer>.Instance).HandleAsync(changed, TestContext.Current.CancellationToken));
 
         refused.ParamName.ShouldBe(nameof(MembershipChangedV1.Role));
         store.Changes.ShouldBeEmpty();
@@ -176,7 +177,7 @@ public class MembershipChangedV1ConsumerTests
         var store = new InMemoryMemberStore();
         var changed = MembershipEvents.Changed(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), "Ada", (JobFunctionV1)99, MembershipRoleV1.Manager, 2);
 
-        var refused = await Should.ThrowAsync<GuardException>(() => new MembershipChangedV1Consumer(store, store, store, NullLogger<MembershipChangedV1Consumer>.Instance).HandleAsync(changed, TestContext.Current.CancellationToken));
+        var refused = await Should.ThrowAsync<GuardException>(() => new MembershipChangedV1Consumer(store, store, Substitute.For<IPersonalMessagePurge>(), store, NullLogger<MembershipChangedV1Consumer>.Instance).HandleAsync(changed, TestContext.Current.CancellationToken));
 
         refused.ParamName.ShouldBe(nameof(MembershipChangedV1.JobFunction));
         store.Changes.ShouldBeEmpty();
@@ -188,7 +189,7 @@ public class MembershipChangedV1ConsumerTests
     {
         var store = new InMemoryMemberStore();
 
-        await Should.ThrowAsync<GuardException>(() => new MembershipChangedV1Consumer(store, store, store, NullLogger<MembershipChangedV1Consumer>.Instance).HandleAsync(null!, TestContext.Current.CancellationToken));
+        await Should.ThrowAsync<GuardException>(() => new MembershipChangedV1Consumer(store, store, Substitute.For<IPersonalMessagePurge>(), store, NullLogger<MembershipChangedV1Consumer>.Instance).HandleAsync(null!, TestContext.Current.CancellationToken));
 
         store.Changes.ShouldBeEmpty();
         store.Commits.ShouldBe(0);

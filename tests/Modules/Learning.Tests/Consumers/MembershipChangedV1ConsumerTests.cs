@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging.Abstractions;
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.Contracts.Organisation;
 using SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.Consumers;
 
@@ -11,7 +13,7 @@ public class MembershipChangedV1ConsumerTests
         var copies = new InMemoryMembershipCopies();
         var changed = MembershipEvents.Changed(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), 2);
 
-        await new MembershipChangedV1Consumer(copies, copies).HandleAsync(changed, TestContext.Current.CancellationToken);
+        await new MembershipChangedV1Consumer(copies, copies, Substitute.For<IPersonalMessagePurge>(), copies, NullLogger<MembershipChangedV1Consumer>.Instance).HandleAsync(changed, TestContext.Current.CancellationToken);
 
         var change = copies.Changes.ShouldHaveSingleItem();
         (change.MembershipId, change.Version, change.PersonId, change.PharmacyId).ShouldBe((changed.MembershipId, 2, changed.PersonId, changed.PharmacyId));
@@ -24,7 +26,7 @@ public class MembershipChangedV1ConsumerTests
     public async Task A_change_delivered_twice_is_stored_once_and_nothing_more_is_committed()
     {
         var copies = new InMemoryMembershipCopies();
-        var consumer = new MembershipChangedV1Consumer(copies, copies);
+        var consumer = new MembershipChangedV1Consumer(copies, copies, Substitute.For<IPersonalMessagePurge>(), copies, NullLogger<MembershipChangedV1Consumer>.Instance);
         var changed = MembershipEvents.Changed(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), 2);
 
         await consumer.HandleAsync(changed, TestContext.Current.CancellationToken);
@@ -38,7 +40,7 @@ public class MembershipChangedV1ConsumerTests
     public async Task Two_changes_of_one_membership_are_stored_as_two_rows()
     {
         var copies = new InMemoryMembershipCopies();
-        var consumer = new MembershipChangedV1Consumer(copies, copies);
+        var consumer = new MembershipChangedV1Consumer(copies, copies, Substitute.For<IPersonalMessagePurge>(), copies, NullLogger<MembershipChangedV1Consumer>.Instance);
         var membershipId = Guid.CreateVersion7();
         var personId = Guid.CreateVersion7();
         var pharmacyId = Guid.CreateVersion7();
@@ -59,8 +61,8 @@ public class MembershipChangedV1ConsumerTests
         var personId = Guid.CreateVersion7();
         var pharmacyId = Guid.CreateVersion7();
 
-        await new MembershipChangedV1Consumer(copies, copies).HandleAsync(MembershipEvents.Changed(membershipId, personId, pharmacyId, 2), TestContext.Current.CancellationToken);
-        await new MembershipStartedV1Consumer(copies, copies).HandleAsync(MembershipEvents.Started(membershipId, personId, pharmacyId), TestContext.Current.CancellationToken);
+        await new MembershipChangedV1Consumer(copies, copies, Substitute.For<IPersonalMessagePurge>(), copies, NullLogger<MembershipChangedV1Consumer>.Instance).HandleAsync(MembershipEvents.Changed(membershipId, personId, pharmacyId, 2), TestContext.Current.CancellationToken);
+        await new MembershipStartedV1Consumer(copies, copies, Substitute.For<IPersonalMessagePurge>(), copies, NullLogger<MembershipStartedV1Consumer>.Instance).HandleAsync(MembershipEvents.Started(membershipId, personId, pharmacyId), TestContext.Current.CancellationToken);
 
         copies.Changes.ShouldHaveSingleItem().MembershipId.ShouldBe(membershipId);
         copies.Members.ShouldHaveSingleItem().Id.ShouldBe(membershipId);
@@ -75,7 +77,7 @@ public class MembershipChangedV1ConsumerTests
         var copies = new InMemoryMembershipCopies();
         var changed = MembershipEvents.Changed(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), version);
 
-        var refused = await Should.ThrowAsync<GuardException>(() => new MembershipChangedV1Consumer(copies, copies).HandleAsync(changed, TestContext.Current.CancellationToken));
+        var refused = await Should.ThrowAsync<GuardException>(() => new MembershipChangedV1Consumer(copies, copies, Substitute.For<IPersonalMessagePurge>(), copies, NullLogger<MembershipChangedV1Consumer>.Instance).HandleAsync(changed, TestContext.Current.CancellationToken));
 
         refused.ParamName.ShouldBe(nameof(MembershipChangedV1.Version));
         copies.Changes.ShouldBeEmpty();
@@ -95,7 +97,7 @@ public class MembershipChangedV1ConsumerTests
             field == nameof(MembershipChangedV1.PharmacyId) ? Guid.Empty : Guid.CreateVersion7(),
             2);
 
-        var refused = await Should.ThrowAsync<GuardException>(() => new MembershipChangedV1Consumer(copies, copies).HandleAsync(changed, TestContext.Current.CancellationToken));
+        var refused = await Should.ThrowAsync<GuardException>(() => new MembershipChangedV1Consumer(copies, copies, Substitute.For<IPersonalMessagePurge>(), copies, NullLogger<MembershipChangedV1Consumer>.Instance).HandleAsync(changed, TestContext.Current.CancellationToken));
 
         refused.ParamName.ShouldBe(field);
         copies.Changes.ShouldBeEmpty();
@@ -107,7 +109,7 @@ public class MembershipChangedV1ConsumerTests
     {
         var copies = new InMemoryMembershipCopies();
 
-        await Should.ThrowAsync<GuardException>(() => new MembershipChangedV1Consumer(copies, copies).HandleAsync(null!, TestContext.Current.CancellationToken));
+        await Should.ThrowAsync<GuardException>(() => new MembershipChangedV1Consumer(copies, copies, Substitute.For<IPersonalMessagePurge>(), copies, NullLogger<MembershipChangedV1Consumer>.Instance).HandleAsync(null!, TestContext.Current.CancellationToken));
 
         copies.Changes.ShouldBeEmpty();
         copies.Commits.ShouldBe(0);

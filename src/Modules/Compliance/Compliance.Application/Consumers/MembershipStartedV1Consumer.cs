@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.Contracts.Organisation;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Members;
 
@@ -9,8 +10,11 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application.Consum
 /// was handled, whatever the event's identifier or payload: a second delivery changes nothing, and the first one wins.
 /// It deduplicates on the membership id, not on <c>Metadata.EventIdentifier</c>: for a fact only ever inserted that is stronger, since it also absorbs a re-publish under a new identifier.
 /// </summary>
-public sealed partial class MembershipStartedV1Consumer(IMemberStore members, IErasedPersonStore erased, IComplianceUnitOfWork unitOfWork, ILogger<MembershipStartedV1Consumer> logger)
+public sealed partial class MembershipStartedV1Consumer(IMemberStore members, IErasedPersonStore erased, IPersonalMessagePurge purge, IComplianceUnitOfWork unitOfWork, ILogger<MembershipStartedV1Consumer> logger)
 {
+    // Not used yet: the #421 review's red tests (#115) ask for a dropped message's stored copies to be purged.
+    private readonly IPersonalMessagePurge purge = purge;
+
     public async Task HandleAsync(MembershipStartedV1 message, CancellationToken cancellationToken)
     {
         // Refused here, each by its name, so a poison message dead-letters with a reason that says which field.

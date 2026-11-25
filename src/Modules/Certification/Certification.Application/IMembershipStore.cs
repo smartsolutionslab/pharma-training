@@ -33,4 +33,10 @@ public interface IMembershipStore
     /// started at once; none while no membership of the person has arrived.
     /// </summary>
     Task<Option<HolderName>> FindHolderNameAsync(PersonId person, CancellationToken cancellationToken);
+
+    /// <summary>Every membership of the person, ended or not, tracked, to forget the holder's name on it (#115).</summary>
+    Task<IReadOnlyList<Membership>> OfPersonAsync(PersonId person, CancellationToken cancellationToken);
+
+    /// <summary>Every ending of the person's memberships (#115).</summary>
+    Task<IReadOnlyList<MembershipEnding>> EndingsOfPersonAsync(PersonId person, CancellationToken cancellationToken);
 }

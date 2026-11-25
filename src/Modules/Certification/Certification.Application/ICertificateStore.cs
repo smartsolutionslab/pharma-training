@@ -37,4 +37,10 @@ public interface ICertificateStore
     Task<(IReadOnlyList<Certificate> Items, int TotalCount)> ListForHolderAsync(PersonId holder, Page page, PageSize pageSize, CancellationToken cancellationToken);
 
     void Add(Certificate certificate);
+
+    /// <summary>Every certificate issued to the holder, tracked, to remove the ones an erasure deletes (#115).</summary>
+    Task<IReadOnlyList<Certificate>> OfHolderAsync(PersonId holder, CancellationToken cancellationToken);
+
+    /// <summary>Deletes the certificate's row when the module's unit of work commits (#115).</summary>
+    void Remove(Certificate certificate);
 }

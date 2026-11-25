@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Testing;
 using SmartSolutionsLab.PharmaTraining.Contracts.Assessment;
 using SmartSolutionsLab.PharmaTraining.Contracts.Certification;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Consumers;
@@ -5,6 +6,7 @@ using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Certificates
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Courses;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Memberships;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Tests.Courses;
+using SmartSolutionsLab.PharmaTraining.Modules.Certification.Tests.Erasures;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Tests.Memberships;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Tests.Certificates;
@@ -19,6 +21,8 @@ public class TestPassedV1ConsumerTests
     private readonly InMemoryCertificateStore certificates = new();
     private readonly InMemoryMembershipStore memberships = new();
     private readonly InMemoryCourseVersionStore courseVersions = new();
+    private readonly InMemoryErasedPersonStore erased = new();
+    private readonly FakeLogger<TestPassedV1Consumer> logger = new();
     private readonly Guid personId = Guid.CreateVersion7();
     private readonly Guid courseId = Guid.CreateVersion7();
     private readonly Guid courseVersionId = Guid.CreateVersion7();
@@ -277,8 +281,57 @@ public class TestPassedV1ConsumerTests
         codes.ShouldAllBe(code => VerificationCode.From(code).Value == code);
     }
 
+    /// <summary>
+    /// #115: an erased person gets no new certificate. A redelivered or replayed passed test of theirs is dropped, the person
+    /// held before the tombstone is read, and logged by the attempt without the name Certification still has for them.
+    /// </summary>
+    [Fact]
+    public async Task A_passed_test_of_an_erased_person_issues_no_certificate_and_is_logged_without_the_name()
+    {
+        StoreMembership(personId, "Anna Berger", MembershipEvents.StartedAt);
+        StoreCourseVersion(courseVersionId, courseId, "Hygiene 2027", 12);
+        erased.Tombstone(PersonId.From(personId), MembershipEvents.StartedAt);
+        var passed = TestPassedEvents.Passed(personId, courseId, courseVersionId);
+
+        await HandleAsync(passed);
+
+        NothingSaved();
+        erased.Journal.ShouldBe(["hold", "is-erased"]);
+        var logged = logger.Collector.GetSnapshot().ShouldHaveSingleItem();
+        logged.Message.ShouldContain(passed.AttemptId.ToString());
+        logged.Message.ShouldNotContain("Anna Berger");
+    }
+
+    /// <summary>
+    /// #115: an erased person whose memberships have lost their names is dropped too, rather than retried for a name that
+    /// will never come.
+    /// </summary>
+    [Fact]
+    public async Task A_passed_test_of_an_erased_person_without_any_membership_left_is_dropped_not_thrown()
+    {
+        StoreCourseVersion(courseVersionId, courseId, "Hygiene 2027", 12);
+        erased.Tombstone(PersonId.From(personId), MembershipEvents.StartedAt);
+
+        await HandleAsync(TestPassedEvents.Passed(personId, courseId, courseVersionId));
+
+        NothingSaved();
+    }
+
+    /// <summary>#115: the person is held before anything of theirs is read, so an erasure cannot commit between the check and the issue.</summary>
+    [Fact]
+    public async Task A_passed_test_of_a_person_not_erased_is_issued_after_the_person_is_held_and_checked()
+    {
+        StoreMembership(personId, "Anna Berger", MembershipEvents.StartedAt);
+        StoreCourseVersion(courseVersionId, courseId, "Hygiene 2027", 12);
+
+        await HandleAsync(TestPassedEvents.Passed(personId, courseId, courseVersionId));
+
+        erased.Journal.ShouldBe(["hold", "is-erased"]);
+        certificates.Stored.ShouldHaveSingleItem();
+    }
+
     private Task HandleAsync(TestPassedV1 message) =>
-        new TestPassedV1Consumer(certificates, memberships, courseVersions, certificates).HandleAsync(message, TestContext.Current.CancellationToken);
+        new TestPassedV1Consumer(certificates, memberships, courseVersions, erased, certificates, logger).HandleAsync(message, TestContext.Current.CancellationToken);
 
     private Membership StoreMembership(Guid person, string name, DateTimeOffset startedAt) =>
         StoreMembership(Guid.CreateVersion7(), person, name, startedAt);

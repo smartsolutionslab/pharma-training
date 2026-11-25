@@ -25,6 +25,9 @@ internal sealed class InMemoryMembershipStore : IMembershipStore, ICertification
 
     public int Commits { get; private set; }
 
+    /// <summary>Where the reads of a person's memberships are written down, in order with the rest of a test's (#115); none by default.</summary>
+    public List<string>? Journal { get; set; }
+
     public Task<bool> ExistsAsync(MembershipId membership, CancellationToken cancellationToken) =>
         Task.FromResult(Memberships.Any(stored => stored.Id == membership));
 
@@ -58,6 +61,20 @@ internal sealed class InMemoryMembershipStore : IMembershipStore, ICertification
             .FirstOrDefault() is { } latest
             ? Option<HolderName>.Some(latest.HolderName)
             : Option<HolderName>.None);
+
+    public Task<IReadOnlyList<Membership>> OfPersonAsync(PersonId person, CancellationToken cancellationToken)
+    {
+        Journal?.Add("read-memberships");
+        IReadOnlyList<Membership> persons = [.. Memberships.Where(membership => membership.Person == person)];
+        return Task.FromResult(persons);
+    }
+
+    public Task<IReadOnlyList<MembershipEnding>> EndingsOfPersonAsync(PersonId person, CancellationToken cancellationToken)
+    {
+        Journal?.Add("read-endings");
+        IReadOnlyList<MembershipEnding> persons = [.. Endings.Where(ending => ending.Person == person)];
+        return Task.FromResult(persons);
+    }
 
     public Task PublishAsync(IntegrationEvent integrationEvent) => Task.CompletedTask;
 

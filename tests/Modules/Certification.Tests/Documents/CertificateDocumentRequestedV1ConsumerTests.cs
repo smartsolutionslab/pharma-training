@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging.Testing;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Mail;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Storage;
 using SmartSolutionsLab.PharmaTraining.Contracts;
@@ -155,16 +156,22 @@ public class CertificateDocumentRequestedV1ConsumerTests
         NothingDone();
     }
 
-    /// <summary>The certificate was saved in the same commit as the request, so a missing one is a bug: it dead-letters.</summary>
+    /// <summary>
+    /// #115: an erasure deletes a certificate no pharmacy keeps, so a request for its document can find it gone. It is
+    /// dropped and logged by the certificate's id, not thrown, so it neither retries nor dead-letters, and no PDF is
+    /// written back.
+    /// </summary>
     [Fact]
-    public async Task An_unknown_certificate_throws_naming_it_and_nothing_is_rendered()
+    public async Task A_certificate_that_no_longer_exists_is_dropped_and_logged_and_nothing_is_rendered()
     {
-        var unknown = Guid.CreateVersion7();
+        var gone = Guid.CreateVersion7();
+        var logger = new FakeLogger<CertificateDocumentRequestedV1Consumer>();
 
-        var thrown = await Should.ThrowAsync<InvalidOperationException>(() => HandleAsync(new CertificateDocumentRequestedV1(unknown) { Metadata = NewMetadata() }));
+        await new CertificateDocumentRequestedV1Consumer(certificates, certificates, renderer, blobs, Links(), logger)
+            .HandleAsync(new CertificateDocumentRequestedV1(gone) { Metadata = NewMetadata() }, TestContext.Current.CancellationToken);
 
-        thrown.Message.ShouldContain(unknown.ToString());
         NothingDone();
+        logger.Collector.GetSnapshot().ShouldHaveSingleItem().Message.ShouldContain(gone.ToString());
     }
 
     [Fact]

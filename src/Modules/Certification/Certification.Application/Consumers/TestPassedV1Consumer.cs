@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using SmartSolutionsLab.PharmaTraining.Contracts.Assessment;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.IntegrationEvents;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Certificates;
@@ -19,8 +20,14 @@ public sealed class TestPassedV1Consumer(
     ICertificateStore certificates,
     IMembershipStore memberships,
     ICourseVersionStore courseVersions,
-    ICertificationUnitOfWork unitOfWork)
+    IErasedPersonStore erased,
+    ICertificationUnitOfWork unitOfWork,
+    ILogger<TestPassedV1Consumer> logger)
 {
+    // Not used yet: slice 4's red tests (#115) ask for an erased person to be held, checked and dropped, logged without the name.
+    private readonly IErasedPersonStore erased = erased;
+    private readonly ILogger<TestPassedV1Consumer> logger = logger;
+
     public async Task HandleAsync(TestPassedV1 message, CancellationToken cancellationToken)
     {
         // Refused here, each by its name, so a poison message dead-letters with a reason that says which field.

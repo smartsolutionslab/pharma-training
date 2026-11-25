@@ -86,4 +86,11 @@ public sealed class CertificateStore(CertificationDbContext context) : ICertific
     }
 
     public void Add(Certificate certificate) => context.Add(certificate);
+
+    // Not implemented yet: slice 4's red tests (#115).
+    public Task<IReadOnlyList<Certificate>> OfHolderAsync(PersonId holder, CancellationToken cancellationToken) =>
+        throw new NotImplementedException($"{holder}");
+
+    // Not implemented yet: slice 4's red tests (#115).
+    public void Remove(Certificate certificate) => throw new NotImplementedException($"{certificate.Id}");
 }

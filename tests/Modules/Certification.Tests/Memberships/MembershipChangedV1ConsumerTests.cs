@@ -1,7 +1,9 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using SmartSolutionsLab.PharmaTraining.Contracts.Organisation;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Consumers;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Certificates;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Memberships;
+using SmartSolutionsLab.PharmaTraining.Modules.Certification.Tests.Erasures;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Tests.Memberships;
 
@@ -74,7 +76,7 @@ public class MembershipChangedV1ConsumerTests
         var pharmacyId = Guid.CreateVersion7();
 
         await new MembershipChangedV1Consumer(store, store).HandleAsync(MembershipEvents.Changed(membershipId, personId, pharmacyId, MembershipRoleV1.Manager, 2), TestContext.Current.CancellationToken);
-        await new MembershipStartedV1Consumer(store, store).HandleAsync(MembershipEvents.Started(membershipId, personId, pharmacyId, "Ada"), TestContext.Current.CancellationToken);
+        await new MembershipStartedV1Consumer(store, new InMemoryErasedPersonStore(), store, NullLogger<MembershipStartedV1Consumer>.Instance).HandleAsync(MembershipEvents.Started(membershipId, personId, pharmacyId, "Ada"), TestContext.Current.CancellationToken);
 
         store.Changes.ShouldHaveSingleItem().Membership.ShouldBe(MembershipId.From(membershipId));
         var membership = store.Memberships.ShouldHaveSingleItem();

@@ -1,3 +1,4 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using Microsoft.Extensions.Logging.Abstractions;
 using SmartSolutionsLab.PharmaTraining.Contracts.Organisation;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application.Consumers;
@@ -16,7 +17,7 @@ public class MembershipStartedV1ConsumerTests
         var pharmacyId = Guid.CreateVersion7();
         var started = MembershipEvents.Started(membershipId, personId, pharmacyId, "Ada Lovelace", JobFunctionV1.Pharmacist, MembershipRoleV1.Manager);
 
-        await new MembershipStartedV1Consumer(store, store, store, NullLogger<MembershipStartedV1Consumer>.Instance).HandleAsync(started, TestContext.Current.CancellationToken);
+        await new MembershipStartedV1Consumer(store, store, Substitute.For<IPersonalMessagePurge>(), store, NullLogger<MembershipStartedV1Consumer>.Instance).HandleAsync(started, TestContext.Current.CancellationToken);
 
         var member = store.Members.ShouldHaveSingleItem();
         member.Id.ShouldBe(MembershipId.From(membershipId));
@@ -40,7 +41,7 @@ public class MembershipStartedV1ConsumerTests
         var store = new InMemoryMemberStore();
         var started = MembershipEvents.Started(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), "Ada", sent, MembershipRoleV1.Employee);
 
-        await new MembershipStartedV1Consumer(store, store, store, NullLogger<MembershipStartedV1Consumer>.Instance).HandleAsync(started, TestContext.Current.CancellationToken);
+        await new MembershipStartedV1Consumer(store, store, Substitute.For<IPersonalMessagePurge>(), store, NullLogger<MembershipStartedV1Consumer>.Instance).HandleAsync(started, TestContext.Current.CancellationToken);
 
         store.Members.ShouldHaveSingleItem().JobFunction.ShouldBe(stored);
     }
@@ -53,7 +54,7 @@ public class MembershipStartedV1ConsumerTests
         var store = new InMemoryMemberStore();
         var started = MembershipEvents.Started(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), "Ada", JobFunctionV1.Pta, sent);
 
-        await new MembershipStartedV1Consumer(store, store, store, NullLogger<MembershipStartedV1Consumer>.Instance).HandleAsync(started, TestContext.Current.CancellationToken);
+        await new MembershipStartedV1Consumer(store, store, Substitute.For<IPersonalMessagePurge>(), store, NullLogger<MembershipStartedV1Consumer>.Instance).HandleAsync(started, TestContext.Current.CancellationToken);
 
         store.Members.ShouldHaveSingleItem().Role.ShouldBe(stored);
     }
@@ -62,7 +63,7 @@ public class MembershipStartedV1ConsumerTests
     public async Task A_membership_delivered_twice_is_stored_once_as_it_first_arrived_and_nothing_more_is_committed()
     {
         var store = new InMemoryMemberStore();
-        var consumer = new MembershipStartedV1Consumer(store, store, store, NullLogger<MembershipStartedV1Consumer>.Instance);
+        var consumer = new MembershipStartedV1Consumer(store, store, Substitute.For<IPersonalMessagePurge>(), store, NullLogger<MembershipStartedV1Consumer>.Instance);
         var first = MembershipEvents.Started(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), "Ada Lovelace");
 
         await consumer.HandleAsync(first, TestContext.Current.CancellationToken);
@@ -79,7 +80,7 @@ public class MembershipStartedV1ConsumerTests
     public async Task One_person_in_two_pharmacies_is_stored_as_two_members()
     {
         var store = new InMemoryMemberStore();
-        var consumer = new MembershipStartedV1Consumer(store, store, store, NullLogger<MembershipStartedV1Consumer>.Instance);
+        var consumer = new MembershipStartedV1Consumer(store, store, Substitute.For<IPersonalMessagePurge>(), store, NullLogger<MembershipStartedV1Consumer>.Instance);
         var personId = Guid.CreateVersion7();
 
         await consumer.HandleAsync(MembershipEvents.Started(Guid.CreateVersion7(), personId, Guid.CreateVersion7(), "Ada"), TestContext.Current.CancellationToken);
@@ -103,7 +104,7 @@ public class MembershipStartedV1ConsumerTests
             field == nameof(MembershipStartedV1.PharmacyId) ? Guid.Empty : Guid.CreateVersion7(),
             "Ada");
 
-        var refused = await Should.ThrowAsync<GuardException>(() => new MembershipStartedV1Consumer(store, store, store, NullLogger<MembershipStartedV1Consumer>.Instance).HandleAsync(started, TestContext.Current.CancellationToken));
+        var refused = await Should.ThrowAsync<GuardException>(() => new MembershipStartedV1Consumer(store, store, Substitute.For<IPersonalMessagePurge>(), store, NullLogger<MembershipStartedV1Consumer>.Instance).HandleAsync(started, TestContext.Current.CancellationToken));
 
         refused.ParamName.ShouldBe(field);
         store.Members.ShouldBeEmpty();
@@ -120,7 +121,7 @@ public class MembershipStartedV1ConsumerTests
         var store = new InMemoryMemberStore();
         var started = MembershipEvents.Started(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), displayName!);
 
-        var refused = await Should.ThrowAsync<GuardException>(() => new MembershipStartedV1Consumer(store, store, store, NullLogger<MembershipStartedV1Consumer>.Instance).HandleAsync(started, TestContext.Current.CancellationToken));
+        var refused = await Should.ThrowAsync<GuardException>(() => new MembershipStartedV1Consumer(store, store, Substitute.For<IPersonalMessagePurge>(), store, NullLogger<MembershipStartedV1Consumer>.Instance).HandleAsync(started, TestContext.Current.CancellationToken));
 
         refused.ParamName.ShouldBe(nameof(MembershipStartedV1.DisplayName));
         store.Members.ShouldBeEmpty();
@@ -133,7 +134,7 @@ public class MembershipStartedV1ConsumerTests
         var store = new InMemoryMemberStore();
         var displayName = new string('a', 100);
 
-        await new MembershipStartedV1Consumer(store, store, store, NullLogger<MembershipStartedV1Consumer>.Instance).HandleAsync(MembershipEvents.Started(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), displayName), TestContext.Current.CancellationToken);
+        await new MembershipStartedV1Consumer(store, store, Substitute.For<IPersonalMessagePurge>(), store, NullLogger<MembershipStartedV1Consumer>.Instance).HandleAsync(MembershipEvents.Started(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), displayName), TestContext.Current.CancellationToken);
 
         store.Members.ShouldHaveSingleItem().Name.ShouldBe(MemberName.From(displayName));
     }
@@ -144,7 +145,7 @@ public class MembershipStartedV1ConsumerTests
         var store = new InMemoryMemberStore();
         var started = MembershipEvents.Started(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), new string('a', 101));
 
-        var refused = await Should.ThrowAsync<GuardException>(() => new MembershipStartedV1Consumer(store, store, store, NullLogger<MembershipStartedV1Consumer>.Instance).HandleAsync(started, TestContext.Current.CancellationToken));
+        var refused = await Should.ThrowAsync<GuardException>(() => new MembershipStartedV1Consumer(store, store, Substitute.For<IPersonalMessagePurge>(), store, NullLogger<MembershipStartedV1Consumer>.Instance).HandleAsync(started, TestContext.Current.CancellationToken));
 
         refused.ParamName.ShouldBe(nameof(MembershipStartedV1.DisplayName));
         store.Members.ShouldBeEmpty();
@@ -157,7 +158,7 @@ public class MembershipStartedV1ConsumerTests
         var store = new InMemoryMemberStore();
         var started = MembershipEvents.Started(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), "Ada", (JobFunctionV1)99, MembershipRoleV1.Employee);
 
-        var refused = await Should.ThrowAsync<GuardException>(() => new MembershipStartedV1Consumer(store, store, store, NullLogger<MembershipStartedV1Consumer>.Instance).HandleAsync(started, TestContext.Current.CancellationToken));
+        var refused = await Should.ThrowAsync<GuardException>(() => new MembershipStartedV1Consumer(store, store, Substitute.For<IPersonalMessagePurge>(), store, NullLogger<MembershipStartedV1Consumer>.Instance).HandleAsync(started, TestContext.Current.CancellationToken));
 
         refused.ParamName.ShouldBe(nameof(MembershipStartedV1.JobFunction));
         store.Members.ShouldBeEmpty();
@@ -170,7 +171,7 @@ public class MembershipStartedV1ConsumerTests
         var store = new InMemoryMemberStore();
         var started = MembershipEvents.Started(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), "Ada", JobFunctionV1.Pta, (MembershipRoleV1)99);
 
-        var refused = await Should.ThrowAsync<GuardException>(() => new MembershipStartedV1Consumer(store, store, store, NullLogger<MembershipStartedV1Consumer>.Instance).HandleAsync(started, TestContext.Current.CancellationToken));
+        var refused = await Should.ThrowAsync<GuardException>(() => new MembershipStartedV1Consumer(store, store, Substitute.For<IPersonalMessagePurge>(), store, NullLogger<MembershipStartedV1Consumer>.Instance).HandleAsync(started, TestContext.Current.CancellationToken));
 
         refused.ParamName.ShouldBe(nameof(MembershipStartedV1.Role));
         store.Members.ShouldBeEmpty();
@@ -182,7 +183,7 @@ public class MembershipStartedV1ConsumerTests
     {
         var store = new InMemoryMemberStore();
 
-        await Should.ThrowAsync<GuardException>(() => new MembershipStartedV1Consumer(store, store, store, NullLogger<MembershipStartedV1Consumer>.Instance).HandleAsync(null!, TestContext.Current.CancellationToken));
+        await Should.ThrowAsync<GuardException>(() => new MembershipStartedV1Consumer(store, store, Substitute.For<IPersonalMessagePurge>(), store, NullLogger<MembershipStartedV1Consumer>.Instance).HandleAsync(null!, TestContext.Current.CancellationToken));
 
         store.Members.ShouldBeEmpty();
         store.Commits.ShouldBe(0);

@@ -51,4 +51,12 @@ public sealed class MembershipStore(CertificationDbContext context) : IMembershi
             .FirstOrDefaultAsync(cancellationToken) is { } name
             ? Option<HolderName>.Some(name)
             : Option<HolderName>.None;
+
+    // Not implemented yet: slice 4's red tests (#115).
+    public Task<IReadOnlyList<Membership>> OfPersonAsync(PersonId person, CancellationToken cancellationToken) =>
+        throw new NotImplementedException($"{person}");
+
+    // Not implemented yet: slice 4's red tests (#115).
+    public Task<IReadOnlyList<MembershipEnding>> EndingsOfPersonAsync(PersonId person, CancellationToken cancellationToken) =>
+        throw new NotImplementedException($"{person}");
 }

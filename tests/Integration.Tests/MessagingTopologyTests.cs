@@ -26,6 +26,8 @@ public class MessagingTopologyTests
 
     private const string ComplianceErasureCompleted = Contracts + "Compliance.ComplianceErasureCompletedV1";
 
+    private const string CertificationErasureCompleted = Contracts + "Certification.CertificationErasureCompletedV1";
+
     private const string EditorialErasureCompleted = Contracts + "Editorial.EditorialErasureCompletedV1";
 
     private const string LearningErasureCompleted = Contracts + "Learning.LearningErasureCompletedV1";
@@ -43,14 +45,14 @@ public class MessagingTopologyTests
         published.ShouldBeEmpty();
     }
 
-    /// <summary>#115: Organisation announces the erasure to every service and records Compliance's, Editorial's and Learning's completions as steps.</summary>
+    /// <summary>#115: Organisation announces the erasure to every service and records Certification's, Compliance's, Editorial's and Learning's completions as steps.</summary>
     [Fact]
     public void Organisation_publishes_its_membership_pharmacy_and_erasure_events_consumes_every_erasure_completion_and_leaves_its_local_mail_requests_off_the_broker()
     {
         var (consumed, published) = MessagingTopology.Of("organisation");
 
         consumed.ShouldNotContain(InvitationMailRequested);
-        consumed.ShouldBe([ComplianceErasureCompleted, EditorialErasureCompleted, LearningErasureCompleted], ignoreOrder: false);
+        consumed.ShouldBe([CertificationErasureCompleted, ComplianceErasureCompleted, EditorialErasureCompleted, LearningErasureCompleted], ignoreOrder: false);
         published.ShouldNotContain(InvitationMailRequested);
         consumed.ShouldNotContain(Contracts + "Organisation.ErasureConfirmationMailRequestedV1");
         published.ShouldNotContain(Contracts + "Organisation.ErasureConfirmationMailRequestedV1");
@@ -87,6 +89,20 @@ public class MessagingTopologyTests
 
         consumed.ShouldContain(PersonErasureRequested);
         published.ShouldContain(ComplianceErasureCompleted);
+    }
+
+    /// <summary>
+    /// #115 (slice 4): Certification erases a person on Organisation's request and announces its completion to
+    /// Organisation; its document requests stay local to its host.
+    /// </summary>
+    [Fact]
+    public void Certification_consumes_the_erasure_request_and_publishes_its_erasure_completion()
+    {
+        var (consumed, published) = MessagingTopology.Of("certification");
+
+        consumed.ShouldContain(PersonErasureRequested);
+        published.ShouldContain(CertificationErasureCompleted);
+        published.ShouldNotContain(Contracts + "Certification.CertificateDocumentRequestedV1");
     }
 
     /// <summary>
