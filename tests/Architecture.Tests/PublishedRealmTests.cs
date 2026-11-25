@@ -99,11 +99,15 @@ public class PublishedRealmTests
             $"{relativePath}'s {ErasureClient} must be a confidential client with the client credentials grant alone, its secret from Keycloak's environment, never a literal.");
     }
 
-    /// <summary>#115 slice 6: the erasure client's service account may manage users, and nothing else.</summary>
+    /// <summary>
+    /// #115 slice 6: the erasure client's service account may manage users and list the realm's clients, and nothing
+    /// else. It lists clients (<c>query-clients</c>) only to find <c>realm-management</c>'s id, so it can refuse to delete
+    /// a delegated realm administrator.
+    /// </summary>
     [Theory]
     [InlineData("src/AppHost/keycloak/realm.json")]
     [InlineData("src/AppHost/realms/realm.json")]
-    public void Both_realms_give_the_erasure_clients_service_account_manage_users_alone(string relativePath)
+    public void Both_realms_give_the_erasure_clients_service_account_manage_users_and_query_clients_alone(string relativePath)
     {
         var users = Read(relativePath)["users"] as JsonArray ?? [];
 
@@ -113,7 +117,7 @@ public class PublishedRealmTests
         Value(account, "username").ShouldBe(ErasureServiceAccount);
         Value(account, "enabled").ShouldBe("true");
         Value(account, "serviceAccountClientId").ShouldBe(ErasureClient);
-        Value(account, "clientRoles").ShouldBe("""{"realm-management":["manage-users"]}""", $"{ErasureServiceAccount} must hold realm-management's manage-users alone.");
+        Value(account, "clientRoles").ShouldBe("""{"realm-management":["manage-users","query-clients"]}""", $"{ErasureServiceAccount} must hold realm-management's manage-users and query-clients alone.");
         account.ContainsKey("realmRoles").ShouldBeFalse($"{ErasureServiceAccount} must hold no realm role.");
         account.ContainsKey("credentials").ShouldBeFalse($"{ErasureServiceAccount} must have no credentials.");
     }
