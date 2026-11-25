@@ -6,7 +6,7 @@ namespace Aspire.Hosting;
 
 /// <summary>
 /// Published, the browser's one way to Keycloak (OQ2 and X2 on #114, docs/adr/0005): a YARP app, <c>auth</c>, with external
-/// ingress like the edge, forwarding the realm <c>pharma-training</c>, its admin API's users and roles (#457) and Keycloak's static resources to
+/// ingress like the edge, forwarding the realm <c>pharma-training</c>, on staging the admin API paths its users are managed by (#457, #469), and Keycloak's static resources to
 /// Keycloak's <c>http</c> endpoint, which stays internal, and nothing else. Not <c>/realms/master</c>, whose token endpoint
 /// takes the administrator's password, not the rest of <c>/admin</c>, not the management port: those answer 404 from YARP, and the administrator
 /// works with <c>kcadm.sh</c> inside Keycloak's container. It reads the scheme and host the Container Apps ingress forwards,
@@ -37,7 +37,21 @@ public static class AuthProxy
     // other admin path is needed. Production's public host exposes no admin API at all: a leaked manage-users secret there
     // (the erasure client's) reaches nothing from the internet. The console, other realms and /realms/master stay
     // unreachable everywhere.
-    private static readonly string[] StagingAdminPaths = [$"/admin/realms/{Realm}/users/{{**catch-all}}"];
+    //
+    // Exactly the paths those clients send (src/DemoSeeder/KeycloakUsers.cs, web/app/e2e/x1Users.ts), each user by a GUID,
+    // and no catch-all (#469): an encoded slash, a backslash, a ";" or a double-encoded dot segment after /users/ would
+    // otherwise go on to Keycloak, which reads it today as one user's id but is not this proxy's to trust with an escape.
+    // A path that is not one of these answers 404 from YARP, never reaching Keycloak. `guid` is a constraint every
+    // ASP.NET Core host knows, unlike `regex`, which a slim host leaves out.
+    private static readonly string[] StagingAdminPaths =
+    [
+        $"/admin/realms/{Realm}/users",
+        $"/admin/realms/{Realm}/users/count",
+        $"/admin/realms/{Realm}/users/{{id:guid}}",
+        $"/admin/realms/{Realm}/users/{{id:guid}}/reset-password",
+        $"/admin/realms/{Realm}/users/{{id:guid}}/role-mappings/realm",
+        $"/admin/realms/{Realm}/users/{{id:guid}}/role-mappings/realm/available",
+    ];
 
     /// <summary>Published, the auth proxy in front of <paramref name="keycloak"/>, which it names as its hostname; null in run mode.</summary>
     public static IResourceBuilder<YarpResource>? AddAuthProxy(this IDistributedApplicationBuilder builder, IResourceBuilder<ContainerResource> keycloak)
