@@ -95,8 +95,9 @@ export async function x1Cast(): Promise<X1Cast> {
       dispose,
     };
   } catch (error) {
-    // A set-up that failed halfway leaves none of the users it made.
-    await dispose();
+    // A set-up that failed halfway leaves none of the users it made; its own error is the one reported, a failed
+    // deletion beside it only logged.
+    await dispose().catch((cleanup: unknown) => console.error('Deleting the users this set-up made failed:', cleanup));
     throw error;
   }
 }
