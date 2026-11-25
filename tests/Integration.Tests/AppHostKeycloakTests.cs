@@ -369,11 +369,22 @@ public partial class AppHostKeycloakTests
     /// C6 (K8, X2): the <c>auth</c> proxy forwards the realm <c>pharma-training</c> and the static resources to Keycloak's
     /// <c>http</c> endpoint, and nothing else: not <c>/realms/master</c>, whose token endpoint accepts the administrator's
     /// password, not <c>/admin</c> (the console, other realms), not the management port. Staging alone also forwards the
-    /// realm's admin users (#457, for the demo seeder's and X1's manage-users clients); production's public host exposes no
+    /// realm's admin users (#457, for the demo seeder's and X1's manage-users clients), by exactly the paths those clients send, each
+    /// user by a GUID (#469); production's public host exposes no
     /// admin API at all, so a leaked manage-users secret there reaches nothing from the internet.
     /// </summary>
     [Theory]
-    [InlineData(PublishedAppHost.Staging, new[] { "/admin/realms/pharma-training/users/{**catch-all}", "/realms/pharma-training/{**catch-all}", "/resources/{**catch-all}" })]
+    [InlineData(PublishedAppHost.Staging, new[]
+    {
+        "/admin/realms/pharma-training/users",
+        "/admin/realms/pharma-training/users/count",
+        "/admin/realms/pharma-training/users/{id:guid}",
+        "/admin/realms/pharma-training/users/{id:guid}/reset-password",
+        "/admin/realms/pharma-training/users/{id:guid}/role-mappings/realm",
+        "/admin/realms/pharma-training/users/{id:guid}/role-mappings/realm/available",
+        "/realms/pharma-training/{**catch-all}",
+        "/resources/{**catch-all}",
+    })]
     [InlineData(PublishedAppHost.Production, new[] { "/realms/pharma-training/{**catch-all}", "/resources/{**catch-all}" })]
     public async Task Only_the_pharma_training_realm_and_resources_reach_keycloak(string deployment, string[] expected)
     {
