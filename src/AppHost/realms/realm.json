@@ -4,6 +4,7 @@
   "registrationAllowed": true,
   "verifyEmail": false,
   "eventsExpiration": 2592000,
+  "attributes": { "adminEventsExpiration": "2592000" },
   "requiredActions": [
     { "alias": "CONFIGURE_TOTP", "name": "Configure OTP", "providerId": "CONFIGURE_TOTP", "enabled": true, "defaultAction": false, "priority": 10 },
     { "alias": "TERMS_AND_CONDITIONS", "name": "Terms and Conditions", "providerId": "TERMS_AND_CONDITIONS", "enabled": false, "defaultAction": false, "priority": 20 },
