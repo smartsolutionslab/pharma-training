@@ -24,6 +24,8 @@ public sealed class KeycloakAccountsTests : IDisposable
     private const string Secret = "erasure-client-secret-0123456789abcdef";
     private const string Token = "minted-access-token";
 
+    private static readonly Guid RealmManagement = Guid.CreateVersion7();
+
     private readonly RecordingHandler handler = new();
     private readonly PersonId person = PersonId.From(Guid.CreateVersion7());
 
@@ -33,16 +35,20 @@ public sealed class KeycloakAccountsTests : IDisposable
 
     private string RolesUri => $"{UserUri}/role-mappings/realm/composite";
 
+    private static string ClientsUri => $"{Address}/admin/realms/{Realm}/clients?clientId=realm-management";
+
+    private string ClientRolesUri => $"{UserUri}/role-mappings/clients/{RealmManagement:D}/composite";
+
     [Fact]
     public async Task Finding_an_account_mints_a_client_credentials_token_and_reads_the_user_with_it()
     {
         handler.Answer(TokenMinted());
         handler.Answer(HttpStatusCode.OK, User(email: "Account@Example.org", emailVerified: true));
-        handler.Answer(HttpStatusCode.OK, Roles("default-roles-pharma-training", "offline_access", "uma_authorization"));
+        AnswerRoles(Roles("default-roles-pharma-training", "offline_access", "uma_authorization"));
 
         var found = await Accounts().FindAsync(person, TestContext.Current.CancellationToken);
 
-        handler.Requests.Count.ShouldBe(3);
+        handler.Requests.Count.ShouldBe(5);
         var mint = handler.Requests[0];
         mint.Method.ShouldBe(HttpMethod.Post);
         mint.Uri.ShouldBe($"{Address}/realms/{Realm}/protocol/openid-connect/token");
@@ -63,6 +69,14 @@ public sealed class KeycloakAccountsTests : IDisposable
         roles.Method.ShouldBe(HttpMethod.Get);
         roles.Uri.ShouldBe(RolesUri);
         roles.Authorization.ShouldBe($"Bearer {Token}", "the role mappings are read with the same token");
+        var client = handler.Requests[3];
+        client.Method.ShouldBe(HttpMethod.Get);
+        client.Uri.ShouldBe(ClientsUri);
+        client.Authorization.ShouldBe($"Bearer {Token}");
+        var clientRoles = handler.Requests[4];
+        clientRoles.Method.ShouldBe(HttpMethod.Get);
+        clientRoles.Uri.ShouldBe(ClientRolesUri);
+        clientRoles.Authorization.ShouldBe($"Bearer {Token}");
         found.HasValue.ShouldBeTrue("Keycloak answered the user");
         found.Value.VerifiedAddress.ShouldBe(Option<EmailAddress>.Some(EmailAddress.From("account@example.org")));
         found.Value.IsServiceAccount.ShouldBeFalse();
@@ -105,7 +119,7 @@ public sealed class KeycloakAccountsTests : IDisposable
     {
         handler.Answer(TokenMinted());
         handler.Answer(HttpStatusCode.OK, User(email, emailVerified));
-        handler.Answer(HttpStatusCode.OK, Roles());
+        AnswerRoles(Roles());
 
         var found = await Accounts().FindAsync(person, TestContext.Current.CancellationToken);
 
@@ -118,7 +132,7 @@ public sealed class KeycloakAccountsTests : IDisposable
     {
         handler.Answer(TokenMinted());
         handler.Answer(HttpStatusCode.OK, User(email: null, emailVerified: false, serviceAccountClientId: ClientId));
-        handler.Answer(HttpStatusCode.OK, Roles());
+        AnswerRoles(Roles());
 
         var found = await Accounts().FindAsync(person, TestContext.Current.CancellationToken);
 
@@ -138,7 +152,7 @@ public sealed class KeycloakAccountsTests : IDisposable
     {
         handler.Answer(TokenMinted());
         handler.Answer(HttpStatusCode.OK, User(email: null, emailVerified: false, username: username));
-        handler.Answer(HttpStatusCode.OK, Roles());
+        AnswerRoles(Roles());
 
         var found = await Accounts().FindAsync(person, TestContext.Current.CancellationToken);
 
@@ -154,7 +168,7 @@ public sealed class KeycloakAccountsTests : IDisposable
     {
         handler.Answer(TokenMinted());
         handler.Answer(HttpStatusCode.OK, User(email: null, emailVerified: false, username: username));
-        handler.Answer(HttpStatusCode.OK, Roles());
+        AnswerRoles(Roles());
 
         var found = await Accounts().FindAsync(person, TestContext.Current.CancellationToken);
 
@@ -170,7 +184,7 @@ public sealed class KeycloakAccountsTests : IDisposable
     {
         handler.Answer(TokenMinted());
         handler.Answer(HttpStatusCode.OK, User(email: "account@example.org", emailVerified: true));
-        handler.Answer(HttpStatusCode.OK, Roles("default-roles-pharma-training", role, "offline_access"));
+        AnswerRoles(Roles("default-roles-pharma-training", role, "offline_access"));
 
         var found = await Accounts().FindAsync(person, TestContext.Current.CancellationToken);
 
@@ -188,7 +202,7 @@ public sealed class KeycloakAccountsTests : IDisposable
     {
         handler.Answer(TokenMinted());
         handler.Answer(HttpStatusCode.OK, User(email: "account@example.org", emailVerified: true));
-        handler.Answer(HttpStatusCode.OK, Roles(role));
+        AnswerRoles(Roles(role));
 
         var found = await Accounts().FindAsync(person, TestContext.Current.CancellationToken);
 
@@ -221,6 +235,112 @@ public sealed class KeycloakAccountsTests : IDisposable
     {
         handler.Answer(TokenMinted());
         handler.Answer(HttpStatusCode.OK, User(email: "account@example.org", emailVerified: true));
+        handler.Answer(HttpStatusCode.OK, body);
+
+        var thrown = await Should.ThrowAsync<AccountsUnavailableException>(() => Accounts().FindAsync(person, TestContext.Current.CancellationToken));
+
+        thrown.Message.ShouldContain("roles");
+    }
+
+    /// <summary>
+    /// A delegated realm administrator holds a <c>realm-management</c> client role, not a staff realm role; any such role,
+    /// composites resolved, marks the account as staff, so it is never deleted.
+    /// </summary>
+    [Theory]
+    [InlineData("manage-users")]
+    [InlineData("view-users")]
+    [InlineData("realm-admin")]
+    public async Task A_realm_management_client_role_marks_a_delegated_admin(string role)
+    {
+        handler.Answer(TokenMinted());
+        handler.Answer(HttpStatusCode.OK, User(email: "account@example.org", emailVerified: true));
+        AnswerRoles(Roles("default-roles-pharma-training"), ClientRoles(role));
+
+        var found = await Accounts().FindAsync(person, TestContext.Current.CancellationToken);
+
+        found.HasValue.ShouldBeTrue("Keycloak answered the user");
+        found.Value.HoldsStaffRole.ShouldBeTrue($"the realm-management role {role} administers the realm");
+        handler.Requests[3].Uri.ShouldBe(ClientsUri);
+        handler.Requests[4].Uri.ShouldBe(ClientRolesUri);
+    }
+
+    [Fact]
+    public async Task An_account_deleted_before_its_client_roles_are_read_is_none()
+    {
+        handler.Answer(TokenMinted());
+        handler.Answer(HttpStatusCode.OK, User(email: "account@example.org", emailVerified: true));
+        handler.Answer(HttpStatusCode.OK, Roles());
+        handler.Answer(HttpStatusCode.OK, RealmManagementClient());
+        handler.Answer(HttpStatusCode.NotFound, """{"error":"User not found"}""");
+
+        var found = await Accounts().FindAsync(person, TestContext.Current.CancellationToken);
+
+        found.HasValue.ShouldBeFalse();
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Forbidden)]
+    [InlineData(HttpStatusCode.NotFound)]
+    [InlineData(HttpStatusCode.InternalServerError)]
+    public async Task A_refused_client_lookup_throws(HttpStatusCode status)
+    {
+        handler.Answer(TokenMinted());
+        handler.Answer(HttpStatusCode.OK, User(email: "account@example.org", emailVerified: true));
+        handler.Answer(HttpStatusCode.OK, Roles());
+        handler.Answer(status, """{"error":"refused"}""");
+
+        var thrown = await Should.ThrowAsync<AccountsUnavailableException>(() => Accounts().FindAsync(person, TestContext.Current.CancellationToken));
+
+        thrown.Message.ShouldContain(((int)status).ToString(System.Globalization.CultureInfo.InvariantCulture));
+        thrown.Message.ShouldContain("client");
+        thrown.Message.ShouldNotContain(Token);
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("[]")]
+    [InlineData("[{\"clientId\":\"realm-management\"}]")]
+    [InlineData("[{\"id\":7,\"clientId\":\"realm-management\"}]")]
+    [InlineData("[{\"id\":\"a\",\"clientId\":\"realm-management\"},{\"id\":\"b\",\"clientId\":\"realm-management\"}]")]
+    [InlineData("[{\"id\":\"a\",\"clientId\":\"account\"}]")]
+    public async Task A_client_lookup_keycloak_answers_in_another_shape_throws(string body)
+    {
+        handler.Answer(TokenMinted());
+        handler.Answer(HttpStatusCode.OK, User(email: "account@example.org", emailVerified: true));
+        handler.Answer(HttpStatusCode.OK, Roles());
+        handler.Answer(HttpStatusCode.OK, body);
+
+        await Should.ThrowAsync<AccountsUnavailableException>(() => Accounts().FindAsync(person, TestContext.Current.CancellationToken));
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Forbidden)]
+    [InlineData(HttpStatusCode.InternalServerError)]
+    public async Task A_refused_client_role_read_throws(HttpStatusCode status)
+    {
+        handler.Answer(TokenMinted());
+        handler.Answer(HttpStatusCode.OK, User(email: "account@example.org", emailVerified: true));
+        handler.Answer(HttpStatusCode.OK, Roles());
+        handler.Answer(HttpStatusCode.OK, RealmManagementClient());
+        handler.Answer(status, """{"error":"refused","name":"account@example.org"}""");
+
+        var thrown = await Should.ThrowAsync<AccountsUnavailableException>(() => Accounts().FindAsync(person, TestContext.Current.CancellationToken));
+
+        thrown.Message.ShouldContain(((int)status).ToString(System.Globalization.CultureInfo.InvariantCulture));
+        thrown.Message.ShouldContain("client roles");
+        thrown.Message.ShouldNotContain("account@example.org");
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("[{\"id\":\"1\"}]")]
+    [InlineData("[null]")]
+    public async Task Client_role_mappings_keycloak_answers_in_another_shape_throw(string body)
+    {
+        handler.Answer(TokenMinted());
+        handler.Answer(HttpStatusCode.OK, User(email: "account@example.org", emailVerified: true));
+        handler.Answer(HttpStatusCode.OK, Roles());
+        handler.Answer(HttpStatusCode.OK, RealmManagementClient());
         handler.Answer(HttpStatusCode.OK, body);
 
         var thrown = await Should.ThrowAsync<AccountsUnavailableException>(() => Accounts().FindAsync(person, TestContext.Current.CancellationToken));
@@ -343,6 +463,25 @@ public sealed class KeycloakAccountsTests : IDisposable
 
         return "{" + string.Join(',', fields) + "}";
     }
+
+    /// <summary>
+    /// Scripts the three role reads a found account takes: its effective realm roles, the lookup of the
+    /// <c>realm-management</c> client, and its effective roles of that client (none unless given).
+    /// </summary>
+    private void AnswerRoles(string realmRoles, string? clientRoles = null)
+    {
+        handler.Answer(HttpStatusCode.OK, realmRoles);
+        handler.Answer(HttpStatusCode.OK, RealmManagementClient());
+        handler.Answer(HttpStatusCode.OK, clientRoles ?? ClientRoles());
+    }
+
+    /// <summary>The answer to <c>GET /clients?clientId=realm-management</c>: the client representation, in a list.</summary>
+    private static string RealmManagementClient() =>
+        $$"""[{"id":"{{RealmManagement:D}}","clientId":"realm-management","bearerOnly":true}]""";
+
+    /// <summary>The user's effective roles of the <c>realm-management</c> client: client role representations.</summary>
+    private static string ClientRoles(params string[] names) =>
+        "[" + string.Join(',', names.Select(name => $"{{\"id\":\"{Guid.CreateVersion7():D}\",\"name\":\"{name}\",\"composite\":false,\"clientRole\":true,\"containerId\":\"{RealmManagement:D}\"}}")) + "]";
 
     /// <summary>The user's effective realm roles as Keycloak's admin API answers them: role representations.</summary>
     private static string Roles(params string[] names) =>
