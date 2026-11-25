@@ -9,11 +9,9 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersio
 /// </summary>
 public sealed class CourseVersionReturn : Entity<CourseVersionReturnId>
 {
-    internal CourseVersionReturn(CourseVersionReturnId id, CourseVersionId version, PersonId returnedBy, ReviewerName returnedByName, Timestamp returnedAt, ReturnReason reason)
+    internal CourseVersionReturn(CourseVersionReturnId id, CourseVersionId version, PersonId returnedBy, ReviewerName? returnedByName, Timestamp returnedAt, ReturnReason reason)
         : base(id)
     {
-        Ensure.That(returnedByName).IsNotNull();
-
         Version = version;
         ReturnedBy = returnedBy;
         ReturnedByName = returnedByName;
@@ -33,7 +31,7 @@ public sealed class CourseVersionReturn : Entity<CourseVersionReturnId>
 
     /// <summary>
     /// The returning editor's display name as the token carried it at return time (#220), a historical record; null on
-    /// returns stored before names were kept.
+    /// returns stored before names were kept, and for an editor who is erased (#115).
     /// </summary>
     public ReviewerName? ReturnedByName { get; }
 

@@ -3,15 +3,23 @@ using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Commands.ApproveQuestion;
 
+/// <summary>
+/// Approves a question under the approver's id and display name; an approver Editorial has erased (#115) is recorded under
+/// their id alone.
+/// </summary>
 public sealed class ApproveQuestionHandler(ICourseVersionStore versions, IErasedPersonStore erased, IEditorialUnitOfWork unitOfWork, TimeProvider time)
     : ICommandHandler<ApproveQuestion, Result<Unit, ApiError>>
 {
-    // Not used yet: slice 3's red tests (#115) ask for the approver to be held and a tombstoned one stored without a name.
     private readonly IErasedPersonStore erased = erased;
 
     public async Task<Result<Unit, ApiError>> HandleAsync(ApproveQuestion command, CancellationToken cancellationToken)
     {
         Ensure.That(command).IsNotNull();
+
+        // Held until the commit, as the erasure holds them, so the name is either forgotten after this approval or not
+        // stored at all: an erased approver's account and token can outlive their erasure (#115).
+        await erased.HoldAsync(command.Approver, cancellationToken);
+        var name = await erased.IsErasedAsync(command.Approver, cancellationToken) ? null : command.ApproverName;
 
         var found = await versions.FindForUpdateAsync(command.Version, cancellationToken);
         if (!found.HasValue)
@@ -19,7 +27,7 @@ public sealed class ApproveQuestionHandler(ICourseVersionStore versions, IErased
             return Failure(CourseVersionFailures.NotFound(command.Version.Value));
         }
 
-        var approved = found.Value.ApproveQuestion(command.Question, command.Approver, command.ApproverName, Timestamp.From(time.GetUtcNow()));
+        var approved = found.Value.ApproveQuestion(command.Question, command.Approver, name, Timestamp.From(time.GetUtcNow()));
         if (approved.IsFailure)
         {
             return Failure(CourseVersionFailures.From(approved.Error));

@@ -5,23 +5,29 @@ using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions;
 namespace SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application.Consumers;
 
 /// <summary>
-/// Erases a person in Editorial (#115) and announces it as <see cref="EditorialErasureCompletedV1"/>: it forgets their
-/// name on every question they approved and every return they made (<see cref="IReviewerNames"/>), then publishes and
-/// commits. No course version is loaded or changed, and no tombstone is kept: an erased person has no account to approve
-/// or return with again.
+/// Erases a person in Editorial (#115) and announces it as <see cref="EditorialErasureCompletedV1"/>. It holds the person
+/// (<see cref="IErasedPersonStore.HoldAsync"/>, which begins the unit of work's transaction), tombstones them (an unknown
+/// person too), forgets their name on every question they approved and every return they made
+/// (<see cref="IReviewerNames"/>: two UPDATE statements, run at once inside that transaction), and only after both
+/// publishes the completion and commits: the tombstone, the two updates and the completion commit together or not at all.
 /// <para>
-/// It is idempotent by state, not by <c>Metadata.EventIdentifier</c>: a redelivery finds the names gone, changes nothing,
-/// and announces the completion again, which Organisation records once. An unknown person completes too.
+/// The tombstone is kept although an erased person has no account in the end: their account and tokens outlive the
+/// erasure until slice 6, and a next version drafted at the same time copies the names it loaded. An approval, a return
+/// and the copy hold the person too, so each either runs before this commit (and its name is forgotten here) or after it
+/// (and finds the tombstone and stores no name).
+/// </para>
+/// <para>
+/// It is idempotent by state, not by <c>Metadata.EventIdentifier</c>: a redelivery keeps the first tombstone, finds the
+/// names gone, and announces the completion again, which Organisation records once. Two deliveries racing on the
+/// tombstone's key make one commit fail; its retry finds the tombstone.
 /// </para>
 /// </summary>
 public sealed class PersonErasureRequestedV1Consumer(IReviewerNames names, IErasedPersonStore erased, IEditorialUnitOfWork unitOfWork, TimeProvider time)
 {
-    // Not used yet: slice 3's red tests (#115) ask for the person to be held and tombstoned.
-    private readonly IErasedPersonStore erased = erased;
-    private readonly TimeProvider time = time;
-
     private readonly IReviewerNames names = names;
+    private readonly IErasedPersonStore erased = erased;
     private readonly IEditorialUnitOfWork unitOfWork = unitOfWork;
+    private readonly TimeProvider time = time;
 
     public async Task HandleAsync(PersonErasureRequestedV1 message, CancellationToken cancellationToken)
     {
@@ -30,7 +36,17 @@ public sealed class PersonErasureRequestedV1Consumer(IReviewerNames names, IEras
         Ensure.That(message.ErasureId, nameof(message.ErasureId)).IsNotEmpty();
         Ensure.That(message.PersonId, nameof(message.PersonId)).IsNotEmpty();
 
-        await names.ForgetAsync(PersonId.From(message.PersonId), cancellationToken);
+        var person = PersonId.From(message.PersonId);
+
+        // Held before anything of the person is read or forgotten, so no approval, return or copy writes the name between
+        // the forgetting and the tombstone.
+        await erased.HoldAsync(person, cancellationToken);
+        if (!await erased.IsErasedAsync(person, cancellationToken))
+        {
+            erased.Add(ErasedPerson.Of(person, Timestamp.From(time.GetUtcNow())));
+        }
+
+        await names.ForgetAsync(person, cancellationToken);
 
         await unitOfWork.PublishAsync(new EditorialErasureCompletedV1(message.ErasureId));
         await unitOfWork.CommitAsync(cancellationToken);
