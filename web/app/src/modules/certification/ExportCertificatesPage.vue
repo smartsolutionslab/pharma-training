@@ -16,6 +16,7 @@ import { notify } from '@/lib/notify';
 import { useCurrentPharmacy } from '@/shell/useCurrentPharmacy';
 import { exportRefusal } from './exportErrors';
 import { defaultPeriod, type ExportPeriod, exportSchema } from './exportSchema';
+import RetentionPeriodSection from './RetentionPeriodSection.vue';
 
 // The managers' certificate export (#297, ADR 0032): the issue days from and to, the last twelve months in the German
 // day to begin with, and the ZIP the host streams for the current pharmacy, saved under the host's file name. The ZIP
@@ -234,5 +235,6 @@ async function submit(event: Event) {
       </p>
       <p v-if="failure !== undefined" role="alert" class="text-body text-destructive">{{ messageText(failure) }}</p>
     </form>
+    <RetentionPeriodSection v-if="current !== undefined" :pharmacy="current" />
   </main>
 </template>
