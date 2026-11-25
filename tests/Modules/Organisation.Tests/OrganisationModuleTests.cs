@@ -1,6 +1,7 @@
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Api;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Mail;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
@@ -86,6 +87,27 @@ public class OrganisationModuleTests
         using var scope = provider.CreateScope();
 
         scope.ServiceProvider.GetService<IAccounts>().ShouldBeOfType<KeycloakAccounts>("the module registered no IAccounts over Keycloak");
+    }
+
+    /// <summary>
+    /// #458 review: a host without <c>Keycloak:Accounts</c> still builds the erasure consumers, which take IAccounts, and
+    /// the first account read or deletion fails naming the missing setting, instead of every erasure failing to resolve
+    /// its consumer without saying why.
+    /// </summary>
+    [Fact]
+    public async Task Without_keycloak_settings_the_first_account_call_fails_naming_the_missing_setting()
+    {
+        var services = new ServiceCollection().AddLogging();
+        services.AddSingleton<Microsoft.Extensions.AI.IChatClient>(_ => new SmartSolutionsLab.PharmaTraining.Tests.Fakes.FakeChatClient("unused"));
+        new OrganisationModule().AddServices(services, Configuration());
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        var accounts = scope.ServiceProvider.GetService<IAccounts>();
+
+        accounts.ShouldNotBeNull("the erasure consumers take IAccounts, so a host without the settings could not build them");
+        var refused = await Should.ThrowAsync<OptionsValidationException>(() => accounts.FindAsync(PersonId.From(Guid.CreateVersion7()), TestContext.Current.CancellationToken));
+        refused.Message.ShouldContain("Keycloak:Accounts:");
     }
 
     private static IConfiguration Configuration() => new ConfigurationBuilder()
