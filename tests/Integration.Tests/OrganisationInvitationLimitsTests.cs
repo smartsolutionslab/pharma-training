@@ -125,8 +125,9 @@ public class OrganisationInvitationLimitsTests(AspireFixture aspire)
             responses.Select(response => response.StatusCode).ShouldBe([HttpStatusCode.Created, HttpStatusCode.Conflict], ignoreOrder: true, described);
             var lost = responses.Single(response => response.StatusCode == HttpStatusCode.Conflict);
             using var problem = JsonDocument.Parse(await lost.Content.ReadAsStringAsync(cancellationToken));
-            // The loser may also lose on the sender's row (#265): its first insert answers already-exists.
-            problem.RootElement.GetProperty("code").GetString().ShouldBeOneOf(["organisation.pharmacy-changed", "already-exists"], described);
+            // On the sender's row the two wait for each other (#369) and on their recipients' rows they share nothing, so
+            // the loser loses on the pharmacy alone.
+            problem.RootElement.GetProperty("code").GetString().ShouldBe("organisation.pharmacy-changed", described);
             (await database.InvitationMailsThatDayAsync(pharmacy, cancellationToken)).ShouldBe(50, described);
         }
         finally

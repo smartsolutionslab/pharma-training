@@ -7,10 +7,13 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application;
 
 /// <summary>
 /// Counts one invitation mail on its address and on its sender (docs/adr/0004), after the pharmacy's own checks and in
-/// the same commit as the pharmacy: the recipient cooldown first, then the sender's daily cap. A refusal adds nothing
-/// to the unit of work; the caller then commits nothing. A sender's stored mail day beyond tomorrow, which only a
-/// hand-edited row or a database clock that moved back (a failover or a restore) stores, is logged as a warning naming
-/// the person and both days, never the address, and today's tally starts afresh. A recipient's stored instant a cooldown
+/// the same commit as the pharmacy: the recipient cooldown first, then the sender's daily cap. Their rows are created
+/// when missing and held until the commit in that fixed order, the recipient's before the sender's (#369, #375), so two
+/// requests never wait for each other's rows; a wait past the stores' lock timeout is a lost race. A refusal commits
+/// nothing: the caller then commits nothing, and a row created for it is rolled back with the unit of work. A sender's
+/// stored mail day beyond tomorrow, which only a hand-edited row or a database clock that moved back (a failover or a
+/// restore) stores, is logged as a warning naming the person and both days, never the address, and today's tally
+/// starts afresh. A recipient's stored instant a cooldown
 /// or more ahead is logged as a warning naming only the two instants, neither the address nor its recipient id (a
 /// pseudonym anyone who knows the address can recompute, #326), and the address may be mailed.
 /// </summary>
@@ -21,6 +24,7 @@ public static partial class InvitationMailCounting
         IInvitationSenderStore senders,
         RecipientAndSenderMailLimits limits,
         ILogger logger,
+        PharmacyId pharmacy,
         EmailAddress to,
         PersonId by,
         Timestamp now,
@@ -30,31 +34,41 @@ public static partial class InvitationMailCounting
         Ensure.That(senders).IsNotNull();
         Ensure.That(limits).IsNotNull();
         Ensure.That(logger).IsNotNull();
+        Ensure.That(pharmacy).IsNotNull();
         Ensure.That(to).IsNotNull();
         Ensure.That(by).IsNotNull();
         Ensure.That(now).IsNotNull();
 
-        var storedRecipient = await recipients.LoadAsync(InvitationRecipientId.For(to), cancellationToken);
-        if (storedRecipient.HasValue)
+        // The recipient's row first, then the sender's: every request holds them in this order (docs/adr/0004), so a
+        // request never holds one while waiting for the other's holder. Each is created when missing and held until the
+        // commit, so two requests mailing one address or counting on one sender at once count one after the other, the
+        // very first two included (#369, #375).
+        var loadedRecipient = await recipients.LoadForMailAsync(to, cancellationToken);
+        if (loadedRecipient.IsFailure)
         {
-            var recipient = storedRecipient.Value;
-            var mailedAhead = recipient.MailedBeyond(now, limits.RecipientCooldown);
-            if (mailedAhead.HasValue)
-            {
-                LogRecipientMailedAhead(logger, mailedAhead.Value.Value, now.Value);
-            }
-
-            var mailed = recipient.RequestMail(now, limits.RecipientCooldown);
-            if (mailed.IsFailure)
-            {
-                return Failure(PharmacyFailures.From(mailed.Error));
-            }
+            return Failure(PharmacyFailures.LostRace(loadedRecipient.Error, pharmacy.Value));
         }
 
-        // The sender's row is created when missing and held until the commit, so a sender's concurrent mails, their very
-        // first two included, count one after the other on one row (#369). A refusal commits nothing, so a row created
-        // for it is discarded with the unit of work.
-        var sender = await senders.LoadForMailAsync(by, now, cancellationToken);
+        var recipient = loadedRecipient.Value;
+        var mailedAhead = recipient.MailedBeyond(now, limits.RecipientCooldown);
+        if (mailedAhead.HasValue)
+        {
+            LogRecipientMailedAhead(logger, mailedAhead.Value.Value, now.Value);
+        }
+
+        var mailed = recipient.RequestMail(now, limits.RecipientCooldown);
+        if (mailed.IsFailure)
+        {
+            return Failure(PharmacyFailures.From(mailed.Error));
+        }
+
+        var loadedSender = await senders.LoadForMailAsync(by, now, cancellationToken);
+        if (loadedSender.IsFailure)
+        {
+            return Failure(PharmacyFailures.LostRace(loadedSender.Error, pharmacy.Value));
+        }
+
+        var sender = loadedSender.Value;
         var ahead = sender.MailDayBeyondTomorrow(now);
         if (ahead.HasValue)
         {
@@ -65,12 +79,6 @@ public static partial class InvitationMailCounting
         if (sent.IsFailure)
         {
             return Failure(PharmacyFailures.From(sent.Error));
-        }
-
-        // A new recipient is added only once both rules have passed, so a refusal leaves nothing to be saved.
-        if (!storedRecipient.HasValue)
-        {
-            recipients.Add(InvitationRecipient.FirstMailed(to, now));
         }
 
         return Success(Unit.Value);
