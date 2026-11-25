@@ -28,15 +28,6 @@ public sealed class InvitationRecipient : AggregateRoot<InvitationRecipientId>
         return new InvitationRecipient(InvitationRecipientId.For(address), Timestamp.From(DateTimeOffset.UnixEpoch));
     }
 
-    /// <summary>The address's first invitation mail, counted at <paramref name="now"/>.</summary>
-    public static InvitationRecipient FirstMailed(EmailAddress address, Timestamp now)
-    {
-        Ensure.That(address).IsNotNull();
-        Ensure.That(now).IsNotNull();
-
-        return new InvitationRecipient(InvitationRecipientId.For(address), now);
-    }
-
     /// <summary>
     /// Counts another invitation mail at <paramref name="now"/>, or refuses it within the cooldown with the instant
     /// the address may be mailed again; a refusal changes nothing. A stored instant less than a cooldown ahead of

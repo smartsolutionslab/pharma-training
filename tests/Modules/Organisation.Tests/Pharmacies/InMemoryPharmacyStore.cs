@@ -43,6 +43,8 @@ internal sealed class InMemoryPharmacyStore : IPharmacyStore, IInvitationRecipie
 
     public int Commits { get; private set; }
 
+    public int Rollbacks { get; private set; }
+
     public void Add(Pharmacy pharmacy) => added.Add(pharmacy);
 
     /// <summary>
@@ -208,6 +210,14 @@ internal sealed class InMemoryPharmacyStore : IPharmacyStore, IInvitationRecipie
 
         await CommitAsync(cancellationToken);
         return Success(Unit.Value);
+    }
+
+    /// <summary>Discards what the command added or queued, as the rolled-back transaction does, and counts the rollback.</summary>
+    public Task RollbackAsync(CancellationToken cancellationToken)
+    {
+        Discard();
+        Rollbacks++;
+        return Task.CompletedTask;
     }
 
     private Option<Pharmacy> Lookup(PharmacyId id) =>

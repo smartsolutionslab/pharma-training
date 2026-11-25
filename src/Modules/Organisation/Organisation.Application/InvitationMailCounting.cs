@@ -10,7 +10,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application;
 /// the same commit as the pharmacy: the recipient cooldown first, then the sender's daily cap. Their rows are created
 /// when missing and held until the commit in that fixed order, the recipient's before the sender's (#369, #375), so two
 /// requests never wait for each other's rows; a wait past the stores' lock timeout is a lost race. A refusal commits
-/// nothing: the caller then commits nothing, and a row created for it is rolled back with the unit of work. A sender's
+/// nothing: the caller then commits nothing and rolls back at once, with the rows held and any created for it. A sender's
 /// stored mail day beyond tomorrow, which only a hand-edited row or a database clock that moved back (a failover or a
 /// restore) stores, is logged as a warning naming the person and both days, never the address, and today's tally
 /// starts afresh. A recipient's stored instant a cooldown

@@ -34,4 +34,10 @@ internal sealed class InMemorySampleStore : ISampleStore, IOrganisationUnitOfWor
         added.Clear();
         return Task.CompletedTask;
     }
+
+    public Task RollbackAsync(CancellationToken cancellationToken)
+    {
+        added.Clear();
+        return Task.CompletedTask;
+    }
 }
