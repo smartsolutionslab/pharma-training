@@ -8,7 +8,9 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application.Cons
 /// <summary>
 /// Deletes an erased person's Keycloak account and records the erasure's step <c>keycloak</c> (#115). It is idempotent by
 /// the erasure's state: once the step is recorded, Keycloak is not asked again, and an account that is gone counts as
-/// deleted. A client's service account is never deleted. A failure of Keycloak records nothing and rethrows, so Wolverine
+/// deleted. A client's service account is never deleted, nor is a staff account, one holding a realm role of
+/// <see cref="StaffRoles"/> (owner decision on #115, docs/adr/0040): each logs an error by the erasure's id alone and
+/// leaves the step open, so the erasure shows as unfinished until an administrator removes the account by hand. A failure of Keycloak records nothing and rethrows, so Wolverine
 /// retries and finally dead-letters the message, which holds ids only.
 /// </summary>
 public sealed partial class AccountDeletionRequestedV1Consumer(
@@ -56,6 +58,14 @@ public sealed partial class AccountDeletionRequestedV1Consumer(
                 return;
             }
 
+            if (account.Value.HoldsStaffRole)
+            {
+                // A staff account may be the one that requested the erasure or that runs the platform; only an
+                // administrator who checked it removes it (README runbook).
+                StaffAccount(logger, message.ErasureId);
+                return;
+            }
+
             await accounts.DeleteAsync(person, cancellationToken);
         }
 
@@ -71,4 +81,7 @@ public sealed partial class AccountDeletionRequestedV1Consumer(
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Erasure {Erasure} names a client's service account in Keycloak, which is never deleted; its step keycloak stays open.")]
     private static partial void ServiceAccount(ILogger logger, Guid erasure);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Erasure {Erasure} names a staff account in Keycloak (a realm role support, editor or manager), which an erasure never deletes; its step keycloak stays open until an administrator removes the account.")]
+    private static partial void StaffAccount(ILogger logger, Guid erasure);
 }
