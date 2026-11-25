@@ -11,6 +11,8 @@ name: x1-staging
 # for the run (README, "What to check after the first deploy").
 on:
   workflow_dispatch:
+  # Called by deploy.yml with no secrets: its job reads them from the staging environment it names
+  # (StagingEndToEndRunTakesNoSecretsFromItsCaller).
   workflow_call:
 
 # One run at a time against staging; a second waits.

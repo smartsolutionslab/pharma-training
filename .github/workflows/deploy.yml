@@ -130,7 +130,8 @@ jobs:
   x1:
     needs: staging
     uses: ./.github/workflows/x1-staging.yml
-    secrets: inherit
+    # No secrets: the run's job reads its two from the staging environment it names, and inherit would hand it every
+    # secret this workflow holds (StagingEndToEndRunTakesNoSecretsFromItsCaller).
 
   production:
     needs: staging

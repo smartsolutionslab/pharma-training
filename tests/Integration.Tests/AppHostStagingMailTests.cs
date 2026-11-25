@@ -131,4 +131,35 @@ public class AppHostStagingMailTests
 
         return context.EnvironmentVariables.ToDictionary(variable => variable.Key, variable => variable.Value, StringComparer.Ordinal);
     }
+
+    // The SMTP sink takes mail without TLS or credentials, so its port must never reach the internet: pinned in what Azure
+    // receives, not only in Aspire's model (#442).
+    [Fact]
+    public async Task Staging_mailpits_smtp_port_is_internal_in_the_published_bicep()
+    {
+        var bicep = await PublishedAppHost.PublishAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
+
+        bicep.ContainerApps.ShouldContainKey(Mailpit);
+        var mappings = PublishedBicep.Objects(PublishedBicep.Array(bicep.ContainerApps[Mailpit], "additionalPortMappings"));
+        var smtp = mappings.SingleOrDefault(mapping => PublishedBicep.Property(mapping, "targetPort") == "1025");
+        smtp.ShouldNotBeNull($"mailpit maps no port 1025: {string.Join(" | ", mappings)}");
+        PublishedBicep.Property(smtp, "external").ShouldBe("false", "Mailpit's SMTP port must not answer outside the environment.");
+    }
+
+    // A moving tag changes what runs without a change here; run mode and staging run the same exact patch (#442).
+    [Theory]
+    [InlineData(null)]
+    [InlineData(PublishedAppHost.Staging)]
+    public async Task Mailpit_runs_an_exact_patch_of_its_image(string? environment)
+    {
+        await using var builder = environment is null
+            ? await DistributedApplicationTestingBuilder.CreateAsync<Projects.AppHost>(TestContext.Current.CancellationToken)
+            : await PublishedAppHost.ModelAsync(environment, TestContext.Current.CancellationToken);
+        var mailpit = builder.Resources.OfType<ContainerResource>().Single(resource => resource.Name == Mailpit);
+
+        var image = mailpit.Annotations.OfType<ContainerImageAnnotation>().Single();
+
+        image.Image.ShouldBe("axllent/mailpit");
+        image.Tag.ShouldNotBeNull().ShouldMatch(@"^v\d+\.\d+\.\d+$", "Mailpit's tag must name an exact patch (vX.Y.Z).");
+    }
 }

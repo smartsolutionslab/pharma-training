@@ -26,12 +26,12 @@
   ],
   "smtpServer": {
     "host": "${SMTP_HOST}",
-    "port": "${SMTP_PORT}",
+    "port": "${SMTP_PORT:587}",
     "from": "${SMTP_FROM}",
     "fromDisplayName": "pharma-training",
     "ssl": "false",
-    "starttls": "${SMTP_STARTTLS}",
-    "auth": "${SMTP_AUTH}",
+    "starttls": "${SMTP_STARTTLS:true}",
+    "auth": "${SMTP_AUTH:true}",
     "user": "${SMTP_USERNAME}",
     "password": "${SMTP_PASSWORD}"
   },
