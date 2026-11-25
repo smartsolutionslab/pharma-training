@@ -119,7 +119,36 @@ public class ErasedReviewerTests
         await new DraftNextVersionHandler(store, store, store)
             .HandleAsync(new DraftNextVersion(source.Id, Author), TestContext.Current.CancellationToken);
 
-        store.Held.ShouldBe([Author, erased], ignoreOrder: true);
+        store.Held.ShouldBe([.. new[] { Author, erased }.OrderBy(person => person.Value)], "the holds are taken in the order of the ids, so two drafts holding the same reviewers cannot deadlock");
+    }
+
+    /// <summary>
+    /// #421 review: the version is loaded, and so locked, before the approver is held, as every other writer of the version
+    /// does, so a lock on the version and one on the person are always taken in that order.
+    /// </summary>
+    [Fact]
+    public async Task An_approval_loads_the_version_before_it_holds_and_checks_the_approver()
+    {
+        var version = DraftWithQuestion(out _, out var question);
+        store.Stored.Add(version);
+
+        await new ApproveQuestionHandler(store, store, store, time)
+            .HandleAsync(new ApproveQuestion(version.Id, question, Reviewer, ReviewersName), TestContext.Current.CancellationToken);
+
+        store.Journal.ShouldBe(["load", "hold", "is-erased"]);
+    }
+
+    /// <summary>#421 review: the version is loaded before the returner is held, as for an approval.</summary>
+    [Fact]
+    public async Task A_return_loads_the_version_before_it_holds_and_checks_the_returner()
+    {
+        var version = InReview();
+        store.Stored.Add(version);
+
+        await new ReturnToDraftHandler(store, store, store, time)
+            .HandleAsync(new ReturnToDraft(version.Id, Reviewer, ReviewersName, Reason), TestContext.Current.CancellationToken);
+
+        store.Journal.ShouldBe(["load", "hold", "is-erased"]);
     }
 
     private void Tombstone(PersonId person) => store.ErasedPersons.Add(ErasedPerson.Of(person, Timestamp.From(Start.AddDays(-1))));

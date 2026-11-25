@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using SmartSolutionsLab.PharmaTraining.Contracts.Assessment;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.IntegrationEvents;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Certificates;
@@ -14,12 +15,17 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Con
 /// finds the first.
 /// A copy that has not arrived yet, because the event overtook it, throws: Wolverine retries with backoff, and
 /// dead-letters it to a replayable row once the retries run out.
+/// A passed test of a person Certification erased (#115) is dropped, logged by the attempt without the name, before the
+/// holder's name is looked up; the person is held before the tombstone is read, as the erasure holds them, so no
+/// certificate is issued to a person whose certificates the erasure has just removed.
 /// </summary>
-public sealed class TestPassedV1Consumer(
+public sealed partial class TestPassedV1Consumer(
     ICertificateStore certificates,
     IMembershipStore memberships,
     ICourseVersionStore courseVersions,
-    ICertificationUnitOfWork unitOfWork)
+    IErasedPersonStore erased,
+    ICertificationUnitOfWork unitOfWork,
+    ILogger<TestPassedV1Consumer> logger)
 {
     public async Task HandleAsync(TestPassedV1 message, CancellationToken cancellationToken)
     {
@@ -39,6 +45,13 @@ public sealed class TestPassedV1Consumer(
         }
 
         var person = PersonId.From(message.PersonId);
+        await erased.HoldAsync(person, cancellationToken);
+        if (await erased.IsErasedAsync(person, cancellationToken))
+        {
+            ErasedPersonDropped(logger, message.AttemptId);
+            return;
+        }
+
         var holderName = await memberships.FindHolderNameAsync(person, cancellationToken);
         if (!holderName.HasValue)
         {
@@ -82,4 +95,7 @@ public sealed class TestPassedV1Consumer(
 
         await unitOfWork.CommitAsync(cancellationToken);
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Attempt {Attempt} was passed by an erased person; no certificate is issued.")]
+    private static partial void ErasedPersonDropped(ILogger logger, Guid attempt);
 }

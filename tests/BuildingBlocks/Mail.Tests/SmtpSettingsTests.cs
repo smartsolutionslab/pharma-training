@@ -10,6 +10,8 @@ public class SmtpSettingsTests
 {
     private const string Key = "ConnectionStrings:mail";
 
+    private const string UnencryptedHost = "Mail:UnencryptedHost";
+
     [Fact]
     public void A_server_without_credentials_uses_tls_when_it_offers_it()
     {
@@ -38,6 +40,33 @@ public class SmtpSettingsTests
     [InlineData("smtp://[::1]:1025")]
     public void A_loopback_server_without_credentials_uses_tls_only_when_it_offers_it(string value) =>
         SmtpSettings.From(Settings.Of((Key, value))).Security.ShouldBe(SecureSocketOptions.StartTlsWhenAvailable);
+
+    // Staging's Mailpit runs inside the Container Apps environment, whose traffic between apps is encrypted, and presents no
+    // certificate anything trusts: the AppHost names it in Mail:UnencryptedHost there, and nowhere else (#130).
+    [Fact]
+    public void The_host_named_as_unencrypted_takes_mail_without_tls_when_no_credential_goes_with_it()
+    {
+        var settings = SmtpSettings.From(Settings.Of((Key, "smtp://mailpit:1025"), (UnencryptedHost, "mailpit")));
+
+        settings.Host.ShouldBe("mailpit");
+        settings.Port.ShouldBe(1025);
+        settings.Security.ShouldBe(SecureSocketOptions.StartTlsWhenAvailable);
+    }
+
+    [Fact]
+    public void A_credential_never_goes_to_the_unencrypted_host_without_tls()
+    {
+        var settings = SmtpSettings.From(Settings.Of((Key, "smtp://user:secret@mailpit:1025"), (UnencryptedHost, "mailpit")));
+
+        settings.Security.ShouldBe(SecureSocketOptions.StartTls);
+    }
+
+    [Theory]
+    [InlineData("smtp://mail.example:587")]
+    [InlineData("smtp://mailpit.example:1025")]
+    [InlineData("smtp://mailpi:1025")]
+    public void Any_other_host_still_requires_starttls_when_an_unencrypted_host_is_named(string value) =>
+        SmtpSettings.From(Settings.Of((Key, value), (UnencryptedHost, "mailpit"))).Security.ShouldBe(SecureSocketOptions.StartTls);
 
     [Fact]
     public void A_server_with_credentials_requires_starttls_and_its_credentials_are_url_decoded()

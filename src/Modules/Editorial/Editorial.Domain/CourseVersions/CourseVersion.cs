@@ -81,9 +81,10 @@ public sealed class CourseVersion : AggregateRoot<CourseVersionId>
 
     /// <summary>
     /// The next version of a published one: a copy of its chapters and questions with new ids. Approved questions
-    /// stay approved until their chapter, they themselves or the test's settings change.
+    /// stay approved until their chapter, they themselves or the test's settings change. Internal, for the Domain's tests:
+    /// every caller outside the Domain drafts through the overload told which reviewers are erased (#115).
     /// </summary>
-    public Result<CourseVersion, DomainError> DraftNext(
+    internal Result<CourseVersion, DomainError> DraftNext(
         CourseVersionId id,
         PersonId editor,
         Func<ChapterId> newChapterId,

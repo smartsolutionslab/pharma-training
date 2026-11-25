@@ -1,8 +1,14 @@
 import { type APIRequestContext, expect, type Page } from '@playwright/test';
 
-// The running application's identity provider and mail catcher, at the ports the AppHost gives them in run mode.
+// The running application's identity provider and mail catcher, at the ports the AppHost gives them in run mode; on
+// staging their public addresses, and Mailpit's inbox behind its basic auth, user:password (#130).
 const keycloak = process.env.E2E_KEYCLOAK_URL ?? 'http://localhost:8080';
 const mailpit = process.env.E2E_MAILPIT_URL ?? 'http://localhost:8025';
+const mailpitAuth = process.env.E2E_MAILPIT_AUTH ?? '';
+
+/** Mailpit's basic auth, when it has one: staging's has, run mode's has not. */
+const mailpitHeaders: Record<string, string> =
+  mailpitAuth === '' ? {} : { Authorization: `Basic ${Buffer.from(mailpitAuth).toString('base64')}` };
 
 /** An address and a pharmacy name no earlier run used, so a test finds its own mail and its own pharmacy. */
 export function unique(prefix: string) {
@@ -44,14 +50,27 @@ type Summary = { ID: string; Subject: string };
 
 /**
  * The text of the one mail to the address whose subject contains the marker, from Mailpit's API; waits for it, since
- * the application sends mail from a consumer, after the request that asked for it has been answered.
+ * the application sends mail from a consumer, after the request that asked for it has been answered. Behind basic auth
+ * (staging) it asks through Node's fetch, which no Playwright trace records, so the auth stays out of one; any request
+ * context of Playwright's is traced once tracing is on.
  */
 export async function mailText(request: APIRequestContext, to: string, marker: string) {
+  const get = async (path: string, query?: Record<string, string>) => {
+    const url = `${mailpit}${path}${query === undefined ? '' : `?${new URLSearchParams(query).toString()}`}`;
+    if (mailpitAuth === '') {
+      const response = await request.get(url);
+      return { ok: response.ok(), status: response.status(), json: () => response.json() as Promise<unknown> };
+    }
+    const response = await fetch(url, { headers: mailpitHeaders });
+    return { ok: response.ok, status: response.status, json: () => response.json() as Promise<unknown> };
+  };
+
   let id: string | undefined;
   await expect
     .poll(
       async () => {
-        const response = await request.get(`${mailpit}/api/v1/search`, { params: { query: `to:"${to}"` } });
+        const response = await get('/api/v1/search', { query: `to:"${to}"` });
+        expect(response.ok, `Mailpit's search answered ${response.status}`).toBe(true);
         const found = ((await response.json()) as { messages: Summary[] }).messages.filter((message) =>
           message.Subject.includes(marker),
         );
@@ -61,7 +80,7 @@ export async function mailText(request: APIRequestContext, to: string, marker: s
       { message: `a mail to ${to} about "${marker}"`, timeout: 30_000 },
     )
     .toBe(1);
-  const message = await request.get(`${mailpit}/api/v1/message/${id ?? ''}`);
+  const message = await get(`/api/v1/message/${id ?? ''}`);
   return ((await message.json()) as { Text: string }).Text;
 }
 
@@ -72,10 +91,13 @@ export function invitationLink(text: string) {
   return link ?? '';
 }
 
-/** Signs in on Keycloak's login page, wherever the app sent the browser to it from. */
-export async function signInAs(page: Page, user: string) {
+/**
+ * Signs in on Keycloak's login page, wherever the app sent the browser to it from. A local user's password is their
+ * name; a user a test created has one of its own.
+ */
+export async function signInAs(page: Page, user: string, password = user) {
   await page.getByLabel('Username or email').fill(user);
-  await page.getByLabel('Password', { exact: true }).fill(user);
+  await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Sign In' }).click();
 }
 

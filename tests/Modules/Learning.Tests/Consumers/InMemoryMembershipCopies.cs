@@ -11,12 +11,13 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Tests.Consumers;
 /// is added is stored only once committed. Copied from Compliance's <c>InMemoryMemberStore</c> and
 /// <see cref="InMemoryCourseVersionCopies"/>; the <c>Hold</c> helpers store a row as if its event had been handled.
 /// </summary>
-internal sealed class InMemoryMembershipCopies : IMembershipCopies, ILearningUnitOfWork
+internal sealed class InMemoryMembershipCopies : IMembershipCopies, IErasedPersonStore, ILearningUnitOfWork
 {
     private readonly List<MemberCopy> addedMembers = [];
     private readonly List<MembershipEndingCopy> addedEndings = [];
     private readonly List<MembershipChangeCopy> addedChanges = [];
     private readonly List<IntegrationEvent> pending = [];
+    private readonly List<ErasedPersonCopy> addedErasedPersons = [];
 
     public List<MemberCopy> Members { get; } = [];
 
@@ -25,6 +26,12 @@ internal sealed class InMemoryMembershipCopies : IMembershipCopies, ILearningUni
     public List<MembershipChangeCopy> Changes { get; } = [];
 
     public int Commits { get; private set; }
+
+    /// <summary>The tombstones committed (#115); one seeded here counts as committed earlier.</summary>
+    public List<ErasedPersonCopy> ErasedPersons { get; } = [];
+
+    /// <summary>The calls about a person, in order: <c>hold</c> and <c>is-erased</c>.</summary>
+    public List<string> PersonCalls { get; } = [];
 
     /// <summary>The integration events published through the unit of work and committed with it.</summary>
     public List<IntegrationEvent> Published { get; } = [];
@@ -51,6 +58,20 @@ internal sealed class InMemoryMembershipCopies : IMembershipCopies, ILearningUni
             [.. Changes.Where(change => change.PersonId == person.Value)],
             [.. Endings.Where(ending => ending.PersonId == person.Value)]));
 
+    public Task HoldAsync(PersonId person, CancellationToken cancellationToken)
+    {
+        PersonCalls.Add("hold");
+        return Task.CompletedTask;
+    }
+
+    public Task<bool> IsErasedAsync(PersonId person, CancellationToken cancellationToken)
+    {
+        PersonCalls.Add("is-erased");
+        return Task.FromResult(ErasedPersons.Any(erased => erased.PersonId == person.Value));
+    }
+
+    public void Add(ErasedPersonCopy erased) => addedErasedPersons.Add(erased);
+
     public void Hold(MemberCopy member) => Members.Add(member);
 
     public void Hold(MembershipChangeCopy change) => Changes.Add(change);
@@ -71,6 +92,8 @@ internal sealed class InMemoryMembershipCopies : IMembershipCopies, ILearningUni
         addedEndings.Clear();
         Changes.AddRange(addedChanges);
         addedChanges.Clear();
+        ErasedPersons.AddRange(addedErasedPersons);
+        addedErasedPersons.Clear();
         Published.AddRange(pending);
         pending.Clear();
         Commits++;

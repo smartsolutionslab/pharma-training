@@ -146,11 +146,13 @@ public partial class AppHostSecretAccessTests
     /// K5: Keycloak's own identity reads its administrator's password, the SMTP user and password, and its role's database
     /// password, and nothing else; never a connection string.
     /// </summary>
-    [Fact]
-    public async Task Keycloak_reads_its_administrators_mail_and_database_passwords_alone()
+    // Staging's Keycloak sends to Mailpit without credentials, so it reads no SMTP secret there (#130).
+    [Theory]
+    [InlineData(PublishedAppHost.Production, new[] { "keycloak-admin-password", "keycloak-database-password", "smtp-password", "smtp-username" })]
+    [InlineData(PublishedAppHost.Staging, new[] { "keycloak-admin-password", "keycloak-database-password" })]
+    public async Task Keycloak_reads_its_administrators_mail_and_database_passwords_alone(string environment, string[] expected)
     {
-        var bicep = await PublishedAppHost.PublishAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
-        List<string> expected = ["keycloak-admin-password", "keycloak-database-password", "smtp-password", "smtp-username"];
+        var bicep = await PublishedAppHost.PublishAsync(environment, TestContext.Current.CancellationToken);
 
         bicep.ContainerApps.ShouldContainKey("keycloak");
         PublishedBicep.SecretEntries(bicep.ContainerApps["keycloak"])

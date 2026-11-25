@@ -11,7 +11,13 @@ namespace Aspire.Hosting;
 /// default. Published, it is the server the deployment names in <c>smtp-host</c>, with the user and password
 /// <c>smtp-username</c> / <c>smtp-password</c> from the Key Vault, and the sender <c>smtp-from</c>: Keycloak reads them one
 /// by one, and those services read the connection string the AppHost composes from the same parameters, stored in the Key
-/// Vault as <c>mail-connection-string</c>, as a Key Vault reference.
+/// Vault as <c>mail-connection-string</c>, as a Key Vault reference. Published to staging, it is a Mailpit of staging's
+/// own instead (#130, the owner's decisions on it): the staging end-to-end run reads the invitation mails from its inbox,
+/// which answers outside the environment behind Mailpit's basic auth (<c>mailpit-ui-auth</c>, from the Key Vault), while
+/// its SMTP port answers inside the environment alone. Nothing there would trust a certificate Mailpit presents, so
+/// Keycloak and the services send to it without TLS and without credentials, which the environment's peer-traffic
+/// encryption carries; the services name it in <c>Mail:UnencryptedHost</c>, the one exception to their STARTTLS rule.
+/// Production keeps the relay, with STARTTLS and its credentials.
 /// </summary>
 public sealed class MailServer
 {
@@ -23,11 +29,20 @@ public sealed class MailServer
     /// </summary>
     private const string SubmissionPort = "587";
 
+    private const int MailpitSmtpPort = 1025;
+
+    private const string MailpitImage = "axllent/mailpit";
+
+    // An exact patch, the same in run mode and on staging, so what runs changes only with a change here (#442).
+    private const string MailpitTag = "v1.33.1";
+
     private readonly IResourceBuilder<ContainerResource>? mailpit;
 
     private readonly IResourceBuilder<IResourceWithConnectionString>? connectionString;
 
     private readonly PublishedSmtp? published;
+
+    private readonly IResourceBuilder<ContainerResource>? stagingMailpit;
 
     private MailServer(IResourceBuilder<ContainerResource> mailpit, IResourceBuilder<IResourceWithConnectionString> connectionString, IResourceBuilder<ParameterResource> from)
     {
@@ -42,6 +57,12 @@ public sealed class MailServer
         From = published.From;
     }
 
+    private MailServer(IResourceBuilder<ContainerResource> stagingMailpit, IResourceBuilder<ParameterResource> from)
+    {
+        this.stagingMailpit = stagingMailpit;
+        From = from;
+    }
+
     /// <summary>The sender: <c>mail-from</c> in run mode, Keycloak's <c>smtp-from</c> once published.</summary>
     public IResourceBuilder<ParameterResource> From { get; }
 
@@ -52,7 +73,7 @@ public sealed class MailServer
 
         if (!secrets.IsPublishing)
         {
-            var mailpit = builder.AddContainer("mailpit", "axllent/mailpit", "v1.33")
+            var mailpit = builder.AddContainer("mailpit", MailpitImage, MailpitTag)
                 .WithHttpEndpoint(port: 8025, targetPort: 8025)
                 .WithEndpoint(targetPort: 1025, name: "smtp")
                 .WithHttpHealthCheck("/livez");
@@ -61,8 +82,13 @@ public sealed class MailServer
             return new MailServer(mailpit, connectionString, builder.AddParameter("mail-from", "noreply@example.com"));
         }
 
-        var host = builder.AddParameter("smtp-host");
         var from = builder.AddParameter("smtp-from");
+        if (builder.Environment.EnvironmentName == DatabaseServerSize.Staging)
+        {
+            return AddStagingMailpit(builder, secrets, from);
+        }
+
+        var host = builder.AddParameter("smtp-host");
         var userName = secrets.Secret("smtp-username");
         var password = secrets.Secret("smtp-password");
         // smtp:// to a host that is not loopback requires STARTTLS (src/BuildingBlocks/Mail/SmtpSettings.cs), so neither the
@@ -82,6 +108,18 @@ public sealed class MailServer
         ArgumentNullException.ThrowIfNull(keycloak);
         ArgumentNullException.ThrowIfNull(secrets);
 
+        if (stagingMailpit is not null)
+        {
+            return keycloak
+                .WithEnvironment("SMTP_HOST", stagingMailpit.GetEndpoint("smtp").Property(EndpointProperty.Host))
+                .WithEnvironment("SMTP_PORT", MailpitSmtpPort.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                .WithEnvironment("SMTP_STARTTLS", "false")
+                .WithEnvironment("SMTP_AUTH", "false")
+                .WithEnvironment("SMTP_FROM", From)
+                .WithEnvironment("SMTP_USERNAME", string.Empty)
+                .WithEnvironment("SMTP_PASSWORD", string.Empty);
+        }
+
         if (published is null)
         {
             return keycloak.WaitFor(Mailpit);
@@ -89,6 +127,9 @@ public sealed class MailServer
 
         return keycloak
             .WithEnvironment("SMTP_HOST", published.Host)
+            .WithEnvironment("SMTP_PORT", SubmissionPort)
+            .WithEnvironment("SMTP_STARTTLS", "true")
+            .WithEnvironment("SMTP_AUTH", "true")
             .WithEnvironment("SMTP_FROM", published.From)
             .WithSecret("SMTP_USERNAME", published.UserName, secrets)
             .WithSecret("SMTP_PASSWORD", published.Password, secrets);
@@ -104,6 +145,15 @@ public sealed class MailServer
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(secrets);
 
+        if (stagingMailpit is not null)
+        {
+            var smtp = stagingMailpit.GetEndpoint("smtp");
+            return service
+                .WithEnvironment($"ConnectionStrings__{Name}", ReferenceExpression.Create($"smtp://{smtp.Property(EndpointProperty.HostAndPort)}"))
+                .WithEnvironment("Mail__UnencryptedHost", smtp.Property(EndpointProperty.Host))
+                .WithEnvironment("Mail__From", From);
+        }
+
         if (published is null)
         {
             return service
@@ -115,6 +165,23 @@ public sealed class MailServer
         return service
             .WithEnvironment($"ConnectionStrings__{Name}", stored)
             .WithEnvironment("Mail__From", From);
+    }
+
+    /// <summary>
+    /// Staging's Mailpit (#130): its inbox at https://mailpit.&lt;the environment's domain&gt; behind the basic auth
+    /// <c>mailpit-ui-auth</c> (<c>user:password</c>, a Key Vault secret), its SMTP port inside the environment alone, one
+    /// replica and no volume: a restart empties the inbox, which holds the end-to-end run's mails alone.
+    /// </summary>
+    private static MailServer AddStagingMailpit(IDistributedApplicationBuilder builder, DeploymentSecrets secrets, IResourceBuilder<ParameterResource> from)
+    {
+        var inboxAuth = secrets.Secret("mailpit-ui-auth");
+        var mailpit = builder.AddContainer("mailpit", MailpitImage, MailpitTag)
+            .WithHttpEndpoint(targetPort: 8025, name: "http")
+            .WithExternalHttpEndpoints()
+            .WithEndpoint(targetPort: MailpitSmtpPort, name: "smtp", scheme: "tcp")
+            .WithSecret("MP_UI_AUTH", inboxAuth, secrets)
+            .WithSingleReplica();
+        return new MailServer(mailpit, from);
     }
 
     private IResourceBuilder<ContainerResource> Mailpit =>

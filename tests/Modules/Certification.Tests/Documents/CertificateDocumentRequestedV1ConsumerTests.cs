@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging.Testing;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Mail;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Storage;
 using SmartSolutionsLab.PharmaTraining.Contracts;
@@ -8,6 +9,7 @@ using SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Consume
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Documents;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Certificates;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Tests.Certificates;
+using SmartSolutionsLab.PharmaTraining.Modules.Certification.Tests.Erasures;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Tests.Documents;
 
@@ -22,6 +24,7 @@ public class CertificateDocumentRequestedV1ConsumerTests
     private readonly InMemoryCertificateStore certificates = new();
     private readonly FakeCertificateRenderer renderer = new();
     private readonly InMemoryBlobWrites blobs = new();
+    private readonly InMemoryErasedPersonStore erased = new();
     private readonly PersonId holder = PersonId.From(Guid.CreateVersion7());
 
     [Fact]
@@ -155,16 +158,71 @@ public class CertificateDocumentRequestedV1ConsumerTests
         NothingDone();
     }
 
-    /// <summary>The certificate was saved in the same commit as the request, so a missing one is a bug: it dead-letters.</summary>
+    /// <summary>
+    /// #115: an erasure deletes a certificate no pharmacy keeps, so a request for its document can find it gone. It is
+    /// dropped and logged by the certificate's id, not thrown, so it neither retries nor dead-letters, and no PDF is
+    /// written back.
+    /// </summary>
     [Fact]
-    public async Task An_unknown_certificate_throws_naming_it_and_nothing_is_rendered()
+    public async Task A_certificate_that_no_longer_exists_is_dropped_and_logged_and_nothing_is_rendered()
     {
-        var unknown = Guid.CreateVersion7();
+        var gone = Guid.CreateVersion7();
+        var logger = new FakeLogger<CertificateDocumentRequestedV1Consumer>();
 
-        var thrown = await Should.ThrowAsync<InvalidOperationException>(() => HandleAsync(new CertificateDocumentRequestedV1(unknown) { Metadata = NewMetadata() }));
+        await new CertificateDocumentRequestedV1Consumer(certificates, erased, certificates, renderer, blobs, Links(), logger)
+            .HandleAsync(new CertificateDocumentRequestedV1(gone) { Metadata = NewMetadata() }, TestContext.Current.CancellationToken);
 
-        thrown.Message.ShouldContain(unknown.ToString());
         NothingDone();
+        logger.Collector.GetSnapshot().ShouldHaveSingleItem().Message.ShouldContain(gone.ToString());
+    }
+
+    /// <summary>
+    /// #115: a render racing an erasure must not write the holder's PDF back after the erasure deleted it. The consumer
+    /// holds the certificate's holder, as the erasure does, and drops the request once the erasure removed the certificate.
+    /// </summary>
+    [Fact]
+    public async Task A_request_whose_certificate_an_erasure_removed_while_it_waited_for_the_hold_is_dropped_and_nothing_is_rendered()
+    {
+        var certificate = Stored(TestCertificates.Issued(holder));
+        erased.WhileHolding = () =>
+        {
+            certificates.Stored.Remove(certificate);
+            erased.Tombstone(holder, TestCertificates.PassedAt);
+        };
+
+        await HandleAsync(Requested(certificate));
+
+        NothingDone();
+        certificate.Document.ShouldBe(DocumentState.Pending);
+    }
+
+    /// <summary>
+    /// #438 review: a certificate still stored after its holder was erased is a retained one (docs/adr/0036, decision 3),
+    /// kept with its name and PDF, so a render that was retried or replayed after the erasure still stores its PDF.
+    /// </summary>
+    [Fact]
+    public async Task A_retained_certificate_of_an_erased_holder_is_still_rendered_and_stored()
+    {
+        var certificate = Stored(TestCertificates.Issued(holder));
+        erased.Tombstone(holder, TestCertificates.PassedAt);
+
+        await HandleAsync(Requested(certificate));
+
+        renderer.Rendering.ShouldHaveSingleItem();
+        blobs.Writes.ShouldHaveSingleItem();
+        certificate.Document.ShouldBe(DocumentState.Stored);
+        certificates.Commits.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task The_holder_is_held_and_checked_before_a_certificate_is_rendered()
+    {
+        var certificate = Stored(TestCertificates.Issued(holder));
+
+        await HandleAsync(Requested(certificate));
+
+        erased.Journal.ShouldBe(["hold", "is-erased"]);
+        renderer.Rendering.ShouldHaveSingleItem();
     }
 
     [Fact]
@@ -191,7 +249,7 @@ public class CertificateDocumentRequestedV1ConsumerTests
     }
 
     private Task HandleAsync(CertificateDocumentRequestedV1 message, IFrontendLinks? links = null) =>
-        new CertificateDocumentRequestedV1Consumer(certificates, certificates, renderer, blobs, links ?? Links(), NullLogger<CertificateDocumentRequestedV1Consumer>.Instance)
+        new CertificateDocumentRequestedV1Consumer(certificates, erased, certificates, renderer, blobs, links ?? Links(), NullLogger<CertificateDocumentRequestedV1Consumer>.Instance)
             .HandleAsync(message, TestContext.Current.CancellationToken);
 
     private void NothingDone()

@@ -13,6 +13,12 @@ internal sealed class SmtpSettings
 {
     private const string ConnectionStringKey = "ConnectionStrings:mail";
 
+    /// <summary>
+    /// The one non-loopback host that may take mail without TLS, when no credential goes with it: staging's Mailpit inside
+    /// the Container Apps environment, which encrypts the traffic between its apps; set there by the AppHost alone (#130).
+    /// </summary>
+    private const string UnencryptedHostKey = "Mail:UnencryptedHost";
+
     private const int SmtpPort = 25;
 
     private const int SmtpsPort = 465;
@@ -56,9 +62,10 @@ internal sealed class SmtpSettings
             Password = password,
 
             // A password, and a mail with its link, never travel in clear off this machine; only a loopback server
-            // without credentials (Mailpit) may have no TLS at all.
+            // without credentials (Mailpit), or the host the AppHost names as unencrypted (staging's Mailpit), may have
+            // no TLS at all.
             Security = secure ? SecureSocketOptions.SslOnConnect
-                : user is null && IsLoopback(server) ? SecureSocketOptions.StartTlsWhenAvailable
+                : user is null && (IsLoopback(server) || IsUnencryptedHost(server, configuration[UnencryptedHostKey])) ? SecureSocketOptions.StartTlsWhenAvailable
                 : SecureSocketOptions.StartTls,
         };
     }
@@ -67,6 +74,11 @@ internal sealed class SmtpSettings
     internal static bool IsLoopback(Uri url) =>
         string.Equals(url.DnsSafeHost, "localhost", StringComparison.OrdinalIgnoreCase)
         || (IPAddress.TryParse(url.DnsSafeHost, out var address) && IPAddress.IsLoopback(address));
+
+    /// <summary>The host is exactly the one named as unencrypted; nothing is when none is named.</summary>
+    private static bool IsUnencryptedHost(Uri url, string? unencryptedHost) =>
+        !string.IsNullOrWhiteSpace(unencryptedHost)
+        && string.Equals(url.DnsSafeHost, unencryptedHost.Trim(), StringComparison.OrdinalIgnoreCase);
 
     private static (string? User, string? Password) Credentials(string userInfo)
     {

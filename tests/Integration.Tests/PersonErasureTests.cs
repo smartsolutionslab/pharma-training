@@ -1,8 +1,13 @@
+using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
+using Aspire.Hosting.Testing;
+using Microsoft.Extensions.Configuration;
 using Npgsql;
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Storage;
 
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 
@@ -16,8 +21,12 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// (planted by delivering Organisation's membership events), forgets the name there and in the messages it stored, and
 /// its step follows. Editorial forgets the name beside the questions the person approved and the versions they returned
 /// (planted by hand on versions the API made), keeping the reasons; Learning, whose copies hold the id only, purges the
-/// membership messages it stored. Each announces its step; the steps after Organisation's arrive in any order.
+/// membership messages it stored. Certification (slice 4) removes the certificates no pharmacy keeps any longer, row and
+/// PDF, keeps the retained ones with the name, forgets the name on its copies of the memberships and drops what arrives
+/// for the person afterwards. Each announces its step; the steps after Organisation's arrive in any order. The class
+/// calls the public verification, so it runs in that endpoint's collection (one per-address limit, docs/adr/0029).
 /// </summary>
+[Collection(CertificationVerification.Name)]
 public class PersonErasureTests(AspireFixture aspire)
 {
     private const string LastManager = "organisation.erasure-refused-last-manager";
@@ -25,7 +34,10 @@ public class PersonErasureTests(AspireFixture aspire)
     private const string ChangedType = "SmartSolutionsLab.PharmaTraining.Contracts.Organisation.MembershipChangedV1";
     private const string EditorialReason = "Kapitel 2 braucht eine Quelle.";
 
-    private static readonly string[] AllSteps = ["organisation", "compliance", "editorial", "learning"];
+    private const string NotVerifiable = "certification.certificate-not-verifiable";
+    private const string StoredOfHolder = "select count(*) from certification.certificates where holder_id = @id and document_state = 'Stored'";
+
+    private static readonly string[] AllSteps = ["organisation", "compliance", "editorial", "learning", "certification"];
 
     private static readonly Uri Erasures = new("/organisation/erasures", UriKind.Relative);
     private static readonly Uri Pharmacies = new("/organisation/pharmacies", UriKind.Relative);
@@ -327,6 +339,155 @@ public class PersonErasureTests(AspireFixture aspire)
             .ShouldBeEmpty("Learning still stores the change Organisation sent with the erased person's name");
     }
 
+    /// <summary>
+    /// #421 review: a membership start and change of the person that arrive after the erasure (in flight past its purge,
+    /// redelivered or replayed) are consumed and dropped: no Compliance or Learning table holds the name, no dead letter
+    /// holds it, and Learning keeps no copy of the new membership. The dropped message's own handled envelope is a
+    /// transient residual that Wolverine's retention of handled envelopes expires, so it is not asserted here.
+    /// </summary>
+    [Fact]
+    public async Task A_membership_message_arriving_after_the_erasure_leaves_no_stored_body_with_the_name_in_compliance_or_learning()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var probe = Probe.New();
+        using var owner = await aspire.CreateHostClientAsync("owner");
+        using var support = await aspire.CreateHostClientAsync("support");
+        var employer = await RegisterAsync(owner, cancellationToken);
+        var membership = await database.InsertMembershipOfPersonAsync(employer, probe.Person, probe.Address, "Active", cancellationToken, probe.Name);
+        var started = Started(membership, probe, employer);
+        await ComplianceDatabase.DeliverAsync(aspire, StartedType, started, cancellationToken);
+        await LearningDatabase.DeliverAsync(aspire, StartedType, started, cancellationToken);
+        var erasure = await RequestAsync(support, probe.Person, cancellationToken);
+        await WaitForStepsAsync(support, erasure, AllSteps, cancellationToken);
+
+        var late = Started(Guid.CreateVersion7(), probe, employer);
+        await ComplianceDatabase.DeliverAsync(aspire, StartedType, late, cancellationToken);
+        await ComplianceDatabase.DeliverAsync(aspire, ChangedType, Changed(started, 3), cancellationToken);
+        await LearningDatabase.DeliverAsync(aspire, StartedType, late, cancellationToken);
+        await LearningDatabase.DeliverAsync(aspire, ChangedType, Changed(started, 3), cancellationToken);
+
+        // Each delivery above waited until the service's inbox marked the envelope handled: the messages were consumed.
+        (await new PersonalDataSweep(aspire, "compliance-database", "compliance").ColumnsHoldingAsync(probe.Name, cancellationToken))
+            .ShouldBeEmpty("a late membership message wrote the erased person's name into a Compliance table");
+        (await new PersonalDataSweep(aspire, "learning-database", "learning").ColumnsHoldingAsync(probe.Name, cancellationToken))
+            .ShouldBeEmpty("a late membership message wrote the erased person's name into a Learning table");
+        (await new PersonalDataSweep(aspire, "compliance-database", "wolverine").ColumnsHoldingAsync(probe.Name, cancellationToken))
+            .Where(column => column.StartsWith("wolverine.wolverine_dead_letters.", StringComparison.Ordinal))
+            .ShouldBeEmpty("a late membership message was dead-lettered in Compliance, not dropped");
+        (await new PersonalDataSweep(aspire, "learning-database", "wolverine").ColumnsHoldingAsync(probe.Name, cancellationToken))
+            .Where(column => column.StartsWith("wolverine.wolverine_dead_letters.", StringComparison.Ordinal))
+            .ShouldBeEmpty("a late membership message was dead-lettered in Learning, not dropped");
+        (await LearningDatabase.CountAsync(aspire, "select count(*) from learning.members where id = @id", late.MembershipId, cancellationToken)).ShouldBe(0);
+        (await LearningDatabase.CountAsync(aspire, "select count(*) from learning.erased_persons where person_id = @id", probe.Person, cancellationToken)).ShouldBe(1);
+    }
+
+    /// <summary>
+    /// Case 4 (slice 4): the person has worked in a pharmacy for six years. A certificate passed five years and a day ago,
+    /// and one passed seven years ago, before the membership, are in no pharmacy's view: their rows and PDFs are gone and
+    /// their codes no longer verify. One passed a year ago is retained: it verifies with the name and is in the
+    /// pharmacy's export (Q2). Certification's copy of the membership keeps its row without the name.
+    /// </summary>
+    [Fact]
+    public async Task Certificates_no_pharmacy_keeps_are_removed_with_their_pdfs_and_a_retained_one_still_verifies_and_is_exported()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var probe = Probe.New();
+        using var support = await aspire.CreateHostClientAsync("support");
+        using var developer = await aspire.CreateHostClientAsync("developer");
+        using var anonymous = aspire.CreateHostClient();
+        var now = TimeProvider.System.GetUtcNow();
+        var planted = await CertificationPlantedAsync(developer, probe, now, cancellationToken);
+        var blobs = await CertificationBlobsAsync(cancellationToken);
+        foreach (var certificate in planted.All)
+        {
+            (await blobs.FindAsync(CertificatePdf(certificate.Id), cancellationToken)).HasValue.ShouldBeTrue($"the PDF of {certificate.Id} was not planted");
+        }
+
+        var erasure = await RequestAsync(support, probe.Person, cancellationToken);
+        await WaitForStepsAsync(support, erasure, AllSteps, cancellationToken);
+
+        foreach (var removed in new[] { planted.Old, planted.Outside })
+        {
+            (await CertificationDatabase.CountAsync(aspire, "select count(*) from certification.certificates where id = @id", removed.Id, cancellationToken)).ShouldBe(0, $"the row of {removed.Id} is still there");
+            (await blobs.FindAsync(CertificatePdf(removed.Id), cancellationToken)).HasValue.ShouldBeFalse($"the PDF of {removed.Id} is still there");
+            using var refused = await anonymous.GetAsync(Verify(removed.VerificationCode), cancellationToken);
+            var body = await refused.Content.ReadAsStringAsync(cancellationToken);
+            refused.StatusCode.ShouldBe(HttpStatusCode.NotFound, body);
+            using var problem = JsonDocument.Parse(body);
+            problem.RootElement.GetProperty("code").GetString().ShouldBe(NotVerifiable);
+        }
+
+        (await blobs.FindAsync(CertificatePdf(planted.Retained.Id), cancellationToken)).HasValue.ShouldBeTrue("a retained certificate keeps its PDF");
+        using (var verified = await anonymous.GetAsync(Verify(planted.Retained.VerificationCode), cancellationToken))
+        {
+            var body = await verified.Content.ReadAsStringAsync(cancellationToken);
+            verified.StatusCode.ShouldBe(HttpStatusCode.OK, body);
+            using var json = JsonDocument.Parse(body);
+            json.RootElement.GetProperty("holderName").GetString().ShouldBe(probe.Name);
+        }
+
+        var exported = await ExportedIdsAsync(developer, planted.Pharmacy, now.AddYears(-1).AddDays(-3), now.AddYears(-1).AddDays(3), cancellationToken);
+        exported.ShouldBe([planted.Retained.Id]);
+        (await CertificationDatabase.CountAsync(aspire, "select count(*) from certification.memberships where person_id = @id and holder_name is null", probe.Person, cancellationToken))
+            .ShouldBe(1, "the membership's row stays without the name");
+        (await CertificationDatabase.CountAsync(aspire, "select count(*) from certification.erased_persons where person_id = @id", probe.Person, cancellationToken)).ShouldBe(1);
+    }
+
+    /// <summary>
+    /// Case 3 (slice 4): after the erasure no column of Certification's schema or of its Wolverine tables holds the
+    /// person's name, but the holder name of the retained certificate, and only that row.
+    /// </summary>
+    [Fact]
+    public async Task No_certification_table_or_message_holds_the_persons_name_but_a_retained_certificate()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var probe = Probe.New();
+        using var support = await aspire.CreateHostClientAsync("support");
+        using var developer = await aspire.CreateHostClientAsync("developer");
+        var planted = await CertificationPlantedAsync(developer, probe, TimeProvider.System.GetUtcNow(), cancellationToken);
+        await CertificationDatabase.DeliverAsync(aspire, CertificationIssuing.ChangedType, CertificationIssuing.Changed(planted.Membership, "Employee", 2), cancellationToken);
+        var sweep = new PersonalDataSweep(aspire, "certification-database", "certification", "wolverine");
+        var before = await sweep.ColumnsHoldingAsync(probe.Name, cancellationToken);
+        before.ShouldContain("certification.memberships.holder_name", "the probe was not planted where the sweep looks");
+        before.ShouldContain("certification.certificates.holder_name", "the probe was not planted where the sweep looks");
+        before.ShouldContain("wolverine.wolverine_incoming_envelopes.body", "the delivered envelopes were not kept where the sweep looks");
+
+        var erasure = await RequestAsync(support, probe.Person, cancellationToken);
+        await WaitForStepsAsync(support, erasure, AllSteps, cancellationToken);
+
+        (await sweep.ColumnsHoldingAsync(probe.Name, cancellationToken)).ShouldBe(["certification.certificates.holder_name"], "only a retained certificate keeps the erased person's name");
+        (await CertificateIdsNamedAsync(probe.Name, cancellationToken)).ShouldBe([planted.Retained.Id]);
+    }
+
+    /// <summary>
+    /// Case 5 (slice 4): after the erasure a membership start of the person, delivered again or new, writes no name in
+    /// Certification, and a passed test of theirs issues no certificate; both are handled, not left to retry.
+    /// </summary>
+    [Fact]
+    public async Task A_membership_or_passed_test_delivered_after_the_erasure_writes_no_name_and_issues_no_certificate_in_certification()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var probe = Probe.New();
+        using var support = await aspire.CreateHostClientAsync("support");
+        var started = new CertificationIssuing.StartedEvent(Guid.CreateVersion7(), probe.Person, Guid.CreateVersion7(), probe.Name, "Pta", "Employee", TimeProvider.System.GetUtcNow().AddYears(-1), CertificationIssuing.NewMetadata());
+        await CertificationDatabase.DeliverAsync(aspire, CertificationIssuing.StartedType, started, cancellationToken);
+        var published = CertificationIssuing.Published();
+        await CertificationDatabase.DeliverAsync(aspire, CertificationIssuing.PublishedType, published, cancellationToken);
+        var erasure = await RequestAsync(support, probe.Person, cancellationToken);
+        await WaitForStepsAsync(support, erasure, AllSteps, cancellationToken);
+
+        await CertificationDatabase.DeliverAsync(aspire, CertificationIssuing.StartedType, started with { Metadata = CertificationIssuing.NewMetadata() }, cancellationToken);
+        var another = started with { MembershipId = Guid.CreateVersion7(), PharmacyId = Guid.CreateVersion7(), Metadata = CertificationIssuing.NewMetadata() };
+        await CertificationDatabase.DeliverAsync(aspire, CertificationIssuing.StartedType, another, cancellationToken);
+        var passed = CertificationIssuing.Passed(started, published, TimeProvider.System.GetUtcNow());
+        await CertificationDatabase.DeliverAsync(aspire, CertificationIssuing.PassedType, passed, cancellationToken);
+
+        (await new PersonalDataSweep(aspire, "certification-database", "certification").ColumnsHoldingAsync(probe.Name, cancellationToken))
+            .ShouldBeEmpty("a membership delivered after the erasure wrote the erased person's name back");
+        (await CertificationDatabase.CountAsync(aspire, "select count(*) from certification.memberships where id = @id", another.MembershipId, cancellationToken)).ShouldBe(0);
+        (await CertificationDatabase.CountAsync(aspire, "select count(*) from certification.certificates where attempt_id = @id", passed.AttemptId, cancellationToken)).ShouldBe(0);
+    }
+
     [Fact]
     public async Task An_empty_person_id_is_a_bad_request()
     {
@@ -452,6 +613,80 @@ public class PersonErasureTests(AspireFixture aspire)
 
     private static string Hash() => Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));
 
+    private static Uri Verify(string code) => new($"/certification/verify/{Uri.EscapeDataString(code)}", UriKind.Relative);
+
+    private static BlobName CertificatePdf(Guid certificate) => BlobName.From($"certificates/{certificate:D}.pdf");
+
+    private static string DayOf(DateTimeOffset instant) => instant.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// In Certification, through the events that reach it: the developer manages a fresh pharmacy from now on, and the
+    /// probe has worked there under their name for six years. They passed a course version a year ago (retained), five
+    /// years and a day ago (no longer kept) and seven years ago (before the membership); every PDF is stored.
+    /// </summary>
+    private async Task<CertificationPlanted> CertificationPlantedAsync(HttpClient developer, Probe probe, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var pharmacy = Guid.CreateVersion7();
+        await CertificationDatabase.DeliverAsync(aspire, CertificationIssuing.StartedType, CertificationIssuing.StartedIn(LearningSessions.SubjectOf(developer), pharmacy, "Manager", now), cancellationToken);
+        var membership = new CertificationIssuing.StartedEvent(Guid.CreateVersion7(), probe.Person, pharmacy, probe.Name, "Pta", "Employee", now.AddYears(-6), CertificationIssuing.NewMetadata());
+        await CertificationDatabase.DeliverAsync(aspire, CertificationIssuing.StartedType, membership, cancellationToken);
+        var published = CertificationIssuing.Published();
+        await CertificationDatabase.DeliverAsync(aspire, CertificationIssuing.PublishedType, published, cancellationToken);
+        var retained = await PassedAsync(membership, published, now.AddYears(-1), cancellationToken);
+        var old = await PassedAsync(membership, published, now.AddYears(-5).AddDays(-1), cancellationToken);
+        var outside = await PassedAsync(membership, published, now.AddYears(-7), cancellationToken);
+        await CertificationDatabase.WaitUntilCountAsync(aspire, StoredOfHolder, probe.Person, 3, cancellationToken);
+        return new CertificationPlanted(pharmacy, membership, retained, old, outside);
+    }
+
+    private async Task<CertificationIssuing.CertificateRow> PassedAsync(CertificationIssuing.StartedEvent membership, CertificationIssuing.PublishedEvent published, DateTimeOffset passedAt, CancellationToken cancellationToken)
+    {
+        var passed = CertificationIssuing.Passed(membership, published, passedAt);
+        await CertificationDatabase.DeliverAsync(aspire, CertificationIssuing.PassedType, passed, cancellationToken);
+        return (await CertificationIssuing.CertificatesAsync(aspire, passed.AttemptId, cancellationToken)).ShouldHaveSingleItem();
+    }
+
+    /// <summary>Certification's own container, read as its service reads it.</summary>
+    private async Task<AzureStoredBlobs> CertificationBlobsAsync(CancellationToken cancellationToken)
+    {
+        var connectionString = await aspire.App.GetConnectionStringAsync("certification-blobs", cancellationToken)
+            ?? throw new InvalidOperationException("Certification's container has no connection string.");
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:blobs"] = connectionString })
+            .Build();
+        return new AzureStoredBlobs(configuration);
+    }
+
+    /// <summary>The certificate ids of the pharmacy's export for the days of the period, from its <c>index.csv</c>.</summary>
+    private static async Task<List<Guid>> ExportedIdsAsync(HttpClient manager, Guid pharmacy, DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken)
+    {
+        using var response = await manager.GetAsync(new Uri($"/certification/pharmacies/{pharmacy:D}/certificates/export?from={DayOf(from)}&to={DayOf(to)}", UriKind.Relative), cancellationToken);
+        var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, Encoding.UTF8.GetString(bytes));
+        using var zip = new ZipArchive(new MemoryStream(bytes, writable: false), ZipArchiveMode.Read);
+        var index = zip.GetEntry("index.csv").ShouldNotBeNull();
+        await using var content = await index.OpenAsync(cancellationToken);
+        using var reader = new StreamReader(content, Encoding.UTF8);
+        var rows = (await reader.ReadToEndAsync(cancellationToken)).Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+        return [.. rows.Skip(1).Select(row => Guid.Parse(row.Split(';')[0]))];
+    }
+
+    /// <summary>The ids of the certificates whose holder name is the needle.</summary>
+    private async Task<List<Guid>> CertificateIdsNamedAsync(string name, CancellationToken cancellationToken)
+    {
+        await using var connection = await CertificationDatabase.OpenAsync(aspire, cancellationToken);
+        await using var command = new NpgsqlCommand("select id from certification.certificates where holder_name = @name", connection);
+        command.Parameters.AddWithValue("name", name);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        List<Guid> ids = [];
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            ids.Add(reader.GetGuid(0));
+        }
+
+        return ids;
+    }
+
     /// <summary>The person to erase: a fresh id, a name and an address only this test uses.</summary>
     private sealed record Probe(Guid Person, string Name, string Address)
     {
@@ -460,6 +695,12 @@ public class PersonErasureTests(AspireFixture aspire)
             var id = Guid.CreateVersion7();
             return new Probe(id, $"Erasure Probe {id:N}", $"erasure-{id:N}@example.com");
         }
+    }
+
+    /// <summary>What <see cref="CertificationPlantedAsync"/> planted: the pharmacy, the probe's membership and their three certificates.</summary>
+    private sealed record CertificationPlanted(Guid Pharmacy, CertificationIssuing.StartedEvent Membership, CertificationIssuing.CertificateRow Retained, CertificationIssuing.CertificateRow Old, CertificationIssuing.CertificateRow Outside)
+    {
+        public IReadOnlyList<CertificationIssuing.CertificateRow> All => [Retained, Old, Outside];
     }
 
     private sealed record ErasureRead(Guid Id, DateTimeOffset RequestedAt, Guid RequestedBy, bool ConfirmationMailed, DateTimeOffset? ConfirmationHandledAt, IReadOnlyList<ErasureStepRead> Steps);

@@ -163,7 +163,9 @@ Do this once per environment, `staging` and `production`, with `az` signed in as
    - `AZURE_CLIENT_ID` (the app registration's), `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `AZURE_RESOURCE_GROUP`;
    - `POSTGRES_USERNAME`: the server's administrator login (not `admin`, `postgres`, `azure_superuser` or another name Flexible Server reserves);
    - `MESSAGING_USERNAME`: the broker's administrator, URI-safe;
-   - `SMTP_HOST`, `SMTP_FROM`: the mail server Keycloak and the services send through, on port 587 with STARTTLS ([ADR 0004](docs/adr/0004-invitation-mail-over-smtp-and-hashed-tokens.md));
+   - `SMTP_FROM`: the sender of every mail Keycloak and the services send ([ADR 0004](docs/adr/0004-invitation-mail-over-smtp-and-hashed-tokens.md));
+   - `SMTP_HOST`, **production only**: the relay (Azure Communication Services) they send through, on port 587 with STARTTLS. Staging sends to a Mailpit of its own instead (#130), whose inbox the staging end-to-end run reads;
+   - `X1_KEYCLOAK_URL` and `X1_MAILPIT_URL`, **staging only**, set after the first deploy (below): `https://auth.<domain>` and `https://mailpit.<domain>`, where the staging end-to-end run signs in and reads mail;
    - `FRONTEND_URL`: `https://host.invalid` for the first deploy, then the edge's address (below);
    - `AZURE_OPENAI_ENDPOINT`: `https://eu.api.openai.com/v1`, the OpenAI project with EU data residency ([ADR 0006](docs/adr/0006-openai-eu-endpoint-for-deployments.md)).
 6. **The environment's secrets** (`gh secret set <NAME> --env <environment>`, which asks for the value, so it stays out of the shell's history):
@@ -172,7 +174,9 @@ Do this once per environment, `staging` and `production`, with `az` signed in as
    - `MESSAGING_PASSWORD`: the broker administrator's, URI-safe;
    - `MESSAGING_<MODULE>_PASSWORD`: one per service, URI-safe. The names are the service hosts' `<ModuleName>` upper-cased with `-` as `_`: `for p in src/Services/*/Host/Host.csproj; do sed -n 's:.*<ModuleName>\(.*\)</ModuleName>.*:MESSAGING_\1_PASSWORD:p' "$p" | tr '[:lower:]-' '[:upper:]_'; done`. A new module needs its secret in each environment before its first deploy;
    - `KEYCLOAK_ADMIN_PASSWORD`: Keycloak's administrator, `admin`;
-   - `SMTP_USERNAME`, `SMTP_PASSWORD`: URI-safe;
+   - `SMTP_USERNAME`, `SMTP_PASSWORD`, **production only**: the relay's, URI-safe;
+   - `MAILPIT_UI_AUTH`, **staging only**: Mailpit's inbox's basic auth, `x1:<password>` (`echo "x1:$(openssl rand -hex 24)"`), which staging's Mailpit takes and the staging end-to-end run sends;
+   - `X1_RUNNER_SECRET`, **staging only**, set after the first deploy (below): the secret of the client the staging end-to-end run creates its users with;
    - `AZURE_OPENAI_API_KEY`: the OpenAI project's key.
 
    URI-safe means letters, digits, `-`, `.`, `_` and `~` alone (`openssl rand -hex 24`): Aspire puts these values unescaped into connection strings. Each environment gets values of its own.
@@ -210,7 +214,19 @@ The services and Keycloak are built from images whose bases come from `mcr.micro
    ./kcadm.sh update users/<id>/execute-actions-email -r pharma-training -b '["VERIFY_EMAIL","UPDATE_PASSWORD"]'
    ```
 
-   The user receives a mail with a link to verify the address and set a password. Remove `~/.keycloak/kcadm.config` before leaving the shell.
+   The user receives a mail with a link to verify the address and set a password. Remove `~/.keycloak/kcadm.config` before leaving the shell. On staging every mail goes to its Mailpit, not to the address: read it at `https://mailpit.<domain>` with `MAILPIT_UI_AUTH` (#130).
+5. **Staging only: the staging end-to-end run's client** (#130). The run creates its owner, editor and employee at set-up through Keycloak's admin API and deletes them afterwards, as the confidential client `x1-runner`, whose service account may manage users and nothing else. It is created here, on staging, and never in a realm file, so production never has it. In staging's Keycloak container:
+
+   ```bash
+   cd /opt/keycloak/bin
+   ./kcadm-otp.sh login <your name>
+   ./kcadm.sh create clients -r pharma-training -s clientId=x1-runner -s enabled=true -s publicClient=false \
+     -s serviceAccountsEnabled=true -s standardFlowEnabled=false -s directAccessGrantsEnabled=false -s implicitFlowEnabled=false
+   ./kcadm.sh add-roles -r pharma-training --uusername service-account-x1-runner --cclientid realm-management --rolename manage-users
+   ./kcadm.sh get clients/$(./kcadm.sh get clients -r pharma-training -q clientId=x1-runner --fields id --format csv --noquotes)/client-secret -r pharma-training
+   ```
+
+   Put the secret the last command shows into staging's `X1_RUNNER_SECRET` (`gh secret set X1_RUNNER_SECRET --env staging`), then `clear` the terminal and remove `~/.keycloak/kcadm.config`. `x1-runner` may set any staging user's password, so its secret is only as safe as the `staging` environment: keep that environment's deployment branches and tags limited to `main` and `deploy/*` (step 4, checked by `check-deploy-environments.sh`), so a workflow changed on another branch never receives it. `x1-staging.yml` keeps no trace and uploads nothing, since a trace would hold the secret. Set `X1_KEYCLOAK_URL` and `X1_MAILPIT_URL` too (step 5 of the one-time setup). To rotate the secret, `./kcadm.sh create clients/<id>/client-secret -r pharma-training` and set it again.
 
 ### What to check after the first deploy
 
@@ -227,6 +243,8 @@ ADR 0005 lists what is first observed in Azure, each with its fix in the AppHost
 
 9. **The private network (#149, [ADR 0038](docs/adr/0038-the-database-and-the-vault-are-reached-through-the-network-alone.md)).** `az postgres flexible-server show -g <resource group> -n <server> --query network.publicNetworkAccess` and `az keyvault show -n <vault> --query properties.publicNetworkAccess` answer `Disabled`; `az postgres flexible-server firewall-rule list -g <resource group> -n <server>` is empty; `az network private-endpoint list -g <resource group> -o table` lists the server's, the vault's and the storage account's; every revision is running (Key Vault references resolve through the private endpoint), and every init container reached the server. If a Key Vault reference does not resolve, check the zone `privatelink.vaultcore.azure.net`, its link to the network and the endpoint's record (`az network private-dns record-set a list -g <resource group> -z privatelink.vaultcore.azure.net`). The vault's bypass stays `None`: Container Apps is not a trusted service, so widening it would not help (ADR 0038).
 10. **Upload URLs cannot copy (#159, [ADR 0002](docs/adr/0002-blob-storage-one-container-per-module.md)).** `az storage account show -g <resource group> -n <account> --query allowedCopyScope` answers `AAD`. Then sign two upload URLs as an editor (start two chapter uploads in the browser and copy each URL from the developer tools' network tab before it is used), and run `bash .github/scripts/check-upload-sas-copy.sh <source url> <upload url> <second upload url>` with a blob readable from Azure in another tenant as the source. Both attempts must answer `403`. Record the output on #159, without the URLs' signatures (the script prints none). If either is accepted, no file uploads go live until #159 is reopened.
+11. **The MVP 1 flow on staging (#130).** `deploy.yml` runs `x1-staging.yml` after staging; it can also be started by hand (Actions, x1-staging, Run workflow). It registers a pharmacy, invites, assigns, learns, tests and verifies the certificate with three users it creates as `x1-runner` and deletes afterwards, however it ends; a failure is read from the job's log, since the run keeps no trace and uploads nothing (its secrets would be in them). Its pharmacy and course stay on staging, each named for its run alone (`0 E2E <number> MVP 1`, a number no other run repeats): no API deletes them yet, and the owner accepted that on #130. Remove them by hand when staging needs it. `az containerapp logs show -g <resource group> -n mailpit` shows the mails it received. Record the first green run on #130.
+12. **The relay, by hand (#130).** Staging never sends through Azure Communication Services, so production's relay is first exercised here, before real data: send one mail through it exactly as Keycloak and the services do, with STARTTLS on 587 and the relay's credentials, to an address you read. From your machine, with `mail.txt` holding a `From: <SMTP_FROM>`, a `To:` and a `Subject:` line, a blank line and a line of text: `curl --ssl-reqd --url smtp://<SMTP_HOST>:587 --user <SMTP_USERNAME> --mail-from <SMTP_FROM> --mail-rcpt <your address> --upload-file mail.txt` (curl asks for the password). The mail arrives, and its headers show it was sent with TLS. Record the result on #129. Keycloak reads its mail server's port, STARTTLS and authentication from its environment when it imports the published realm, which it does once, on its first start: a realm imported before a change to them keeps what it was imported with, so change them in the realm too (`./kcadm.sh update realms/pharma-training -s 'smtpServer.starttls=true' …`). A variable that is missing defaults to the relay's 587 with STARTTLS and authentication, never to plain text (#442).
 
 Nothing in this repository has run against Azure before #129; record what you observed on #129 and in ADR 0005.
 
