@@ -50,6 +50,43 @@ public class AuthProxyPathTests(AspireFixture aspire)
         "/realms/pharma-training/..%2Fmaster/protocol/openid-connect/token",
     ];
 
+    // Staging forwards /admin/realms/pharma-training/users/** (#457, docs/adr/0042). Each of these starts inside that route
+    // and climbs out of it, once Keycloak decodes or resolves the path, towards an admin endpoint the master administrator's
+    // token reads with 200: the realm's clients or roles, the realm itself, or the master realm (#469). Plain, encoded in
+    // either case, double-encoded, with ";" or a backslash.
+    private static readonly string[] UsersRouteEscapes =
+    [
+        "/admin/realms/pharma-training/users/../clients",
+        "/admin/realms/pharma-training/users/./../clients",
+        "/admin/realms/pharma-training/users/..%2Fclients",
+        "/admin/realms/pharma-training/users/..%2fclients",
+        "/admin/realms/pharma-training/users/%2e%2e/clients",
+        "/admin/realms/pharma-training/users/%2E%2E/roles",
+        "/admin/realms/pharma-training/users/%2e%2e%2fclients",
+        "/admin/realms/pharma-training/users/..;/clients",
+        "/admin/realms/pharma-training/users/..%3B/clients",
+        "/admin/realms/pharma-training/users/..%5Cclients",
+        "/admin/realms/pharma-training/users/..\\clients",
+        "/admin/realms/pharma-training/users/%252e%252e%252fclients",
+        "/admin/realms/pharma-training/users/..%252Fclients",
+        "/admin/realms/pharma-training/users/%2e%2e%2f",
+        "/admin/realms/pharma-training/users/..%2F..%2Fmaster/users",
+        "/admin/realms/pharma-training/users/%2e%2e/%2e%2e/master/users",
+        "/admin/realms/pharma-training/users/%2e%2e%2f%2e%2e%2fmaster",
+        "/admin/realms/pharma-training/users/..%2F..%2F..%2F..%2Frealms/master/.well-known/openid-configuration",
+    ];
+
+    // Where the escapes aim: each answers 200 to the administrator's token straight from Keycloak.
+    private static readonly string[] EscapeTargets =
+    [
+        "/admin/realms/pharma-training/clients",
+        "/admin/realms/pharma-training/roles",
+        "/admin/realms/pharma-training",
+        "/admin/realms/master/users",
+        "/admin/realms/master",
+        "/realms/master/.well-known/openid-configuration",
+    ];
+
     private readonly KeycloakAdmin keycloak = new(aspire);
 
     [Fact]
@@ -105,6 +142,44 @@ public class AuthProxyPathTests(AspireFixture aspire)
         }
 
         reached.ShouldBeEmpty($"The auth proxy should refuse every variant with 404 or 400. Every answer: {string.Join("; ", answers)}");
+    }
+
+    /// <summary>
+    /// #469: the escapes aim at endpoints the administrator's token reads, so one that reached its target would answer 200.
+    /// Straight from Keycloak they do; through staging's proxy every escape must be refused with a 4xx, by the proxy or by
+    /// Keycloak reading it as a user under /users/ that does not exist.
+    /// </summary>
+    [Fact]
+    public async Task Escapes_from_stagings_users_route_never_reach_another_admin_endpoint()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var proxy = await StartProxyAsync(PublishedAppHost.Staging, cancellationToken);
+        using var identity = keycloak.Identity();
+        var token = new AuthenticationHeaderValue("Bearer", await keycloak.AdminTokenAsync(identity, cancellationToken));
+        identity.DefaultRequestHeaders.Authorization = token;
+        using var client = Client();
+        client.DefaultRequestHeaders.Authorization = token;
+
+        foreach (var target in EscapeTargets)
+        {
+            using var direct = await identity.GetAsync(new Uri(target, UriKind.Relative), cancellationToken);
+            direct.StatusCode.ShouldBe(HttpStatusCode.OK, $"Straight from Keycloak, {target} does not answer 200 to the administrator; an escape aimed at it proves nothing.");
+        }
+
+        List<string> answers = [];
+        List<string> notRefused = [];
+        foreach (var escape in UsersRouteEscapes)
+        {
+            using var response = await client.GetAsync(Raw(proxy, escape), cancellationToken);
+            var answer = $"{escape} answered {(int)response.StatusCode} {response.StatusCode}";
+            answers.Add(answer);
+            if ((int)response.StatusCode is < 400 or >= 500)
+            {
+                notRefused.Add(answer);
+            }
+        }
+
+        notRefused.ShouldBeEmpty($"Every escape from staging's users route should be refused with a 4xx. Every answer: {string.Join("; ", answers)}");
     }
 
     /// <summary>The auth proxy as the environment publishes it, its cluster pointed at run mode's Keycloak; dispose it.</summary>
