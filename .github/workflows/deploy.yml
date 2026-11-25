@@ -107,10 +107,10 @@ jobs:
           Parameters__messaging-username: ${{ vars.MESSAGING_USERNAME }}
           Parameters__messaging-password: ${{ secrets.MESSAGING_PASSWORD }}
           Parameters__keycloak-admin-password: ${{ secrets.KEYCLOAK_ADMIN_PASSWORD }}
-          Parameters__smtp-host: ${{ vars.SMTP_HOST }}
           Parameters__smtp-from: ${{ vars.SMTP_FROM }}
-          Parameters__smtp-username: ${{ secrets.SMTP_USERNAME }}
-          Parameters__smtp-password: ${{ secrets.SMTP_PASSWORD }}
+          # Staging sends to a Mailpit of its own, whose inbox the staging end-to-end run reads behind this basic auth,
+          # user:password (#130); it needs no relay.
+          Parameters__mailpit-ui-auth: ${{ secrets.MAILPIT_UI_AUTH }}
           Parameters__frontend-url: ${{ vars.FRONTEND_URL }}
           Parameters__azure-openai-endpoint: ${{ vars.AZURE_OPENAI_ENDPOINT }}
           Parameters__azure-openai-api-key: ${{ secrets.AZURE_OPENAI_API_KEY }}
@@ -124,6 +124,13 @@ jobs:
             exit 1
           fi
           "$HOME/.aspire/bin/aspire" deploy --apphost src/AppHost/AppHost.csproj -e staging --non-interactive --nologo --clear-cache
+
+  # The MVP 1 flow against what staging now runs (#130, x1-staging.yml). Production does not wait for it: its reviewers see
+  # its result before they approve.
+  x1:
+    needs: staging
+    uses: ./.github/workflows/x1-staging.yml
+    secrets: inherit
 
   production:
     needs: staging

@@ -37,10 +37,7 @@ jobs:
       Parameters__messaging-username: placeholder
       Parameters__messaging-password: placeholder
       Parameters__keycloak-admin-password: placeholder
-      Parameters__smtp-host: placeholder
       Parameters__smtp-from: placeholder
-      Parameters__smtp-username: placeholder
-      Parameters__smtp-password: placeholder
       Parameters__frontend-url: https://placeholder.example
       Parameters__azure-openai-endpoint: https://eu.api.openai.com/v1
       Parameters__azure-openai-api-key: placeholder
@@ -74,6 +71,19 @@ jobs:
           done
           echo "Set a broker password placeholder for $count services."
           test "$count" -gt 0
+      # What one environment declares alone (#130): production sends through the relay, staging to a Mailpit of its own.
+      # A step guarded by its environment's name is that environment's (DeployWorkflowSetsEveryPublishedParameter).
+      - name: Placeholders for production's relay
+        if: matrix.environment == 'production'
+        run: |
+          {
+            echo "Parameters__smtp-host=placeholder"
+            echo "Parameters__smtp-username=placeholder"
+            echo "Parameters__smtp-password=placeholder"
+          } >> "$GITHUB_ENV"
+      - name: Placeholders for staging's Mailpit
+        if: matrix.environment == 'staging'
+        run: echo "Parameters__mailpit-ui-auth=placeholder:placeholder" >> "$GITHUB_ENV"
       - name: Publish ${{ matrix.environment }}
         run: |
           "$HOME/.aspire/bin/aspire" publish --apphost src/AppHost/AppHost.csproj -e "${{ matrix.environment }}" -o "publish/${{ matrix.environment }}/first" --non-interactive --nologo
