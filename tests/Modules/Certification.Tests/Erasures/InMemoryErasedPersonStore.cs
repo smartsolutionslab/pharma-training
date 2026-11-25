@@ -14,6 +14,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Tests.Erasures;
 internal sealed class InMemoryErasedPersonStore : IErasedPersonStore
 {
     private readonly List<ErasedPerson> added = [];
+    private bool holding;
 
     public InMemoryErasedPersonStore()
         : this([])
@@ -45,8 +46,20 @@ internal sealed class InMemoryErasedPersonStore : IErasedPersonStore
     /// <summary>Runs while the hold is taken, as a concurrent erasure that committed just before it would.</summary>
     public Action? WhileHolding { get; set; }
 
+    /// <summary>
+    /// When set, a hold taken while another is still open throws, as the real store's would run in the previous person's
+    /// transaction: a hold lasts until the unit of work commits (<see cref="Commit"/>) or abandons (<see cref="Discard"/>).
+    /// </summary>
+    public bool RefusesNestedHolds { get; set; }
+
     public Task HoldAsync(PersonId person, CancellationToken cancellationToken)
     {
+        if (RefusesNestedHolds && holding)
+        {
+            throw new InvalidOperationException("A hold is still open in this scope's transaction; it was neither committed nor abandoned.");
+        }
+
+        holding = true;
         Journal.Add("hold");
         WhileHolding?.Invoke();
         return Task.CompletedTask;
@@ -75,8 +88,13 @@ internal sealed class InMemoryErasedPersonStore : IErasedPersonStore
     {
         Stored.AddRange(added);
         added.Clear();
+        holding = false;
     }
 
-    /// <summary>Forgets the tombstones added since the last commit, as a rollback does.</summary>
-    public void Discard() => added.Clear();
+    /// <summary>Forgets the tombstones added since the last commit and ends the hold, as a rollback does.</summary>
+    public void Discard()
+    {
+        added.Clear();
+        holding = false;
+    }
 }

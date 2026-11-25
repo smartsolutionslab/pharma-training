@@ -41,7 +41,7 @@ public class PurgeErasedCertificatesHandlerTests
     {
         certificates.Journal = journal;
         memberships.Journal = journal;
-        erased = new InMemoryErasedPersonStore(journal, certificates);
+        erased = new InMemoryErasedPersonStore(journal, certificates) { RefusesNestedHolds = true };
         blobs = new RecordingBlobDeletes(journal);
         unitOfWork = new ErasureUnitOfWork(certificates, memberships, erased, journal);
     }
@@ -208,11 +208,42 @@ public class PurgeErasedCertificatesHandlerTests
         certificates.Stored.ShouldHaveSingleItem().ShouldBeSameAs(stuck, "the failed person's certificate stays for the next pass");
         blobs.Deleted.ShouldBe([CertificateDocuments.NameFor(purged.Id)]);
         unitOfWork.Commits.ShouldBe(1);
-        journal.IndexOf("abandon").ShouldBeLessThan(journal.LastIndexOf("hold"), "the failed person is abandoned before the next one is held");
+        journal.Count(entry => entry == "abandon").ShouldBe(1, string.Join(", ", journal));
+        var failedDelete = journal.IndexOf($"failed-delete:{CertificateDocuments.NameFor(stuck.Id).Value}");
+        var abandon = journal.IndexOf("abandon");
+        failedDelete.ShouldBeGreaterThanOrEqualTo(0);
+        abandon.ShouldBeGreaterThan(failedDelete, "the failed person is abandoned after their failure");
+        abandon.ShouldBeLessThan(journal.LastIndexOf("hold"), "and before the next person is held, whose hold would otherwise run in their transaction");
         var logged = logger.Collector.GetSnapshot().ShouldHaveSingleItem();
         logged.Level.ShouldBe(LogLevel.Error);
         logged.Message.ShouldContain(first.Value.ToString());
         logged.Exception.ShouldBeOfType<InvalidOperationException>();
+    }
+
+    /// <summary>
+    /// The person abandoned in one pass is tried again in the next: once the storage deletes their PDF, their certificate
+    /// goes too. Their first certificate's PDF, deleted before the second one failed, is deleted again, a missing blob
+    /// being success.
+    /// </summary>
+    [Fact]
+    public async Task A_person_abandoned_in_one_pass_is_purged_in_the_next_once_the_failure_is_gone()
+    {
+        Member(person, pharmacy, MembershipStart);
+        var deletedFirst = Stored(Issue(person, Issued));
+        var refused = Stored(Issue(person, Issued.AddDays(1)));
+        erased.Tombstone(person, Issued.AddYears(4));
+        blobs.Failing.Add(CertificateDocuments.NameFor(refused.Id));
+        time.SetUtcNow(Issued.AddYears(7));
+        await Handler().HandleAsync(new PurgeErasedCertificates(), TestContext.Current.CancellationToken);
+        certificates.Stored.Count.ShouldBe(2, "an abandoned person keeps every certificate until a pass gets through");
+
+        blobs.Failing.Clear();
+        var result = await Handler().HandleAsync(new PurgeErasedCertificates(), TestContext.Current.CancellationToken);
+
+        result.IsSuccess.ShouldBeTrue();
+        certificates.Stored.ShouldBeEmpty();
+        blobs.Deleted.Count(name => name == CertificateDocuments.NameFor(deletedFirst.Id)).ShouldBe(2);
+        blobs.Deleted.ShouldContain(CertificateDocuments.NameFor(refused.Id));
     }
 
     [Fact]
