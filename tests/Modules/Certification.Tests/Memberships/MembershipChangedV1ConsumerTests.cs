@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging.Testing;
 using SmartSolutionsLab.PharmaTraining.Contracts.Organisation;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Consumers;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Certificates;
@@ -21,7 +22,7 @@ public class MembershipChangedV1ConsumerTests
         var personId = Guid.CreateVersion7();
         var pharmacyId = Guid.CreateVersion7();
 
-        await new MembershipChangedV1Consumer(store, store).HandleAsync(MembershipEvents.Changed(membershipId, personId, pharmacyId, MembershipRoleV1.Manager, 2), TestContext.Current.CancellationToken);
+        await new MembershipChangedV1Consumer(store, new InMemoryErasedPersonStore(), store, NullLogger<MembershipChangedV1Consumer>.Instance).HandleAsync(MembershipEvents.Changed(membershipId, personId, pharmacyId, MembershipRoleV1.Manager, 2), TestContext.Current.CancellationToken);
 
         var change = store.Changes.ShouldHaveSingleItem();
         change.Membership.ShouldBe(MembershipId.From(membershipId));
@@ -38,7 +39,7 @@ public class MembershipChangedV1ConsumerTests
     public async Task A_change_delivered_twice_is_stored_once_as_it_first_arrived_and_nothing_more_is_committed()
     {
         var store = new InMemoryMembershipStore();
-        var consumer = new MembershipChangedV1Consumer(store, store);
+        var consumer = new MembershipChangedV1Consumer(store, new InMemoryErasedPersonStore(), store, NullLogger<MembershipChangedV1Consumer>.Instance);
         var first = MembershipEvents.Changed(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), MembershipRoleV1.Manager, 2);
 
         await consumer.HandleAsync(first, TestContext.Current.CancellationToken);
@@ -54,7 +55,7 @@ public class MembershipChangedV1ConsumerTests
     public async Task Two_changes_of_one_membership_are_stored_as_two_rows()
     {
         var store = new InMemoryMembershipStore();
-        var consumer = new MembershipChangedV1Consumer(store, store);
+        var consumer = new MembershipChangedV1Consumer(store, new InMemoryErasedPersonStore(), store, NullLogger<MembershipChangedV1Consumer>.Instance);
         var membershipId = Guid.CreateVersion7();
         var personId = Guid.CreateVersion7();
         var pharmacyId = Guid.CreateVersion7();
@@ -75,7 +76,7 @@ public class MembershipChangedV1ConsumerTests
         var personId = Guid.CreateVersion7();
         var pharmacyId = Guid.CreateVersion7();
 
-        await new MembershipChangedV1Consumer(store, store).HandleAsync(MembershipEvents.Changed(membershipId, personId, pharmacyId, MembershipRoleV1.Manager, 2), TestContext.Current.CancellationToken);
+        await new MembershipChangedV1Consumer(store, new InMemoryErasedPersonStore(), store, NullLogger<MembershipChangedV1Consumer>.Instance).HandleAsync(MembershipEvents.Changed(membershipId, personId, pharmacyId, MembershipRoleV1.Manager, 2), TestContext.Current.CancellationToken);
         await new MembershipStartedV1Consumer(store, new InMemoryErasedPersonStore(), store, NullLogger<MembershipStartedV1Consumer>.Instance).HandleAsync(MembershipEvents.Started(membershipId, personId, pharmacyId, "Ada"), TestContext.Current.CancellationToken);
 
         store.Changes.ShouldHaveSingleItem().Membership.ShouldBe(MembershipId.From(membershipId));
@@ -94,7 +95,7 @@ public class MembershipChangedV1ConsumerTests
             JobFunction = (JobFunctionV1)99,
         };
 
-        await new MembershipChangedV1Consumer(store, store).HandleAsync(changed, TestContext.Current.CancellationToken);
+        await new MembershipChangedV1Consumer(store, new InMemoryErasedPersonStore(), store, NullLogger<MembershipChangedV1Consumer>.Instance).HandleAsync(changed, TestContext.Current.CancellationToken);
 
         store.Changes.ShouldHaveSingleItem();
     }
@@ -139,7 +140,7 @@ public class MembershipChangedV1ConsumerTests
     {
         var store = new InMemoryMembershipStore();
 
-        await Should.ThrowAsync<GuardException>(() => new MembershipChangedV1Consumer(store, store).HandleAsync(null!, TestContext.Current.CancellationToken));
+        await Should.ThrowAsync<GuardException>(() => new MembershipChangedV1Consumer(store, new InMemoryErasedPersonStore(), store, NullLogger<MembershipChangedV1Consumer>.Instance).HandleAsync(null!, TestContext.Current.CancellationToken));
 
         store.Changes.ShouldBeEmpty();
         store.Commits.ShouldBe(0);
@@ -149,10 +150,43 @@ public class MembershipChangedV1ConsumerTests
     {
         var store = new InMemoryMembershipStore();
 
-        var refused = await Should.ThrowAsync<GuardException>(() => new MembershipChangedV1Consumer(store, store).HandleAsync(changed, TestContext.Current.CancellationToken));
+        var refused = await Should.ThrowAsync<GuardException>(() => new MembershipChangedV1Consumer(store, new InMemoryErasedPersonStore(), store, NullLogger<MembershipChangedV1Consumer>.Instance).HandleAsync(changed, TestContext.Current.CancellationToken));
 
         refused.ParamName.ShouldBe(field);
         store.Changes.ShouldBeEmpty();
         store.Commits.ShouldBe(0);
+    }
+
+    /// <summary>#115: a role change of an erased person is dropped like their membership, under the same hold.</summary>
+    [Fact]
+    public async Task A_change_of_an_erased_persons_membership_is_dropped_and_logged()
+    {
+        var store = new InMemoryMembershipStore();
+        var erased = new InMemoryErasedPersonStore();
+        var logger = new FakeLogger<MembershipChangedV1Consumer>();
+        var changed = MembershipEvents.Changed(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), MembershipRoleV1.Manager, 2);
+        erased.Tombstone(PersonId.From(changed.PersonId), MembershipEvents.StartedAt);
+
+        await new MembershipChangedV1Consumer(store, erased, store, logger).HandleAsync(changed, TestContext.Current.CancellationToken);
+
+        store.Changes.ShouldBeEmpty();
+        store.Commits.ShouldBe(0);
+        erased.Journal.ShouldBe(["hold", "is-erased"]);
+        logger.Collector.GetSnapshot().ShouldHaveSingleItem().Message.ShouldContain(changed.MembershipId.ToString());
+    }
+
+    /// <summary>#115: the person is held before the tombstone is read, so an erasure cannot commit between the two.</summary>
+    [Fact]
+    public async Task A_change_of_a_person_not_erased_is_stored_after_the_person_is_held_and_checked()
+    {
+        var store = new InMemoryMembershipStore();
+        var erased = new InMemoryErasedPersonStore();
+        var changed = MembershipEvents.Changed(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), MembershipRoleV1.Manager, 2);
+
+        await new MembershipChangedV1Consumer(store, erased, store, NullLogger<MembershipChangedV1Consumer>.Instance).HandleAsync(changed, TestContext.Current.CancellationToken);
+
+        erased.Journal.ShouldBe(["hold", "is-erased"]);
+        store.Changes.ShouldHaveSingleItem();
+        store.Commits.ShouldBe(1);
     }
 }
