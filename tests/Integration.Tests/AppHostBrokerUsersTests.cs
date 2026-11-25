@@ -1,5 +1,8 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Aspire.Hosting.ApplicationModel;
+using Aspire.Hosting.Azure;
+using Aspire.Hosting.Testing;
 
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 
@@ -9,7 +12,8 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// configure, write and read permissions on its own queue, the exchanges of its own module's events and the exchanges of
 /// the events it consumes, and nothing else. As published, the definitions carry no password: each is the placeholder
 /// <c>@@&lt;VARIABLE&gt;@@</c> of a variable of the broker's own, which its entrypoint fills in before RabbitMQ loads them, so
-/// both modes import the users one way.
+/// both modes import the users one way. Published, every service is told the same users, each the one in its module's
+/// broker connection string, the Key Vault secret <c>messaging-&lt;module&gt;-connection-string</c>.
 /// </summary>
 public class AppHostBrokerUsersTests(AspireFixture aspire)
 {
@@ -128,6 +132,45 @@ public class AppHostBrokerUsersTests(AspireFixture aspire)
         }
     }
 
+    /// <summary>
+    /// Published, a service reads its broker connection string from the Key Vault (docs/adr/0005), so the user each
+    /// module's service connects as is the one in that module's secret; every service is told those users, by module
+    /// (docs/adr/0011, D3, D5).
+    /// </summary>
+    [Fact]
+    public async Task Published_every_service_is_told_the_user_in_each_modules_connection_string_secret()
+    {
+        await using var builder = await PublishedAppHost.ModelAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
+        var services = PublishedAppHost.Services(builder);
+        var secrets = builder.Resources.OfType<AzureKeyVaultSecretResource>().ToList();
+        Dictionary<string, string> users = [];
+        Dictionary<string, Dictionary<string, object>> environments = [];
+        foreach (var service in services)
+        {
+            var environment = await PublishedEnvironmentAsync(builder, service);
+            environments[service.Name] = environment;
+            environment.ShouldContainKey("ConnectionStrings__messaging", $"{service.Name} reads no broker connection string.");
+            var reference = environment["ConnectionStrings__messaging"].ShouldBeAssignableTo<IAzureKeyVaultSecretReference>($"{service.Name} reads the broker as a plain value.");
+            reference.ShouldNotBeNull();
+            var secret = secrets.Where(candidate => candidate.SecretName == reference.SecretName).ShouldHaveSingleItem($"The Key Vault holds no single secret {reference.SecretName}.");
+            var connectionString = secret.Value.ShouldBeOfType<ReferenceExpression>($"The secret {reference.SecretName} is no expression of the broker's address and a password.");
+            users[service.Name] = UserOf(connectionString.Format);
+        }
+
+        services.ShouldNotBeEmpty();
+        foreach (var service in services)
+        {
+            var publishers = environments[service.Name]
+                .Where(variable => variable.Key.StartsWith("Messaging__Publishers__", StringComparison.Ordinal))
+                .ToDictionary(variable => variable.Key["Messaging__Publishers__".Length..], variable => variable.Value as string, StringComparer.Ordinal);
+
+            publishers.OrderBy(publisher => publisher.Key, StringComparer.Ordinal).ShouldBe(
+                users.OrderBy(user => user.Key, StringComparer.Ordinal).Select(user => new KeyValuePair<string, string?>(user.Key, user.Value)),
+                ignoreOrder: false,
+                $"{service.Name} is not told the user in each module's broker connection string secret.");
+        }
+    }
+
     [Fact]
     public async Task The_broker_imports_one_user_per_service_host_beside_its_admin()
     {
@@ -237,6 +280,25 @@ public class AppHostBrokerUsersTests(AspireFixture aspire)
             .Where(candidate => candidate.GetProperty("user").GetString() == user && candidate.GetProperty("vhost").GetString() == "/")
             .ShouldHaveSingleItem($"The definitions give '{user}' no single permission on the vhost '/'.");
         return (permission.GetProperty("configure").GetString()!, permission.GetProperty("write").GetString()!, permission.GetProperty("read").GetString()!);
+    }
+
+    /// <summary>
+    /// The user of a published connection string, whose password is the expression's placeholder:
+    /// <c>amqp://&lt;user&gt;:{0}@&lt;host&gt;:&lt;port&gt;</c>.
+    /// </summary>
+    private static string UserOf(string format) =>
+        Uri.UnescapeDataString(new Uri(format.Replace("{0}", "placeholder", StringComparison.Ordinal)).UserInfo.Split(':', 2)[0]);
+
+    /// <summary>The service's environment as the publish model sets it, values unresolved.</summary>
+    private static async Task<Dictionary<string, object>> PublishedEnvironmentAsync(IDistributedApplicationTestingBuilder builder, ProjectResource service)
+    {
+        var context = new EnvironmentCallbackContext(builder.ExecutionContext, service, cancellationToken: TestContext.Current.CancellationToken);
+        foreach (var callback in service.Annotations.OfType<EnvironmentCallbackAnnotation>())
+        {
+            await callback.Callback(context);
+        }
+
+        return context.EnvironmentVariables;
     }
 
     /// <summary>Whether the broker would grant the name: RabbitMQ matches a permission's regex anywhere in it.</summary>

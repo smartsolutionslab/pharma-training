@@ -1,7 +1,8 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk.Web">
 
-  <!-- Tests of the code every service host compiles (src/Host). It has no project of its own, so this one compiles its
-       messaging the way each service host does, without referencing any one module's host. -->
+  <!-- Tests of the code every service host compiles (src/Host). It has no project of its own, so this one compiles all of
+       it the way each service host does (the Web SDK, its implicit usings and its packages), without referencing any one
+       module's host. -->
   <PropertyGroup>
     <RootNamespace>SmartSolutionsLab.PharmaTraining.Host.Tests</RootNamespace>
   </PropertyGroup>
@@ -11,11 +12,15 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="../../src/Host/Messaging/**/*.cs" Link="Host/Messaging/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../../src/Host/**/*.cs" Exclude="../../src/Host/bin/**;../../src/Host/obj/**" Link="Host/%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
     <PackageReference Include="WolverineFx" />
+    <PackageReference Include="WolverineFx.RuntimeCompilation" />
+    <PackageReference Include="WolverineFx.Postgresql" />
     <PackageReference Include="WolverineFx.RabbitMQ" />
   </ItemGroup>
 
