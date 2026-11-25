@@ -7,7 +7,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Members;
 /// </summary>
 public sealed class CurrentMembership
 {
-    private CurrentMembership(MembershipId membership, PersonId person, PharmacyId pharmacy, MemberName name, JobFunction jobFunction, MembershipRole role, MembershipVersion version)
+    private CurrentMembership(MembershipId membership, PersonId person, PharmacyId pharmacy, MemberName? name, JobFunction jobFunction, MembershipRole role, MembershipVersion version)
     {
         Membership = membership;
         Person = person;
@@ -24,7 +24,8 @@ public sealed class CurrentMembership
 
     public PharmacyId Pharmacy { get; }
 
-    public MemberName Name { get; }
+    /// <summary>The current name; null once the person is erased (#115).</summary>
+    public MemberName? Name { get; }
 
     public JobFunction JobFunction { get; }
 

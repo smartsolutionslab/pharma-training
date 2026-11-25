@@ -8,11 +8,13 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Tests.Members;
 /// The members, the endings and the changes of memberships in memory, and the module's unit of work over them: what is added is
 /// stored only once committed.
 /// </summary>
-internal sealed class InMemoryMemberStore : IMemberStore, IComplianceUnitOfWork
+internal sealed class InMemoryMemberStore : IMemberStore, IErasedPersonStore, IComplianceUnitOfWork
 {
     private readonly List<Member> addedMembers = [];
     private readonly List<MembershipEnding> addedEndings = [];
     private readonly List<MembershipChange> addedChanges = [];
+    private readonly List<ErasedPerson> addedErasedPersons = [];
+    private readonly List<IntegrationEvent> queued = [];
 
     public List<Member> Members { get; } = [];
 
@@ -20,7 +22,15 @@ internal sealed class InMemoryMemberStore : IMemberStore, IComplianceUnitOfWork
 
     public List<MembershipChange> Changes { get; } = [];
 
+    public List<ErasedPerson> ErasedPersons { get; } = [];
+
+    /// <summary>What was published, once the unit of work committed.</summary>
+    public List<IntegrationEvent> Published { get; } = [];
+
     public int Commits { get; private set; }
+
+    /// <summary>What a consumer asked of the person, in order: <c>hold</c> and <c>is-erased</c>.</summary>
+    public List<string> PersonCalls { get; } = [];
 
     public Task<bool> ExistsAsync(MembershipId membership, CancellationToken cancellationToken) =>
         Task.FromResult(Members.Any(member => member.Id == membership));
@@ -68,7 +78,39 @@ internal sealed class InMemoryMemberStore : IMemberStore, IComplianceUnitOfWork
         return Task.FromResult(active);
     }
 
-    public Task PublishAsync(IntegrationEvent integrationEvent) => Task.CompletedTask;
+    /// <summary>The stored instances themselves, so what the caller changes is "tracked" and stays changed.</summary>
+    public Task<IReadOnlyList<Member>> MembersOfPersonAsync(PersonId person, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<Member> found = [.. Members.Where(member => member.Person == person)];
+        return Task.FromResult(found);
+    }
+
+    /// <summary>The stored instances themselves, so what the caller changes is "tracked" and stays changed.</summary>
+    public Task<IReadOnlyList<MembershipChange>> ChangesOfPersonAsync(PersonId person, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<MembershipChange> found = [.. Changes.Where(change => change.Person == person)];
+        return Task.FromResult(found);
+    }
+
+    public Task HoldAsync(PersonId person, CancellationToken cancellationToken)
+    {
+        PersonCalls.Add("hold");
+        return Task.CompletedTask;
+    }
+
+    public Task<bool> IsErasedAsync(PersonId person, CancellationToken cancellationToken)
+    {
+        PersonCalls.Add("is-erased");
+        return Task.FromResult(ErasedPersons.Any(erased => erased.Person == person));
+    }
+
+    public void Add(ErasedPerson erased) => addedErasedPersons.Add(erased);
+
+    public Task PublishAsync(IntegrationEvent integrationEvent)
+    {
+        queued.Add(integrationEvent);
+        return Task.CompletedTask;
+    }
 
     public Task CommitAsync(CancellationToken cancellationToken)
     {
@@ -78,6 +120,10 @@ internal sealed class InMemoryMemberStore : IMemberStore, IComplianceUnitOfWork
         addedEndings.Clear();
         Changes.AddRange(addedChanges);
         addedChanges.Clear();
+        ErasedPersons.AddRange(addedErasedPersons);
+        addedErasedPersons.Clear();
+        Published.AddRange(queued);
+        queued.Clear();
         Commits++;
         return Task.CompletedTask;
     }

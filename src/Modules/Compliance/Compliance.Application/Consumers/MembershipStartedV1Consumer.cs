@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using SmartSolutionsLab.PharmaTraining.Contracts.Organisation;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Domain.Members;
 
@@ -8,7 +9,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application.Consum
 /// was handled, whatever the event's identifier or payload: a second delivery changes nothing, and the first one wins.
 /// It deduplicates on the membership id, not on <c>Metadata.EventIdentifier</c>: for a fact only ever inserted that is stronger, since it also absorbs a re-publish under a new identifier.
 /// </summary>
-public sealed class MembershipStartedV1Consumer(IMemberStore members, IComplianceUnitOfWork unitOfWork)
+public sealed partial class MembershipStartedV1Consumer(IMemberStore members, IErasedPersonStore erased, IComplianceUnitOfWork unitOfWork, ILogger<MembershipStartedV1Consumer> logger)
 {
     public async Task HandleAsync(MembershipStartedV1 message, CancellationToken cancellationToken)
     {
@@ -20,6 +21,16 @@ public sealed class MembershipStartedV1Consumer(IMemberStore members, IComplianc
         ConsumerGuards.IsText(message.DisplayName, nameof(message.DisplayName), MemberName.MaxLength);
         Ensure.That((int)message.JobFunction, nameof(message.JobFunction)).Satisfies(value => Enum.IsDefined((JobFunctionV1)value), "is no job function Compliance knows.");
         Ensure.That((int)message.Role, nameof(message.Role)).Satisfies(value => Enum.IsDefined((MembershipRoleV1)value), "is no role Compliance knows.");
+
+        // A person erased (#115) stays erased: a redelivery or a replayed dead letter must not write the name back. The
+        // person is held first, so an erasure running at the same time cannot commit its tombstone between this check
+        // and the write below.
+        await erased.HoldAsync(PersonId.From(message.PersonId), cancellationToken);
+        if (await erased.IsErasedAsync(PersonId.From(message.PersonId), cancellationToken))
+        {
+            ErasedPersonDropped(logger, message.MembershipId);
+            return;
+        }
 
         var membership = MembershipId.From(message.MembershipId);
         if (await members.ExistsAsync(membership, cancellationToken))
@@ -36,4 +47,7 @@ public sealed class MembershipStartedV1Consumer(IMemberStore members, IComplianc
             OrganisationValues.ToRole(message.Role)));
         await unitOfWork.CommitAsync(cancellationToken);
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Membership {Membership} belongs to an erased person; its event is dropped.")]
+    private static partial void ErasedPersonDropped(ILogger logger, Guid membership);
 }
