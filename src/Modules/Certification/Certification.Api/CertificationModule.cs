@@ -1,5 +1,6 @@
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Mail;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Modules;
+using SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Commands.PurgeErasedCertificates;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Documents;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Infrastructure.Documents;
 using Microsoft.AspNetCore.Builder;
@@ -26,6 +27,10 @@ public sealed class CertificationModule : IModule
         // The per-address limit on public verification, read once here: a value the host cannot read stops it at
         // startup (docs/adr/0029).
         services.AddUserRateLimit(CertificationVerificationLimits.From(configuration));
+
+        // The purge of erased persons' retained certificates no pharmacy keeps any longer (#115, slice 5), every
+        // interval read here once: a value the host cannot read stops it at startup.
+        services.AddPeriodicCommand<PurgeErasedCertificates>(ErasedCertificatePurgeSettings.From(configuration).Interval);
     }
 
     public void MapEndpoints(IEndpointRouteBuilder endpoints) =>
