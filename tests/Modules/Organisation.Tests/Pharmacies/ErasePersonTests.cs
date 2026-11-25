@@ -19,7 +19,7 @@ public class ErasePersonTests
     {
         var pharmacy = TestPharmacies.Register(Owner);
         var founder = TestPharmacies.FounderOf(pharmacy);
-        var ownerAddress = pharmacy.Membership(founder).Email;
+        var ownerAddress = pharmacy.Membership(founder).Email!;
         var invitation = TestPharmacies.Invite(pharmacy, "second-address@example.org");
         pharmacy.ClearDomainEvents();
 
@@ -40,7 +40,7 @@ public class ErasePersonTests
         var membership = TestPharmacies.AddMember(pharmacy, person, MembershipRole.Manager);
         pharmacy.ClearDomainEvents();
 
-        var released = pharmacy.ReleaseForErasure(person, [pharmacy.Membership(membership).Email], Now);
+        var released = pharmacy.ReleaseForErasure(person, [pharmacy.Membership(membership).Email!], Now);
 
         released.IsSuccess.ShouldBeTrue();
         pharmacy.Membership(membership).Status.ShouldBe(MembershipStatus.Ended);
@@ -55,7 +55,7 @@ public class ErasePersonTests
         var membership = TestPharmacies.AddMember(pharmacy, person, MembershipRole.Employee);
         pharmacy.ClearDomainEvents();
 
-        var released = pharmacy.ReleaseForErasure(person, [pharmacy.Membership(membership).Email], Now);
+        var released = pharmacy.ReleaseForErasure(person, [pharmacy.Membership(membership).Email!], Now);
 
         released.IsSuccess.ShouldBeTrue();
         released.Value.ShouldBe(Unit.Value);
@@ -110,7 +110,7 @@ public class ErasePersonTests
         var person = PersonId.From(Guid.CreateVersion7());
         var pharmacy = TestPharmacies.Register(Owner);
         var membership = TestPharmacies.AddMember(pharmacy, person, MembershipRole.Employee, name: "Erika Erased");
-        var address = pharmacy.Membership(membership).Email;
+        var address = pharmacy.Membership(membership).Email!;
         var other = TestPharmacies.AddMember(pharmacy, PersonId.From(Guid.CreateVersion7()), MembershipRole.Employee, name: "Karl Kept");
         var invitation = TestPharmacies.Invite(pharmacy, "erika.second@example.org");
         pharmacy.ReleaseForErasure(person, [address, EmailAddress.From("erika.second@example.org")], Now).IsSuccess.ShouldBeTrue();
@@ -138,7 +138,7 @@ public class ErasePersonTests
         var person = PersonId.From(Guid.CreateVersion7());
         var pharmacy = TestPharmacies.Register(Owner);
         var membership = TestPharmacies.AddMember(pharmacy, person, MembershipRole.Employee, name: "Erika Erased");
-        var address = pharmacy.Membership(membership).Email;
+        var address = pharmacy.Membership(membership).Email!;
         pharmacy.ReleaseForErasure(person, [address], Now).IsSuccess.ShouldBeTrue();
         var reinvited = TestPharmacies.Invite(pharmacy, address.Value, Now);
         pharmacy.ClearDomainEvents();
@@ -158,7 +158,7 @@ public class ErasePersonTests
         var person = PersonId.From(Guid.CreateVersion7());
         var pharmacy = TestPharmacies.Register(Owner);
         var membership = TestPharmacies.AddMember(pharmacy, person, MembershipRole.Employee, name: "Erika Erased");
-        var address = pharmacy.Membership(membership).Email;
+        var address = pharmacy.Membership(membership).Email!;
 
         var skipped = pharmacy.ForgetPerson(person, [address]);
 

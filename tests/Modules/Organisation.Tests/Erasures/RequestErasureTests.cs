@@ -105,7 +105,7 @@ public class RequestErasureTests
         var person = PersonId.From(Guid.CreateVersion7());
         var home = TestPharmacies.Register(Owner, "Stadt-Apotheke");
         var membership = TestPharmacies.AddMember(home, person, MembershipRole.Employee);
-        var address = home.Membership(membership).Email;
+        var address = home.Membership(membership).Email!;
         home.Stored(store);
         var second = TestPharmacies.Register(Owner, "Markt-Apotheke");
         var toPersonInSecond = TestPharmacies.Invite(second, address.Value);

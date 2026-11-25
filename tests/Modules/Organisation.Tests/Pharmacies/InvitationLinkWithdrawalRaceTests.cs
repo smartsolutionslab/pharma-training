@@ -51,7 +51,7 @@ public class InvitationLinkWithdrawalRaceTests
     private void RevokedByAnotherWriter(Pharmacy pharmacy, MembershipId membership)
     {
         var founder = pharmacy.Membership(TestPharmacies.FounderOf(pharmacy));
-        var revoked = Pharmacy.Register(pharmacy.Id, pharmacy.Name, founder.Id, Owner, DisplayName.From("Olaf Owner"), founder.Email, JobFunction.Pharmacist, TestPharmacies.RegisteredAt);
+        var revoked = Pharmacy.Register(pharmacy.Id, pharmacy.Name, founder.Id, Owner, DisplayName.From("Olaf Owner"), founder.Email!, JobFunction.Pharmacist, TestPharmacies.RegisteredAt);
         revoked.Invite(membership, Anna, JobFunction.Pta, MembershipRole.Employee, TestPharmacies.RegisteredAt, InvitationMailLimits.Default).IsSuccess.ShouldBeTrue();
         revoked.RevokeInvitation(membership).IsSuccess.ShouldBeTrue();
         revoked.ClearDomainEvents();

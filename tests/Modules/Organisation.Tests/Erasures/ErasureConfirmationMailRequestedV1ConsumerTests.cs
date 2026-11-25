@@ -179,7 +179,7 @@ public class ErasureConfirmationMailRequestedV1ConsumerTests
     {
         var home = TestPharmacies.Register(Owner, "Stadt-Apotheke");
         var homeMembership = TestPharmacies.AddMember(home, person, MembershipRole.Employee, name: "Erika Erased");
-        var first = home.Membership(homeMembership).Email;
+        var first = home.Membership(homeMembership).Email!;
         home.EndMembership(homeMembership, TestPharmacies.RegisteredAt.PlusDays(1)).IsSuccess.ShouldBeTrue();
         home.Stored(store);
 
