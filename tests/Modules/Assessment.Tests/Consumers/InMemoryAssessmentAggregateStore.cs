@@ -8,7 +8,7 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Assessment.Tests.Consumers;
 /// The module's event streams in memory: a save appends the aggregate's pending events to its stream, and a load
 /// replays them into a new aggregate, as the event store does. <see cref="LoseNextSave"/> makes the next save lose a
 /// race on its stream, as an append does when another one landed since the examination was loaded:
-/// <see cref="TrySaveAsync"/> answers <see langword="false"/> with nothing stored, and <see cref="SaveAsync"/> throws.
+/// <see cref="TrySaveAsync"/> answers how the race was lost, with nothing stored, and <see cref="SaveAsync"/> throws.
 /// Each save is recorded in <see cref="Steps"/>, which a unit of work may share to show the order.
 /// </summary>
 internal sealed class InMemoryAssessmentAggregateStore(List<string>? steps = null) : IAssessmentAggregateStore
@@ -51,7 +51,7 @@ internal sealed class InMemoryAssessmentAggregateStore(List<string>? steps = nul
         return Task.CompletedTask;
     }
 
-    /// <summary>What the module's store answers once it opts in to lost races (ADR 0016): <see langword="false"/> with nothing stored and the aggregate left unmarked.</summary>
+    /// <summary>What the module's store answers once it opts in to lost races (ADR 0016): how the race was lost, with nothing stored and the aggregate left unmarked.</summary>
     public Task<Result<Unit, LostRace>> TrySaveAsync(IEventSourced aggregate, CancellationToken cancellationToken)
     {
         if (loseNextSave)

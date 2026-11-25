@@ -137,7 +137,7 @@ public class InviteMemberTests
         var pharmacy = TestPharmacies.Register(Owner);
         TestPharmacies.Invite(pharmacy, "invited@example.org");
         pharmacy.Stored(store);
-        var founder = pharmacy.Membership(TestPharmacies.FounderOf(pharmacy)).Email;
+        var founder = pharmacy.Membership(TestPharmacies.FounderOf(pharmacy)).Email!;
         var handler = Handler(store);
         List<EmailAddress> taken = [EmailAddress.From("Invited@Example.org"), founder];
 

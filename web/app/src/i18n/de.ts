@@ -1050,6 +1050,7 @@ export const de = {
       'identity-incomplete': 'Ihre Anmeldung nennt keine Person. Melden Sie sich erneut an.',
       'invalid-export-period':
         'Wählen Sie Beginn und Ende; das Ende darf nicht vor dem Beginn und höchstens fünf Jahre danach liegen.',
+      'invalid-retention-period': 'Die Aufbewahrungsfrist ist eine ganze Zahl von {min} bis {max} Jahren.',
       'invalid-sample-name': 'Der Name eines Beispiels hat 1 bis {max} Zeichen und darf nicht leer sein.',
       'pharmacy-not-found': 'Sie sind nicht Mitglied dieser Apotheke, oder es gibt sie nicht.',
       'sample-not-found': 'Dieses Beispiel gibt es nicht.',
@@ -1180,6 +1181,9 @@ export const de = {
       'capability-missing': 'Ihre Rolle in dieser Apotheke erlaubt das nicht.',
       'email-not-verified':
         'Ihre E-Mail-Adresse ist noch nicht bestätigt. Bestätigen Sie sie über den Link in der Bestätigungs-E-Mail und versuchen Sie es dann erneut.',
+      'erasure-not-found': 'Diese Löschung gibt es nicht.',
+      'erasure-refused-last-manager':
+        'Die Person ist die letzte aktive Leitung einer Apotheke. Ernennen Sie dort zuerst ein anderes Mitglied zur Leitung.',
       'identity-incomplete': 'Ihr Konto nennt keinen Namen oder keine gültige E-Mail-Adresse. Ergänzen Sie Ihr Profil.',
       'invalid-email': 'Die E-Mail-Adresse fehlt, ist zu lang oder ist keine.',
       'invalid-invitation-token':

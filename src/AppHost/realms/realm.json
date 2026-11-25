@@ -31,7 +31,8 @@
   "roles": {
     "realm": [
       { "name": "manager", "description": "Sample role: each module's sample policy <module>.manage requires it." },
-      { "name": "editor", "description": "Platform editors, the Redaktion: they write and publish the training content. Separate from the pharmacy roles the Organisation module holds." }
+      { "name": "editor", "description": "Platform editors, the Redaktion: they write and publish the training content. Separate from the pharmacy roles the Organisation module holds." },
+      { "name": "support", "description": "Platform support staff: they erase a person's data on request (GDPR Art. 17, #115). Separate from the pharmacy roles the Organisation module holds." }
     ]
   },
   "clients": [
@@ -179,6 +180,16 @@
       "firstName": "Frieda",
       "lastName": "Former",
       "credentials": [{ "type": "password", "value": "former-employee", "temporary": false }]
+    },
+    {
+      "username": "support",
+      "enabled": true,
+      "email": "support@example.com",
+      "emailVerified": true,
+      "firstName": "Sam",
+      "lastName": "Support",
+      "credentials": [{ "type": "password", "value": "support", "temporary": false }],
+      "realmRoles": ["support"]
     }
   ]
 }

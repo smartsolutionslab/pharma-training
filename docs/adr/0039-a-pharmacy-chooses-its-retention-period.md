@@ -1,0 +1,26 @@
+# 0039: A pharmacy chooses its retention period
+
+**Status:** Accepted (#391). Amends ADR 0034.
+
+## Context
+
+- ADR 0034 (#53) made retention a cut-off on the pharmacy's view: the export leaves out a certificate once `IssuedAt + 5 years` has passed. It fixed the five years and named the follow-up: a period the pharmacy chooses.
+- The decision "Aufbewahrung" (docs/domain/README.md) allows a longer period chosen by the pharmacy and never less than two years (TRGS 555 asks for at least two years for hazardous substances; the AK Westfalen-Lippe recommends five).
+- The owner decided on 2026-11-25 (issue #391): the range is 2 to 30 whole years, the default stays 5, a period under 5 is allowed down to 2, a value outside the range is refused with its own code and German and English texts, and the period applies retroactively.
+
+## Decision
+
+- **A period per pharmacy, in whole years from 2 to 30, 5 when none is stored.** `RetentionPeriod` (Domain, `Retention/`) holds the years; `PharmacyRetention` keeps it under the pharmacy's id in `certification.pharmacy_retention_periods` (`pharmacy_id`, `years`). No row means the default. The check constraint `ck_pharmacy_retention_periods_years` (`years BETWEEN 2 AND 30`) backs the value object. There is no foreign key: Certification has no table of pharmacies, only copies of memberships. Nothing personal is stored (no "set by"), so erasure (ADR 0036) does not touch the table.
+- **Values under five are allowed.** A pharmacy may shorten its view down to the legal minimum of two years. That is the pharmacy's choice and its responsibility.
+- **One capability reads and writes it.** `GET` and `PUT /certification/pharmacies/{id}/retention-period` are open to every signed-in person, and the handler decides from Certification's copy of the caller's membership and its current role (ADR 0003, ADR 0015) whether it grants `Capability.ManageRetention`, which only the manager holds: a non-member gets `404 certification.pharmacy-not-found`, a member whose role lacks it `403 certification.capability-missing`, a caller without a token `401`. Reading uses the same capability as writing. The period is the pharmacy's configuration, and an employee has no screen that needs it. `GET` answers `CertificationRetentionPeriodDto(Years, IsDefault)`, with `IsDefault` true only while nothing is stored. `PUT` takes `{ "years": n }` and answers `204`. A missing value or one outside 2 to 30 is `400 certification.invalid-retention-period`, checked in the endpoint where the request becomes a `RetentionPeriod`.
+- **Retroactive.** The export applies the pharmacy's current period to every certificate at the time of the request. Lengthening the period shows certificates past the old cut-off again; shortening it hides certificates still inside the old one. Nothing is deleted, as in ADR 0034, so either change can be undone.
+- **The cut-off stays an instant on the UTC calendar.** `Certificate.IsKeptByPharmaciesAt(now, period)` is `IssuedAt.AddYears(period) > now`. The export's query repeats it as `(issued_at AT TIME ZONE 'UTC') + make_interval(years => @years) > (@now AT TIME ZONE 'UTC')`, with the years as a parameter, before the 2000-certificate limit is counted. Around 29 February, both sides keep 29 February when the period is a multiple of four years and move to 28 February otherwise; tests pin both cases on each side. The handler reads the period and passes it to the store, so the query does not join the settings table.
+- **The export's own window is unchanged.** One request still covers at most five years (ADR 0032), whatever the retention period. An older range is exported in several requests.
+- **Last write wins.** A `PUT` replaces one value; it does not read, modify and write. The store writes it with one `INSERT … ON CONFLICT (pharmacy_id) DO UPDATE`. Two managers setting it at once both get `204`, even for the pharmacy's first period, since the conflict turns the second insert into an update. PostgreSQL serialises them on the row, and a following `GET` answers the one committed last. There is no row version and no `409`: a `PUT` loses nothing it did not state. An export that runs during a `PUT` uses whichever period it read, and both are legitimate.
+
+## Consequences
+
+- Changing the range later means a migration of the check constraint and a new decision.
+- Every future pharmacy view of certificates reads the same period and applies `IsKeptByPharmaciesAt` with it. The person's own views never do.
+- The constant `Certificate.PharmacyRetentionYears` is gone. `RetentionPeriod.Default` is the only place the five years live.
+- The frontend has no screen for the period yet. Reading and setting it on the export page is a follow-up issue.

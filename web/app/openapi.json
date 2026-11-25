@@ -648,6 +648,117 @@
         }
       }
     },
+    "/certification/pharmacies/{id}/retention-period": {
+      "get": {
+        "tags": [
+          "RetentionPeriodEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificationRetentionPeriodDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "RetentionPeriodEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetCertificationRetentionPeriodRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/certification/samples": {
       "post": {
         "tags": [
@@ -2484,6 +2595,66 @@
         }
       }
     },
+    "/organisation/erasures": {
+      "post": {
+        "tags": [
+          "Host"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestOrganisationErasureRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organisation/erasures/{id}": {
+      "get": {
+        "tags": [
+          "Host"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganisationErasureDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/organisation/pharmacies/{id}/invitations": {
       "get": {
         "tags": [
@@ -3589,6 +3760,26 @@
           "expiresAt": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "CertificationRetentionPeriodDto": {
+        "required": [
+          "years",
+          "isDefault"
+        ],
+        "type": "object",
+        "properties": {
+          "years": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "isDefault": {
+            "type": "boolean"
           }
         }
       },
@@ -5151,6 +5342,63 @@
           }
         }
       },
+      "OrganisationErasureDto": {
+        "required": [
+          "id",
+          "requestedAt",
+          "requestedBy",
+          "confirmationMailed",
+          "confirmationHandledAt",
+          "steps"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "requestedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "requestedBy": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "confirmationMailed": {
+            "type": "boolean"
+          },
+          "confirmationHandledAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrganisationErasureStepDto"
+            }
+          }
+        }
+      },
+      "OrganisationErasureStepDto": {
+        "required": [
+          "module",
+          "completedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "module": {
+            "type": "string"
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "OrganisationJobFunction": {
         "enum": [
           "Pharmacist",
@@ -6053,6 +6301,18 @@
           }
         }
       },
+      "RequestOrganisationErasureRequest": {
+        "required": [
+          "personId"
+        ],
+        "type": "object",
+        "properties": {
+          "personId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
       "ReturnEditorialCourseVersionRequest": {
         "required": [
           "reason"
@@ -6061,6 +6321,23 @@
         "properties": {
           "reason": {
             "type": "string"
+          }
+        }
+      },
+      "SetCertificationRetentionPeriodRequest": {
+        "required": [
+          "years"
+        ],
+        "type": "object",
+        "properties": {
+          "years": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           }
         }
       },
@@ -6100,6 +6377,9 @@
     },
     {
       "name": "MyCertificatesEndpoints"
+    },
+    {
+      "name": "RetentionPeriodEndpoints"
     },
     {
       "name": "AssignmentChangeEndpoints"

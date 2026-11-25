@@ -11,13 +11,21 @@
 
 ## Decision
 
-- **`MartenAggregateStore.TrySaveAsync(IEventSourced, CancellationToken)`** (`src/BuildingBlocks/EventStore/`) saves like `SaveAsync` and returns `false` when the append lost the race. Nothing is stored then (the session's transaction, with the inline projections' writes, rolls back) and the aggregate is not marked stored. It counts as a lost race:
+- **`MartenAggregateStore.TrySaveAsync(IEventSourced, CancellationToken)`** (`src/BuildingBlocks/EventStore/`) saves like `SaveAsync` and answers how the append lost the race (`Result<Unit, LostRace>` since #384, below). Nothing is stored then (the session's transaction, with the inline projections' writes, rolls back) and the aggregate is not marked stored. It counts as a lost race:
   - `JasperFx.Events.EventStreamUnexpectedMaxEventIdException`, Marten 9.59's refusal of an append whose expected version the stream has moved past;
   - a PostgreSQL deadlock (`40P01`) or serialization failure (`40001`) anywhere in the exception's tree, as `ModuleUnitOfWork.TryCommitAsync` does (ADR 0002), since the inline projections' upserts share the append's transaction.
   - Not `ExistingStreamIdCollisionException`: two first starts of one session stay the host's `409 already-exists` (ADR 0010).
-- **A module opts in** by declaring `Task<bool> TrySaveAsync(IEventSourced aggregate, CancellationToken cancellationToken)` on its own `I<Module>AggregateStore`, which the store's public method implements. `IAggregateStore` is unchanged, so a module that does not opt in, and its test doubles, are unaffected; its `SaveAsync` still lets a lost append through as a `500`, a race nobody expected.
-- **Learning opts in for progress reports.** `ReportProgressHandler` maps `false` to `learning.session-changed` (`LearningSessionFailures.Changed`, `409`) and publishes nothing. The server does not retry; the client reports again, which is always safe because a report at or below the stored progress stores nothing.
+- **A module opts in** by declaring `Task<Result<Unit, LostRace>> TrySaveAsync(IEventSourced aggregate, CancellationToken cancellationToken)` on its own `I<Module>AggregateStore`, which the store's public method implements. `IAggregateStore` is unchanged, so a module that does not opt in, and its test doubles, are unaffected; its `SaveAsync` still lets a lost append through as a `500`, a race nobody expected.
+- **Learning opts in for progress reports.** `ReportProgressHandler` maps a lost race through `LearningSessionFailures.LostRace`: a moved stream to `learning.session-changed` (`409`), a deadlock to `learning.concurrent-save` (`409`, since #384), and publishes nothing. The server does not retry; the client reports again, which is always safe because a report at or below the stored progress stores nothing.
 - **No exception handler maps the race**, as in ADR 0002.
+
+## Decision (#384): a deadlock is a concurrent save, to try again
+
+This amends the section above, as ADR 0002 was amended for the EF Core modules with #336.
+
+- **How a race was lost.** `MartenAggregateStore.TrySaveAsync` returns `Result<Unit, LostRace>` (`src/BuildingBlocks/Messaging`), no longer `bool`, and a module declares `Task<Result<Unit, LostRace>> TrySaveAsync(...)` on its `I<Module>AggregateStore`. `VersionMovedOn` is an append Marten's expected-version check refused (`EventStreamUnexpectedMaxEventIdException`): another append landed on the stream since it was loaded. `SaveDeadlocked(SqlState)` is a 40P01 or 40001 anywhere in the save, where the inline projections write in the same transaction; Marten 9.59 throws a 40001 as `ConcurrentUpdateException` and a 40P01, after its own retries, as `MartenCommandException`, each around the `PostgresException`. A deadlock beside a moved stream counts as the deadlock. The save is one transaction with nothing after its commit, so only a failure before it is classified.
+- **The answers.** Each module maps the union with a switch without a discard arm: a moved stream keeps its changed code (`learning.session-changed`, `assessment.examination-changed`), meaning load again; a deadlock answers `409 learning.concurrent-save` or `assessment.concurrent-save`, meaning try again, since nothing was stored and what the caller loaded may still be current. A deadlock is logged as a Warning naming its SqlState, with the `PostgresException` attached.
+- **The clients send it again.** The progress reporter sends a `concurrent-save` once more, as it does a changed session. The answer saver sends it again up to 3 times, as it does `examination-changed`, but only after `concurrentSavePause` (200 ms), since Marten has already retried the deadlock: at most 16 database attempts for one answer (Marten's 4 for each of the saver's 4 sends). Nothing of a refused save was stored, so a resend applies once.
 
 ## Decision (#277): a lost announcement is announced again
 
@@ -57,6 +65,6 @@
 - `LearningSessionStartedV1` (Learning) is still announced in a second transaction without a marker; a crash there still loses it. Since #307, Assessment's `TestFailedV1` and `AttemptsExhaustedV1` are swept like a pass, so a lost lock no longer leaves the learner locked without Learning or Compliance hearing of it.
 - Publishing from what the stream stored (Wolverine's Marten outbox or a Marten subscription, in the append's own transaction) would remove both the gap and the sweep; it stays the alternative, a decision of its own.
 - In the rare case where the sweep commits first and the handler's late commit hits the marker, that request answers `409 already-exists` although its change and announcement stand; the grace period makes this practically unreachable.
-- A learner's client sees an occasional `409 learning.session-changed` when two of its reports overlap; it reports again.
+- A learner's client sees an occasional `409 learning.session-changed` when two of its reports overlap, or `409 learning.concurrent-save` when their saves deadlock (#384); it reports again.
 - Assessment's SubmitAttempt opted in the same way with #271 (`assessment.examination-changed`).
 - A Marten upgrade may rename the refusal's exception; the integration test above fails with a `500` if it does.

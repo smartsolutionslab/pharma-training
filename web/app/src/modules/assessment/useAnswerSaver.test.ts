@@ -18,7 +18,7 @@ import {
   thirtySeconds,
 } from './examinationFixtures';
 import { type Fetch, requestsOf } from './examinationHost';
-import { useAnswerSaver } from './useAnswerSaver';
+import { concurrentSavePause, useAnswerSaver } from './useAnswerSaver';
 
 // useAnswerSaver(sessionId, examinationId) saves the learner's answers (#48) with
 // PUT /assessment/examinations/{id}/attempts/current/answers/{questionId} { optionIds } through the generated client:
@@ -200,6 +200,27 @@ test('a 409 concurrent-save is sent again by itself, and the answer is saved', a
 
   await waitFor(() => expect(saver.stateOf(durationQuestion.id)).toEqual({ kind: 'saved' }));
   expect(sent()).toHaveLength(3);
+});
+
+// Marten has already retried the deadlock: the saver pauses before its own resend, not into the same contention.
+test('a 409 concurrent-save is sent again only after a pause of concurrentSavePause', async () => {
+  vi.useFakeTimers();
+  try {
+    let calls = 0;
+    answering = async () => {
+      calls += 1;
+      return calls === 1 ? refusal(409, 'assessment.concurrent-save') : saved();
+    };
+    const { saver } = renderSaver();
+
+    saver.choose(durationQuestion.id, [thirtySeconds]);
+    await vi.advanceTimersByTimeAsync(concurrentSavePause - 1);
+    expect(sent()).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(sent()).toHaveLength(2);
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 test('examination-changed is sent again up to 3 times, then the save has failed and the draft stays', async () => {

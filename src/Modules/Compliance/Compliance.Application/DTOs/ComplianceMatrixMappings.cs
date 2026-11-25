@@ -43,7 +43,7 @@ public static class ComplianceMatrixMappings
 
         return new ComplianceMatrixRowDto(
             row.Member.Person.Value,
-            row.Member.Name.Value,
+            row.Member.Name?.Value ?? string.Empty,
             row.Member.JobFunction.ToDto(),
             [.. row.Cells.Select(cell => cell.ToDto())]);
     }

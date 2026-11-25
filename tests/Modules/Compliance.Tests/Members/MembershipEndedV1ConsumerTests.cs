@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 using SmartSolutionsLab.PharmaTraining.Contracts.Organisation;
 using SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application.Consumers;
@@ -65,7 +66,7 @@ public class MembershipEndedV1ConsumerTests
     {
         var store = new InMemoryMemberStore();
         var started = MembershipEvents.Started(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), "Ada");
-        await new MembershipStartedV1Consumer(store, store).HandleAsync(started, TestContext.Current.CancellationToken);
+        await new MembershipStartedV1Consumer(store, store, store, NullLogger<MembershipStartedV1Consumer>.Instance).HandleAsync(started, TestContext.Current.CancellationToken);
 
         await ConsumerOf(store).HandleAsync(MembershipEvents.Ended(started.MembershipId, started.PersonId, started.PharmacyId), TestContext.Current.CancellationToken);
 
@@ -82,7 +83,7 @@ public class MembershipEndedV1ConsumerTests
         var pharmacyId = Guid.CreateVersion7();
 
         await ConsumerOf(store).HandleAsync(MembershipEvents.Ended(membershipId, personId, pharmacyId), TestContext.Current.CancellationToken);
-        await new MembershipStartedV1Consumer(store, store).HandleAsync(MembershipEvents.Started(membershipId, personId, pharmacyId, "Ada"), TestContext.Current.CancellationToken);
+        await new MembershipStartedV1Consumer(store, store, store, NullLogger<MembershipStartedV1Consumer>.Instance).HandleAsync(MembershipEvents.Started(membershipId, personId, pharmacyId, "Ada"), TestContext.Current.CancellationToken);
 
         store.Endings.ShouldHaveSingleItem().Id.ShouldBe(MembershipId.From(membershipId));
         store.Members.ShouldHaveSingleItem().Id.ShouldBe(MembershipId.From(membershipId));

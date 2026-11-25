@@ -30,7 +30,7 @@ public sealed class ListPharmacyMembersHandler(IMemberStore members)
             .GroupBy(membership => membership.Person)
             .Select(person => person.OrderByDescending(membership => membership.Membership.Value).First())
             .Where(membership => query.JobFunction is not { } jobFunction || membership.JobFunction == jobFunction)
-            .OrderBy(membership => membership.Name.Value, StringComparer.InvariantCultureIgnoreCase)
+            .OrderBy(membership => membership.Name?.Value ?? string.Empty, StringComparer.InvariantCultureIgnoreCase)
             .ThenBy(membership => membership.Person.Value)
             .ToList();
 
