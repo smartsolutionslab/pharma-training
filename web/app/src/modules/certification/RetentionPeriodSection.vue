@@ -66,8 +66,11 @@ watch(years, () => {
  * next one's period in its place.
  */
 let generation = 0;
+/** Whether the section has gone: a press dropped then says nothing, there is nobody left to tell. */
+let gone = false;
 onBeforeUnmount(() => {
   generation += 1;
+  gone = true;
 });
 // Another pharmacy starts a new form at once, not only when its period arrives: a press for the one before, whose check
 // ends while the new period is on its way, would otherwise send the old pharmacy's years to the new one.
@@ -177,6 +180,10 @@ async function submit(event: Event) {
       checked.value += 1;
       if (pressed === generation && pressedFor === pharmacy.id) {
         await send(values, pressedFor);
+      } else if (!gone && pressedFor === pharmacy.id) {
+        // The period changed while the press was checked, and the field started again from it: the years typed were
+        // not sent, which is said, since the field now shows another value. Another pharmacy chosen says nothing.
+        notify.failure(translate('certification.retention.changed'));
       }
     },
     () => {
