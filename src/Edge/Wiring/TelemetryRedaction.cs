@@ -5,7 +5,7 @@ using SmartSolutionsLab.PharmaTraining.ServiceDefaults.Telemetry;
 namespace Microsoft.Extensions.DependencyInjection;
 
 /// <summary>
-/// The edge's spans record no path beyond the module (#311, docs/adr/0033): the edge knows no module's routes, so it
+/// The edge's spans record no path beyond the module (#311, docs/adr/0035): the edge knows no module's routes, so it
 /// cannot tell a path that carries a credential (Certification's verification code) from any other. Its server span's
 /// <c>url.path</c> keeps <c>/api</c> where the call came under it, and the module (<c>/api/certification/…</c>); the span
 /// of every call it makes keeps the module alone in <c>url.full</c> (<c>http://certification/certification/…</c>). The
