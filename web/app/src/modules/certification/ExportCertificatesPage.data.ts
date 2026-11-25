@@ -1,6 +1,6 @@
 // The example data ExportCertificatesPage's axe check shows the page with, by hook of the generated client. A hook
 // without an example answers as if its request were still on its way. The export itself is a plain call, no hook: the
-// page holds no ZIP in the query cache.
+// page holds no ZIP in the query cache. Saving the retention period is a mutation, idle in the check.
 
 /** The manager's membership (GET /organisation/pharmacies/mine): the page exports the current pharmacy's certificates. */
 export const examples: Record<string, unknown> = {
@@ -20,4 +20,6 @@ export const examples: Record<string, unknown> = {
     page: 1,
     pageSize: 100,
   },
+  /** The same pharmacy's retention period (GET /certification/pharmacies/{id}/retention-period), still the default. */
+  useGetCertificationPharmaciesIdRetentionPeriod: { years: 5, isDefault: true },
 };

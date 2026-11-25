@@ -83,7 +83,8 @@ jobs:
           echo "BRIEFS=$gate" >> "$GITHUB_ENV"
       - id: exempt
         name: A dependency update by Dependabot is not reviewed by a model
-        # The author is the pull request's, not the actor of a re-run.
+        # The author is the pull request's, not the actor of a re-run. Against the base branch as it is now: the event's
+        # base.sha can predate commits merged in from it (#429).
         run: |
           if note="$(bash "$GATE/scripts/board/dependency-update.sh" "$AUTHOR" "$BASE" "$HEAD")"; then
             echo "::notice title=cross-model review::$note"
@@ -95,7 +96,7 @@ jobs:
           fi
         env:
           AUTHOR: ${{ github.event.pull_request.user.login }}
-          BASE: ${{ github.event.pull_request.base.sha }}
+          BASE: origin/${{ github.base_ref }}
           HEAD: ${{ github.event.pull_request.head.sha }}
       - id: choose
         # Assigned first: inside echo's arguments a failing reviewer.sh would not fail the step, and no review would run.

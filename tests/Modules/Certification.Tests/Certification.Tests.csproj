@@ -11,6 +11,7 @@
     <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
     <PackageReference Include="PDFsharp" />
     <PackageReference Include="Net.Codecrete.QrCodeGenerator" />
+    <!-- The retention period handler's audit line is read back through FakeLogger (#422). -->
   </ItemGroup>
 
 </Project>

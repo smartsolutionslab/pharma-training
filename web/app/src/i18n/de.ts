@@ -162,6 +162,20 @@ export const de = {
       done: 'Der Download wurde gestartet.',
       failed: 'Der Export konnte nicht erstellt werden. Versuchen Sie es erneut.',
     },
+    retention: {
+      title: 'Aufbewahrungsfrist',
+      intro:
+        'Wie viele Jahre nach ihrer Ausstellung die Teilnahmebestätigungen von {pharmacy} im Export enthalten sind.',
+      current: 'Derzeit {years} Jahre',
+      default: '(Standard)',
+      retroactive:
+        'Die Frist gilt rückwirkend für alle Bestätigungen: Verlängern Sie sie, sind ältere Bestätigungen wieder im Export enthalten; verkürzen Sie sie, fehlen die älteren. Gelöscht wird nichts.',
+      years: 'Aufbewahrungsfrist in Jahren',
+      submit: 'Frist speichern',
+      saving: 'Wird gespeichert…',
+      saved: 'Die Aufbewahrungsfrist beträgt jetzt {years} Jahre.',
+      failed: 'Die Aufbewahrungsfrist konnte nicht gespeichert werden. Versuchen Sie es erneut.',
+    },
     mine: {
       columns: {
         course: 'Schulung',

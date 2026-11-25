@@ -38,10 +38,12 @@ public class BrokerPublisherRecoveryTests(AspireFixture aspire)
         await ComplianceDatabase.WaitUntilHandledAsync(aspire, messageId, cancellationToken);
 
         await StopComplianceAsync(cancellationToken);
+        var running = false;
         try
         {
             await ComplianceDatabase.ReturnToInboxAsync(aspire, messageId, cancellationToken);
             await StartComplianceAsync(cancellationToken);
+            running = true;
 
             await ComplianceDatabase.WaitUntilHandledUnlessForgedAsync(aspire, messageId, HandledTimeout, cancellationToken);
             (await ComplianceDatabase.CountAsync(aspire, MembersById, started.MembershipId, cancellationToken))
@@ -49,7 +51,12 @@ public class BrokerPublisherRecoveryTests(AspireFixture aspire)
         }
         finally
         {
-            await StartComplianceAsync(CancellationToken.None);
+            // Every other test needs Compliance, so it is started again even when this run was cancelled; the wait is
+            // bounded by StartComplianceAsync's two minutes and skipped when the test already started it.
+            if (!running)
+            {
+                await StartComplianceAsync(CancellationToken.None);
+            }
         }
     }
 
@@ -59,10 +66,11 @@ public class BrokerPublisherRecoveryTests(AspireFixture aspire)
         stopped.Success.ShouldBeTrue($"Compliance did not stop: {stopped.Message}");
     }
 
-    /// <summary>Starts Compliance, unless it runs already, and waits until it is healthy.</summary>
+    /// <summary>Starts Compliance, failing at once with the command's message when it does not start, and waits at most two minutes until it is healthy.</summary>
     private async Task StartComplianceAsync(CancellationToken cancellationToken)
     {
-        await aspire.App.ResourceCommands.ExecuteCommandAsync(ComplianceResource, KnownResourceCommands.StartCommand, cancellationToken);
+        var started = await aspire.App.ResourceCommands.ExecuteCommandAsync(ComplianceResource, KnownResourceCommands.StartCommand, cancellationToken);
+        started.Success.ShouldBeTrue($"Compliance did not start: {started.Message}");
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromMinutes(2));
         await aspire.App.ResourceNotifications.WaitForResourceHealthyAsync(ComplianceResource, timeout.Token);
