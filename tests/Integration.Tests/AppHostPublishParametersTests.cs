@@ -31,12 +31,14 @@ public class AppHostPublishParametersTests
     [InlineData("keycloak-admin-password")]
     [InlineData("messaging-password")]
     [InlineData("azure-openai-api-key")]
-    [InlineData("smtp-username")]
-    [InlineData("smtp-password")]
     [InlineData("database-roles-key")]
-    public async Task Every_publish_secret_is_an_explicit_parameter_in_key_vault(string name)
+    [InlineData("smtp-username", PublishedAppHost.Production)]
+    [InlineData("smtp-password", PublishedAppHost.Production)]
+    [InlineData("mailpit-ui-auth")]
+    public async Task Every_publish_secret_is_an_explicit_parameter_in_key_vault(string name, string environment = PublishedAppHost.Staging)
     {
-        await using var builder = await PublishedAppHost.ModelAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
+        // The relay's credentials exist in production alone, and Mailpit's inbox auth on staging alone (#130).
+        await using var builder = await PublishedAppHost.ModelAsync(environment, TestContext.Current.CancellationToken);
 
         var parameter = Parameter(builder, name);
         var secrets = builder.Resources.OfType<AzureKeyVaultSecretResource>().Where(secret => Holds(secret, parameter)).ToList();
@@ -50,11 +52,12 @@ public class AppHostPublishParametersTests
     [InlineData("postgres-username", null)]
     [InlineData("keycloak-admin-username", "admin")]
     [InlineData("messaging-username", null)]
-    [InlineData("smtp-host", null)]
+    [InlineData("smtp-host", null, PublishedAppHost.Production)]
     [InlineData("smtp-from", null)]
-    public async Task The_settings_beside_the_secrets_are_explicit_parameters(string name, string? defaultValue)
+    public async Task The_settings_beside_the_secrets_are_explicit_parameters(string name, string? defaultValue, string environment = PublishedAppHost.Staging)
     {
-        await using var builder = await PublishedAppHost.ModelAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
+        // The relay's host exists in production alone; staging sends to its Mailpit (#130).
+        await using var builder = await PublishedAppHost.ModelAsync(environment, TestContext.Current.CancellationToken);
 
         var parameter = Parameter(builder, name);
 
@@ -226,7 +229,8 @@ public class AppHostPublishParametersTests
     [Fact]
     public async Task The_mail_server_reaches_the_services_that_send_mail_and_keycloak_as_key_vault_references()
     {
-        await using var builder = await PublishedAppHost.ModelAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
+        // Production's relay; staging's Mailpit takes no credentials (AppHostStagingMailTests, #130).
+        await using var builder = await PublishedAppHost.ModelAsync(PublishedAppHost.Production, TestContext.Current.CancellationToken);
         var senders = PublishedAppHost.Services(builder).Where(SendsMail).ToList();
 
         senders.ShouldNotBeEmpty("no service host's project says <SendsMail>true</SendsMail>");

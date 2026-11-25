@@ -97,7 +97,8 @@ public class AppHostStagingMailTests
     {
         await using var staging = await PublishedAppHost.ModelAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
         await using var production = await PublishedAppHost.ModelAsync(PublishedAppHost.Production, TestContext.Current.CancellationToken);
-        string[] relay = ["smtp-host", "smtp-from", "smtp-username", "smtp-password"];
+        // The sender, smtp-from, stays in both: Mailpit takes any address, and Keycloak and the services send from it.
+        string[] relay = ["smtp-host", "smtp-username", "smtp-password"];
 
         var stagingParameters = staging.Resources.OfType<ParameterResource>().Select(parameter => parameter.Name).ToList();
         var productionParameters = production.Resources.OfType<ParameterResource>().Select(parameter => parameter.Name).ToList();

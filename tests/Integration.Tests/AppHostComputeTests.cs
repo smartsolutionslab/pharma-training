@@ -10,17 +10,20 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// </summary>
 public class AppHostComputeTests
 {
-    [Fact]
-    public async Task Only_the_edge_and_the_auth_proxy_are_external()
+    // Staging's Mailpit answers outside too: its inbox, behind basic auth, is what the staging end-to-end run reads (#130).
+    [Theory]
+    [InlineData(PublishedAppHost.Production, new[] { "auth", "host" })]
+    [InlineData(PublishedAppHost.Staging, new[] { "auth", "host", "mailpit" })]
+    public async Task Only_the_edge_and_the_auth_proxy_are_external_and_on_staging_mailpits_inbox(string environment, string[] expected)
     {
-        await using var builder = await PublishedAppHost.ModelAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
+        await using var builder = await PublishedAppHost.ModelAsync(environment, TestContext.Current.CancellationToken);
 
         var external = builder.Resources
             .Where(resource => resource.Annotations.OfType<EndpointAnnotation>().Any(endpoint => endpoint.IsExternal))
             .Select(resource => resource.Name)
             .Order(StringComparer.Ordinal);
 
-        external.ShouldBe(["auth", "host"], ignoreOrder: false, "Published, only the edge and the auth proxy in front of Keycloak should be reachable from outside.");
+        external.ShouldBe(expected, ignoreOrder: false, $"Published to {environment}, only these should be reachable from outside.");
     }
 
     [Fact]
