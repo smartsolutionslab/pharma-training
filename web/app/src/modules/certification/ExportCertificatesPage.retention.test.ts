@@ -1,0 +1,322 @@
+import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/vue';
+import { createPinia, type Pinia } from 'pinia';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { createMemoryHistory } from 'vue-router';
+import {
+  type CertificationRetentionPeriodDto,
+  getGetCertificationPharmaciesIdRetentionPeriodQueryKey,
+  getGetOrganisationPharmaciesMineQueryKey,
+  type MyPharmacyDto,
+} from '@/api/generated';
+import { setLanguage, t } from '@/i18n';
+import { createAppRouter } from '@/router';
+import { useSelectedPharmacyStore } from '@/stores/selectedPharmacy';
+import ExportCertificatesPage from './ExportCertificatesPage.vue';
+
+// The pharmacy's retention period on the managers' export page (#419; ADR 0034, amended by ADR 0039). Below the export
+// form, a section of its own shows how many years the current pharmacy keeps its certificates in the export, whether
+// that is the default of five, that the period applies retroactively, and a field to change it. The section shows only
+// once the host has answered GET /certification/pharmacies/{id}/retention-period for the current pharmacy: a refusal or
+// a failure of that read hides it without a word, since the host decides who may read it (ADR 0003) and the export
+// above reports a membership that is gone itself. A refusal of the read is final; it is not asked for again.
+
+type Fetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
+const notify = vi.hoisted(() => ({ success: vi.fn(), failure: vi.fn() }));
+vi.mock('@/lib/notify', () => ({ notify }));
+
+const markt: MyPharmacyDto = {
+  id: '0198c1a0-0000-7000-8000-0000000000a1',
+  name: 'Apotheke am Markt',
+  membershipId: '0198c1a0-0000-7000-8000-0000000000b1',
+  role: 'Manager',
+  jobFunction: 'Pharmacist',
+  canManageMembers: true,
+  canAssignCourses: true,
+};
+
+/** A second pharmacy the same manager works in, which keeps its certificates for a period of its own. */
+const dom: MyPharmacyDto = {
+  ...markt,
+  id: '0198c1a0-0000-7000-8000-0000000000a2',
+  name: 'Apotheke am Dom',
+  membershipId: '0198c1a0-0000-7000-8000-0000000000b2',
+};
+
+const retentionPath = /^\/api\/certification\/pharmacies\/([0-9a-f-]*)\/retention-period$/;
+
+/** What the fake host answers; a test changes it before the page asks. */
+interface HostState {
+  memberships: MyPharmacyDto[];
+  /** Each pharmacy's period, as GET …/retention-period answers it. */
+  periods: Record<string, CertificationRetentionPeriodDto>;
+  /** The answer to GET /certification/pharmacies/{id}/retention-period. */
+  read: (pharmacyId: string) => Promise<Response>;
+}
+
+/** Problem details as the host sends a module's refusal: its English message as the title, and its code. */
+function refusal(status: number, code: string, title: string): Response {
+  return new Response(JSON.stringify({ title, status, code }), {
+    status,
+    headers: { 'Content-Type': 'application/problem+json' },
+  });
+}
+
+function hostFrom(state: HostState): Fetch {
+  return async (input, init) => {
+    const url = new URL(String(input), 'http://localhost');
+    const method = init?.method ?? 'GET';
+    if (method === 'GET' && url.pathname === '/api/organisation/pharmacies/mine') {
+      return Response.json({ items: state.memberships, totalCount: state.memberships.length, page: 1, pageSize: 100 });
+    }
+    const retention = retentionPath.exec(url.pathname);
+    if (method === 'GET' && retention !== null) {
+      return state.read(retention[1] ?? '');
+    }
+    return new Response('', { status: 404 });
+  };
+}
+
+const host = vi.fn<Fetch>();
+vi.stubGlobal('fetch', host);
+
+let state: HostState;
+
+/** The reads of a retention period the host received, by their path. */
+const retentionReads = () =>
+  host.mock.calls
+    .filter(([input, init]) => (init?.method ?? 'GET') === 'GET' && String(input).includes('/retention-period'))
+    .map(([input]) => String(input));
+
+/** The reads of the memberships the host received. */
+const membershipReads = () =>
+  host.mock.calls.filter(([input]) => String(input).startsWith('/api/organisation/pharmacies/mine')).length;
+
+beforeEach(() => {
+  localStorage.clear();
+  state = {
+    memberships: [markt],
+    periods: {
+      [markt.id]: { years: 5, isDefault: true },
+      [dom.id]: { years: 12, isDefault: false },
+    },
+    read: async (pharmacyId) => {
+      const period = state.periods[pharmacyId];
+      return period === undefined
+        ? refusal(
+            404,
+            'certification.pharmacy-not-found',
+            'You are not a member of this pharmacy, or it does not exist.',
+          )
+        : Response.json(period);
+    },
+  };
+  host.mockImplementation(hostFrom(state));
+  notify.success.mockReset();
+  notify.failure.mockReset();
+});
+afterEach(() => {
+  setLanguage('de-DE', { remember: false });
+  vi.restoreAllMocks();
+  host.mockReset();
+  localStorage.clear();
+});
+// Without Vitest's globals, Testing Library does not unmount between tests by itself.
+afterEach(cleanup);
+
+/**
+ * The page, with a Pinia and a query client of its own. Unlike ExportCertificatesPage.test.ts, the client retries a
+ * failed read three times without a pause, as the app's client retries one: a read the section must not ask again (a
+ * refusal) shows as asked more than once.
+ */
+async function renderPage(options: { pinia?: Pinia } = {}) {
+  const router = createAppRouter(createMemoryHistory());
+  await router.push('/certification/export');
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: 3, retryDelay: 0 }, mutations: { retry: false } },
+  });
+  const pinia = options.pinia ?? createPinia();
+  const { unmount } = render(ExportCertificatesPage, {
+    global: { plugins: [router, pinia, [VueQueryPlugin, { queryClient }]] },
+  });
+  await screen.findByRole('heading', { level: 1, name: 'Nachweise exportieren' });
+  return { router, queryClient, pinia, unmount };
+}
+
+/** The read of the pharmacy's period, as the query cache holds it once the page asked. */
+const readOf = (queryClient: QueryClient, pharmacy: MyPharmacyDto = markt) =>
+  queryClient.getQueryState(getGetCertificationPharmaciesIdRetentionPeriodQueryKey(pharmacy.id));
+
+const note =
+  'Die Frist gilt rückwirkend für alle Bestätigungen: Verlängern Sie sie, sind ältere Bestätigungen wieder im Export enthalten; verkürzen Sie sie, fehlen die älteren. Gelöscht wird nichts.';
+
+const section = () => screen.findByRole('region', { name: 'Aufbewahrungsfrist' });
+const yearsField = () => screen.getByLabelText('Aufbewahrungsfrist in Jahren');
+const noSection = () => expect(screen.queryByRole('heading', { name: 'Aufbewahrungsfrist' })).toBeNull();
+
+describe('the retention period section', () => {
+  test('with the default of five years shows its heading, "Derzeit 5 Jahre (Standard)", the note and the field at 5', async () => {
+    await renderPage();
+
+    const region = await section();
+    expect(within(region).getByRole('heading', { level: 2, name: 'Aufbewahrungsfrist' })).toBeInTheDocument();
+    expect(region).toHaveTextContent('Derzeit 5 Jahre (Standard)');
+    expect(within(region).getByText(note)).toBeInTheDocument();
+    expect(yearsField()).toHaveValue(5);
+  });
+
+  test('names the pharmacy in its intro', async () => {
+    await renderPage();
+
+    const region = await section();
+    expect(region).toHaveTextContent(
+      'Wie viele Jahre nach ihrer Ausstellung die Teilnahmebestätigungen von Apotheke am Markt im Export enthalten sind.',
+    );
+  });
+
+  test('stands below the export form', async () => {
+    await renderPage();
+
+    const region = await section();
+    const exportButton = screen.getByRole('button', { name: t('certification.export.submit') });
+    expect(exportButton.compareDocumentPosition(region) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(region).not.toContainElement(exportButton);
+  });
+
+  test('with a period of seven years the pharmacy chose shows "Derzeit 7 Jahre", without "Standard", and the field at 7', async () => {
+    state.periods[markt.id] = { years: 7, isDefault: false };
+    await renderPage();
+
+    const region = await section();
+    expect(region).toHaveTextContent('Derzeit 7 Jahre');
+    expect(region).not.toHaveTextContent('Standard');
+    expect(yearsField()).toHaveValue(7);
+  });
+
+  test('takes whole numbers of years from 2 to 30 in its field', async () => {
+    await renderPage();
+    await section();
+
+    const field = yearsField();
+    expect(field).toHaveAttribute('id', 'retention-years');
+    expect(field).toHaveAttribute('type', 'number');
+    expect(field).toHaveAttribute('inputmode', 'numeric');
+    expect(field).toHaveAttribute('step', '1');
+    expect(field).toHaveAttribute('min', '2');
+    expect(field).toHaveAttribute('max', '30');
+  });
+
+  test('describes the field with the period now and the retroactive note', async () => {
+    await renderPage();
+    await section();
+
+    expect(yearsField()).toHaveAccessibleDescription(expect.stringContaining('Derzeit 5 Jahre (Standard)'));
+    expect(yearsField()).toHaveAccessibleDescription(expect.stringContaining(note));
+    expect(yearsField()).not.toHaveAttribute('aria-invalid', 'true');
+  });
+
+  test('switched to English, shows "Retention period", "Currently 5 years (default)" and the English note', async () => {
+    await renderPage();
+    await section();
+
+    setLanguage('en-GB', { remember: false });
+
+    const region = await screen.findByRole('region', { name: 'Retention period' });
+    expect(within(region).getByRole('heading', { level: 2, name: 'Retention period' })).toBeInTheDocument();
+    expect(region).toHaveTextContent('Currently 5 years (default)');
+    expect(region).toHaveTextContent(
+      'The period applies retroactively to every certificate: lengthening it includes older certificates in the export again; shortening it leaves the older ones out. Nothing is deleted.',
+    );
+    expect(screen.getByLabelText('Retention period in years')).toHaveValue(5);
+  });
+
+  test("switching to another pharmacy shows that pharmacy's period", async () => {
+    state.memberships = [markt, dom];
+    const pinia = createPinia();
+    useSelectedPharmacyStore(pinia).choose(markt.id);
+    await renderPage({ pinia });
+    const region = await section();
+    expect(region).toHaveTextContent('Derzeit 5 Jahre (Standard)');
+
+    useSelectedPharmacyStore(pinia).choose(dom.id);
+
+    await waitFor(() =>
+      expect(screen.getByRole('region', { name: 'Aufbewahrungsfrist' })).toHaveTextContent('Derzeit 12 Jahre'),
+    );
+    expect(screen.getByRole('region', { name: 'Aufbewahrungsfrist' })).not.toHaveTextContent('Standard');
+    await waitFor(() => expect(yearsField()).toHaveValue(12));
+    expect(retentionReads()).toContain(`/api/certification/pharmacies/${dom.id}/retention-period`);
+  });
+});
+
+describe('the section is not shown', () => {
+  test('while the read of the period is on its way', async () => {
+    state.read = () => new Promise<Response>(() => undefined);
+    await renderPage();
+
+    await waitFor(() =>
+      expect(retentionReads()).toEqual([`/api/certification/pharmacies/${markt.id}/retention-period`]),
+    );
+    noSection();
+    expect(screen.queryByLabelText('Aufbewahrungsfrist in Jahren')).toBeNull();
+  });
+
+  // ADR 0003: an employee's read is refused with capability-missing; the section hides, and a refusal is final, so it
+  // is asked once, not four times.
+  test('to a member whose role may not manage the period, which is asked once and says nothing', async () => {
+    state.read = async () =>
+      refusal(403, 'certification.capability-missing', 'Your role in this pharmacy does not allow this.');
+    const { queryClient } = await renderPage();
+
+    await waitFor(() => expect(readOf(queryClient)?.status).toBe('error'));
+    expect(retentionReads()).toHaveLength(1);
+    noSection();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(notify.failure).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    [
+      'a 404 pharmacy-not-found',
+      async () =>
+        refusal(
+          404,
+          'certification.pharmacy-not-found',
+          'You are not a member of this pharmacy, or it does not exist.',
+        ),
+    ],
+    ['a 500', async () => new Response('', { status: 500 })],
+    ['a rejected fetch', () => Promise.reject(new TypeError('Failed to fetch'))],
+  ])('after %s, and no error from the section shows', async (_name, answer) => {
+    state.read = answer;
+    const { queryClient } = await renderPage();
+
+    await waitFor(() => expect(readOf(queryClient)?.status).toBe('error'));
+    expect(retentionReads().length).toBeGreaterThan(0);
+    noSection();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(notify.failure).not.toHaveBeenCalled();
+  });
+
+  test('while no pharmacy is current, and no period is read until one is', async () => {
+    state.memberships = [];
+    const { queryClient } = await renderPage();
+    // The memberships are read, and nothing more is on its way.
+    await waitFor(() => {
+      expect(membershipReads()).toBeGreaterThan(0);
+      expect(queryClient.isFetching()).toBe(0);
+    });
+    const readsBefore = membershipReads();
+
+    expect(retentionReads()).toEqual([]);
+    noSection();
+
+    state.memberships = [markt];
+    await queryClient.invalidateQueries({ queryKey: getGetOrganisationPharmaciesMineQueryKey() });
+
+    await section();
+    expect(membershipReads()).toBeGreaterThan(readsBefore);
+    expect(retentionReads()).toEqual([`/api/certification/pharmacies/${markt.id}/retention-period`]);
+  });
+});
