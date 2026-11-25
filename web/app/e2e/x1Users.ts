@@ -1,13 +1,14 @@
 import { randomBytes } from 'node:crypto';
-import { type APIRequestContext, expect, request as requests } from '@playwright/test';
+import { expect } from '@playwright/test';
 import { unique } from './invitations';
 
 // The users the MVP 1 flow (X1, #55) signs in as. In run mode they are the realm's local users, whose password is their
 // name. Against staging (#130) there are no local users: the test creates its own at set-up through Keycloak's admin API,
 // as the staging-only confidential client x1-runner (realm-management manage-users alone, created by the runbook, never
 // in a realm file), and deletes them afterwards, however the run ends. E2E_X1_CLIENT_SECRET, x1-runner's secret, says
-// which: set, the test creates them. Its calls to the admin API go through a request context of their own, which no
-// trace records: the page's would put x1-runner's secret and the admin tokens into a trace of the test.
+// which: set, the test creates them. Its calls to the admin API go through Node's fetch, which no Playwright trace
+// records (any request context of Playwright's is traced once tracing is on): a trace would otherwise hold x1-runner's
+// secret and the admin tokens. On staging the run keeps no trace at all (StagingEndToEndRunKeepsNoTraces).
 
 const keycloak = process.env.E2E_KEYCLOAK_URL ?? 'http://localhost:8080';
 const clientId = 'x1-runner';
@@ -53,30 +54,25 @@ export async function x1Cast(): Promise<X1Cast> {
     };
   }
 
-  const request = await requests.newContext();
   const run = unique('x1').toLowerCase();
   const created: string[] = [];
   // Every user made is deleted, even when deleting another fails; a fresh token, since the flow outlasts one.
   const dispose = async () => {
-    try {
-      if (created.length === 0) {
-        return;
-      }
-      const token = await adminToken(request);
-      const failed: string[] = [];
-      for (const id of created) {
-        const deleted = await request.delete(`${admin}/users/${id}`, { headers: { Authorization: token } });
-        if (![204, 404].includes(deleted.status())) {
-          failed.push(`${id} (${deleted.status()})`);
-        }
-      }
-      expect(failed, `these users were not deleted: ${failed.join(', ')}`).toEqual([]);
-    } finally {
-      await request.dispose();
+    if (created.length === 0) {
+      return;
     }
+    const token = await adminToken();
+    const failed: string[] = [];
+    for (const id of created) {
+      const deleted = await fetch(`${admin}/users/${id}`, { method: 'DELETE', headers: { Authorization: token } });
+      if (![204, 404].includes(deleted.status)) {
+        failed.push(`${id} (${deleted.status})`);
+      }
+    }
+    expect(failed, `these users were not deleted: ${failed.join(', ')}`).toEqual([]);
   };
   try {
-    const token = await adminToken(request);
+    const token = await adminToken();
     const make = async (role: string, firstName: string, lastName: string, realmRole?: string) => {
       const user: X1User = {
         username: `${run}-${role}`,
@@ -85,9 +81,10 @@ export async function x1Cast(): Promise<X1Cast> {
         firstName,
         lastName,
       };
-      created.push(await createUser(request, token, user));
+      const id = await createUser(token, user);
+      created.push(id);
       if (realmRole !== undefined) {
-        await grantRealmRole(request, token, created.at(-1) ?? '', realmRole);
+        await grantRealmRole(token, id, realmRole);
       }
       return user;
     };
@@ -105,19 +102,21 @@ export async function x1Cast(): Promise<X1Cast> {
 }
 
 /** x1-runner's access token, as an Authorization header. */
-async function adminToken(request: APIRequestContext) {
-  const response = await request.post(`${keycloak}/realms/pharma-training/protocol/openid-connect/token`, {
-    form: { grant_type: 'client_credentials', client_id: clientId, client_secret: clientSecret },
+async function adminToken() {
+  const response = await fetch(`${keycloak}/realms/pharma-training/protocol/openid-connect/token`, {
+    method: 'POST',
+    body: new URLSearchParams({ grant_type: 'client_credentials', client_id: clientId, client_secret: clientSecret }),
   });
-  expect(response.ok(), `x1-runner's token answered ${response.status()}`).toBe(true);
+  expect(response.ok, `x1-runner's token answered ${response.status}`).toBe(true);
   return `Bearer ${((await response.json()) as { access_token: string }).access_token}`;
 }
 
 /** Creates the user, enabled, with a verified address and a password that never expires; answers their id. */
-async function createUser(request: APIRequestContext, token: string, user: X1User) {
-  const response = await request.post(`${admin}/users`, {
-    headers: { Authorization: token },
-    data: {
+async function createUser(token: string, user: X1User) {
+  const response = await fetch(`${admin}/users`, {
+    method: 'POST',
+    headers: { Authorization: token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
       username: user.username,
       email: user.email,
       firstName: user.firstName,
@@ -126,12 +125,10 @@ async function createUser(request: APIRequestContext, token: string, user: X1Use
       emailVerified: true,
       requiredActions: [],
       credentials: [{ type: 'password', value: user.password, temporary: false }],
-    },
+    }),
   });
-  expect(response.status(), `creating ${user.username} answered ${response.status()}: ${await response.text()}`).toBe(
-    201,
-  );
-  const id = (response.headers()['location'] ?? '').split('/').at(-1) ?? '';
+  expect(response.status, `creating ${user.username} answered ${response.status}: ${await response.text()}`).toBe(201);
+  const id = (response.headers.get('location') ?? '').split('/').at(-1) ?? '';
   expect(id, `Keycloak named no id for ${user.username}`).not.toBe('');
   return id;
 }
@@ -140,16 +137,17 @@ async function createUser(request: APIRequestContext, token: string, user: X1Use
  * Grants a realm role, read from the roles the user may still be given: that list asks manage-users alone, where
  * reading a role by name would ask view-realm too.
  */
-async function grantRealmRole(request: APIRequestContext, token: string, id: string, name: string) {
-  const available = await request.get(`${admin}/users/${id}/role-mappings/realm/available`, {
+async function grantRealmRole(token: string, id: string, name: string) {
+  const available = await fetch(`${admin}/users/${id}/role-mappings/realm/available`, {
     headers: { Authorization: token },
   });
-  expect(available.ok(), `the roles user ${id} may be given answered ${available.status()}`).toBe(true);
+  expect(available.ok, `the roles user ${id} may be given answered ${available.status}`).toBe(true);
   const role = ((await available.json()) as { id: string; name: string }[]).find((each) => each.name === name);
   expect(role, `the realm role ${name} cannot be given to user ${id}`).toBeDefined();
-  const granted = await request.post(`${admin}/users/${id}/role-mappings/realm`, {
-    headers: { Authorization: token },
-    data: [role],
+  const granted = await fetch(`${admin}/users/${id}/role-mappings/realm`, {
+    method: 'POST',
+    headers: { Authorization: token, 'Content-Type': 'application/json' },
+    body: JSON.stringify([role]),
   });
-  expect(granted.status(), `granting ${name} answered ${granted.status()}`).toBe(204);
+  expect(granted.status, `granting ${name} answered ${granted.status}`).toBe(204);
 }

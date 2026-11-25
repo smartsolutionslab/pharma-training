@@ -1,4 +1,4 @@
-import { type APIRequestContext, expect, type Page, request as requests } from '@playwright/test';
+import { type APIRequestContext, expect, type Page } from '@playwright/test';
 
 // The running application's identity provider and mail catcher, at the ports the AppHost gives them in run mode; on
 // staging their public addresses, and Mailpit's inbox behind its basic auth, user:password (#130).
@@ -51,29 +51,26 @@ type Summary = { ID: string; Subject: string };
 /**
  * The text of the one mail to the address whose subject contains the marker, from Mailpit's API; waits for it, since
  * the application sends mail from a consumer, after the request that asked for it has been answered. Behind basic auth
- * (staging) the calls go through a request context of their own, which no trace records, so the auth stays out of one.
+ * (staging) it asks through Node's fetch, which no Playwright trace records, so the auth stays out of one; any request
+ * context of Playwright's is traced once tracing is on.
  */
-export async function mailText(pageRequest: APIRequestContext, to: string, marker: string) {
-  const request = mailpitAuth === '' ? pageRequest : await requests.newContext();
-  try {
-    return await readMail(request, to, marker);
-  } finally {
-    if (request !== pageRequest) {
-      await request.dispose();
+export async function mailText(request: APIRequestContext, to: string, marker: string) {
+  const get = async (path: string, query?: Record<string, string>) => {
+    const url = `${mailpit}${path}${query === undefined ? '' : `?${new URLSearchParams(query).toString()}`}`;
+    if (mailpitAuth === '') {
+      const response = await request.get(url);
+      return { ok: response.ok(), status: response.status(), json: () => response.json() as Promise<unknown> };
     }
-  }
-}
+    const response = await fetch(url, { headers: mailpitHeaders });
+    return { ok: response.ok, status: response.status, json: () => response.json() as Promise<unknown> };
+  };
 
-async function readMail(request: APIRequestContext, to: string, marker: string) {
   let id: string | undefined;
   await expect
     .poll(
       async () => {
-        const response = await request.get(`${mailpit}/api/v1/search`, {
-          params: { query: `to:"${to}"` },
-          headers: mailpitHeaders,
-        });
-        expect(response.ok(), `Mailpit's search answered ${response.status()}`).toBe(true);
+        const response = await get('/api/v1/search', { query: `to:"${to}"` });
+        expect(response.ok, `Mailpit's search answered ${response.status}`).toBe(true);
         const found = ((await response.json()) as { messages: Summary[] }).messages.filter((message) =>
           message.Subject.includes(marker),
         );
@@ -83,7 +80,7 @@ async function readMail(request: APIRequestContext, to: string, marker: string) 
       { message: `a mail to ${to} about "${marker}"`, timeout: 30_000 },
     )
     .toBe(1);
-  const message = await request.get(`${mailpit}/api/v1/message/${id ?? ''}`, { headers: mailpitHeaders });
+  const message = await get(`/api/v1/message/${id ?? ''}`);
   return ((await message.json()) as { Text: string }).Text;
 }
 
