@@ -18,12 +18,17 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Con
 /// </summary>
 public sealed partial class CertificateDocumentRequestedV1Consumer(
     ICertificateStore certificates,
+    IErasedPersonStore erased,
     ICertificationUnitOfWork unitOfWork,
     ICertificateRenderer renderer,
     IBlobWrites blobs,
     IFrontendLinks links,
     ILogger<CertificateDocumentRequestedV1Consumer> logger)
 {
+    // Not used yet: slice 4's red tests (#115) ask for the holder to be held and a tombstoned holder's request dropped
+    // before rendering, so a render cannot write a PDF back after the erasure deleted it.
+    private readonly IErasedPersonStore erased = erased;
+
     public async Task HandleAsync(CertificateDocumentRequestedV1 message, CancellationToken cancellationToken)
     {
         // Refused here by its name, so a poison message dead-letters with a reason that says which field.

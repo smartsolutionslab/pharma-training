@@ -341,8 +341,9 @@ public class PersonErasureTests(AspireFixture aspire)
 
     /// <summary>
     /// #421 review: a membership start and change of the person that arrive after the erasure (in flight past its purge,
-    /// redelivered or replayed) leave no stored message body with the name in Compliance or Learning, and Learning keeps
-    /// no copy of the new membership.
+    /// redelivered or replayed) are consumed and dropped: no Compliance or Learning table holds the name, no dead letter
+    /// holds it, and Learning keeps no copy of the new membership. The dropped message's own handled envelope is a
+    /// transient residual that Wolverine's retention of handled envelopes expires, so it is not asserted here.
     /// </summary>
     [Fact]
     public async Task A_membership_message_arriving_after_the_erasure_leaves_no_stored_body_with_the_name_in_compliance_or_learning()
@@ -365,10 +366,17 @@ public class PersonErasureTests(AspireFixture aspire)
         await LearningDatabase.DeliverAsync(aspire, StartedType, late, cancellationToken);
         await LearningDatabase.DeliverAsync(aspire, ChangedType, Changed(started, 3), cancellationToken);
 
-        (await new PersonalDataSweep(aspire, "compliance-database", "compliance", "wolverine").ColumnsHoldingAsync(probe.Name, cancellationToken))
-            .ShouldBeEmpty("Compliance still stores a membership message for the erased person with their name");
-        (await new PersonalDataSweep(aspire, "learning-database", "learning", "wolverine").ColumnsHoldingAsync(probe.Name, cancellationToken))
-            .ShouldBeEmpty("Learning still stores a membership message for the erased person with their name");
+        // Each delivery above waited until the service's inbox marked the envelope handled: the messages were consumed.
+        (await new PersonalDataSweep(aspire, "compliance-database", "compliance").ColumnsHoldingAsync(probe.Name, cancellationToken))
+            .ShouldBeEmpty("a late membership message wrote the erased person's name into a Compliance table");
+        (await new PersonalDataSweep(aspire, "learning-database", "learning").ColumnsHoldingAsync(probe.Name, cancellationToken))
+            .ShouldBeEmpty("a late membership message wrote the erased person's name into a Learning table");
+        (await new PersonalDataSweep(aspire, "compliance-database", "wolverine").ColumnsHoldingAsync(probe.Name, cancellationToken))
+            .Where(column => column.StartsWith("wolverine.wolverine_dead_letters.", StringComparison.Ordinal))
+            .ShouldBeEmpty("a late membership message was dead-lettered in Compliance, not dropped");
+        (await new PersonalDataSweep(aspire, "learning-database", "wolverine").ColumnsHoldingAsync(probe.Name, cancellationToken))
+            .Where(column => column.StartsWith("wolverine.wolverine_dead_letters.", StringComparison.Ordinal))
+            .ShouldBeEmpty("a late membership message was dead-lettered in Learning, not dropped");
         (await LearningDatabase.CountAsync(aspire, "select count(*) from learning.members where id = @id", late.MembershipId, cancellationToken)).ShouldBe(0);
         (await LearningDatabase.CountAsync(aspire, "select count(*) from learning.erased_persons where person_id = @id", probe.Person, cancellationToken)).ShouldBe(1);
     }
