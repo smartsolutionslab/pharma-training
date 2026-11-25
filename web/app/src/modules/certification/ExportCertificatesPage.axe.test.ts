@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { createMemoryHistory } from 'vue-router';
 import { signedInAsDeveloper } from '@/auth/signedInAsDeveloper';
-import { languages, setLanguage, t } from '@/i18n';
+import { type Language, languages, setLanguage, t } from '@/i18n';
 import { createAppRouter } from '@/router';
 import * as data from './ExportCertificatesPage.data';
 import ExportCertificatesPage from './ExportCertificatesPage.vue';
@@ -119,6 +119,12 @@ async function renderPage() {
   return container;
 }
 
+/** The retention period form's field and button, by language (#419): their texts come with the section. */
+const retentionForm: Record<Language, { years: string; submit: string }> = {
+  'de-DE': { years: 'Aufbewahrungsfrist in Jahren', submit: 'Frist speichern' },
+  'en-GB': { years: 'Retention period in years', submit: 'Save period' },
+};
+
 // Each language in turn: the texts differ, and so may what axe finds in them.
 describe.each(languages)('in %s', (language) => {
   beforeEach(() => {
@@ -188,6 +194,26 @@ describe.each(languages)('in %s', (language) => {
       await fireEvent.update(screen.getByLabelText(t('certification.export.to')), '2025-01-01');
       await user.click(screen.getByRole('button', { name: t('certification.export.submit') }));
       expect(await screen.findByRole('alert')).toHaveTextContent(t('certification.export.period.order'));
+
+      expect(await axe(container)).toHaveNoViolations();
+    },
+  );
+
+  // The retention period form as it shows after a refused period (#419): the field's error in its alert. The generated
+  // mock's mutation is idle, and the form refuses 31 before anything is sent.
+  test.each([{ name: 'light', switchOn: () => undefined }, ...themes])(
+    'the Export records page passes axe with a retention period error, in the $name theme',
+    async ({ switchOn }) => {
+      shown.examples = examples;
+      switchOn();
+      const user = userEvent.setup();
+      const container = await renderPage();
+
+      await fireEvent.update(screen.getByLabelText(retentionForm[language].years), '31');
+      await user.click(screen.getByRole('button', { name: retentionForm[language].submit }));
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        t('errors.certification.invalid-retention-period', { min: 2, max: 30 }),
+      );
 
       expect(await axe(container)).toHaveNoViolations();
     },
