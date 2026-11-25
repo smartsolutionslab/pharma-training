@@ -71,6 +71,53 @@ public class CertificationRetentionPeriodTests(AspireFixture aspire)
         await ShouldBeRefusedOnBothRoutesAsync(developer, Guid.CreateVersion7(), HttpStatusCode.NotFound, "certification.pharmacy-not-found", cancellationToken);
     }
 
+    /// <summary>
+    /// #422: access is checked before the period, so a non-member learns nothing from what they sent, whatever it is.
+    /// </summary>
+    [Theory]
+    [InlineData("""{"years":31}""")]
+    [InlineData("""{}""")]
+    public async Task Someone_who_is_no_member_of_the_pharmacy_gets_404_whatever_the_period(string body)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var developer = await aspire.CreateHostClientAsync("developer");
+        var pharmacy = Guid.CreateVersion7();
+
+        using var response = await PutAsync(developer, pharmacy, body, cancellationToken);
+
+        await ShouldBeRefusedAsync(response, HttpStatusCode.NotFound, "certification.pharmacy-not-found", cancellationToken);
+    }
+
+    /// <summary>#422: a member whose role lacks the capability is forbidden before the period is looked at.</summary>
+    [Theory]
+    [InlineData("""{"years":31}""")]
+    [InlineData("""{}""")]
+    public async Task An_employee_of_the_pharmacy_gets_403_whatever_the_period(string body)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var developer = await aspire.CreateHostClientAsync("developer");
+        var pharmacy = Guid.CreateVersion7();
+        await CertificationDatabase.DeliverAsync(aspire, StartedType, StartedIn(SubjectOf(developer), pharmacy, "Employee", LongAgo), cancellationToken);
+
+        using var response = await PutAsync(developer, pharmacy, body, cancellationToken);
+
+        await ShouldBeRefusedAsync(response, HttpStatusCode.Forbidden, "certification.capability-missing", cancellationToken);
+    }
+
+    /// <summary>#422: the empty Guid names no pharmacy; it is not found, whatever the period.</summary>
+    [Theory]
+    [InlineData("""{"years":7}""")]
+    [InlineData("""{"years":31}""")]
+    public async Task Setting_the_period_of_the_empty_pharmacy_id_gets_404(string body)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var developer = await aspire.CreateHostClientAsync("developer");
+
+        using var response = await PutAsync(developer, Guid.Empty, body, cancellationToken);
+
+        await ShouldBeRefusedAsync(response, HttpStatusCode.NotFound, "certification.pharmacy-not-found", cancellationToken);
+    }
+
     [Fact]
     public async Task Without_a_token_it_answers_401()
     {
