@@ -40,7 +40,10 @@ public static class ForwardedBodies
 
     // A limit above Kestrel's own is never reached, since Kestrel answers 413 first. Without one, the edge still reads
     // one byte past its limit, so long.MaxValue itself would overflow. A limit set in Kestrel's configuration section is
-    // not yet in KestrelServerOptions when this validation runs, so it is read from the configuration as well.
+    // not yet in KestrelServerOptions when this validation runs, so it is read from the configuration as well. The
+    // smaller of the two errs on the strict side, never the loose one: a configured empty value (no limit to Kestrel)
+    // does not parse and leaves Kestrel's default, and code that raised the limit above the configured one is checked
+    // against the configured one. Neither occurs today; at worst a valid edge limit is refused at start.
     private static long LargestLimit(KestrelServerOptions kestrel, IConfiguration configuration)
     {
         var largest = kestrel.Limits.MaxRequestBodySize ?? long.MaxValue - 1;
