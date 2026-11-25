@@ -21,9 +21,6 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Learning.Application.Consumer
 /// </summary>
 public sealed class PersonErasureRequestedV1Consumer(IErasedPersonStore erased, IPersonalMessagePurge purge, ILearningUnitOfWork unitOfWork, TimeProvider time)
 {
-    /// <summary>The messages Learning stores that carry a person's name.</summary>
-    private static readonly IReadOnlyCollection<Type> PersonalMessages = [typeof(MembershipStartedV1), typeof(MembershipChangedV1)];
-
     private readonly IErasedPersonStore erased = erased;
     private readonly IPersonalMessagePurge purge = purge;
     private readonly ILearningUnitOfWork unitOfWork = unitOfWork;
@@ -45,7 +42,7 @@ public sealed class PersonErasureRequestedV1Consumer(IErasedPersonStore erased, 
             erased.Add(new ErasedPersonCopy { PersonId = message.PersonId, ErasedAt = time.GetUtcNow() });
         }
 
-        await purge.PurgeAsync(message.PersonId, PersonalMessages, cancellationToken);
+        await purge.PurgeAsync(message.PersonId, PersonalMessages.Types, cancellationToken);
 
         await unitOfWork.PublishAsync(new LearningErasureCompletedV1(message.ErasureId));
         await unitOfWork.CommitAsync(cancellationToken);
