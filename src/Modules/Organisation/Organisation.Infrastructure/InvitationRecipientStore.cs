@@ -17,9 +17,9 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Infrastructure;
 /// first committed it, so two pharmacies inviting one new address at once no longer collide on the key: the second
 /// counts on the first's mail, and within the cooldown is refused as it would be alone (#375). The row version stays as
 /// a backstop. The recipient's row is held before the sender's, never after, and a wait for it past
-/// <see cref="InvitationMailRows.LockTimeout"/> is a lost race. A command that does not commit, refused or not, leaves
-/// its transaction, with the lock and any new row, to end when the request's scope disposes the context, which rolls it
-/// back, so no row is ever committed without a mail counted on it.
+/// <see cref="InvitationMailRows.LockTimeout"/> is a lost race. A command that does not commit rolls its transaction
+/// back, with the lock and any new row: at once when it is refused, and otherwise when the request's scope disposes the
+/// context, so no row is ever committed without a mail counted on it.
 /// </para>
 /// </summary>
 public sealed class InvitationRecipientStore(OrganisationDbContext context) : IInvitationRecipientStore

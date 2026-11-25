@@ -18,16 +18,6 @@ public class InvitationRecipientTests
     private static readonly RecipientCooldown TenMinutes = RecipientCooldown.From(TimeSpan.FromMinutes(10));
 
     [Fact]
-    public void The_first_mail_to_an_address_is_counted_at_once()
-    {
-        var recipient = InvitationRecipient.FirstMailed(Anna, At(Start));
-
-        recipient.Id.ShouldBe(InvitationRecipientId.For(Anna));
-        recipient.LastMailedAt.ShouldBe(At(Start));
-        recipient.DomainEvents.ShouldBeEmpty();
-    }
-
-    [Fact]
     public void An_address_not_yet_mailed_may_be_mailed_at_once_and_its_first_mail_is_counted()
     {
         var recipient = InvitationRecipient.NotYetMailed(Anna);
@@ -42,7 +32,7 @@ public class InvitationRecipientTests
     [Fact]
     public void A_mail_within_the_cooldown_is_refused_with_the_instant_the_address_may_be_mailed_again()
     {
-        var recipient = InvitationRecipient.FirstMailed(Anna, At(Start));
+        var recipient = StoredRecipients.MailedAt(Anna, At(Start));
 
         var refused = recipient.RequestMail(At(Start.AddMinutes(10).AddSeconds(-1)), TenMinutes);
 
@@ -57,7 +47,7 @@ public class InvitationRecipientTests
     [Fact]
     public void A_mail_once_the_cooldown_has_passed_is_counted_and_starts_a_new_cooldown()
     {
-        var recipient = InvitationRecipient.FirstMailed(Anna, At(Start));
+        var recipient = StoredRecipients.MailedAt(Anna, At(Start));
 
         var mailed = recipient.RequestMail(At(Start.AddMinutes(10)), TenMinutes);
         var lastMailedAt = recipient.LastMailedAt;
@@ -72,7 +62,7 @@ public class InvitationRecipientTests
     [Fact]
     public void A_refused_mail_changes_nothing()
     {
-        var recipient = InvitationRecipient.FirstMailed(Anna, At(Start));
+        var recipient = StoredRecipients.MailedAt(Anna, At(Start));
 
         var refused = recipient.RequestMail(At(Start.AddMinutes(5)), TenMinutes);
 
@@ -84,7 +74,7 @@ public class InvitationRecipientTests
     [Fact]
     public void A_stored_instant_less_than_a_cooldown_ahead_is_trusted()
     {
-        var recipient = InvitationRecipient.FirstMailed(Anna, At(Start.AddMinutes(5)));
+        var recipient = StoredRecipients.MailedAt(Anna, At(Start.AddMinutes(5)));
 
         var refused = recipient.RequestMail(At(Start), TenMinutes);
 
@@ -98,7 +88,7 @@ public class InvitationRecipientTests
     [InlineData(60 * 24 * 365)]
     public void A_stored_instant_a_cooldown_or_more_ahead_is_not_trusted_and_is_replaced_by_now(int minutesAhead)
     {
-        var recipient = InvitationRecipient.FirstMailed(Anna, At(Start.AddMinutes(minutesAhead)));
+        var recipient = StoredRecipients.MailedAt(Anna, At(Start.AddMinutes(minutesAhead)));
 
         var mailed = recipient.RequestMail(At(Start), TenMinutes);
 
@@ -114,7 +104,8 @@ public class InvitationRecipientTests
     [InlineData(9)]
     public void A_stored_instant_within_a_cooldown_of_the_end_of_the_calendar_is_not_trusted_and_is_replaced_by_now(int minutesBeforeTheEnd)
     {
-        var recipient = InvitationRecipient.FirstMailed(Anna, At(DateTimeOffset.MaxValue.AddMinutes(-minutesBeforeTheEnd)));
+        // A tick before, since no mail can be counted at the calendar's very last instant: a cooldown added to either overflows.
+        var recipient = StoredRecipients.MailedAt(Anna, At(DateTimeOffset.MaxValue.AddMinutes(-minutesBeforeTheEnd).AddTicks(-1)));
 
         var mailed = Should.NotThrow(() => recipient.RequestMail(At(Start), TenMinutes));
 
@@ -125,7 +116,7 @@ public class InvitationRecipientTests
     [Fact]
     public void A_cooldown_is_its_own_configured_length()
     {
-        var recipient = InvitationRecipient.FirstMailed(Anna, At(Start));
+        var recipient = StoredRecipients.MailedAt(Anna, At(Start));
         var oneMinute = RecipientCooldown.From(TimeSpan.FromMinutes(1));
 
         var refused = recipient.RequestMail(At(Start.AddSeconds(59)), oneMinute);
@@ -154,7 +145,7 @@ public class InvitationRecipientTests
     [Fact]
     public void A_refused_mail_carries_the_instant_it_was_refused_at()
     {
-        var recipient = InvitationRecipient.FirstMailed(Anna, At(Start));
+        var recipient = StoredRecipients.MailedAt(Anna, At(Start));
 
         var refused = recipient.RequestMail(At(Start.AddMinutes(4)), TenMinutes);
 

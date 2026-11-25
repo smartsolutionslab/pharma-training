@@ -19,6 +19,8 @@ using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.InvitationRec
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.InvitationSenders;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
 
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Tests.InvitationRecipients;
+
 namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Tests.Pharmacies;
 
 /// <summary>
@@ -88,7 +90,7 @@ public class InvitationLimitEndpointTests
     {
         var store = new InMemoryPharmacyStore();
         var pharmacy = TestPharmacies.Register(Owner).Stored(store);
-        store.StoredRecipients.Add(InvitationRecipient.FirstMailed(EmailAddress.From("ben@example.org"), Timestamp.From(Start)));
+        store.StoredRecipients.Add(StoredRecipients.MailedAt(EmailAddress.From("ben@example.org"), Timestamp.From(Start)));
         var time = new FakeTimeProvider(Start);
         time.Advance(TimeSpan.FromMinutes(4));
 

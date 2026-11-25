@@ -12,6 +12,8 @@ using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.InvitationSen
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies.Events;
 
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Tests.InvitationRecipients;
+
 namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Tests.Pharmacies;
 
 /// <summary>A manager invites an address; the invitation keeps only its token's hash and is refused without a manager's say.</summary>
@@ -400,7 +402,7 @@ public class InviteMemberTests
         full.Stored(store);
         var open = TestPharmacies.Register(Owner, "Rosen-Apotheke").Stored(store);
         var another = TestPharmacies.Register(Owner, "Linden-Apotheke").Stored(store);
-        store.StoredRecipients.Add(InvitationRecipient.FirstMailed(Invitee, Timestamp.From(Start)));
+        store.StoredRecipients.Add(StoredRecipients.MailedAt(Invitee, Timestamp.From(Start)));
         store.StoredSenders.Add(InvitationSender.FirstMailed(Owner, Timestamp.From(Start)));
         var time = new FakeTimeProvider(Start.AddMinutes(1));
         var handler = new InviteMemberHandler(store, store, store, store, new FakeDatabaseClock(time), pharmacyCapOfOne, senderCapOfOne, NullLogger<InviteMemberHandler>.Instance);
@@ -417,6 +419,42 @@ public class InviteMemberTests
         senderCap.Error.Code.ShouldBe("organisation.too-many-invitations-sent-today");
         store.Commits.ShouldBe(0);
         store.Published.ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// A refusal after the count has held the recipient's and the sender's rows rolls their transaction back at once (review
+    /// of #395), so a request waiting for one of those rows goes on now rather than when the scope ends.
+    /// </summary>
+    [Fact]
+    public async Task An_invitation_refused_once_its_rows_are_held_rolls_back_at_once()
+    {
+        var store = new InMemoryPharmacyStore();
+        var senderCapOfOne = new RecipientAndSenderMailLimits(RecipientCooldown.From(TimeSpan.FromMinutes(10)), DailyMailCap.From(1));
+        var open = TestPharmacies.Register(Owner).Stored(store);
+        store.StoredRecipients.Add(StoredRecipients.MailedAt(Invitee, Timestamp.From(Start)));
+        store.StoredSenders.Add(InvitationSender.FirstMailed(Owner, Timestamp.From(Start)));
+        var handler = Handler(store, new FakeTimeProvider(Start.AddMinutes(1)), senderCapOfOne);
+
+        var recipientCooldown = await handler.HandleAsync(new InviteMember(open.Id, Owner, Invitee, JobFunction.Pta, MembershipRole.Employee), TestContext.Current.CancellationToken);
+        var senderCap = await handler.HandleAsync(new InviteMember(open.Id, Owner, EmailAddress.From("ben@example.org"), JobFunction.Pta, MembershipRole.Employee), TestContext.Current.CancellationToken);
+
+        recipientCooldown.Error.Code.ShouldBe("organisation.recipient-mailed-recently");
+        senderCap.Error.Code.ShouldBe("organisation.too-many-invitations-sent-today");
+        store.Rollbacks.ShouldBe(2, "a refusal left its held rows to the end of the scope");
+        store.Commits.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task An_invitation_whose_recipient_row_stayed_locked_past_the_lock_timeout_rolls_back_at_once()
+    {
+        var store = new InMemoryPharmacyStore();
+        var pharmacy = TestPharmacies.Register(Owner).Stored(store);
+        store.TimeOutNextRecipientLock();
+
+        var refused = await Handler(store).HandleAsync(new InviteMember(pharmacy.Id, Owner, Invitee, JobFunction.Pta, MembershipRole.Employee), TestContext.Current.CancellationToken);
+
+        refused.Error.Code.ShouldBe("organisation.concurrent-save");
+        store.Rollbacks.ShouldBe(1, "a lock timeout left its transaction to the end of the scope");
     }
 
     [Fact]
@@ -501,7 +539,7 @@ public class InviteMemberTests
     {
         var store = new InMemoryPharmacyStore();
         var pharmacy = TestPharmacies.Register(Owner).Stored(store);
-        store.StoredRecipients.Add(InvitationRecipient.FirstMailed(Invitee, Timestamp.From(Start.AddMinutes(minutesAhead))));
+        store.StoredRecipients.Add(StoredRecipients.MailedAt(Invitee, Timestamp.From(Start.AddMinutes(minutesAhead))));
         var logger = new FakeLogger<InviteMemberHandler>();
 
         var invited = await new InviteMemberHandler(store, store, store, store, new FakeDatabaseClock(new FakeTimeProvider(Start)), InvitationMailLimits.Default, RecipientAndSenderMailLimits.Default, logger)

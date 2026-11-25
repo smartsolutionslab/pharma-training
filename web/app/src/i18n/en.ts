@@ -1170,7 +1170,7 @@ export const en: MessageSchema = {
       'no-open-invitation': 'This invitation is no longer open: it was accepted or revoked.',
       'person-already-member': 'You are already a member of this pharmacy.',
       'pharmacy-changed': 'The pharmacy was changed at the same time. Check its current state and try again.',
-      'concurrent-save': 'Another change to the pharmacy was saved at the same moment; nothing was saved. Try again.',
+      'concurrent-save': 'Another request was being saved at the same moment; nothing was saved. Try again.',
       'pharmacy-not-found': 'You are no longer a member of this pharmacy.',
       'recipient-mailed-recently':
         'An invitation was only just sent to this address. You can invite it again after a short wait.',

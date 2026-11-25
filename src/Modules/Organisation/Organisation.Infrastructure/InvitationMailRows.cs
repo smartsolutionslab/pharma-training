@@ -9,8 +9,8 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Infrastructure;
 /// Creates a row an invitation mail counts on when it is missing, and holds it until the context's transaction ends
 /// (docs/adr/0004, #369, #375). The transaction is begun here when none is open; the unit of work commits it, and the
 /// command's domain events wait for that commit. A command that does not commit (a refusal, a lost race) never
-/// commits it either: the transaction, with its locks and any row it inserted, is rolled back when the request's scope
-/// disposes the context.
+/// commits it either: the transaction, with its locks and any row it inserted, is rolled back, at once on a refusal
+/// (<c>IOrganisationUnitOfWork.RollbackAsync</c>) and otherwise when the request's scope disposes the context.
 /// <para>
 /// Every statement of the transaction from here on waits at most <see cref="LockTimeout"/> for a lock
 /// (<c>SET LOCAL lock_timeout</c>, so it ends with the transaction and no other use of the pooled connection keeps it).

@@ -1206,7 +1206,7 @@ export const de = {
       'pharmacy-changed':
         'Die Apotheke wurde gerade gleichzeitig geändert. Prüfen Sie den aktuellen Stand und versuchen Sie es erneut.',
       'concurrent-save':
-        'Gleichzeitig wurde eine andere Änderung an der Apotheke gespeichert; es wurde nichts gespeichert. Versuchen Sie es erneut.',
+        'Gleichzeitig wurde eine andere Anfrage gespeichert; es wurde nichts gespeichert. Versuchen Sie es erneut.',
       'pharmacy-not-found': 'Sie sind nicht mehr Mitglied dieser Apotheke.',
       'recipient-mailed-recently':
         'An diese Adresse wurde gerade erst eine Einladung gesendet. Sie können sie nach einer kurzen Wartezeit erneut einladen.',
