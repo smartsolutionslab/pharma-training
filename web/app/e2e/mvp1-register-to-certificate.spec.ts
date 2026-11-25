@@ -160,7 +160,10 @@ async function submit(page: Page) {
 // failed or timed-out test too (#442). Nothing for the local users.
 let removeCast: X1Cast['dispose'] = async () => {};
 test.afterEach(async () => {
-  await removeCast();
+  const remove = removeCast;
+  // Back to nothing first, so a later test in this file never removes this one's users again (#445).
+  removeCast = async () => {};
+  await remove();
 });
 
 test('MVP 1: an owner registers and invites, an editor publishes, the employee passes, the certificate verifies and the matrix shows it completed', async ({

@@ -160,8 +160,12 @@ public class AppHostStagingMailTests
         var image = mailpit.Annotations.OfType<ContainerImageAnnotation>().Single();
 
         image.Image.ShouldBe("axllent/mailpit");
-        image.Tag.ShouldNotBeNull().ShouldMatch(@"^v\d+\.\d+\.\d+$", "Mailpit's tag must name an exact patch (vX.Y.Z).");
-        // And its digest, so a tag pushed again elsewhere cannot change what runs (#445).
+        // By digest, so a tag pushed again cannot change what runs (#445); Aspire then names the image by its digest
+        // alone, and a tag, where one is kept, names an exact patch (vX.Y.Z).
         image.SHA256.ShouldNotBeNull("Mailpit's image is not pinned by digest.").ShouldMatch("^[0-9a-f]{64}$");
+        if (image.Tag is not null)
+        {
+            image.Tag.ShouldMatch(@"^v\d+\.\d+\.\d+$", "Mailpit's tag must name an exact patch (vX.Y.Z).");
+        }
     }
 }
