@@ -134,6 +134,14 @@ jobs:
     # No secrets: the run's job reads its two from the staging environment it names, and inherit would hand it every
     # secret this workflow holds (StagingEndToEndRunTakesNoSecretsFromItsCaller).
 
+  # The demo data on what staging now runs (#457, demo-seed-staging.yml, docs/adr/0042). Staging alone: production neither
+  # calls nor waits for it (DemoSeedRunsOnStagingAlone).
+  demo-seed:
+    needs: staging
+    uses: ./.github/workflows/demo-seed-staging.yml
+    # No secrets: the seed's job reads its three from the staging environment it names, and inherit would hand it every
+    # secret this workflow holds (StagingEndToEndRunTakesNoSecretsFromItsCaller).
+
   production:
     needs: staging
     runs-on: ubuntu-latest
