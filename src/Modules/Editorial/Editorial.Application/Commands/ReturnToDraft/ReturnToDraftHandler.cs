@@ -16,16 +16,17 @@ public sealed class ReturnToDraftHandler(ICourseVersionStore versions, IErasedPe
     {
         Ensure.That(command).IsNotNull();
 
-        // Held until the commit, as the erasure holds them, so the name is either forgotten after this return or not
-        // stored at all: an erased editor's account and token can outlive their erasure (#115).
-        await erased.HoldAsync(command.Editor, cancellationToken);
-        var name = await erased.IsErasedAsync(command.Editor, cancellationToken) ? null : command.EditorName;
-
         var found = await versions.FindForUpdateAsync(command.Version, cancellationToken);
         if (!found.HasValue)
         {
             return Failure(CourseVersionFailures.NotFound(command.Version.Value));
         }
+
+        // Held until the commit, as the erasure holds them, so the name is either forgotten after this return or not
+        // stored at all: an erased editor's account and token can outlive their erasure (#115). Held after the load,
+        // which reads in a snapshot transaction of its own; the hold begins the transaction the commit ends.
+        await erased.HoldAsync(command.Editor, cancellationToken);
+        var name = await erased.IsErasedAsync(command.Editor, cancellationToken) ? null : command.EditorName;
 
         var returned = found.Value.ReturnToDraft(command.Editor, name, command.Reason, Timestamp.From(time.GetUtcNow()));
         if (returned.IsFailure)

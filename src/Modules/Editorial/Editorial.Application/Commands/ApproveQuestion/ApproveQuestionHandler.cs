@@ -16,16 +16,17 @@ public sealed class ApproveQuestionHandler(ICourseVersionStore versions, IErased
     {
         Ensure.That(command).IsNotNull();
 
-        // Held until the commit, as the erasure holds them, so the name is either forgotten after this approval or not
-        // stored at all: an erased approver's account and token can outlive their erasure (#115).
-        await erased.HoldAsync(command.Approver, cancellationToken);
-        var name = await erased.IsErasedAsync(command.Approver, cancellationToken) ? null : command.ApproverName;
-
         var found = await versions.FindForUpdateAsync(command.Version, cancellationToken);
         if (!found.HasValue)
         {
             return Failure(CourseVersionFailures.NotFound(command.Version.Value));
         }
+
+        // Held until the commit, as the erasure holds them, so the name is either forgotten after this approval or not
+        // stored at all: an erased approver's account and token can outlive their erasure (#115). Held after the load,
+        // which reads in a snapshot transaction of its own; the hold begins the transaction the commit ends.
+        await erased.HoldAsync(command.Approver, cancellationToken);
+        var name = await erased.IsErasedAsync(command.Approver, cancellationToken) ? null : command.ApproverName;
 
         var approved = found.Value.ApproveQuestion(command.Question, command.Approver, name, Timestamp.From(time.GetUtcNow()));
         if (approved.IsFailure)
