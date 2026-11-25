@@ -36,4 +36,16 @@ public sealed class ErasedPersonStore(CertificationDbContext context) : IErasedP
         context.Set<ErasedPerson>().AnyAsync(erased => erased.Person == person, cancellationToken);
 
     public void Add(ErasedPerson erased) => context.Add(erased);
+
+    /// <summary>
+    /// The tombstones for which a certificate with the person as its holder exists, one <c>EXISTS</c> per tombstone in a
+    /// single query, ordered by the person's id and read without tracking.
+    /// </summary>
+    public async Task<IReadOnlyList<PersonId>> HoldingCertificatesAsync(CancellationToken cancellationToken) =>
+        await context.Set<ErasedPerson>()
+            .AsNoTracking()
+            .Where(erased => context.Set<Certificate>().Any(certificate => certificate.Holder == erased.Person))
+            .OrderBy(erased => erased.Person)
+            .Select(erased => erased.Person)
+            .ToListAsync(cancellationToken);
 }

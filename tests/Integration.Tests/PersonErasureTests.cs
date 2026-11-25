@@ -23,7 +23,7 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// (planted by hand on versions the API made), keeping the reasons; Learning, whose copies hold the id only, purges the
 /// membership messages it stored. Certification (slice 4) removes the certificates no pharmacy keeps any longer, row and
 /// PDF, keeps the retained ones with the name, forgets the name on its copies of the memberships and drops what arrives
-/// for the person afterwards. Each announces its step; the steps after Organisation's arrive in any order. The class
+/// for the person afterwards; a periodic purge (slice 5) deletes a retained one once no pharmacy keeps it any longer. Each announces its step; the steps after Organisation's arrive in any order. The class
 /// calls the public verification, so it runs in that endpoint's collection (one per-address limit, docs/adr/0029).
 /// </summary>
 [Collection(CertificationVerification.Name)]
@@ -434,6 +434,59 @@ public class PersonErasureTests(AspireFixture aspire)
     }
 
     /// <summary>
+    /// Slice 5 (the owner's decision of 25 November 2026): the person and a colleague have worked in a pharmacy for twelve
+    /// years, which keeps certificates ten. Each passed a course seven years ago. The erasure retains the person's
+    /// certificate, which still verifies; once the pharmacy cuts its period to five years, the next purge deletes its row
+    /// and PDF and its code no longer verifies. The colleague, never erased, keeps theirs as it was.
+    /// </summary>
+    [Fact]
+    public async Task A_retained_certificate_is_purged_with_its_pdf_once_its_pharmacy_shortens_its_period_and_a_colleagues_stays()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var probe = Probe.New();
+        var colleague = Probe.New();
+        using var support = await aspire.CreateHostClientAsync("support");
+        using var developer = await aspire.CreateHostClientAsync("developer");
+        using var anonymous = aspire.CreateHostClient();
+        var now = TimeProvider.System.GetUtcNow();
+        var pharmacy = await CertificationIssuing.ManagedPharmacyAsync(aspire, developer, cancellationToken);
+        var membership = new CertificationIssuing.StartedEvent(Guid.CreateVersion7(), probe.Person, pharmacy, probe.Name, "Pta", "Employee", now.AddYears(-12), CertificationIssuing.NewMetadata());
+        await CertificationDatabase.DeliverAsync(aspire, CertificationIssuing.StartedType, membership, cancellationToken);
+        var colleaguesMembership = new CertificationIssuing.StartedEvent(Guid.CreateVersion7(), colleague.Person, pharmacy, colleague.Name, "Pta", "Employee", now.AddYears(-12), CertificationIssuing.NewMetadata());
+        await CertificationDatabase.DeliverAsync(aspire, CertificationIssuing.StartedType, colleaguesMembership, cancellationToken);
+        var published = CertificationIssuing.Published();
+        await CertificationDatabase.DeliverAsync(aspire, CertificationIssuing.PublishedType, published, cancellationToken);
+        var retained = await PassedAsync(membership, published, now.AddYears(-7), cancellationToken);
+        var colleagues = await PassedAsync(colleaguesMembership, published, now.AddYears(-7), cancellationToken);
+        await CertificationDatabase.WaitUntilCountAsync(aspire, StoredOfHolder, probe.Person, 1, cancellationToken);
+        await CertificationDatabase.WaitUntilCountAsync(aspire, StoredOfHolder, colleague.Person, 1, cancellationToken);
+        await SetRetentionPeriodAsync(developer, pharmacy, 10, cancellationToken);
+        var blobs = await CertificationBlobsAsync(cancellationToken);
+
+        var erasure = await RequestAsync(support, probe.Person, cancellationToken);
+        await WaitForStepsAsync(support, erasure, AllSteps, cancellationToken);
+        (await CertificationDatabase.CountAsync(aspire, "select count(*) from certification.certificates where id = @id", retained.Id, cancellationToken)).ShouldBe(1, "the erasure retains what a pharmacy still keeps");
+        await ShouldVerifyAsync(anonymous, retained.VerificationCode, cancellationToken);
+        (await blobs.FindAsync(CertificatePdf(retained.Id), cancellationToken)).HasValue.ShouldBeTrue("the retained certificate's PDF was not there before the purge");
+
+        await SetRetentionPeriodAsync(developer, pharmacy, 5, cancellationToken);
+
+        await CertificationDatabase.WaitUntilCountAsync(aspire, "select count(*) from certification.certificates where id = @id", retained.Id, 0, cancellationToken);
+        (await blobs.FindAsync(CertificatePdf(retained.Id), cancellationToken)).HasValue.ShouldBeFalse("the purged certificate's PDF is still there");
+        using (var refused = await anonymous.GetAsync(Verify(retained.VerificationCode), cancellationToken))
+        {
+            var body = await refused.Content.ReadAsStringAsync(cancellationToken);
+            refused.StatusCode.ShouldBe(HttpStatusCode.NotFound, body);
+            using var problem = JsonDocument.Parse(body);
+            problem.RootElement.GetProperty("code").GetString().ShouldBe(NotVerifiable);
+        }
+
+        (await CertificationDatabase.CountAsync(aspire, "select count(*) from certification.certificates where id = @id", colleagues.Id, cancellationToken)).ShouldBe(1, "the colleague was never erased");
+        (await blobs.FindAsync(CertificatePdf(colleagues.Id), cancellationToken)).HasValue.ShouldBeTrue("the colleague's PDF is gone");
+        await ShouldVerifyAsync(anonymous, colleagues.VerificationCode, cancellationToken);
+    }
+
+    /// <summary>
     /// Case 3 (slice 4): after the erasure no column of Certification's schema or of its Wolverine tables holds the
     /// person's name, but the holder name of the retained certificate, and only that row.
     /// </summary>
@@ -609,6 +662,20 @@ public class PersonErasureTests(AspireFixture aspire)
 
             await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken);
         }
+    }
+
+    /// <summary>The pharmacy's manager sets how many years it keeps a certificate in its view (#391).</summary>
+    private static async Task SetRetentionPeriodAsync(HttpClient manager, Guid pharmacy, int years, CancellationToken cancellationToken)
+    {
+        using var content = new StringContent($$"""{"years":{{years}}}""", Encoding.UTF8, "application/json");
+        using var response = await manager.PutAsync(new Uri($"/certification/pharmacies/{pharmacy:D}/retention-period", UriKind.Relative), content, cancellationToken);
+        response.StatusCode.ShouldBe(HttpStatusCode.NoContent, await response.Content.ReadAsStringAsync(cancellationToken));
+    }
+
+    private static async Task ShouldVerifyAsync(HttpClient anonymous, string code, CancellationToken cancellationToken)
+    {
+        using var verified = await anonymous.GetAsync(Verify(code), cancellationToken);
+        verified.StatusCode.ShouldBe(HttpStatusCode.OK, await verified.Content.ReadAsStringAsync(cancellationToken));
     }
 
     private static string Hash() => Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));
