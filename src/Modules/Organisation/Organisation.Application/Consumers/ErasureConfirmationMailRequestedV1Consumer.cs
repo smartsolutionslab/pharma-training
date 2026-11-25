@@ -106,7 +106,7 @@ public sealed partial class ErasureConfirmationMailRequestedV1Consumer(
         erasure.CompleteStep(ErasureModule.Organisation, now);
         await unitOfWork.PublishAsync(new PersonErasureRequestedV1(erasure.Id.Value, person.Value));
         // The account's deletion is Organisation's own work item, in the same commit: a Keycloak outage then retries the
-        // deletion alone, never the mails or the forgetting above (docs/adr/0040).
+        // deletion alone, never the mails or the forgetting above (docs/adr/0041).
         await unitOfWork.PublishAsync(new AccountDeletionRequestedV1(erasure.Id.Value, person.Value));
         await unitOfWork.CommitAsync(cancellationToken);
     }
@@ -114,7 +114,7 @@ public sealed partial class ErasureConfirmationMailRequestedV1Consumer(
     /// <summary>
     /// Q5 (#115): where Organisation holds no address of the person, the confirmation goes to their Keycloak account's
     /// address, only where Keycloak verified it (docs/adr/0014); no account, or none verified, means no mail. That address
-    /// is used for the mail alone, and nothing in Organisation is forgotten by it (owner decision C, docs/adr/0040). A
+    /// is used for the mail alone, and nothing in Organisation is forgotten by it (owner decision C, docs/adr/0041). A
     /// failure of Keycloak throws before anything is mailed or forgotten.
     /// </summary>
     private async Task<IReadOnlyList<EmailAddress>> AccountAddressAsync(PersonId person, CancellationToken cancellationToken)

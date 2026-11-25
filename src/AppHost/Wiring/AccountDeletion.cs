@@ -4,7 +4,7 @@ namespace Aspire.Hosting;
 
 /// <summary>
 /// The confidential client <c>pharma-training-erasure</c>, with which a service deletes an erased person's Keycloak account
-/// (#115 slice 6, docs/adr/0040). Its secret is one secret parameter, <c>keycloak-erasure-client-secret</c>: in run mode
+/// (#115 slice 6, docs/adr/0041). Its secret is one secret parameter, <c>keycloak-erasure-client-secret</c>: in run mode
 /// Aspire generates it once and keeps it in the AppHost's user secrets, letters and digits alone, so it needs no escaping
 /// in the realm's JSON or a form body; published, it is a Key Vault secret the deployment sets (docs/adr/0005). Keycloak's
 /// realm import reads it as <c>KEYCLOAK_ERASURE_CLIENT_SECRET</c>, and a service whose project says
