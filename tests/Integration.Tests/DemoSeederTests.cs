@@ -13,7 +13,10 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// The demo seeder (#457) run twice against the whole application, as the AppHost runs it locally (target Local, the
 /// master realm's administrator, Mailpit): the first run seeds what the plan says, the second finds it all and creates
 /// nothing. The fixture runs with four eyes on and its own limits; the seeder's plan keeps within the defaults anyway.
+/// It drafts course versions, chapters and questions, so it runs in <see cref="EditorialDrafts"/>: run beside the classes
+/// that gate those tables, its requests queue behind their gates and add to the backends they count.
 /// </summary>
+[Collection(EditorialDrafts.Name)]
 public class DemoSeederTests(AspireFixture aspire)
 {
     private const string Markt = "Demo-Apotheke am Markt";
