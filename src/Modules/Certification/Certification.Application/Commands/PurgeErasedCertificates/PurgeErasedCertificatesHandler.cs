@@ -75,8 +75,9 @@ public sealed partial class PurgeErasedCertificatesHandler(
             await ErasedCertificates.RemoveAsync(removed, blobs, certificates, cancellationToken);
         }
 
-        // Committed whether or not anything went: the commit also ends the hold's transaction.
-        await unitOfWork.CommitAsync(cancellationToken);
+        // Committed whether or not anything went: the commit also ends the hold's transaction. One of several commits in
+        // this scope, one per person, so Wolverine does not warn at each flush after the first (#462).
+        await unitOfWork.CommitOneOfSeveralAsync(cancellationToken);
     }
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Purging the certificates of erased person {Person} failed; it is given up for this pass and tried again in the next.")]

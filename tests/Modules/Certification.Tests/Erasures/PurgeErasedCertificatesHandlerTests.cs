@@ -246,6 +246,30 @@ public class PurgeErasedCertificatesHandlerTests
         blobs.Deleted.ShouldContain(CertificateDocuments.NameFor(refused.Id));
     }
 
+    /// <summary>
+    /// #462: the purge commits once per holder in one message scope, and Wolverine flushes a scope's outbox once, logging a
+    /// warning for every commit after the first. Each holder's commit is therefore one of several
+    /// (<c>CommitOneOfSeveralAsync</c>, as Editorial's republish commits, ADR 0019), and none is a plain commit.
+    /// </summary>
+    [Fact]
+    public async Task The_purge_commits_each_holder_as_one_of_several()
+    {
+        Member(person, pharmacy, MembershipStart);
+        Member(otherPerson, otherPharmacy, MembershipStart);
+        Stored(Issue(person, Issued));
+        Stored(Issue(otherPerson, Issued));
+        erased.Tombstone(person, Issued.AddYears(4));
+        erased.Tombstone(otherPerson, Issued.AddYears(4));
+        time.SetUtcNow(Issued.AddYears(7));
+
+        var result = await Handler().HandleAsync(new PurgeErasedCertificates(), TestContext.Current.CancellationToken);
+
+        result.IsSuccess.ShouldBeTrue();
+        unitOfWork.CommitMethods.ShouldBe([nameof(ErasureUnitOfWork.CommitOneOfSeveralAsync), nameof(ErasureUnitOfWork.CommitOneOfSeveralAsync)]);
+        unitOfWork.CommitMethods.ShouldNotContain(nameof(ErasureUnitOfWork.CommitAsync));
+        certificates.Stored.ShouldBeEmpty();
+    }
+
     [Fact]
     public async Task A_pass_with_nothing_to_purge_succeeds_and_changes_nothing()
     {

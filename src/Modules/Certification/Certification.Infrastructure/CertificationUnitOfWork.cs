@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Application;
@@ -31,11 +30,12 @@ public sealed class CertificationUnitOfWork : ModuleUnitOfWork<CertificationDbCo
             {
                 await context.Database.RollbackTransactionAsync(cancellationToken);
             }
-            catch (InvalidOperationException) when (transaction.GetDbTransaction().Connection is null)
+            catch (InvalidOperationException)
             {
-                // A failed COMMIT already ended the transaction on the server, and the provider refuses a second end; its
-                // connection is gone, which is how ADO.NET says the transaction is no longer valid (as EditorialUnitOfWork
-                // handles it). Disposing it lets the context forget it, so the next person's hold opens a new one.
+                // A failed COMMIT already ended the transaction on the server (it rolls back), and Npgsql then refuses any
+                // second end ("This NpgsqlTransaction has completed"); it still names its connection, so that cannot tell
+                // (#462). A transaction is open here, so nothing else throws this. Disposing it lets the context forget
+                // it, so the next person's hold opens a new one.
                 await transaction.DisposeAsync();
             }
         }

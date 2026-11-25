@@ -152,6 +152,43 @@ public class KeycloakErasureClientTests(AspireFixture aspire)
         problem.RootElement.GetProperty("error").GetString().ShouldBeOneOf("unauthorized_client", "invalid_client");
     }
 
+    /// <summary>
+    /// #462: the client's token carries <c>realm-management</c>'s <c>manage-users</c> and nothing else, even while its
+    /// service account holds another role: no realm role and no role of another client, as <c>fullScopeAllowed: false</c>
+    /// and the realm's client scope mapping make it.
+    /// </summary>
+    [Fact]
+    public async Task Its_token_carries_realm_managements_manage_users_alone()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var identity = keycloak.Identity();
+        var serviceAccount = Subject(await ClientTokenAsync(identity, cancellationToken));
+
+        // A role the service account comes to hold besides manage-users, by an administrator's mistake, must stay out of
+        // its token: fullScopeAllowed off, the token carries only what the client's scope maps.
+        await keycloak.GrantRealmRoleAsync(serviceAccount, "editor", cancellationToken);
+        try
+        {
+            using var claims = Payload(await ClientTokenAsync(identity, cancellationToken));
+
+            var root = claims.RootElement;
+            if (root.TryGetProperty("realm_access", out var realmAccess)
+                && realmAccess.TryGetProperty("roles", out var realmRoles))
+            {
+                realmRoles.EnumerateArray().Select(role => role.GetString()).ShouldBeEmpty("the erasure client's token must carry no realm role, even one its service account holds");
+            }
+
+            root.TryGetProperty("resource_access", out var resourceAccess).ShouldBeTrue("the erasure client's token must carry realm-management's manage-users");
+            resourceAccess.EnumerateObject().Select(client => client.Name).ShouldBe(["realm-management"], "the erasure client's token must carry no role of another client");
+            resourceAccess.GetProperty("realm-management").GetProperty("roles").EnumerateArray().Select(role => role.GetString())
+                .ShouldBe(["manage-users"], "the erasure client's token must carry realm-management's manage-users alone");
+        }
+        finally
+        {
+            await keycloak.RevokeRealmRoleAsync(serviceAccount, "editor", cancellationToken);
+        }
+    }
+
     /// <summary>Organisation's own reader over Keycloak's admin API, as the erasure client, at Keycloak's internal address.</summary>
     private async Task<KeycloakAccounts> AccountsAsync(HttpClient http, CancellationToken cancellationToken) =>
         new(
@@ -186,10 +223,16 @@ public class KeycloakErasureClientTests(AspireFixture aspire)
     /// <summary>The access token's <c>sub</c>, read from its payload; the signature is Keycloak's own and not checked here.</summary>
     private static Guid Subject(string token)
     {
+        using var claims = Payload(token);
+        return Guid.Parse(claims.RootElement.GetProperty("sub").GetString().ShouldNotBeNull("the client's token names no subject"));
+    }
+
+    /// <summary>An access token's payload, its middle segment decoded from base64url; the signature is not checked here.</summary>
+    private static JsonDocument Payload(string token)
+    {
         var payload = token.Split('.')[1].Replace('-', '+').Replace('_', '/');
         payload = payload.PadRight(payload.Length + ((4 - (payload.Length % 4)) % 4), '=');
-        using var claims = JsonDocument.Parse(Convert.FromBase64String(payload));
-        return Guid.Parse(claims.RootElement.GetProperty("sub").GetString().ShouldNotBeNull("the client's token names no subject"));
+        return JsonDocument.Parse(Convert.FromBase64String(payload));
     }
 
     private sealed record ClientToken([property: JsonPropertyName("access_token")] string AccessToken);

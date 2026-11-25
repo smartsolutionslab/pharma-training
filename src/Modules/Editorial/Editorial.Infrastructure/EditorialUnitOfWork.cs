@@ -1,6 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage;
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Infrastructure.Persistence;
@@ -34,11 +33,13 @@ public sealed class EditorialUnitOfWork : ModuleUnitOfWork<EditorialDbContext>, 
         {
             await context.Database.RollbackTransactionAsync(cancellationToken);
         }
-        catch (InvalidOperationException) when (transaction.GetDbTransaction().Connection is null)
+        catch (InvalidOperationException)
         {
             // The commit that lost the race already ended the transaction on the server (a failed COMMIT rolls back), and
-            // the provider then refuses a second end with InvalidOperationException; its connection is gone, which is how
-            // ADO.NET says a transaction is no longer valid. Nothing is left to roll back, so this is the rollback done.
+            // Npgsql then refuses any second end ("This NpgsqlTransaction has completed"); it still names its connection,
+            // so that cannot tell (#462). A transaction is open here, so nothing else throws this. Nothing is left to roll
+            // back; disposing it lets the context forget it, so the next one can begin.
+            await transaction.DisposeAsync();
         }
     }
 }
