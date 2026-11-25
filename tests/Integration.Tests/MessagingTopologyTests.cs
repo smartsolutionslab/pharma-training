@@ -22,6 +22,10 @@ public class MessagingTopologyTests
 
     private const string InvitationMailRequested = Contracts + "Organisation.InvitationMailRequestedV1";
 
+    private const string PersonErasureRequested = Contracts + "Organisation.PersonErasureRequestedV1";
+
+    private const string ComplianceErasureCompleted = Contracts + "Compliance.ComplianceErasureCompletedV1";
+
     private const string ContentCompleted = Contracts + "Learning.ContentCompletedV1";
 
     private const string LearningSessionStarted = Contracts + "Learning.LearningSessionStartedV1";
@@ -35,16 +39,18 @@ public class MessagingTopologyTests
         published.ShouldBeEmpty();
     }
 
+    /// <summary>#115: Organisation announces the erasure to every service and records Compliance's completion as a step.</summary>
     [Fact]
-    public void Organisation_publishes_its_membership_and_pharmacy_events_and_leaves_its_local_mail_request_off_the_broker()
+    public void Organisation_publishes_its_membership_pharmacy_and_erasure_events_consumes_compliances_erasure_completion_and_leaves_its_local_mail_requests_off_the_broker()
     {
         var (consumed, published) = MessagingTopology.Of("organisation");
 
         consumed.ShouldNotContain(InvitationMailRequested);
-        consumed.ShouldBeEmpty();
+        consumed.ShouldBe([ComplianceErasureCompleted], ignoreOrder: false);
         published.ShouldNotContain(InvitationMailRequested);
+        published.ShouldNotContain(Contracts + "Organisation.ErasureConfirmationMailRequestedV1");
         published.ShouldBe(
-            [Contracts + "Organisation.MembershipChangedV1", Contracts + "Organisation.MembershipEndedV1", Contracts + "Organisation.MembershipStartedV1", Contracts + "Organisation.PharmacyRegisteredV1"],
+            [Contracts + "Organisation.MembershipChangedV1", Contracts + "Organisation.MembershipEndedV1", Contracts + "Organisation.MembershipStartedV1", PersonErasureRequested, Contracts + "Organisation.PharmacyRegisteredV1"],
             ignoreOrder: false);
     }
 
@@ -63,8 +69,18 @@ public class MessagingTopologyTests
         var (consumed, _) = MessagingTopology.Of("compliance");
 
         consumed.ShouldBe(
-            [Contracts + "Assessment.AttemptsExhaustedV1", Contracts + "Certification.CertificateIssuedV1", CourseVersionPublished, CourseVersionRetired, Contracts + "Learning.ContentCompletedV1", Contracts + "Learning.LearningSessionStartedV1", Contracts + "Organisation.MembershipChangedV1", Contracts + "Organisation.MembershipEndedV1", Contracts + "Organisation.MembershipStartedV1"],
+            [Contracts + "Assessment.AttemptsExhaustedV1", Contracts + "Certification.CertificateIssuedV1", CourseVersionPublished, CourseVersionRetired, Contracts + "Learning.ContentCompletedV1", Contracts + "Learning.LearningSessionStartedV1", Contracts + "Organisation.MembershipChangedV1", Contracts + "Organisation.MembershipEndedV1", Contracts + "Organisation.MembershipStartedV1", PersonErasureRequested],
             ignoreOrder: false);
+    }
+
+    /// <summary>#115: Compliance erases a person on Organisation's request and announces its completion to Organisation.</summary>
+    [Fact]
+    public void Compliance_consumes_the_erasure_request_and_publishes_its_erasure_completion()
+    {
+        var (consumed, published) = MessagingTopology.Of("compliance");
+
+        consumed.ShouldContain(PersonErasureRequested);
+        published.ShouldContain(ComplianceErasureCompleted);
     }
 
     /// <summary>

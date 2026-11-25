@@ -26,6 +26,12 @@ public sealed class MemberStore(ComplianceDbContext context) : IMemberStore
 
     public void Add(MembershipChange change) => context.Add(change);
 
+    public Task<IReadOnlyList<Member>> MembersOfPersonAsync(PersonId person, CancellationToken cancellationToken) =>
+        throw new NotImplementedException();
+
+    public Task<IReadOnlyList<MembershipChange>> ChangesOfPersonAsync(PersonId person, CancellationToken cancellationToken) =>
+        throw new NotImplementedException();
+
     public Task<IReadOnlyList<CurrentMembership>> ActiveMembershipsAsync(PersonId person, PharmacyId pharmacy, CancellationToken cancellationToken) =>
         CurrentAsync(Active().Where(member => member.Person == person && member.Pharmacy == pharmacy), cancellationToken);
 

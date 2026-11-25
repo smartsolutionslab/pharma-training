@@ -37,4 +37,7 @@ public sealed class Member : Entity<MembershipId>
         Ensure.That(name).IsNotNull();
         return new Member(id, person, pharmacy, name, jobFunction, role);
     }
+
+    /// <summary>Forgets the name, for the person's erasure (#115).</summary>
+    public void EraseName() => throw new NotImplementedException();
 }

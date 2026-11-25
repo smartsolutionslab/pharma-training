@@ -43,4 +43,7 @@ public sealed class MembershipChange
         Ensure.That(name).IsNotNull();
         return new MembershipChange(membership, person, pharmacy, version, name, jobFunction, role);
     }
+
+    /// <summary>Forgets the name, for the person's erasure (#115).</summary>
+    public void EraseName() => throw new NotImplementedException();
 }

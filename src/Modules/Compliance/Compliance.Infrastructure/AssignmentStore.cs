@@ -57,6 +57,9 @@ public sealed class AssignmentStore(ComplianceDbContext context) : IAssignmentSt
 
     public void Add(Assignment assignment) => context.Add(assignment);
 
+    public Task<IReadOnlyList<Assignment>> ActiveOfLearnerInEveryPharmacyAsync(PersonId learner, CancellationToken cancellationToken) =>
+        throw new NotImplementedException();
+
     public async Task<Option<Assignment>> FindInPharmacyAsync(PharmacyId pharmacy, AssignmentId assignment, CancellationToken cancellationToken)
     {
         var found = await context.Set<Assignment>()

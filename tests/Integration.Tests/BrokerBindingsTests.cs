@@ -24,7 +24,7 @@ public partial class BrokerBindingsTests(AspireFixture aspire)
 
     private const string InvitationMailRequested = "SmartSolutionsLab.PharmaTraining.Contracts.Organisation.InvitationMailRequestedV1";
 
-    // Organisation consumes no event another service publishes; Compliance's binding to Organisation's MembershipStartedV1
+    // Organisation consumes from the broker only Compliance's erasure completion (#115); Compliance's binding to Organisation's MembershipStartedV1
     // is the one a host needs.
     private const string MembershipStarted = "SmartSolutionsLab.PharmaTraining.Contracts.Organisation.MembershipStartedV1";
 
@@ -157,6 +157,23 @@ public partial class BrokerBindingsTests(AspireFixture aspire)
     }
 
     /// <summary>Learning reopens the failed chapters when Assessment announces the attempts used up (#42).</summary>
+    /// <summary>#115: Compliance erases a person on Organisation's request, and Organisation records Compliance's completion.</summary>
+    [Fact]
+    public async Task The_erasure_request_is_bound_to_compliances_queue_and_its_completion_to_organisations()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var management = await ManagementClientAsync(cancellationToken);
+        const string requested = "SmartSolutionsLab.PharmaTraining.Contracts.Organisation.PersonErasureRequestedV1";
+        const string completed = "SmartSolutionsLab.PharmaTraining.Contracts.Compliance.ComplianceErasureCompletedV1";
+
+        await WaitForBindingAsync(management, requested, "compliance", cancellationToken);
+        await WaitForBindingAsync(management, completed, OrganisationQueue, cancellationToken);
+
+        var bindings = await BindingsAsync(management, cancellationToken);
+        bindings.ShouldContain(binding => binding.Source == requested && binding.Destination == "compliance" && binding.DestinationType == "queue");
+        bindings.ShouldContain(binding => binding.Source == completed && binding.Destination == OrganisationQueue && binding.DestinationType == "queue");
+    }
+
     [Fact]
     public async Task Learnings_queue_is_bound_to_the_exhaustion()
     {
