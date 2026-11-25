@@ -1,3 +1,4 @@
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using System.Net;
 using SmartSolutionsLab.PharmaTraining.Modules.Assessment.Domain.Examinations;
 using SmartSolutionsLab.PharmaTraining.Modules.Assessment.Domain.Examinations.Events;
@@ -138,6 +139,24 @@ public class AnswerQuestionTests
         answered.Error.Code.ShouldBe("assessment.examination-not-found");
         answered.Error.Status.ShouldBe(HttpStatusCode.NotFound);
         ShouldHaveStoredNoAnswer();
+    }
+
+    /// <summary>
+    /// An answer whose save PostgreSQL ended as a deadlock with another save is told to try again
+    /// (assessment.concurrent-save), not that the examination changed, and stores nothing; the answer saver sends it again.
+    /// </summary>
+    [Fact]
+    public async Task An_answer_whose_save_deadlocked_is_refused_as_a_concurrent_save_and_stores_nothing()
+    {
+        await StartedAsync();
+        fixture.Store.LoseNextSave(LostRaces.Deadlocked("40P01"));
+
+        var answered = await fixture.AnswerAsync(Q1, A);
+
+        answered.IsFailure.ShouldBeTrue("the deadlocked append was answered as a success");
+        answered.Error.Code.ShouldBe("assessment.concurrent-save");
+        answered.Error.Status.ShouldBe(HttpStatusCode.Conflict);
+        fixture.Stream().OfType<QuestionAnswered>().ShouldBeEmpty();
     }
 
     [Fact]
