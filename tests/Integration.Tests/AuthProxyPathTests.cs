@@ -76,6 +76,11 @@ public class AuthProxyPathTests(AspireFixture aspire)
         "/admin/realms/pharma-training/users/%2e%2e/%2e%2e/master/users",
         "/admin/realms/pharma-training/users/%2e%2e%2f%2e%2e%2fmaster",
         "/admin/realms/pharma-training/users/..%2F..%2F..%2F..%2Frealms/master/.well-known/openid-configuration",
+
+        // After a user's id, which a route takes.
+        "/admin/realms/pharma-training/users/0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b/..%2F..%2Fclients",
+        "/admin/realms/pharma-training/users/0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b%2F..%2F..%2Fclients",
+        "/admin/realms/pharma-training/users/0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b/role-mappings/..%2F..%2F..%2Fclients",
     ];
 
     // The paths the demo seeder and X1 send under the users route (src/DemoSeeder/KeycloakUsers.cs, web/app/e2e/x1Users.ts),
