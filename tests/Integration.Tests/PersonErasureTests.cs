@@ -467,6 +467,7 @@ public class PersonErasureTests(AspireFixture aspire)
         await WaitForStepsAsync(support, erasure, AllSteps, cancellationToken);
         (await CertificationDatabase.CountAsync(aspire, "select count(*) from certification.certificates where id = @id", retained.Id, cancellationToken)).ShouldBe(1, "the erasure retains what a pharmacy still keeps");
         await ShouldVerifyAsync(anonymous, retained.VerificationCode, cancellationToken);
+        (await blobs.FindAsync(CertificatePdf(retained.Id), cancellationToken)).HasValue.ShouldBeTrue("the retained certificate's PDF was not there before the purge");
 
         await SetRetentionPeriodAsync(developer, pharmacy, 5, cancellationToken);
 
