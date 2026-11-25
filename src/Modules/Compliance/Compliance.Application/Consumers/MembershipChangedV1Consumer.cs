@@ -17,8 +17,8 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application.Consum
 /// </remarks>
 public sealed partial class MembershipChangedV1Consumer(IMemberStore members, IErasedPersonStore erased, IPersonalMessagePurge purge, IComplianceUnitOfWork unitOfWork, ILogger<MembershipChangedV1Consumer> logger)
 {
-    // Not used yet: the #421 review's red tests (#115) ask for a dropped message's stored copies to be purged.
-    private readonly IPersonalMessagePurge purge = purge;
+    /// <summary>The messages Compliance stores that carry a person's name, purged for an erased person whose message is dropped.</summary>
+    private static readonly IReadOnlyCollection<Type> PersonalMessages = [typeof(MembershipStartedV1), typeof(MembershipChangedV1)];
 
     public async Task HandleAsync(MembershipChangedV1 message, CancellationToken cancellationToken)
     {
@@ -39,6 +39,9 @@ public sealed partial class MembershipChangedV1Consumer(IMemberStore members, IE
         if (await erased.IsErasedAsync(PersonId.From(message.PersonId), cancellationToken))
         {
             ErasedPersonDropped(logger, message.MembershipId);
+
+            // It may have been in flight past the erasure's purge, so its stored copies are purged here too (#421 review).
+            await purge.PurgeAsync(message.PersonId, PersonalMessages, cancellationToken);
             return;
         }
 
