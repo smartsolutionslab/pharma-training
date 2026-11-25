@@ -1,4 +1,5 @@
 using System.Data;
+using System.Data.Common;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Application;
 using SmartSolutionsLab.PharmaTraining.Modules.Editorial.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -90,12 +91,16 @@ public sealed partial class EditorialRepublishLock(EditorialDbContext context, I
     [LoggerMessage(Level = LogLevel.Warning, Message = "The republish's lock could not be released on its session; closing the session releases it.")]
     private static partial void ReleaseFailed(ILogger logger, Exception exception);
 
+    [LoggerMessage(Level = LogLevel.Error, Message = "The republish's lock's release broke on its session; closing the session releases it.")]
+    private static partial void ReleaseBroke(ILogger logger, Exception exception);
+
     /// <summary>
     /// The lock while the run holds it; disposing it unlocks and closes the run's session. A commit that failed can
     /// leave its transaction open and aborted, where the unlock would fail, so that transaction is rolled back first: its
-    /// save failed anyway. A rollback or unlock that fails all the same, a database error, a timeout or anything else but
-    /// running out of memory, is logged as a warning, never thrown out of the run's dispose: closing the session, which
-    /// always follows, releases the lock (or, on a connection the run left open, disposing the scope does).
+    /// save failed anyway. A rollback or unlock that fails all the same is never thrown out of the run's dispose: closing
+    /// the session, which always follows, releases the lock (or, on a connection the run left open, disposing the scope
+    /// does). A database error or a timeout is logged as a warning; anything else but running out of memory is a bug and
+    /// is logged as an error, so a broken release stands apart from a slow one.
     /// </summary>
     private sealed class Held(EditorialDbContext context, string pooled, ILogger logger) : IAsyncDisposable
     {
@@ -112,11 +117,16 @@ public sealed partial class EditorialRepublishLock(EditorialDbContext context, I
                     .SqlQuery<bool>($"SELECT pg_advisory_unlock({Key}) AS \"Value\"")
                     .SingleAsync(CancellationToken.None);
             }
+            catch (Exception exception) when (exception is DbException or TimeoutException)
+            {
+                // A database error, a timeout or a broken connection: the close below releases the lock.
+                ReleaseFailed(logger, exception);
+            }
             catch (Exception exception) when (exception is not OutOfMemoryException)
             {
-                // Whatever the rollback or the unlock throws, a database error, a timeout or a broken connection, the
-                // close below releases the lock; only running out of memory is not the run's dispose's to swallow.
-                ReleaseFailed(logger, exception);
+                // Anything else is a bug, logged apart from a slow or failing database; the close below still releases
+                // the lock. Only running out of memory is not the run's dispose's to swallow.
+                ReleaseBroke(logger, exception);
             }
             finally
             {

@@ -304,6 +304,42 @@ public class EditorialRepublishTests(AspireFixture aspire)
         logged.Exception.ShouldBeOfType<TimeoutException>();
     }
 
+    /// <summary>
+    /// A release that fails with a bug rather than a slow or failing database (#380's review), here an
+    /// <see cref="InvalidOperationException"/> from the unlock, is logged as an error, so a broken release stands apart from
+    /// a slow one; it is still never thrown out of the run's dispose, and closing the session frees the lock.
+    /// </summary>
+    [Fact]
+    public async Task A_run_whose_unlock_hits_a_bug_logs_it_as_an_error_and_leaves_the_lock_free()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var connectionString = await EditorialDatabase.ConnectionStringAsync(aspire, cancellationToken);
+        var options = new DbContextOptionsBuilder<EditorialDbContext>()
+            .UseNpgsql(connectionString)
+            .AddInterceptors(new UnlockHitsABug())
+            .Options;
+        await using var context = new EditorialDbContext(options, NoServices.Instance);
+        var logger = new FakeLogger<EditorialRepublishLock>();
+
+        var taken = await new EditorialRepublishLock(context, logger).TryTakeAsync(cancellationToken);
+        taken.HasValue.ShouldBeTrue("no other run may hold the republish's lock while this test takes it");
+        Exception? released = null;
+        try
+        {
+            await taken.Value.DisposeAsync();
+        }
+        catch (InvalidOperationException exception)
+        {
+            released = exception;
+        }
+
+        await EditorialDatabase.WaitUntilRepublishLockIsFreeAsync(connectionString, cancellationToken);
+        released.ShouldBeNull("a failed release is logged, never thrown out of the run's dispose");
+        var logged = logger.Collector.GetSnapshot().ShouldHaveSingleItem();
+        logged.Level.ShouldBe(LogLevel.Error);
+        logged.Exception.ShouldBeOfType<InvalidOperationException>();
+    }
+
     private static async Task<RepublishedCounts> RepublishAsync(HttpClient client, CancellationToken cancellationToken)
     {
         using var response = await client.PostAsync(Republish, null, cancellationToken);
@@ -407,6 +443,24 @@ public class EditorialRepublishTests(AspireFixture aspire)
             if (command.CommandText.Contains("pg_advisory_unlock", StringComparison.Ordinal))
             {
                 throw new TimeoutException("The unlock's command timed out.");
+            }
+
+            return base.ReaderExecutingAsync(command, eventData, result, cancellationToken);
+        }
+    }
+
+    /// <summary>Fails the unlock's command with a bug, as a broken release path would.</summary>
+    private sealed class UnlockHitsABug : DbCommandInterceptor
+    {
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
+            DbCommand command,
+            CommandEventData eventData,
+            InterceptionResult<DbDataReader> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (command.CommandText.Contains("pg_advisory_unlock", StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException("The release hit a bug.");
             }
 
             return base.ReaderExecutingAsync(command, eventData, result, cancellationToken);
