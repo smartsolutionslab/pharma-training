@@ -12,4 +12,7 @@ public interface IInvitationRecipientStore
 
     /// <summary>The recipient, for a command: what it changes is saved when the unit of work commits.</summary>
     Task<Option<InvitationRecipient>> LoadAsync(InvitationRecipientId id, CancellationToken cancellationToken);
+
+    /// <summary>Removes the recipient when the unit of work commits; a recipient that is not stored is no change.</summary>
+    Task RemoveAsync(InvitationRecipientId id, CancellationToken cancellationToken);
 }

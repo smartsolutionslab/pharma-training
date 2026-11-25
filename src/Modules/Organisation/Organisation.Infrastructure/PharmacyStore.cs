@@ -96,4 +96,10 @@ public sealed class PharmacyStore(OrganisationDbContext context) : IPharmacyStor
 
     private IQueryable<Pharmacy> WithMemberships() =>
         context.Set<Pharmacy>().AsNoTracking().Include(pharmacy => pharmacy.Memberships);
+
+    public Task<IReadOnlyList<Pharmacy>> LoadTouchingPersonAsync(PersonId person, IReadOnlyCollection<EmailAddress> addresses, CancellationToken cancellationToken) =>
+        throw new NotImplementedException();
+
+    public Task<IReadOnlyList<EmailAddress>> AddressesOfAsync(PersonId person, CancellationToken cancellationToken) =>
+        throw new NotImplementedException();
 }

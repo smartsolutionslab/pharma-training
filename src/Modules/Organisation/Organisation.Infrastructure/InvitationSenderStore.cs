@@ -44,4 +44,7 @@ public sealed class InvitationSenderStore(OrganisationDbContext context) : IInvi
 
         return await context.Set<InvitationSender>().SingleAsync(sender => sender.Id == id, cancellationToken);
     }
+
+    public Task RemoveAsync(PersonId id, CancellationToken cancellationToken) =>
+        throw new NotImplementedException();
 }

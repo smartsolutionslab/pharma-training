@@ -303,6 +303,21 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
         return Success(Unit.Value);
     }
 
+    /// <summary>
+    /// Releases the person for erasure (#115): ends their active membership here, refused with
+    /// <see cref="LastManagerCannotLeave"/> while they are its last active manager, and revokes every open invitation to
+    /// one of their addresses. A refusal changes nothing.
+    /// </summary>
+    public Result<Unit, DomainError> ReleaseForErasure(PersonId person, IReadOnlyCollection<EmailAddress> addresses, Timestamp now) =>
+        throw new NotImplementedException();
+
+    /// <summary>
+    /// Forgets the name and address of every ended or revoked membership of the person or to one of their addresses
+    /// (#115), and answers the memberships it skipped because they are still invited or active.
+    /// </summary>
+    public IReadOnlyList<MembershipId> ForgetPerson(PersonId person, IReadOnlyCollection<EmailAddress> addresses) =>
+        throw new NotImplementedException();
+
     /// <summary>The person's active membership here, if they have one.</summary>
     public Option<Membership> ActiveMembershipOf(PersonId person)
     {

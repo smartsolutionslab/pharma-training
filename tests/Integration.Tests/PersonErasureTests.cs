@@ -1,0 +1,183 @@
+using System.Net;
+using System.Net.Http.Json;
+using System.Security.Cryptography;
+using System.Text.Json;
+
+namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
+
+/// <summary>
+/// A person's erasure end to end (#115), grown slice by slice; slice 1 covers Organisation. The person is a fresh id,
+/// named and addressed by a fresh Guid and planted in Organisation's tables by hand, never a shared local user. Support
+/// requests the erasure; Organisation refuses the last active manager of a pharmacy, otherwise ends the person's
+/// memberships, revokes the invitations to their address, mails the confirmation once and then forgets their name and
+/// address, and records its step in the erasure log.
+/// </summary>
+public class PersonErasureTests(AspireFixture aspire)
+{
+    private const string LastManager = "organisation.erasure-refused-last-manager";
+
+    private static readonly Uri Erasures = new("/organisation/erasures", UriKind.Relative);
+    private static readonly Uri Pharmacies = new("/organisation/pharmacies", UriKind.Relative);
+    private static readonly TimeSpan StepWait = TimeSpan.FromSeconds(30);
+
+    private readonly OrganisationDatabase database = new(aspire);
+    private readonly Mailpit mailpit = new(aspire);
+
+    [Fact]
+    public async Task The_last_active_manager_is_refused_and_nothing_changes()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var probe = Probe.New();
+        using var owner = await aspire.CreateHostClientAsync("owner");
+        using var support = await aspire.CreateHostClientAsync("support");
+        var pharmacy = await RegisterAsync(owner, cancellationToken);
+        var membership = await database.InsertMembershipOfPersonAsync(pharmacy, probe.Person, probe.Address, "Active", cancellationToken, probe.Name, "Manager");
+        var ownerSubject = await database.SubjectOfAsync("owner");
+        var ownersMembership = (await database.ActiveMembershipsOfAsync(ownerSubject, cancellationToken)).Single(active => active.PharmacyId == pharmacy);
+        await database.EndMembershipByHandAsync(ownersMembership.Id, cancellationToken);
+
+        using var refused = await support.PostAsJsonAsync(Erasures, new { personId = probe.Person }, cancellationToken);
+
+        var body = await refused.Content.ReadAsStringAsync(cancellationToken);
+        refused.StatusCode.ShouldBe(HttpStatusCode.Conflict, body);
+        using var problem = JsonDocument.Parse(body);
+        problem.RootElement.GetProperty("code").GetString().ShouldBe(LastManager);
+        problem.RootElement.GetProperty("title").GetString().ShouldBe(ErrorCodeCatalog.MessageOf(LastManager));
+        var member = await database.MemberAsync(membership, cancellationToken);
+        member.Status.ShouldBe("Active");
+        member.Name.ShouldBe(probe.Name);
+        (await database.EmailOfMembershipAsync(membership, cancellationToken)).ShouldBe(probe.Address);
+        (await mailpit.CountToAsync(probe.Address, cancellationToken)).ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task An_employee_is_erased_in_organisation()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var probe = Probe.New();
+        using var owner = await aspire.CreateHostClientAsync("owner");
+        using var support = await aspire.CreateHostClientAsync("support");
+        var employer = await RegisterAsync(owner, cancellationToken);
+        var membership = await database.InsertMembershipOfPersonAsync(employer, probe.Person, probe.Address, "Active", cancellationToken, probe.Name);
+        var inviting = await RegisterAsync(owner, cancellationToken);
+        var invitation = await database.InsertInvitationAsync(inviting, probe.Address, Hash(), "Invited", cancellationToken);
+
+        var erasure = await RequestAsync(support, probe.Person, cancellationToken);
+
+        var mails = await mailpit.MessagesToAsync(probe.Address, 1, cancellationToken);
+        var confirmation = mails.ShouldHaveSingleItem();
+        confirmation.Text.ShouldNotContain(probe.Name);
+        confirmation.Text.ShouldNotContain(probe.Person.ToString());
+        var read = await WaitForStepsAsync(support, erasure, ["organisation"], cancellationToken);
+        read.ConfirmationMailed.ShouldBeTrue();
+        read.ConfirmationHandledAt.ShouldNotBeNull();
+        var ended = await database.MemberAsync(membership, cancellationToken);
+        ended.Status.ShouldBe("Ended");
+        ended.Person.ShouldBe(probe.Person, "the PersonId stays behind as the pseudonym");
+        ended.Name.ShouldBeNull();
+        (await database.EmailOfMembershipAsync(membership, cancellationToken)).ShouldBeNull();
+        var revoked = await database.MemberAsync(invitation, cancellationToken);
+        revoked.Status.ShouldBe("Revoked");
+        revoked.TokenHashes.ShouldBeEmpty();
+        (await database.EmailOfMembershipAsync(invitation, cancellationToken)).ShouldBeNull();
+        (await database.MembershipIdsWithEmailAsync(probe.Address, cancellationToken)).ShouldBeEmpty();
+        (await mailpit.CountToAsync(probe.Address, cancellationToken)).ShouldBe(1, "the confirmation is mailed once");
+    }
+
+    [Fact]
+    public async Task No_organisation_table_or_message_holds_the_persons_name_or_address()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var probe = Probe.New();
+        using var owner = await aspire.CreateHostClientAsync("owner");
+        using var support = await aspire.CreateHostClientAsync("support");
+        var employer = await RegisterAsync(owner, cancellationToken);
+        await database.InsertMembershipOfPersonAsync(employer, probe.Person, probe.Address, "Active", cancellationToken, probe.Name);
+        var inviting = await RegisterAsync(owner, cancellationToken);
+        await database.InsertInvitationAsync(inviting, probe.Address, Hash(), "Invited", cancellationToken);
+        var sweep = new PersonalDataSweep(aspire, "organisation-database", "organisation", "wolverine");
+        (await sweep.ColumnsHoldingAsync(probe.Name, cancellationToken)).ShouldContain("organisation.memberships.name", "the probe was not planted where the sweep looks");
+
+        var erasure = await RequestAsync(support, probe.Person, cancellationToken);
+        await WaitForStepsAsync(support, erasure, ["organisation"], cancellationToken);
+
+        (await sweep.ColumnsHoldingAsync(probe.Name, cancellationToken)).ShouldBeEmpty("a column still holds the erased person's name");
+        (await sweep.ColumnsHoldingAsync(probe.Address, cancellationToken)).ShouldBeEmpty("a column still holds the erased person's address");
+        (await sweep.ColumnsHoldingAsync(probe.Person.ToString(), cancellationToken))
+            .Where(column => column.StartsWith("organisation.erasure", StringComparison.Ordinal))
+            .ShouldBeEmpty("the erasure log holds the erased person's id");
+    }
+
+    [Fact]
+    public async Task An_empty_person_id_is_a_bad_request()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var support = await aspire.CreateHostClientAsync("support");
+
+        using var refused = await support.PostAsJsonAsync(Erasures, new { personId = Guid.Empty }, cancellationToken);
+
+        var body = await refused.Content.ReadAsStringAsync(cancellationToken);
+        refused.StatusCode.ShouldBe(HttpStatusCode.BadRequest, body);
+        using var problem = JsonDocument.Parse(body);
+        problem.RootElement.GetProperty("code").GetString().ShouldBe("invalid-argument");
+    }
+
+    private static async Task<Guid> RegisterAsync(HttpClient client, CancellationToken cancellationToken)
+    {
+        using var created = await client.PostAsJsonAsync(Pharmacies, new { name = $"Apotheke {Guid.CreateVersion7()}", jobFunction = "Pharmacist" }, cancellationToken);
+        created.StatusCode.ShouldBe(HttpStatusCode.Created);
+        return await created.Content.ReadFromJsonAsync<Guid>(cancellationToken);
+    }
+
+    private static async Task<Uri> RequestAsync(HttpClient support, Guid person, CancellationToken cancellationToken)
+    {
+        using var created = await support.PostAsJsonAsync(Erasures, new { personId = person }, cancellationToken);
+        created.StatusCode.ShouldBe(HttpStatusCode.Created, await created.Content.ReadAsStringAsync(cancellationToken));
+        return created.Headers.Location.ShouldNotBeNull();
+    }
+
+    /// <summary>Reads the erasure until its steps are <paramref name="modules"/>, for at most <see cref="StepWait"/>; fails naming the last read.</summary>
+    private static async Task<ErasureRead> WaitForStepsAsync(HttpClient support, Uri erasure, string[] modules, CancellationToken cancellationToken)
+    {
+        using var expired = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        expired.CancelAfter(StepWait);
+        ErasureRead? read = null;
+        while (true)
+        {
+            using var response = await support.GetAsync(erasure, cancellationToken);
+            response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync(cancellationToken));
+            read = await response.Content.ReadFromJsonAsync<ErasureRead>(cancellationToken);
+            if (read is not null && read.Steps.Select(step => step.Module).SequenceEqual(modules))
+            {
+                return read;
+            }
+
+            if (expired.IsCancellationRequested)
+            {
+                break;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken);
+        }
+
+        read.ShouldNotBeNull();
+        read.Steps.Select(step => step.Module).ShouldBe(modules, $"the erasure's steps within {StepWait.TotalSeconds:0} s");
+        return read;
+    }
+
+    private static string Hash() => Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));
+
+    /// <summary>The person to erase: a fresh id, a name and an address only this test uses.</summary>
+    private sealed record Probe(Guid Person, string Name, string Address)
+    {
+        public static Probe New()
+        {
+            var id = Guid.CreateVersion7();
+            return new Probe(id, $"Erasure Probe {id:N}", $"erasure-{id:N}@example.com");
+        }
+    }
+
+    private sealed record ErasureRead(Guid Id, DateTimeOffset RequestedAt, Guid RequestedBy, bool ConfirmationMailed, DateTimeOffset? ConfirmationHandledAt, IReadOnlyList<ErasureStepRead> Steps);
+
+    private sealed record ErasureStepRead(string Module, DateTimeOffset CompletedAt);
+}

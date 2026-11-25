@@ -1,6 +1,7 @@
 using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 using SmartSolutionsLab.PharmaTraining.Contracts;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Application;
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Erasures;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.InvitationRecipients;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.InvitationSenders;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
@@ -13,13 +14,17 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Tests.Pharmacies
 /// lose a race, as a save does whose pharmacy another save changed since it was loaded; <see cref="FailNextCommit"/>
 /// makes the next <see cref="CommitAsync"/> throw, as <c>CommitAsync</c> lets a lost race through;
 /// <see cref="FailNextFind"/> makes the next no-tracking read (<see cref="FindAsync"/>) throw, as a dropped connection
-/// does, while <see cref="LoadAsync"/> still loads.
+/// does, while <see cref="LoadAsync"/> still loads. It keeps the erasure log too (#115), so an erasure is stored with the
+/// changes of its command's commit and not before; recipients and senders a command removes are gone only once committed.
 /// </summary>
-internal sealed class InMemoryPharmacyStore : IPharmacyStore, IInvitationRecipientStore, IInvitationSenderStore, IOrganisationUnitOfWork
+internal sealed class InMemoryPharmacyStore : IPharmacyStore, IInvitationRecipientStore, IInvitationSenderStore, IErasureStore, IOrganisationUnitOfWork
 {
     private readonly List<Pharmacy> added = [];
     private readonly List<InvitationRecipient> addedRecipients = [];
     private readonly List<InvitationSender> addedSenders = [];
+    private readonly List<Erasure> addedErasures = [];
+    private readonly List<InvitationRecipientId> removedRecipients = [];
+    private readonly List<PersonId> removedSenders = [];
     private readonly List<IntegrationEvent> queued = [];
     private bool loseNextCommit;
 
@@ -36,11 +41,51 @@ internal sealed class InMemoryPharmacyStore : IPharmacyStore, IInvitationRecipie
 
     public List<InvitationSender> StoredSenders { get; } = [];
 
+    public List<Erasure> StoredErasures { get; } = [];
+
     public int Commits { get; private set; }
 
     public void Add(Pharmacy pharmacy) => added.Add(pharmacy);
 
     public void Add(InvitationRecipient recipient) => addedRecipients.Add(recipient);
+
+    public void Add(Erasure erasure) => addedErasures.Add(erasure);
+
+    /// <summary>The stored erasure itself, so what a command changes on it is what the next read finds once committed.</summary>
+    public Task<Option<Erasure>> LoadAsync(ErasureId id, CancellationToken cancellationToken) => Task.FromResult(LookupErasure(id));
+
+    public Task<Option<Erasure>> FindAsync(ErasureId id, CancellationToken cancellationToken) => Task.FromResult(LookupErasure(id));
+
+    /// <summary>Every stored pharmacy where the person has a membership or one of the addresses is invited.</summary>
+    public Task<IReadOnlyList<Pharmacy>> LoadTouchingPersonAsync(PersonId person, IReadOnlyCollection<EmailAddress> addresses, CancellationToken cancellationToken)
+    {
+        List<Pharmacy> touching = [.. Stored.Where(pharmacy => pharmacy.Memberships.Any(membership =>
+            membership.Person == person || (membership.Email is { } email && addresses.Contains(email))))];
+        return Task.FromResult<IReadOnlyList<Pharmacy>>(touching);
+    }
+
+    /// <summary>The distinct addresses of the person's stored memberships, in every pharmacy.</summary>
+    public Task<IReadOnlyList<EmailAddress>> AddressesOfAsync(PersonId person, CancellationToken cancellationToken)
+    {
+        List<EmailAddress> addresses = [.. Stored
+            .SelectMany(pharmacy => pharmacy.Memberships)
+            .Where(membership => membership.Person == person && membership.Email is not null)
+            .Select(membership => membership.Email!)
+            .Distinct()];
+        return Task.FromResult<IReadOnlyList<EmailAddress>>(addresses);
+    }
+
+    public Task RemoveAsync(InvitationRecipientId id, CancellationToken cancellationToken)
+    {
+        removedRecipients.Add(id);
+        return Task.CompletedTask;
+    }
+
+    public Task RemoveAsync(PersonId id, CancellationToken cancellationToken)
+    {
+        removedSenders.Add(id);
+        return Task.CompletedTask;
+    }
 
     /// <summary>The stored recipient itself, so what a command changes on it is what the next read finds once committed.</summary>
     public Task<Option<InvitationRecipient>> LoadAsync(InvitationRecipientId id, CancellationToken cancellationToken) =>
@@ -132,6 +177,12 @@ internal sealed class InMemoryPharmacyStore : IPharmacyStore, IInvitationRecipie
         addedRecipients.Clear();
         StoredSenders.AddRange(addedSenders);
         addedSenders.Clear();
+        StoredErasures.AddRange(addedErasures);
+        addedErasures.Clear();
+        StoredRecipients.RemoveAll(recipient => removedRecipients.Contains(recipient.Id));
+        removedRecipients.Clear();
+        StoredSenders.RemoveAll(sender => removedSenders.Contains(sender.Id));
+        removedSenders.Clear();
         Published.AddRange(queued);
         queued.Clear();
         Commits++;
@@ -179,8 +230,14 @@ internal sealed class InMemoryPharmacyStore : IPharmacyStore, IInvitationRecipie
         added.Clear();
         addedRecipients.Clear();
         addedSenders.Clear();
+        addedErasures.Clear();
+        removedRecipients.Clear();
+        removedSenders.Clear();
         queued.Clear();
     }
+
+    private Option<Erasure> LookupErasure(ErasureId id) =>
+        StoredErasures.SingleOrDefault(erasure => erasure.Id == id) is { } erasure ? Option<Erasure>.Some(erasure) : Option<Erasure>.None;
 
     private static PagedResult<Membership> PageOf(List<Membership> all, Page page, PageSize pageSize)
     {

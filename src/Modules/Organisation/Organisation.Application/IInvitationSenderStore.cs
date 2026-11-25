@@ -16,4 +16,7 @@ public interface IInvitationSenderStore
     /// count one after the other on one row. A command that does not commit leaves no new row behind.
     /// </summary>
     Task<InvitationSender> LoadForMailAsync(PersonId id, Timestamp now, CancellationToken cancellationToken);
+
+    /// <summary>Removes the sender's tally when the unit of work commits; a sender who has none is no change.</summary>
+    Task RemoveAsync(PersonId id, CancellationToken cancellationToken);
 }

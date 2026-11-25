@@ -14,4 +14,7 @@ public sealed class InvitationRecipientStore(OrganisationDbContext context) : II
         await context.Set<InvitationRecipient>().SingleOrDefaultAsync(recipient => recipient.Id == id, cancellationToken) is { } recipient
             ? Option<InvitationRecipient>.Some(recipient)
             : Option<InvitationRecipient>.None;
+
+    public Task RemoveAsync(InvitationRecipientId id, CancellationToken cancellationToken) =>
+        throw new NotImplementedException();
 }

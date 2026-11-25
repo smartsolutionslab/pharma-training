@@ -91,16 +91,24 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
 
     /// <summary>
     /// Writes a membership row of a person by hand, past the aggregate, as a second writer would: <c>Active</c> since
-    /// now, or <c>Ended</c> now. What the database itself refuses is what these rows show.
+    /// now, or <c>Ended</c> now, named <paramref name="name"/> with the role <paramref name="role"/>. What the database
+    /// itself refuses is what these rows show.
     /// </summary>
-    public async Task<Guid> InsertMembershipOfPersonAsync(Guid pharmacy, Guid person, string email, string status, CancellationToken cancellationToken)
+    public async Task<Guid> InsertMembershipOfPersonAsync(
+        Guid pharmacy,
+        Guid person,
+        string email,
+        string status,
+        CancellationToken cancellationToken,
+        string name = "Anna Employee",
+        string role = "Employee")
     {
         var membership = Guid.CreateVersion7();
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand(
             """
             INSERT INTO organisation.memberships (id, pharmacy_id, email, invitation_expires_at, person_id, name, job_function, role, status, started_at, ended_at)
-            VALUES (@id, @pharmacy, @email, NULL, @person, 'Anna Employee', 'Pta', 'Employee', @status, now(), CASE WHEN @status = 'Ended' THEN now() END)
+            VALUES (@id, @pharmacy, @email, NULL, @person, @name, 'Pta', @role, @status, now(), CASE WHEN @status = 'Ended' THEN now() END)
             """,
             connection);
         command.Parameters.AddWithValue("id", membership);
@@ -108,6 +116,8 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         command.Parameters.AddWithValue("email", email);
         command.Parameters.AddWithValue("person", person);
         command.Parameters.AddWithValue("status", status);
+        command.Parameters.AddWithValue("name", name);
+        command.Parameters.AddWithValue("role", role);
         (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1);
         return membership;
     }
@@ -443,6 +453,44 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
             await reader.IsDBNullAsync(1, cancellationToken) ? null : reader.GetGuid(1),
             await reader.IsDBNullAsync(2, cancellationToken) ? null : reader.GetString(2),
             [.. reader.GetFieldValue<string[]>(3)]);
+    }
+
+    /// <summary>The membership's address as stored; none once an erasure forgot it (#115).</summary>
+    public async Task<string?> EmailOfMembershipAsync(Guid membership, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("SELECT email FROM organisation.memberships WHERE id = @id", connection);
+        command.Parameters.AddWithValue("id", membership);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        (await reader.ReadAsync(cancellationToken)).ShouldBeTrue($"There is no membership {membership}.");
+        return await reader.IsDBNullAsync(0, cancellationToken) ? null : reader.GetString(0);
+    }
+
+    /// <summary>The ids of every membership, in any pharmacy and status, whose stored address is <paramref name="address"/>.</summary>
+    public async Task<List<Guid>> MembershipIdsWithEmailAsync(string address, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("SELECT id FROM organisation.memberships WHERE email = @email ORDER BY id", connection);
+        command.Parameters.AddWithValue("email", address);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        List<Guid> ids = [];
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            ids.Add(reader.GetGuid(0));
+        }
+
+        return ids;
+    }
+
+    /// <summary>Ends the membership by hand, past the aggregate, so a test can leave a pharmacy with another manager only.</summary>
+    public async Task EndMembershipByHandAsync(Guid membership, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            "UPDATE organisation.memberships SET status = 'Ended', ended_at = now() WHERE id = @id AND status = 'Active'",
+            connection);
+        command.Parameters.AddWithValue("id", membership);
+        (await command.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1, $"membership {membership} was not active");
     }
 
     /// <summary>The membership's status, role, job function and end as stored.</summary>
