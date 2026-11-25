@@ -178,19 +178,40 @@ public class CertificateDocumentRequestedV1ConsumerTests
 
     /// <summary>
     /// #115: a render racing an erasure must not write the holder's PDF back after the erasure deleted it. The consumer
-    /// holds the certificate's holder, as the erasure does, and drops the request of a tombstoned holder before rendering.
+    /// holds the certificate's holder, as the erasure does, and drops the request once the erasure removed the certificate.
     /// </summary>
     [Fact]
-    public async Task A_request_for_a_tombstoned_holder_is_dropped_after_holding_them_and_nothing_is_rendered()
+    public async Task A_request_whose_certificate_an_erasure_removed_while_it_waited_for_the_hold_is_dropped_and_nothing_is_rendered()
+    {
+        var certificate = Stored(TestCertificates.Issued(holder));
+        erased.WhileHolding = () =>
+        {
+            certificates.Stored.Remove(certificate);
+            erased.Tombstone(holder, TestCertificates.PassedAt);
+        };
+
+        await HandleAsync(Requested(certificate));
+
+        NothingDone();
+        certificate.Document.ShouldBe(DocumentState.Pending);
+    }
+
+    /// <summary>
+    /// #438 review: a certificate still stored after its holder was erased is a retained one (docs/adr/0036, decision 3),
+    /// kept with its name and PDF, so a render that was retried or replayed after the erasure still stores its PDF.
+    /// </summary>
+    [Fact]
+    public async Task A_retained_certificate_of_an_erased_holder_is_still_rendered_and_stored()
     {
         var certificate = Stored(TestCertificates.Issued(holder));
         erased.Tombstone(holder, TestCertificates.PassedAt);
 
         await HandleAsync(Requested(certificate));
 
-        erased.Journal.ShouldBe(["hold", "is-erased"]);
-        NothingDone();
-        certificate.Document.ShouldBe(DocumentState.Pending);
+        renderer.Rendering.ShouldHaveSingleItem();
+        blobs.Writes.ShouldHaveSingleItem();
+        certificate.Document.ShouldBe(DocumentState.Stored);
+        certificates.Commits.ShouldBe(1);
     }
 
     [Fact]

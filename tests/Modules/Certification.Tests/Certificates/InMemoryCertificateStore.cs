@@ -47,6 +47,9 @@ internal sealed class InMemoryCertificateStore : ICertificateStore, ICertificati
     public Task<bool> ExistsForAttemptAsync(AttemptId attempt, CancellationToken cancellationToken) =>
         Task.FromResult(Stored.Any(certificate => certificate.Attempt == attempt));
 
+    public Task<bool> ExistsAsync(CertificateId id, CancellationToken cancellationToken) =>
+        Task.FromResult(Stored.Any(certificate => certificate.Id == id));
+
     public Task<Option<Certificate>> LoadAsync(CertificateId id, CancellationToken cancellationToken) =>
         Task.FromResult(Stored.FirstOrDefault(certificate => certificate.Id == id) is { } found
             ? Option<Certificate>.Some(found)

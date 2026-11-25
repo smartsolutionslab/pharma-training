@@ -13,6 +13,9 @@ public interface ICertificateStore
     /// <summary>Whether a certificate was issued for the attempt, the natural key of a passed test.</summary>
     Task<bool> ExistsForAttemptAsync(AttemptId attempt, CancellationToken cancellationToken);
 
+    /// <summary>Whether the certificate is stored, read from the database whatever the context tracks.</summary>
+    Task<bool> ExistsAsync(CertificateId id, CancellationToken cancellationToken);
+
     /// <summary>The certificate, tracked, to change it and save it with the module's unit of work; none when no certificate has the id.</summary>
     Task<Option<Certificate>> LoadAsync(CertificateId id, CancellationToken cancellationToken);
 
