@@ -1,5 +1,6 @@
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/vue';
+import userEvent from '@testing-library/user-event';
 import { createPinia, type Pinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { createMemoryHistory } from 'vue-router';
@@ -53,6 +54,8 @@ interface HostState {
   periods: Record<string, CertificationRetentionPeriodDto>;
   /** The answer to GET /certification/pharmacies/{id}/retention-period. */
   read: (pharmacyId: string) => Promise<Response>;
+  /** The answer to PUT /certification/pharmacies/{id}/retention-period, given the request's body. */
+  save: (pharmacyId: string, body: string) => Promise<Response>;
 }
 
 /** Problem details as the host sends a module's refusal: its English message as the title, and its code. */
@@ -74,6 +77,9 @@ function hostFrom(state: HostState): Fetch {
     if (method === 'GET' && retention !== null) {
       return state.read(retention[1] ?? '');
     }
+    if (method === 'PUT' && retention !== null) {
+      return state.save(retention[1] ?? '', typeof init?.body === 'string' ? init.body : '');
+    }
     return new Response('', { status: 404 });
   };
 }
@@ -88,6 +94,12 @@ const retentionReads = () =>
   host.mock.calls
     .filter(([input, init]) => (init?.method ?? 'GET') === 'GET' && String(input).includes('/retention-period'))
     .map(([input]) => String(input));
+
+/** The periods the host was asked to store, as the client sent them. */
+const saves = () =>
+  host.mock.calls
+    .filter(([input, init]) => init?.method === 'PUT' && String(input).includes('/retention-period'))
+    .map(([input, init]) => ({ url: String(input), body: init?.body }));
 
 /** The reads of the memberships the host received. */
 const membershipReads = () =>
@@ -110,6 +122,12 @@ beforeEach(() => {
             'You are not a member of this pharmacy, or it does not exist.',
           )
         : Response.json(period);
+    },
+    // As the host does (ADR 0039): the period stored, no longer the default, and 204 without a body.
+    save: async (pharmacyId, body) => {
+      const { years } = JSON.parse(body) as { years: number };
+      state.periods[pharmacyId] = { years, isDefault: false };
+      return new Response(null, { status: 204 });
     },
   };
   host.mockImplementation(hostFrom(state));
@@ -153,6 +171,7 @@ const note =
 
 const section = () => screen.findByRole('region', { name: 'Aufbewahrungsfrist' });
 const yearsField = () => screen.getByLabelText('Aufbewahrungsfrist in Jahren');
+const saveButton = () => screen.getByRole('button', { name: 'Frist speichern' });
 const noSection = () => expect(screen.queryByRole('heading', { name: 'Aufbewahrungsfrist' })).toBeNull();
 
 describe('the retention period section', () => {
@@ -318,5 +337,160 @@ describe('the section is not shown', () => {
     await section();
     expect(membershipReads()).toBeGreaterThan(readsBefore);
     expect(retentionReads()).toEqual([`/api/certification/pharmacies/${markt.id}/retention-period`]);
+  });
+});
+
+// Saving (#419, T4): the field's period goes to the host for the current pharmacy as PUT …/retention-period with
+// { years }, which answers 204 without a body (ADR 0039), so the page reads the period again for what it shows. The
+// button stays enabled while the request is out, so it keeps the keyboard's focus, as the export's does; a press then
+// sends nothing.
+
+/** Puts years in the field as a user does: emptied, then typed. */
+async function enterYears(user: ReturnType<typeof userEvent.setup>, years: string) {
+  await user.clear(yearsField());
+  if (years !== '') {
+    await user.type(yearsField(), years);
+  }
+}
+
+/** A save the host answers only when the test says so, with 204 and the period stored. */
+function heldSave() {
+  let answer: () => void = () => undefined;
+  state.save = (pharmacyId, body) =>
+    new Promise<Response>((resolve) => {
+      answer = () => {
+        state.periods[pharmacyId] = { years: (JSON.parse(body) as { years: number }).years, isDefault: false };
+        resolve(new Response(null, { status: 204 }));
+      };
+    });
+  return { answer: () => answer() };
+}
+
+describe('saving a period', () => {
+  test('typing 7 and pressing "Frist speichern" sends one PUT with {"years":7} for the current pharmacy', async () => {
+    const user = userEvent.setup();
+    state.memberships = [markt, dom];
+    const pinia = createPinia();
+    useSelectedPharmacyStore(pinia).choose(dom.id);
+    await renderPage({ pinia });
+    await section();
+    await waitFor(() => expect(yearsField()).toHaveValue(12));
+
+    await enterYears(user, '7');
+    await user.click(saveButton());
+
+    await waitFor(() => expect(notify.success).toHaveBeenCalled());
+    expect(saves()).toEqual([{ url: `/api/certification/pharmacies/${dom.id}/retention-period`, body: '{"years":7}' }]);
+  });
+
+  test('says "Die Aufbewahrungsfrist beträgt jetzt 7 Jahre." after the 204', async () => {
+    const user = userEvent.setup();
+    await renderPage();
+    await section();
+
+    await enterYears(user, '7');
+    await user.click(saveButton());
+
+    await waitFor(() => expect(notify.success).toHaveBeenCalledWith('Die Aufbewahrungsfrist beträgt jetzt 7 Jahre.'));
+    expect(notify.success).toHaveBeenCalledTimes(1);
+    expect(notify.failure).not.toHaveBeenCalled();
+  });
+
+  test('switched to English, says "The retention period is now 7 years."', async () => {
+    const user = userEvent.setup();
+    await renderPage();
+    await section();
+    setLanguage('en-GB', { remember: false });
+
+    await enterYears(user, '7');
+    await user.click(await screen.findByRole('button', { name: 'Save period' }));
+
+    await waitFor(() => expect(notify.success).toHaveBeenCalledWith('The retention period is now 7 years.'));
+  });
+
+  test('reads the period again and shows "Derzeit 7 Jahre" without "Standard", the field at 7', async () => {
+    const user = userEvent.setup();
+    await renderPage();
+    const region = await section();
+    expect(region).toHaveTextContent('Derzeit 5 Jahre (Standard)');
+    const readsBefore = retentionReads().length;
+
+    await enterYears(user, '7');
+    await user.click(saveButton());
+
+    await waitFor(() => expect(retentionReads().length).toBeGreaterThan(readsBefore));
+    expect(retentionReads().at(-1)).toBe(`/api/certification/pharmacies/${markt.id}/retention-period`);
+    await waitFor(() =>
+      expect(screen.getByRole('region', { name: 'Aufbewahrungsfrist' })).toHaveTextContent('Derzeit 7 Jahre'),
+    );
+    expect(screen.getByRole('region', { name: 'Aufbewahrungsfrist' })).not.toHaveTextContent('Standard');
+    expect(yearsField()).toHaveValue(7);
+  });
+
+  test('sends once on a double click, the button aria-disabled, busy and reading "Wird gespeichert…" while it is sent', async () => {
+    const user = userEvent.setup();
+    const held = heldSave();
+    await renderPage();
+    await section();
+
+    await enterYears(user, '7');
+    await user.dblClick(saveButton());
+
+    const saving = await screen.findByRole('button', { name: 'Wird gespeichert…' });
+    expect(saving).not.toBeDisabled();
+    expect(saving).toHaveAttribute('aria-disabled', 'true');
+    expect(saving).toHaveAttribute('aria-busy', 'true');
+    expect(saves()).toHaveLength(1);
+    held.answer();
+    await waitFor(() => expect(notify.success).toHaveBeenCalled());
+    expect(saves()).toHaveLength(1);
+    await waitFor(() => expect(saveButton()).not.toHaveAttribute('aria-busy', 'true'));
+    expect(saveButton()).toBeEnabled();
+    expect(saveButton()).not.toHaveAttribute('aria-disabled', 'true');
+  });
+
+  test('announces "Wird gespeichert…" in a status region while the period is sent', async () => {
+    const user = userEvent.setup();
+    const held = heldSave();
+    await renderPage();
+    await section();
+
+    await enterYears(user, '7');
+    await user.click(saveButton());
+
+    await waitFor(() =>
+      expect(screen.getAllByRole('status').map((status) => status.textContent?.trim())).toContain('Wird gespeichert…'),
+    );
+    held.answer();
+    await waitFor(() => expect(notify.success).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.getAllByRole('status').map((status) => status.textContent?.trim())).not.toContain(
+        'Wird gespeichert…',
+      ),
+    );
+  });
+
+  test('keeps the focus on the button pressed from the keyboard while the period is sent and after it', async () => {
+    const user = userEvent.setup();
+    const held = heldSave();
+    await renderPage();
+    await section();
+    await enterYears(user, '7');
+    saveButton().focus();
+
+    await user.keyboard('{Enter}');
+
+    const saving = await screen.findByRole('button', { name: 'Wird gespeichert…' });
+    expect(saving).toHaveFocus();
+    expect(saving).toHaveAttribute('aria-disabled', 'true');
+
+    await user.keyboard('{Enter}');
+    expect(saves()).toHaveLength(1);
+    expect(saving).toHaveFocus();
+
+    held.answer();
+    await waitFor(() => expect(notify.success).toHaveBeenCalled());
+    await waitFor(() => expect(saveButton()).toHaveFocus());
+    expect(saves()).toHaveLength(1);
   });
 });
