@@ -7,7 +7,7 @@ namespace Microsoft.Extensions.DependencyInjection;
 public static class BlobStorageRegistration
 {
     /// <summary>
-    /// Registers <see cref="IBlobUrls"/>, <see cref="IStoredBlobs"/>, <see cref="IBlobCopies"/>, <see cref="IBlobWrites"/> and <see cref="IBlobReads"/> once per host, for the module's own container, the
+    /// Registers <see cref="IBlobUrls"/>, <see cref="IStoredBlobs"/>, <see cref="IBlobCopies"/>, <see cref="IBlobWrites"/>, <see cref="IBlobReads"/> and <see cref="IBlobDeletes"/> once per host, for the module's own container, the
     /// connection string <c>blobs</c> (docs/adr/0002). Registering reads nothing: a host without the connection string
     /// starts, and fails only when it first signs a URL, looks up a blob, copies, writes or reads one, naming what is missing. Without an account key
     /// in it (published), URLs are signed with user delegation keys the service's managed identity is issued.
