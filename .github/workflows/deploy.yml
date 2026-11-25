@@ -1,13 +1,20 @@
 name: deploy
 
-# Deploys the AppHost to Azure Container Apps (docs/adr/0005): staging, then production once staging succeeded and the
-# production environment's reviewers approve. It is the only path to Azure, and it runs only when someone starts it, at the
+# Deploys the AppHost to Azure Container Apps (docs/adr/0005): staging, then, when whoever starts the run asks for it
+# (the input production), production once staging succeeded and the production environment's reviewers approve. A run
+# deploys staging alone by default. It is the only path to Azure, and it runs only when someone starts it, at the
 # branch or tag they choose; rolling back is running it again at an earlier tag (README, "Roll back"). Every value comes
 # from the GitHub environment the job runs in: the secret or variable named like the parameter in upper snake case
 # (Parameters__postgres-password from POSTGRES_PASSWORD), and one MESSAGING_<MODULE>_PASSWORD per service. The one-time
 # setup is in the README, "Deploy (Azure Container Apps)".
 on:
   workflow_dispatch:
+    inputs:
+      # Off by default: until production is set up, a run deploys staging alone and never reaches the production job.
+      production:
+        description: Deploy production too, after staging (its reviewers approve)
+        type: boolean
+        default: false
 
 # One deploy at a time, and never cancelled halfway: a second run waits for the first.
 concurrency:
@@ -35,7 +42,7 @@ jobs:
       # CLI through dnx here: dnx is a /bin/sh script, and dash drops every Parameters__* variable, whose names hold '-'.
       - name: The Aspire CLI
         run: |
-          dotnet tool install aspire.cli --version 13.6.5 --tool-path "$HOME/.aspire/bin"
+          dotnet tool install aspire.cli --version 17.0.0 --tool-path "$HOME/.aspire/bin"
           "$HOME/.aspire/bin/aspire" setup --install-path "$HOME/.aspire"
       - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
@@ -136,6 +143,8 @@ jobs:
 
   production:
     needs: staging
+    # Only when the run asks for it; otherwise the run ends with staging.
+    if: inputs.production
     runs-on: ubuntu-latest
     timeout-minutes: 90
     # The production environment's required reviewers approve before this job starts.
@@ -151,7 +160,7 @@ jobs:
       # CLI through dnx here: dnx is a /bin/sh script, and dash drops every Parameters__* variable, whose names hold '-'.
       - name: The Aspire CLI
         run: |
-          dotnet tool install aspire.cli --version 13.6.5 --tool-path "$HOME/.aspire/bin"
+          dotnet tool install aspire.cli --version 17.0.0 --tool-path "$HOME/.aspire/bin"
           "$HOME/.aspire/bin/aspire" setup --install-path "$HOME/.aspire"
       - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:

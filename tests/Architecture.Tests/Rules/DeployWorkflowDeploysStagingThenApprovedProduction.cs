@@ -43,9 +43,14 @@ public sealed partial class DeployWorkflowDeploysStagingThenApprovedProduction :
         {
             violations.Add($"deploy.yml has {staging.Count} job(s) with environment: staging and {production.Count} with environment: production; it has one of each.");
         }
-        else if (!Needs(production[0].Job).Contains(staging[0].Id))
+        else
         {
-            violations.Add($"deploy.yml's production job '{production[0].Id}' does not need the staging job '{staging[0].Id}'; production deploys only after staging.");
+            if (!Needs(production[0].Job).Contains(staging[0].Id))
+            {
+                violations.Add($"deploy.yml's production job '{production[0].Id}' does not need the staging job '{staging[0].Id}'; production deploys only after staging.");
+            }
+
+            violations.AddRange(ProductionOnlyWhenAsked(deploy, production[0].Id, production[0].Job));
         }
 
         foreach (var (id, job) in staging.Concat(production))
@@ -81,6 +86,25 @@ public sealed partial class DeployWorkflowDeploysStagingThenApprovedProduction :
         foreach (var step in steps.Where(step => Workflows.Scalar(step, "run") is { } script && Tracing().IsMatch(script)))
         {
             yield return $"deploy.yml:{step.Start.Line}: a script in job '{id}' traces its commands (set -x), which prints the values it expands.";
+        }
+    }
+
+    /// <summary>
+    /// A run deploys staging alone unless whoever starts it asks for production: the boolean input <c>production</c>,
+    /// <c>false</c> by default, and the production job runs only <c>if: inputs.production</c>.
+    /// </summary>
+    private static IEnumerable<string> ProductionOnlyWhenAsked(YamlNode workflow, string id, YamlNode job)
+    {
+        var input = Workflows.Value(Workflows.Value(Workflows.Value(Workflows.Value(workflow, "on"), "workflow_dispatch"), "inputs"), "production");
+        if (input is null || Workflows.Scalar(input, "type") != "boolean" || Workflows.Scalar(input, "default") != "false")
+        {
+            yield return "deploy.yml's workflow_dispatch has no boolean input 'production' with default false; a run deploys staging alone unless whoever starts it asks for production.";
+        }
+
+        var condition = Workflows.Scalar(job, "if")?.Replace("${{", string.Empty, StringComparison.Ordinal).Replace("}}", string.Empty, StringComparison.Ordinal).Trim();
+        if (condition != "inputs.production")
+        {
+            yield return $"deploy.yml's production job '{id}' runs without being asked for (if: inputs.production); a run deploys staging alone by default.";
         }
     }
 

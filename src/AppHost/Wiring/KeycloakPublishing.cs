@@ -1,5 +1,6 @@
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Azure;
+using Aspire.Hosting.Dotnet;
 
 namespace Aspire.Hosting;
 
@@ -43,7 +44,7 @@ public static class KeycloakPublishing
     public static IResourceBuilder<ContainerResource> WithRealmAndStore(
         this IResourceBuilder<ContainerResource> keycloak,
         IResourceBuilder<IResourceWithConnectionString> server,
-        IResourceBuilder<ProjectResource>? migrations,
+        IResourceBuilder<DotnetProjectResource>? migrations,
         DeploymentSecrets secrets)
     {
         ArgumentNullException.ThrowIfNull(keycloak);
@@ -84,7 +85,7 @@ public static class KeycloakPublishing
     /// the web app. Not <c>frontend-url</c>, which the deployment can set only once the environment exists, after the realm
     /// was imported once. In run mode nothing: the development realm names the web app's dev server.
     /// </summary>
-    public static IResourceBuilder<ContainerResource> WithWebOrigin(this IResourceBuilder<ContainerResource> keycloak, IResourceBuilder<ProjectResource> edge)
+    public static IResourceBuilder<ContainerResource> WithWebOrigin(this IResourceBuilder<ContainerResource> keycloak, IResourceBuilder<DotnetProjectResource> edge)
     {
         ArgumentNullException.ThrowIfNull(keycloak);
         ArgumentNullException.ThrowIfNull(edge);

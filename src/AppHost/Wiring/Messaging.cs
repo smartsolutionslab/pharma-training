@@ -35,6 +35,16 @@ public static partial class Messaging
 
     private const string PasswordVariablePrefix = "BROKER_PASSWORD_";
 
+    // RabbitMQ 4.3.8's multi-platform index digests, with its management plugin in run mode and without it published, so
+    // every machine and every deployment runs the same broker and a tag pushed again cannot change it, as with Mailpit
+    // (#445). A floating 4.3 tag left a machine on 4.3.7, which refused a permission pattern over 1024 bytes and stopped at
+    // boot. Aspire names the image by its digest alone; to move it, take the new tag's digests from Docker Hub
+    // (docker buildx imagetools inspect rabbitmq:<version>-management and rabbitmq:<version>), name the version here and
+    // check BrokerPermissionPattern.MaximumLength against it.
+    private const string RunModeDigest = "8379d558577b24d4a4e543982102fd72707424862b3e0bb878fd3a90c346dc0e";
+
+    private const string PublishedDigest = "5229e50888ca62aefe469dca4fbab87e3fa7289089b0a60f3eaf2cdb4e0ac4d1";
+
     /// <summary>
     /// The broker's entrypoint. It fills in each placeholder <c>@@&lt;VARIABLE&gt;@@</c> it finds in the definitions, the
     /// document's own, not the variables that happen to be set, and fails closed: the boot fails, naming the variable and
@@ -113,6 +123,7 @@ public static partial class Messaging
         {
             var broker = builder.AddRabbitMQ(Name)
                 .WithManagementPlugin()
+                .WithImageSHA256(RunModeDigest)
                 .WithDataVolume();
             // Each service's password is generated once and kept in the AppHost's user secrets, like the admin's, so the
             // users on the data volume keep theirs; letters and digits alone, so it needs no escaping in a URI or in JSON.
@@ -137,6 +148,7 @@ public static partial class Messaging
         var userName = builder.AddParameter($"{Name}-username");
         var password = secrets.Secret($"{Name}-password");
         var published = builder.AddRabbitMQ(Name, userName, password)
+            .WithImageSHA256(PublishedDigest)
             .WithDataVolume()
             .WithSecret(AdminPasswordVariable, password, secrets)
             .WithSingleReplica();
@@ -258,9 +270,9 @@ public static partial class Messaging
             accounts.Add(new JsonObject { ["name"] = name, ["password"] = Placeholder(PasswordVariable(user.Module)), ["tags"] = new JsonArray() });
             permissions.Add(Permission(
                 name,
-                Pattern([user.Module, .. published, .. consumed]),
-                Pattern([user.Module, .. published]),
-                Pattern([user.Module, .. consumed])));
+                BrokerPermissionPattern.Of(user.Module, [user.Module, .. published, .. consumed]),
+                BrokerPermissionPattern.Of(user.Module, [user.Module, .. published]),
+                BrokerPermissionPattern.Of(user.Module, [user.Module, .. consumed])));
         }
 
         return new JsonObject
@@ -279,13 +291,6 @@ public static partial class Messaging
         ["write"] = write,
         ["read"] = read,
     };
-
-    /// <summary>
-    /// Exactly the given queue and exchange names: RabbitMQ matches a permission's regular expression anywhere in a name,
-    /// so it is anchored, and each name is escaped.
-    /// </summary>
-    private static string Pattern(IEnumerable<string> names) =>
-        $"^({string.Join('|', names.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).Select(Regex.Escape))})$";
 
     /// <summary>What a broker user's name and password may hold: URI-safe, and nothing JSON escapes (docs/adr/0011).</summary>
     [GeneratedRegex(@"\A[A-Za-z0-9._~-]+\z", RegexOptions.CultureInvariant)]

@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Azure;
+using Aspire.Hosting.Dotnet;
 using Aspire.Hosting.Testing;
 
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
@@ -300,7 +301,7 @@ public class AppHostBrokerUsersTests(AspireFixture aspire)
         Uri.UnescapeDataString(new Uri(format.Replace("{0}", "placeholder", StringComparison.Ordinal)).UserInfo.Split(':', 2)[0]);
 
     /// <summary>The service's environment as the publish model sets it, values unresolved.</summary>
-    private static async Task<Dictionary<string, object>> PublishedEnvironmentAsync(IDistributedApplicationTestingBuilder builder, ProjectResource service)
+    private static async Task<Dictionary<string, object>> PublishedEnvironmentAsync(IDistributedApplicationTestingBuilder builder, DotnetProjectResource service)
     {
         var context = new EnvironmentCallbackContext(builder.ExecutionContext, service, cancellationToken: TestContext.Current.CancellationToken);
         foreach (var callback in service.Annotations.OfType<EnvironmentCallbackAnnotation>())

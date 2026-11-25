@@ -1,34 +1,36 @@
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
+using Aspire.Hosting.Dotnet;
 using Aspire.Hosting.Testing;
 
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 
 /// <summary>
-/// How the AppHost launches its projects, read from its application model, which is built and never started. A project
-/// resource whose metadata does not suppress the build is started with <c>dotnet run</c> without <c>--no-build</c>, so
-/// it is built again at every start although the AppHost's own build has already built it.
+/// How the AppHost launches its projects, read from its application model, which is built and never started. Aspire 17
+/// builds every <see cref="DotnetProjectResource"/> in one coordinated build before it starts them, the projects in a
+/// group in parallel with one restore. A legacy <see cref="ProjectResource"/> (<c>AddProject</c>) is started with its own
+/// <c>dotnet run</c> instead, which builds it again at every start unless the AppHost's build has built it.
 /// </summary>
 public class AppHostProjectLaunchTests
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromMinutes(1);
 
     [Fact]
-    public async Task Every_project_the_AppHost_starts_is_one_its_build_has_built()
+    public async Task Every_project_the_AppHost_starts_is_built_in_Aspires_coordinated_build()
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         timeout.CancelAfter(Timeout);
         await using var builder = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AppHost>(timeout.Token);
 
-        var rebuilt = builder.Resources
+        var legacy = builder.Resources
             .OfType<ProjectResource>()
-            .Where(project => !project.GetProjectMetadata().SuppressBuild)
             .Select(project => project.Name)
             .Order(StringComparer.Ordinal)
             .ToList();
 
-        rebuilt.ShouldBeEmpty(
-            "These projects are rebuilt by `dotnet run` at every start, on top of the AppHost's own build; "
-            + "add them from the generated Projects.* metadata, which suppresses the build.");
+        legacy.ShouldBeEmpty(
+            "These projects are added with the obsolete AddProject, so each is run with its own dotnet run; "
+            + "add them with AddDotnetProject(name, path), which Aspire builds in one coordinated build before it starts them.");
+        builder.Resources.OfType<DotnetProjectResource>().ShouldNotBeEmpty();
     }
 }

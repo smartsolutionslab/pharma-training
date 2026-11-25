@@ -1,5 +1,6 @@
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Azure;
+using Aspire.Hosting.Dotnet;
 using Azure.Provisioning;
 using Azure.Provisioning.Expressions;
 using Azure.Provisioning.Storage;
@@ -61,7 +62,7 @@ public static class BrowserUploads
     /// which the deployment sets as an origin (scheme and host, no path or trailing slash), those two alone; in run mode
     /// nothing (<see cref="AllowBrowserAccessFrom"/> does it).
     /// </summary>
-    public static IResourceBuilder<AzureStorageResource> AllowBrowserAccessFromEdge(this IResourceBuilder<AzureStorageResource> storage, IResourceBuilder<ProjectResource> edge, IResourceBuilder<ParameterResource> frontendUrl)
+    public static IResourceBuilder<AzureStorageResource> AllowBrowserAccessFromEdge(this IResourceBuilder<AzureStorageResource> storage, IResourceBuilder<DotnetProjectResource> edge, IResourceBuilder<ParameterResource> frontendUrl)
     {
         ArgumentNullException.ThrowIfNull(storage);
         ArgumentNullException.ThrowIfNull(edge);

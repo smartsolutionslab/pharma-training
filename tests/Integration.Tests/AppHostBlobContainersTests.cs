@@ -1,3 +1,4 @@
+using Aspire.Hosting.Dotnet;
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Azure;
@@ -70,8 +71,8 @@ public class AppHostBlobContainersTests
     }
 
     /// <summary>Every module's service host, found as the AppHost finds them: src/Services/*/Host/Host.csproj.</summary>
-    private static List<ProjectResource> Services(IDistributedApplicationTestingBuilder builder) =>
-        [.. builder.Resources.OfType<ProjectResource>()
+    private static List<DotnetProjectResource> Services(IDistributedApplicationTestingBuilder builder) =>
+        [.. builder.Resources.OfType<DotnetProjectResource>()
             .Where(project => IsServiceHost(project.GetProjectMetadata().ProjectPath))
             .OrderBy(project => project.Name, StringComparer.Ordinal)];
 

@@ -1,3 +1,4 @@
+using Aspire.Hosting.Dotnet;
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Azure;
@@ -109,7 +110,7 @@ public class AppHostStagingMailTests
         productionParameters.ShouldNotContain("mailpit-ui-auth");
     }
 
-    private static List<ProjectResource> Senders(IDistributedApplicationTestingBuilder builder) =>
+    private static List<DotnetProjectResource> Senders(IDistributedApplicationTestingBuilder builder) =>
         PublishedAppHost.Services(builder).Where(service => ServiceHostMail.SendsMail(service.GetProjectMetadata().ProjectPath)).ToList();
 
     /// <summary>A setting given as a plain string, or as a parameter with a default.</summary>
