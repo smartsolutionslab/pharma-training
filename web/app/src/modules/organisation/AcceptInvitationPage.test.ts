@@ -690,7 +690,7 @@ const retryable = [
       problem(
         409,
         'organisation.concurrent-save',
-        'Another change to the pharmacy was saved at the same moment; try again.',
+        'Another request was being saved at the same moment; nothing was saved. Try again.',
       ),
     state: 'failed',
   },

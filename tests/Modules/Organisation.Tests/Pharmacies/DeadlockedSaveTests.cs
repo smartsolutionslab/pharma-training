@@ -28,6 +28,21 @@ public class DeadlockedSaveTests
         error.Status.ShouldBe(HttpStatusCode.Conflict);
     }
 
+    /// <summary>
+    /// The message fits every cause (#395's review): a lock wait past the timeout on an invitation recipient's row can be
+    /// another pharmacy's request, so it names neither the pharmacy nor a save that has completed.
+    /// </summary>
+    [Theory]
+    [InlineData("40P01")]
+    [InlineData("40001")]
+    [InlineData("55P03")]
+    public void A_concurrent_save_says_another_request_came_at_the_same_moment_and_nothing_was_saved(string sqlState)
+    {
+        var error = PharmacyFailures.LostRace(new SaveDeadlocked(sqlState), Guid.CreateVersion7());
+
+        error.Message.ShouldBe("Another request was being saved at the same moment; nothing was saved. Try again.");
+    }
+
     [Fact]
     public void A_version_that_moved_on_is_still_a_pharmacy_that_changed()
     {

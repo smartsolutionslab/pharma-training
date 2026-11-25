@@ -9,6 +9,7 @@ using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Erasures;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.InvitationRecipients;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.InvitationSenders;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Domain.Pharmacies;
+using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Tests.InvitationRecipients;
 using SmartSolutionsLab.PharmaTraining.Modules.Organisation.Tests.Pharmacies;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Organisation.Tests.Erasures;
@@ -195,7 +196,7 @@ public class ErasureConfirmationMailRequestedV1ConsumerTests
     public async Task Recipients_and_the_sender_are_removed()
     {
         var setup = ReleasedPersonWithTwoAddresses();
-        var unrelatedRecipient = InvitationRecipient.FirstMailed(EmailAddress.From("unrelated@example.org"), Timestamp.From(Start));
+        var unrelatedRecipient = StoredRecipients.MailedAt(EmailAddress.From("unrelated@example.org"), Timestamp.From(Start));
         var unrelatedSender = InvitationSender.FirstMailed(Owner, Timestamp.From(Start));
         store.StoredRecipients.Add(unrelatedRecipient);
         store.StoredSenders.Add(unrelatedSender);
@@ -253,8 +254,8 @@ public class ErasureConfirmationMailRequestedV1ConsumerTests
         elsewhere.RevokeInvitation(revokedInvitation).IsSuccess.ShouldBeTrue();
         elsewhere.Stored(store);
 
-        store.StoredRecipients.Add(InvitationRecipient.FirstMailed(first, TestPharmacies.RegisteredAt));
-        store.StoredRecipients.Add(InvitationRecipient.FirstMailed(second, TestPharmacies.RegisteredAt));
+        store.StoredRecipients.Add(StoredRecipients.MailedAt(first, TestPharmacies.RegisteredAt));
+        store.StoredRecipients.Add(StoredRecipients.MailedAt(second, TestPharmacies.RegisteredAt));
         store.StoredSenders.Add(InvitationSender.FirstMailed(person, TestPharmacies.RegisteredAt));
 
         return new Released(StoredErasure(), home, homeMembership, elsewhere, revokedInvitation, first, second);

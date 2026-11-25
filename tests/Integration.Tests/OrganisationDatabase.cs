@@ -682,11 +682,37 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
         WaitUntilBlockedAsync(gate, expected, TimeSpan.FromSeconds(30), cancellationToken);
 
     /// <summary>As above, failing the test when they do not within <paramref name="within"/>.</summary>
-    public async Task WaitUntilBlockedAsync(PharmacyLock gate, int expected, TimeSpan within, CancellationToken cancellationToken)
+    public async Task WaitUntilBlockedAsync(PharmacyLock gate, int expected, TimeSpan within, CancellationToken cancellationToken) =>
+        (await TryWaitUntilBlockedAsync(gate, expected, within, cancellationToken)).ShouldBeTrue("the concurrent requests never waited for the lock on the pharmacy");
+
+    /// <summary>
+    /// As above, answering whether the given number of backends wait for the gate within <paramref name="within"/>
+    /// instead of failing the test when they do not.
+    /// </summary>
+    public async Task<bool> TryWaitUntilBlockedAsync(PharmacyLock gate, int expected, TimeSpan within, CancellationToken cancellationToken)
+    {
+        var blocked = await BlockedWithinAsync(gate, expected, within, cancellationToken);
+        if (blocked < expected)
+        {
+            return false;
+        }
+
+        blocked.ShouldBe(expected);
+        return true;
+    }
+
+    /// <summary>Polls until at least one backend waits for the gate, and fails the test when none does within 30 seconds.</summary>
+    public async Task WaitUntilAnyBlockedAsync(PharmacyLock gate, CancellationToken cancellationToken) =>
+        (await BlockedWithinAsync(gate, 1, TimeSpan.FromSeconds(30), cancellationToken)).ShouldBeGreaterThanOrEqualTo(1L, "no request ever waited for the gate");
+
+    /// <summary>
+    /// The number of backends waiting for the gate, polled until it reaches <paramref name="atLeast"/> or
+    /// <paramref name="within"/> has passed, whichever comes first.
+    /// </summary>
+    private async Task<long> BlockedWithinAsync(PharmacyLock gate, int atLeast, TimeSpan within, CancellationToken cancellationToken)
     {
         Ensure.That(gate).IsNotNull();
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(within);
+        var deadline = TimeProvider.System.GetUtcNow() + within;
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand(
             """
@@ -700,22 +726,16 @@ internal sealed class OrganisationDatabase(AspireFixture aspire)
             connection);
         command.Parameters.AddWithValue("gate", gate.ProcessId);
 
-        var blocked = 0L;
-        while (blocked < expected)
+        while (true)
         {
-            if (timeout.IsCancellationRequested)
+            var blocked = (long)(await command.ExecuteScalarAsync(cancellationToken) ?? 0L);
+            if (blocked >= atLeast || TimeProvider.System.GetUtcNow() >= deadline)
             {
-                blocked.ShouldBe(expected, "the concurrent requests never waited for the lock on the pharmacy");
+                return blocked;
             }
 
-            blocked = (long)(await command.ExecuteScalarAsync(cancellationToken) ?? 0L);
-            if (blocked < expected)
-            {
-                await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken);
-            }
+            await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken);
         }
-
-        blocked.ShouldBe(expected);
     }
 
     /// <summary>
