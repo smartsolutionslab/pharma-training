@@ -1,12 +1,9 @@
 import { expect, type Page, test } from '@playwright/test';
+import { signIn } from './signIn';
 
 /** The editors' inbox, as the realm's local user `editor` (realm role editor) opens it. Keycloak's login is English. */
 async function openInbox(page: Page) {
-  await page.goto('/');
-  await page.getByLabel('Username or email').fill('editor');
-  await page.getByLabel('Password', { exact: true }).fill('editor');
-  await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.getByText('Angemeldet als editor')).toBeVisible();
+  await signIn(page, 'editor');
   await page.goto('/editorial');
   await expect(page.getByRole('heading', { name: 'Redaktion', level: 1 })).toBeVisible();
 }

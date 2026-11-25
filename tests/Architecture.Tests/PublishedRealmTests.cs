@@ -24,6 +24,10 @@ public class PublishedRealmTests
     // password grant on (the security review of #114, PR-C).
     private const string AdminCli = "admin-cli";
 
+    // The longest login events are kept, in seconds: 30 days (docs/adr/0040, #448). A user event names the user, their
+    // username and IP address, so it must not outlive what security monitoring needs, nor an erased account (#115).
+    private const int LongestEventsExpiration = 30 * 24 * 60 * 60;
+
     // The most failed logins brute-force detection lets one user have before it locks them out for a while.
     private const int MostFailures = 10;
 
@@ -180,6 +184,18 @@ public class PublishedRealmTests
         }
 
         Value(realm, "adminEventsEnabled").ShouldBe("true", "The published realm must record admin events (adminEventsEnabled true), so a change to its users, roles or clients can be traced.");
+    }
+
+    [Theory]
+    [InlineData("src/AppHost/keycloak/realm.json")]
+    [InlineData("src/AppHost/realms/realm.json")]
+    public void Login_events_expire_within_the_period_the_adr_records(string relativePath)
+    {
+        var expiration = Value(Read(relativePath), "eventsExpiration");
+
+        long.TryParse(expiration, System.Globalization.CultureInfo.InvariantCulture, out var seconds).ShouldBeTrue(
+            $"{relativePath} sets no eventsExpiration: Keycloak then keeps login events forever, past an erased account (#448, docs/adr/0040).");
+        seconds.ShouldBeInRange(1, LongestEventsExpiration, $"{relativePath} keeps login events for {seconds} s; docs/adr/0040 allows at most {LongestEventsExpiration} s (30 days).");
     }
 
     [Fact]

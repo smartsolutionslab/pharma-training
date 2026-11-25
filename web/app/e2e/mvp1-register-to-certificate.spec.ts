@@ -2,8 +2,9 @@ import { type APIRequestContext, type Browser, expect, type Page, test } from '@
 import { addMonths } from '@/lib/addMonths';
 import { pdfText, qrLinkIn } from './certificatePdf';
 import { courseTitle, daysAhead, germanDate, germanLongDate, pharmacyName } from './compliance';
-import { acceptOn, invitationLink, mailText, recordAcceptances, signInAs } from './invitations';
-import { fullName, x1Cast, type X1Cast, type X1User } from './x1Users';
+import { acceptOn, invitationLink, mailText, recordAcceptances } from './invitations';
+import { signIn, submitSignIn } from './signIn';
+import { fullName, x1Cast, type X1Cast } from './x1Users';
 
 // MVP 1 end to end (#55, X1), with no route mocked, in three browsers of their own, locally against the AppHost and on
 // staging after each deploy (#130, x1-staging.yml). The owner (Olaf Owner, no realm role) registers a pharmacy and invites
@@ -44,15 +45,6 @@ function nextAuthorization(page: Page) {
   return page
     .waitForRequest((request) => request.url().includes('/api/') && request.headers()['authorization'] !== undefined)
     .then((request) => request.headers()['authorization'] ?? '');
-}
-
-/** Signs in on the start page; resolves to the Authorization header the app then sends. */
-async function signIn(page: Page, user: X1User) {
-  const signedIn = nextAuthorization(page);
-  await page.goto('/');
-  await signInAs(page, user.username, user.password);
-  await expect(page.getByText(`Angemeldet als ${user.username}`)).toBeVisible();
-  return signedIn;
 }
 
 /**
@@ -160,7 +152,10 @@ async function submit(page: Page) {
 // failed or timed-out test too (#442). Nothing for the local users.
 let removeCast: X1Cast['dispose'] = async () => {};
 test.afterEach(async () => {
-  await removeCast();
+  const remove = removeCast;
+  // Back to nothing first, so a later test in this file never removes this one's users again (#445).
+  removeCast = async () => {};
+  await remove();
 });
 
 test('MVP 1: an owner registers and invites, an editor publishes, the employee passes, the certificate verifies and the matrix shows it completed', async ({
@@ -187,7 +182,7 @@ test('MVP 1: an owner registers and invites, an editor publishes, the employee p
 
   try {
     await test.step('the owner registers a pharmacy', async () => {
-      await signIn(page, cast.owner);
+      await signIn(page, cast.owner.username, cast.owner.password);
       await page.goto('/organisation/register');
       await expect(page.getByRole('heading', { name: 'Apotheke registrieren', level: 1 })).toBeVisible();
       await page.getByRole('textbox', { name: 'Name der Apotheke' }).fill(pharmacy);
@@ -218,7 +213,7 @@ test('MVP 1: an owner registers and invites, an editor publishes, the employee p
       const link = invitationLink(await mailText(page.request, employeeAddress, pharmacy));
       const accepted = recordAcceptances(learner.page);
       await learner.page.goto(link);
-      await signInAs(learner.page, cast.employee.username, cast.employee.password);
+      await submitSignIn(learner.page, cast.employee.username, cast.employee.password);
       await acceptOn(learner.page, pharmacy, link.slice(link.indexOf('#token=') + '#token='.length), accepted);
       await expect(toast(learner.page, `Sie sind jetzt Mitglied der Apotheke ${pharmacy}.`)).toBeVisible({
         timeout: 15_000,
@@ -232,7 +227,7 @@ test('MVP 1: an owner registers and invites, an editor publishes, the employee p
     });
 
     await test.step('an editor publishes a course with a test the editor wrote, without the AI draft', async () => {
-      const authorization = await signIn(editor.page, cast.editor);
+      const authorization = await signIn(editor.page, cast.editor.username, cast.editor.password);
       await editor.page.goto('/editorial');
       await editor.page.getByRole('button', { name: 'Neue Schulung' }).first().click();
       const dialog = editor.page.getByRole('dialog', { name: 'Neue Schulung anlegen' });

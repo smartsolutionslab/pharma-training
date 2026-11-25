@@ -7,6 +7,7 @@
   "bruteForceProtected": true,
   "failureFactor": 10,
   "eventsEnabled": true,
+  "eventsExpiration": 2592000,
   "adminEventsEnabled": true,
   "requiredActions": [
     { "alias": "CONFIGURE_TOTP", "name": "Configure OTP", "providerId": "CONFIGURE_TOTP", "enabled": true, "defaultAction": false, "priority": 10 },

@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { acceptOn, invitationLink, mailText, recordAcceptances, signInAs, unique } from './invitations';
+import { acceptOn, invitationLink, mailText, recordAcceptances, unique } from './invitations';
+import { signIn, submitSignIn } from './signIn';
 
 // The members and invitations page (#12) against the AppHost, with no route mocked. The developer registers a pharmacy
 // of their own through the UI and works in it: invites an address, is refused inviting it twice and resending it at
@@ -18,14 +19,6 @@ const employeeAddress = 'employee-b@example.com';
 const lastManager = 'Der letzte Apothekenleiter kann nicht ausgetragen oder zum Mitarbeiter gemacht werden.';
 
 /** Signs in as the developer on the start page. */
-async function signIn(page: Page) {
-  await page.goto('/');
-  await page.getByLabel('Username or email').fill('developer');
-  await page.getByLabel('Password', { exact: true }).fill('developer');
-  await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.getByText('Angemeldet als developer')).toBeVisible();
-}
-
 /** Registers a pharmacy with the name through the page, as its pharmacist; the app then shows its team page. */
 async function register(page: Page, name: string) {
   await page.goto('/organisation/register');
@@ -161,7 +154,7 @@ test('a manager invites, resends and revokes, cannot leave as the last manager, 
     const invitee = await context.newPage();
     const accepted = recordAcceptances(invitee);
     await invitee.goto(link);
-    await signInAs(invitee, 'employee-b');
+    await submitSignIn(invitee, 'employee-b');
     await acceptOn(invitee, pharmacy, link.slice(link.indexOf('#token=') + '#token='.length), accepted);
     await expect(toast(invitee, `Sie sind jetzt Mitglied der Apotheke ${pharmacy}.`)).toBeVisible({
       timeout: 15_000,
