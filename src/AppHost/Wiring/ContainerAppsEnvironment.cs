@@ -29,6 +29,8 @@ public static class ContainerAppsEnvironment
                     var environment = infrastructure.GetProvisionableResources().OfType<ContainerAppManagedEnvironment>().Single();
                     environment.ResourceVersion = ApiVersion;
                     environment.PeerTrafficEncryptionIsEnabled = true;
+                    // In a virtual network of its own, reaching the database server and the Key Vault privately (#149).
+                    PrivateNetwork.InjectInto(infrastructure, environment);
                 });
         }
 

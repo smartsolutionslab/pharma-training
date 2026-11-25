@@ -1,5 +1,6 @@
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Azure;
+using Azure.Provisioning.KeyVault;
 
 namespace Aspire.Hosting;
 
@@ -39,7 +40,9 @@ public sealed class DeploymentSecrets
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        return new DeploymentSecrets(builder, builder.ExecutionContext.IsPublishMode ? builder.AddAzureKeyVault(VaultName).ClearDefaultRoleAssignments() : null);
+        return new DeploymentSecrets(builder, builder.ExecutionContext.IsPublishMode ? builder.AddAzureKeyVault(VaultName).ClearDefaultRoleAssignments()
+            // Reached through its private endpoint alone (Wiring/PrivateNetwork.cs, #149).
+            .ConfigureInfrastructure(infrastructure => PrivateNetwork.DenyPublicAccess(infrastructure.GetProvisionableResources().OfType<KeyVaultService>().Single())) : null);
     }
 
     /// <summary>

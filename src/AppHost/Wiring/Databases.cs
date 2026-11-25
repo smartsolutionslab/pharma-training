@@ -66,6 +66,8 @@ public static class Databases
             {
                 var flexibleServer = infrastructure.GetProvisionableResources().OfType<PostgreSqlFlexibleServer>().Single();
                 size.ApplyTo(flexibleServer);
+                // Reached through its private endpoint alone (Wiring/PrivateNetwork.cs, #149).
+                PrivateNetwork.DenyPublicAccess(infrastructure, flexibleServer);
                 WriteRoleConnectionStrings(infrastructure, flexibleServer);
             });
         server.AddDatabase($"{KeycloakDatabase}-database", KeycloakDatabase);
