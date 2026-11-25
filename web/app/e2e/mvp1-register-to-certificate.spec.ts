@@ -1,29 +1,26 @@
 import { type APIRequestContext, type Browser, expect, type Page, test } from '@playwright/test';
 import { addMonths } from '@/lib/addMonths';
 import { pdfText, qrLinkIn } from './certificatePdf';
-import { issuedCertificate, type IssuedCertificate } from './certificationDatabase';
-import { accessToken, courseTitle, daysAhead, germanDate, germanLongDate, pharmacyName } from './compliance';
+import { courseTitle, daysAhead, germanDate, germanLongDate, pharmacyName } from './compliance';
 import { acceptOn, invitationLink, mailText, recordAcceptances, signInAs } from './invitations';
+import { fullName, x1Cast, type X1User } from './x1Users';
 
-// MVP 1 end to end (#55, X1), against the AppHost with no route mocked, in three browsers of their own: the realm's
-// local user owner (Olaf Owner, no realm role) registers a pharmacy and invites employee-c (Clara Employee), a user no other spec invites (an address is mailed at most every 10 minutes, #265), on its team
-// page; she accepts from the mail in Mailpit. The realm's local user editor starts a course in the editorial inbox,
-// gives it a text chapter and a test of one question the editor wrote and approved (no AI draft) through the API, as
-// e2e/editorial-workflow.spec.ts does, then submits and publishes it on the version's page. The owner assigns it to her
-// in the wizard; she opens it from "Meine Schulungen", works through the chapter in the player, fails the test once and
-// passes it. The link her certificate's QR code encodes, decoded from the PDF Certification made, opens /verify/{code}
-// signed out and says it is valid; the owner's team matrix shows her course as completed.
+// MVP 1 end to end (#55, X1), with no route mocked, in three browsers of their own, locally against the AppHost and on
+// staging after each deploy (#130, x1-staging.yml). The owner (Olaf Owner, no realm role) registers a pharmacy and invites
+// the employee (Clara Employee) on its team page; she accepts from the mail in Mailpit. The editor starts a course in the
+// editorial inbox, gives it a text chapter and a test of one question the editor wrote and approved (no AI draft) through
+// the API, as e2e/editorial-workflow.spec.ts does, then submits and publishes it on the version's page. The owner assigns
+// it to her in the wizard; she opens it from "Meine Schulungen", works through the chapter in the player, fails the test
+// once and passes it. Her certificate is the one "Meine Bestätigungen" lists her for the course (GET
+// /certification/me/certificates, as she reads it); its PDF is fetched as she would, its page drawn in a browser and its
+// QR code decoded there (qrLinkIn). The link it encodes opens /verify/{code} signed out and says it is valid; the owner's
+// team matrix shows her course as completed.
 //
-// What no page offers yet, and how the test reaches it instead:
-// - "Meine Bestätigungen" (Z6, GET /certification/me/certificates) does not exist: nothing the learner reads names her
-//   certificate. Its id is read from Certification's database (e2e/certificationDatabase.ts, as
-//   e2e/certification-verify.spec.ts reads codes); the PDF is then fetched as she would (GET
-//   /certification/certificates/{id}/pdf), its page drawn in a browser and its QR code decoded there (qrLinkIn).
-// Every run registers a pharmacy and publishes a course of its own, so what earlier runs left changes nothing; owner
-// and employee-c may already belong to several pharmacies. Keycloak's login is English.
-
-const employee = 'Clara Employee';
-const employeeAddress = 'employee-c@example.com';
+// Who they are (e2e/x1Users.ts): locally the realm's local users owner, editor and employee-c, a user no other spec
+// invites (an address is mailed at most every 10 minutes, #265); on staging three users the run creates through
+// Keycloak's admin API and deletes afterwards. Every run registers a pharmacy and publishes a course of its own, so what
+// earlier runs left changes nothing; the local owner and employee-c may already belong to several pharmacies. Keycloak's
+// login is English.
 
 /** Today in Germany, where the host dates certificates (DayInGermany()), as yyyy-mm-dd. */
 function todayInGermany() {
@@ -42,15 +39,20 @@ async function browserOf(browser: Browser) {
   return { context, page: await context.newPage() };
 }
 
-/** Signs in as a local user on the start page; resolves to the Authorization header the app then sends. */
-async function signIn(page: Page, user: string) {
-  const signedIn = page.waitForRequest(
-    (request) => request.url().includes('/api/') && request.headers()['authorization'] !== undefined,
-  );
+/** The next call the page makes to the host's API with a token: its Authorization header. */
+function nextAuthorization(page: Page) {
+  return page
+    .waitForRequest((request) => request.url().includes('/api/') && request.headers()['authorization'] !== undefined)
+    .then((request) => request.headers()['authorization'] ?? '');
+}
+
+/** Signs in on the start page; resolves to the Authorization header the app then sends. */
+async function signIn(page: Page, user: X1User) {
+  const signedIn = nextAuthorization(page);
   await page.goto('/');
-  await signInAs(page, user);
-  await expect(page.getByText(`Angemeldet als ${user}`)).toBeVisible();
-  return (await signedIn).headers()['authorization'] ?? '';
+  await signInAs(page, user.username, user.password);
+  await expect(page.getByText(`Angemeldet als ${user.username}`)).toBeVisible();
+  return signedIn;
 }
 
 /**
@@ -160,6 +162,9 @@ test('MVP 1: an owner registers and invites, an editor publishes, the employee p
   baseURL,
 }) => {
   test.setTimeout(360_000);
+  const cast = await x1Cast();
+  const employee = fullName(cast.employee);
+  const employeeAddress = cast.employee.email;
   const pharmacy = pharmacyName('MVP 1');
   const title = courseTitle('MVP 1');
   const editor = await browserOf(browser);
@@ -174,7 +179,7 @@ test('MVP 1: an owner registers and invites, an editor publishes, the employee p
 
   try {
     await test.step('the owner registers a pharmacy', async () => {
-      await signIn(page, 'owner');
+      await signIn(page, cast.owner);
       await page.goto('/organisation/register');
       await expect(page.getByRole('heading', { name: 'Apotheke registrieren', level: 1 })).toBeVisible();
       await page.getByRole('textbox', { name: 'Name der Apotheke' }).fill(pharmacy);
@@ -205,7 +210,7 @@ test('MVP 1: an owner registers and invites, an editor publishes, the employee p
       const link = invitationLink(await mailText(page.request, employeeAddress, pharmacy));
       const accepted = recordAcceptances(learner.page);
       await learner.page.goto(link);
-      await signInAs(learner.page, 'employee-c');
+      await signInAs(learner.page, cast.employee.username, cast.employee.password);
       await acceptOn(learner.page, pharmacy, link.slice(link.indexOf('#token=') + '#token='.length), accepted);
       await expect(toast(learner.page, `Sie sind jetzt Mitglied der Apotheke ${pharmacy}.`)).toBeVisible({
         timeout: 15_000,
@@ -219,7 +224,7 @@ test('MVP 1: an owner registers and invites, an editor publishes, the employee p
     });
 
     await test.step('an editor publishes a course with a test the editor wrote, without the AI draft', async () => {
-      const authorization = await signIn(editor.page, 'editor');
+      const authorization = await signIn(editor.page, cast.editor);
       await editor.page.goto('/editorial');
       await editor.page.getByRole('button', { name: 'Neue Schulung' }).first().click();
       const dialog = editor.page.getByRole('dialog', { name: 'Neue Schulung anlegen' });
@@ -317,22 +322,31 @@ test('MVP 1: an owner registers and invites, an editor publishes, the employee p
     });
 
     await test.step('the certificate verifies by the link its QR code encodes, signed out', async () => {
-      // Z6: no page or API the learner reads names her certificate yet ("Meine Bestätigungen",
-      // GET /certification/me/certificates), so its id comes from Certification's database.
-      let certificate: IssuedCertificate | undefined;
+      // Her certificate, as "Meine Bestätigungen" lists it for her: the one for this course. Certification issues it
+      // from an event after the pass, so the list is asked again until it has. Her token comes from her own page.
+      const ready = nextAuthorization(learner.page);
+      await learner.page.goto('/learning');
+      const holder = await ready;
+      let id = '';
       await expect
         .poll(
-          () => {
-            certificate = issuedCertificate(employee, title);
-            return certificate?.id ?? '';
+          async () => {
+            const response = await page.request.get('/api/certification/me/certificates', {
+              headers: { Authorization: holder },
+            });
+            if (!response.ok()) {
+              return `${response.status()}: ${await response.text()}`;
+            }
+            const held = (await response.json()) as { items: { certificateId: string; courseTitle: string }[] };
+            const mine = held.items.filter((each) => each.courseTitle === title);
+            id = mine[0]?.certificateId ?? '';
+            return mine.length;
           },
-          { message: `Certification issues ${employee} a certificate for ${title}`, timeout: 30_000 },
+          { message: `Certification issues ${employee} one certificate for ${title}`, timeout: 30_000 },
         )
-        .not.toBe('');
-      const { id, verificationCode } = certificate ?? { id: '', verificationCode: '' };
+        .toBe(1);
 
       // The PDF, as its holder reads it; Certification renders it after issuing, so it may not be ready at once.
-      const holder = await accessToken(page.request, 'employee-c');
       let documentUrl = '';
       await expect
         .poll(
@@ -355,7 +369,7 @@ test('MVP 1: an owner registers and invites, an editor publishes, the employee p
       const link = await qrLinkIn(visitor.page, bytes);
       expect(link, `no QR code found on the PDF's first page`).not.toBe('');
       expect(new URL(link).origin).toBe(new URL(baseURL ?? '').origin);
-      expect(new URL(link).pathname).toBe(`/verify/${verificationCode}`);
+      expect(new URL(link).pathname).toMatch(/^\/verify\/[^/]+$/);
       // The link printed below the code is the one it encodes.
       const text = await pdfText(bytes);
       expect(/Echtheit prüfen:\s*(\S+)/.exec(text)?.[1], `the PDF's text: ${text}`).toBe(link);
@@ -399,5 +413,7 @@ test('MVP 1: an owner registers and invites, an editor publishes, the employee p
     });
   } finally {
     await Promise.all([editor.context.close(), learner.context.close(), visitor.context.close()]);
+    // The run's users go, however it ended (on staging; the local users stay).
+    await cast.dispose();
   }
 });

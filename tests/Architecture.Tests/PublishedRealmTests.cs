@@ -126,8 +126,11 @@ public class PublishedRealmTests
         factor.ShouldBeInRange(1, MostFailures, $"The published realm's failureFactor must be from 1 to {MostFailures}.");
     }
 
+    // The port, STARTTLS and authentication come from Keycloak's environment, which the AppHost sets per deployment:
+    // production's relay on 587 with STARTTLS and its credentials, staging's Mailpit inside the environment without either
+    // (#130; pinned by AppHostStagingMailTests).
     [Fact]
-    public void Mail_goes_through_the_deployments_smtp_server_with_starttls()
+    public void Mail_goes_through_the_deployments_smtp_server_as_keycloaks_environment_names_it()
     {
         var mail = Published()["smtpServer"];
 
@@ -140,12 +143,24 @@ public class PublishedRealmTests
                 ["from"] = "${SMTP_FROM}",
                 ["user"] = "${SMTP_USERNAME}",
                 ["password"] = "${SMTP_PASSWORD}",
-                ["port"] = "587",
-                ["starttls"] = "true",
+                ["port"] = "${SMTP_PORT}",
+                ["starttls"] = "${SMTP_STARTTLS}",
                 ["ssl"] = "false",
-                ["auth"] = "true",
+                ["auth"] = "${SMTP_AUTH}",
             },
-            "The published realm's smtpServer must name the deployment's SMTP server through Keycloak's environment, on port 587 with STARTTLS and authentication.");
+            "The published realm's smtpServer must name the deployment's SMTP server, its port, STARTTLS and authentication through Keycloak's environment, and never SSL on connect.");
+    }
+
+    // The staging end-to-end run's client (#130) is created on staging by the runbook alone, never imported: a realm that
+    // declared it would give production a client that may manage every user.
+    [Theory]
+    [InlineData("src/AppHost/keycloak/realm.json")]
+    [InlineData("src/AppHost/realms/realm.json")]
+    public void Neither_realm_declares_the_staging_test_runner(string relativePath)
+    {
+        var clients = Read(relativePath)["clients"] as JsonArray ?? [];
+
+        clients.OfType<JsonObject>().Select(client => (string?)client["clientId"]).ShouldNotContain("x1-runner", $"{relativePath} declares the client x1-runner.");
     }
 
     [Fact]

@@ -1,6 +1,6 @@
 # 0004: The invitation mail goes over SMTP, and only the token's hash is stored
 
-**Status:** Accepted; amended 2026-11-23: one mail per invitation version, and every link of a version works; amended 2026-11-23 (#158): invitation mail is limited, and only services that send mail get the mail settings; amended 2026-11-24 (#265): an address is mailed at most once per 10 minutes and a sender at most 100 times per UTC day, across pharmacies; amended 2026-11-24 (#294): invitations take every instant from the database's clock, `Retry-After` counts from it, and the renew cooldown has a ceiling; amended 2026-11-24 (#369): a sender's row is created if missing and held until the commit, so a sender's concurrent mails, the first two included, count one after the other; amended 2026-11-24 (#375): an address's row is created if missing and held until the commit too, always before the sender's, and a wait for either row ends after a lock timeout as a request to try again
+**Status:** Accepted; amended 2026-11-23: one mail per invitation version, and every link of a version works; amended 2026-11-23 (#158): invitation mail is limited, and only services that send mail get the mail settings; amended 2026-11-24 (#265): an address is mailed at most once per 10 minutes and a sender at most 100 times per UTC day, across pharmacies; amended 2026-11-24 (#294): invitations take every instant from the database's clock, `Retry-After` counts from it, and the renew cooldown has a ceiling; amended 2026-11-24 (#369): a sender's row is created if missing and held until the commit, so a sender's concurrent mails, the first two included, count one after the other; amended 2026-11-24 (#375): an address's row is created if missing and held until the commit too, always before the sender's, and a wait for either row ends after a lock timeout as a request to try again Amended 2026-11-25 (#130): staging sends to a Mailpit of its own, without TLS inside the environment; production keeps the relay.
 
 ## Context
 
@@ -73,6 +73,21 @@
   - Both rules take the database's clock, like #158's. Both errors map through `PharmacyFailures.From` to `ApiError.RetryLater`, so the answer is 429 with `Retry-After` and `retryAt`, as above. Migration `AddInvitationRecipientsAndSenders`.
 - **Uniqueness is backed twice.** `Pharmacy.Invite` refuses an address that is invited or active (409 `organisation.already-member-or-invited`). A partial unique index on `(pharmacy_id, email)` where `status IN ('Invited', 'Active')` refuses the row from a writer past that check (409 `already-exists`). The index excludes revoked rows, so a revoked address may be invited again.
 - **The invite's `201` names `/organisation/pharmacies/{id}`**, which `GET` answers; an invitation has no resource of its own.
+
+### Staging's mail (#130, the owner's decisions of 2026-11-25)
+
+- **Staging sends every mail to a Mailpit of its own,** a Container App in its environment. Azure Communication Services cannot receive, and the staging end-to-end run (X1, `x1-staging.yml`) must read the invitation mail it causes. Production keeps the relay.
+  - Mailpit's inbox answers outside the environment, at `https://mailpit.<domain>`, behind its basic auth (`mailpit-ui-auth`, a Key Vault secret).
+  - Its SMTP port answers inside the environment alone.
+  - It keeps no volume: a restart empties it.
+- **Staging's mail travels without TLS and without credentials, inside the environment.**
+  - Nothing there would trust a certificate Mailpit presents, and the environment's peer-traffic encryption carries the traffic between its apps.
+  - The services' rule (a password, and a mail with its link, never travel in clear off the machine) gets one exception: the host the AppHost names in `Mail:UnencryptedHost`, which it sets on staging alone, and never with a credential (`SmtpSettings`).
+  - Keycloak's published realm takes the SMTP port, STARTTLS and authentication from its environment (`SMTP_PORT`, `SMTP_STARTTLS`, `SMTP_AUTH`):
+    - production sets 587, STARTTLS and authentication, as before;
+    - staging sets Mailpit's 1025, without either.
+  - `AppHostStagingMailTests` pins both environments.
+- **Consequence: staging never exercises the relay.** Production's first mail is the first through it, so the runbook checks the relay by hand before real data (README, "What to check after the first deploy").
 
 ## Alternatives
 
