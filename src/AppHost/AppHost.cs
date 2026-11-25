@@ -95,7 +95,7 @@ if (builder.ExecutionContext.IsRunMode)
     storage.AllowBrowserAccessFrom(web);
     frontendUrl = ReferenceExpression.Create($"{web.GetEndpoint("http")}");
     // Demo data, seeded through the edge once it, Keycloak and the web app are up; off with DemoSeeder:Enabled=false
-    // (Wiring/DemoSeeding.cs, docs/adr/0041).
+    // (Wiring/DemoSeeding.cs, docs/adr/0042).
     builder.AddDemoSeeder(host, web, keycloak);
 }
 else

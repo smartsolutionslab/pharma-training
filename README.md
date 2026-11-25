@@ -91,7 +91,7 @@ The realm's confidential client `pharma-training-erasure`, with which Organisati
 
 ### Demo data
 
-The AppHost starts the resource `demo-seeder` once the edge, Keycloak and the web app are up. It seeds demo data through the edge's public API, as the people the data names, and exits; the dashboard shows it Finished, or failed with its log, and its last line says `Demo data: <n> created` ([ADR 0041](docs/adr/0041-demo-data-is-seeded-through-the-edge.md)).
+The AppHost starts the resource `demo-seeder` once the edge, Keycloak and the web app are up. It seeds demo data through the edge's public API, as the people the data names, and exits; the dashboard shows it Finished, or failed with its log, and its last line says `Demo data: <n> created` ([ADR 0042](docs/adr/0042-demo-data-is-seeded-through-the-edge.md)).
 
 - **What it seeds:** three pharmacies (`Demo-Apotheke am Markt`, `Demo-Apotheke Rosenstraße`, `Demo-Löwen-Apotheke Großstadt`, the last with 22 employees, so its members and its matrix have two pages), four published courses (`Demo: …`) and a second version of the Hygiene course, and assignments in every state: open, in progress, completed with a certificate, a failed attempt, an exhausted examination, a recurring assignment, and assignments due today, which are overdue from the next day.
 - **Who:** 35 users named `demo-*`, each with the address `<username>@example.com` and, like the local users above, their username as their password. `demo-autorin` writes, `demo-pruefer` approves and `demo-freigabe` publishes (all three `editor`); `demo-markt-leitung`, `demo-rosen-leitung` and `demo-loewen-leitung` manage the pharmacies; `demo-markt-1`…`4`, `demo-rosen-1`…`3` and `demo-loewen-01`…`22` are employees. Their invitations land in Mailpit.

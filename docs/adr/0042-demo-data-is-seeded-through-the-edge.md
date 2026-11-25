@@ -1,4 +1,4 @@
-# 0041: Demo data is seeded through the edge: by the AppHost locally, by a staging-only workflow on staging
+# 0042: Demo data is seeded through the edge: by the AppHost locally, by a staging-only workflow on staging
 
 **Status:** Accepted (#457; the owner decided the open questions on 2026-11-25). This ADR covers both environments. The local part ships first: the seeder, the AppHost's run-mode resource and the program's guard. The staging workflow, its deploy job and the auth proxy's admin prefixes follow in a second pull request.
 
