@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using SmartSolutionsLab.PharmaTraining.Contracts.Organisation;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Certificates;
 using SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Memberships;
@@ -15,12 +16,14 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Con
 /// The handler takes the message and a cancellation token only; everything else comes by constructor, since the
 /// AppHost's messaging topology reads every parameter type of a consumer's handler (docs/adr/0011).
 /// </remarks>
-public sealed class MembershipChangedV1Consumer(IMembershipStore memberships, ICertificationUnitOfWork unitOfWork)
+public sealed partial class MembershipChangedV1Consumer(IMembershipStore memberships, IErasedPersonStore erased, ICertificationUnitOfWork unitOfWork, ILogger<MembershipChangedV1Consumer> logger)
 {
     public async Task HandleAsync(MembershipChangedV1 message, CancellationToken cancellationToken)
     {
         // Refused here, each by its name, so a poison message dead-letters with a reason that says which field.
         Ensure.That(message).IsNotNull();
+        Ensure.That(erased).IsNotNull();
+        Ensure.That(logger).IsNotNull();
         Ensure.That(message.MembershipId, nameof(message.MembershipId)).IsNotEmpty();
         Ensure.That(message.PersonId, nameof(message.PersonId)).IsNotEmpty();
         Ensure.That(message.PharmacyId, nameof(message.PharmacyId)).IsNotEmpty();
@@ -42,4 +45,7 @@ public sealed class MembershipChangedV1Consumer(IMembershipStore memberships, IC
             OrganisationRoles.ToRole(message.Role)));
         await unitOfWork.CommitAsync(cancellationToken);
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "A change of membership {Membership} belongs to an erased person; its event is dropped.")]
+    private static partial void ErasedPersonDropped(ILogger logger, Guid membership);
 }
