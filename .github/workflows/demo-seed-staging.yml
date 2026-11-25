@@ -1,0 +1,66 @@
+name: demo-seed-staging
+
+# Seeds the demo data (#457, docs/adr/0042) into the deployed staging environment, never production: the same plan and
+# the same seeder as a local run (src/DemoSeeder), through staging's edge and with the target Staging. deploy.yml runs it
+# after each staging deploy; it can also be started by hand (Actions, demo-seed-staging, Run workflow). It takes no input,
+# so nothing can name another environment, and nothing here deploys or signs in to Azure.
+#
+# The seeder checks before it sends any credential that the edge's /api/config.json reports the deployment staging and
+# that the realm it names is https on Keycloak's host. It administers the demo users through Keycloak's admin API behind
+# the auth proxy as the staging-only confidential client demo-seeder (realm-management manage-users and view-users alone;
+# README, "One-time setup"), sets every demo user's password to DEMO_USERS_PASSWORD on every run, and reads the invitation
+# mail from staging's Mailpit behind its basic auth. It uploads nothing and exports no telemetry, since either would carry
+# those secrets off the runner (StagingEndToEndRunKeepsNoTraces). A second run adds nothing.
+on:
+  workflow_dispatch:
+  # Called by deploy.yml with no secrets: its job reads them from the staging environment it names
+  # (StagingEndToEndRunTakesNoSecretsFromItsCaller).
+  workflow_call:
+
+# One seed at a time against staging; a second waits.
+concurrency:
+  group: demo-seed-staging
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: staging
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          global-json-file: global.json
+      # Every value comes from the staging environment: the edge, which serves the web app (FRONTEND_URL, as deploy.yml
+      # publishes it), Keycloak's and Mailpit's public addresses (as x1-staging.yml reads them), Mailpit's basic auth
+      # (user:password), the demo-seeder client's secret and the demo users' password. A missing one is named, never its
+      # value; the seeder names a refused setting by its key alone.
+      - name: Seed the demo data into staging
+        env:
+          DemoSeeder__Target: Staging
+          DemoSeeder__EdgeUrl: ${{ vars.FRONTEND_URL }}
+          DemoSeeder__WebOrigin: ${{ vars.FRONTEND_URL }}
+          DemoSeeder__KeycloakAdminUrl: ${{ vars.X1_KEYCLOAK_URL }}
+          DemoSeeder__MailpitUrl: ${{ vars.X1_MAILPIT_URL }}
+          DemoSeeder__MailpitAuth: ${{ secrets.MAILPIT_UI_AUTH }}
+          DemoSeeder__ClientId: demo-seeder
+          DemoSeeder__ClientSecret: ${{ secrets.DEMO_SEEDER_SECRET }}
+          DemoSeeder__UserPassword: ${{ secrets.DEMO_USERS_PASSWORD }}
+        run: |
+          missing=0
+          for name in DemoSeeder__EdgeUrl DemoSeeder__KeycloakAdminUrl DemoSeeder__MailpitUrl DemoSeeder__MailpitAuth DemoSeeder__ClientSecret DemoSeeder__UserPassword; do
+            if [ -z "${!name}" ]; then
+              echo "::error::$name is empty; set the staging environment's variable or secret it comes from (demo-seed-staging.yml)."
+              missing=1
+            fi
+          done
+          test "$missing" -eq 0
+          # Exit 0 seeded (or nothing left to seed), 1 a step failed (named in this log), 2 a setting or the edge's
+          # configuration was refused before any credential was sent.
+          dotnet run --project src/DemoSeeder -c Release

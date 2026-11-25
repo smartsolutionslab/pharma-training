@@ -6,8 +6,8 @@ namespace SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 /// <summary>
 /// How a module's announcement sweep (#277, docs/adr/0016) runs, read once at startup from the module's own section,
 /// <c>&lt;Module&gt;:AnnouncementSweep</c>. A blank or absent value takes the default; a value that does not parse or lies
-/// outside its range stops the host, naming the key, the value and what it accepts. Durations are read in the invariant
-/// <c>c</c> format (<c>[d.]hh:mm:ss</c>), the batch size as a whole number.
+/// outside its range stops the host, naming the key, the value and what it accepts. Durations are read in exactly
+/// <c>hh:mm:ss</c> or <c>d.hh:mm:ss</c> (<see cref="SettingDuration"/>), the batch size as a whole number.
 /// </summary>
 public sealed record AnnouncementSweepSettings
 {
@@ -102,7 +102,7 @@ public sealed record AnnouncementSweepSettings
             return fallback;
         }
 
-        if (!TimeSpan.TryParse(value, CultureInfo.InvariantCulture, out var duration) || duration < least || duration > most)
+        if (!SettingDuration.TryParse(value, out var duration) || duration < least || duration > most)
         {
             throw new InvalidOperationException(
                 $"The setting {key} is '{value}'; it accepts a duration from {Render(least)} to {Render(most)}, or nothing for {Render(fallback)}.");

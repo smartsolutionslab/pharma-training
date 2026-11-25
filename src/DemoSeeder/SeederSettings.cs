@@ -1,20 +1,26 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.Configuration;
 
 namespace SmartSolutionsLab.PharmaTraining.DemoSeeder;
 
 /// <summary>
-/// The <c>DemoSeeder:*</c> settings, read and guarded before any call: the target is Local or Staging and nothing else;
-/// Local seeds a loopback edge with the master realm's administrator; Staging seeds an https edge with a client of its
-/// own and the users' password, never a password-based administrator. A refusal names the key, never its value.
+/// The <c>DemoSeeder:*</c> settings, read and guarded before any call: the target is Local or Staging and nothing else.
+/// Local seeds a loopback edge with the master realm's administrator, and every address that receives a credential
+/// (Keycloak's admin endpoint, Mailpit) is loopback too. Staging seeds an https edge with a client of its own and the users'
+/// password, never a password-based administrator, at an https Keycloak and an https Mailpit behind its basic auth. Once
+/// the edge's <c>/api/config.json</c> is read, <see cref="TryAccept"/> checks what it reports before any credential is sent:
+/// with the target Staging the deployment must be staging, and the realm users sign in at must be https on Keycloak's
+/// host; with Local, loopback. A refusal names the key, never its value.
 /// </summary>
 internal sealed record SeederSettings(
     bool Staging,
     Uri EdgeUrl,
     Uri WebOrigin,
     Uri MailpitUrl,
-    Uri? KeycloakAdminUrl,
+    string? MailpitAuth,
+    Uri KeycloakAdminUrl,
     string? AdminUser,
     string? AdminPassword,
     string? ClientId,
@@ -23,6 +29,9 @@ internal sealed record SeederSettings(
     TimeSpan PollTimeout)
 {
     private const string Section = "DemoSeeder";
+
+    /// <summary>What staging's edge reports in <c>/api/config.json</c>'s <c>environment</c> (the AppHost's <c>aspire publish -e</c>).</summary>
+    private const string StagingEnvironment = "staging";
 
     private static readonly TimeSpan DefaultPollTimeout = TimeSpan.FromMinutes(10);
 
@@ -47,22 +56,27 @@ internal sealed record SeederSettings(
             return false;
         }
 
-        if (!staging && !edgeUrl.IsLoopback)
+        if (!TryUri(configuration, "KeycloakAdminUrl", out var keycloakAdminUrl, out refusal))
         {
-            refusal = Refused("EdgeUrl", "must name a loopback host with the target Local");
             return false;
         }
 
-        if (staging && edgeUrl.Scheme != Uri.UriSchemeHttps)
+        // Every address the run sends a credential to: the edge (users' tokens), Keycloak (the administrator's password
+        // or the client's secret) and Mailpit (its basic auth on staging).
+        var destinations = new[] { ("EdgeUrl", edgeUrl), ("KeycloakAdminUrl", keycloakAdminUrl), ("MailpitUrl", mailpitUrl) };
+        foreach (var (key, uri) in destinations)
         {
-            refusal = Refused("EdgeUrl", "must be https with the target Staging");
-            return false;
-        }
+            if (!staging && !uri.IsLoopback)
+            {
+                refusal = Refused(key, "must name a loopback host with the target Local");
+                return false;
+            }
 
-        Uri? keycloakAdminUrl = null;
-        if (Value(configuration, "KeycloakAdminUrl") is not null && !TryUri(configuration, "KeycloakAdminUrl", out keycloakAdminUrl, out refusal))
-        {
-            return false;
+            if (staging && uri.Scheme != Uri.UriSchemeHttps)
+            {
+                refusal = Refused(key, "must be https with the target Staging");
+                return false;
+            }
         }
 
         var adminUser = Value(configuration, "AdminUser");
@@ -70,6 +84,7 @@ internal sealed record SeederSettings(
         var clientId = Value(configuration, "ClientId");
         var clientSecret = Value(configuration, "ClientSecret");
         var userPassword = Value(configuration, "UserPassword");
+        var mailpitAuth = Value(configuration, "MailpitAuth");
         if (staging)
         {
             if (adminUser is not null || adminPassword is not null)
@@ -78,7 +93,7 @@ internal sealed record SeederSettings(
                 return false;
             }
 
-            var missing = new[] { ("ClientId", clientId), ("ClientSecret", clientSecret), ("UserPassword", userPassword) }.FirstOrDefault(each => each.Item2 is null).Item1;
+            var missing = new[] { ("ClientId", clientId), ("ClientSecret", clientSecret), ("UserPassword", userPassword), ("MailpitAuth", mailpitAuth) }.FirstOrDefault(each => each.Item2 is null).Item1;
             if (missing is not null)
             {
                 refusal = Refused(missing, "is required with the target Staging");
@@ -87,7 +102,7 @@ internal sealed record SeederSettings(
         }
         else
         {
-            var missing = new[] { ("KeycloakAdminUrl", keycloakAdminUrl?.ToString()), ("AdminUser", adminUser), ("AdminPassword", adminPassword) }.FirstOrDefault(each => each.Item2 is null).Item1;
+            var missing = new[] { ("AdminUser", adminUser), ("AdminPassword", adminPassword) }.FirstOrDefault(each => each.Item2 is null).Item1;
             if (missing is not null)
             {
                 refusal = Refused(missing, "is required with the target Local");
@@ -103,7 +118,50 @@ internal sealed record SeederSettings(
             return false;
         }
 
-        settings = new SeederSettings(staging, edgeUrl, webOrigin, mailpitUrl, keycloakAdminUrl, adminUser, adminPassword, clientId, clientSecret, userPassword, pollTimeout);
+        settings = new SeederSettings(staging, edgeUrl, webOrigin, mailpitUrl, mailpitAuth, keycloakAdminUrl, adminUser, adminPassword, clientId, clientSecret, userPassword, pollTimeout);
+        refusal = null;
+        return true;
+    }
+
+    /// <summary>
+    /// Checks what the edge's <c>/api/config.json</c> reports before any credential is sent: with the target Staging, the
+    /// deployment staging (production's edge is https too) and a realm that is https on Keycloak's host; with Local, a
+    /// loopback realm. Answers the realm users sign in at and its web client.
+    /// </summary>
+    public bool TryAccept(JsonNode configuration, [NotNullWhen(true)] out EdgeRealm? realm, [NotNullWhen(false)] out string? refusal)
+    {
+        realm = null;
+        if (Staging && Json.Text(configuration, "environment") != StagingEnvironment)
+        {
+            refusal = Reported("environment", $"must be {StagingEnvironment} with the target Staging; the seeder seeds no other deployment");
+            return false;
+        }
+
+        if (!Uri.TryCreate(Json.Text(configuration, "oidcAuthority"), UriKind.Absolute, out var authority))
+        {
+            refusal = Reported("oidcAuthority", "must be an absolute URL");
+            return false;
+        }
+
+        if (!Staging && !authority.IsLoopback)
+        {
+            refusal = Reported("oidcAuthority", "must name a loopback host with the target Local");
+            return false;
+        }
+
+        if (Staging && (authority.Scheme != Uri.UriSchemeHttps || !string.Equals(authority.Host, KeycloakAdminUrl.Host, StringComparison.OrdinalIgnoreCase)))
+        {
+            refusal = Reported("oidcAuthority", $"must be https on the host of {Section}:KeycloakAdminUrl with the target Staging");
+            return false;
+        }
+
+        if (Json.Text(configuration, "clientId") is not { } clientId)
+        {
+            refusal = Reported("clientId", "is missing");
+            return false;
+        }
+
+        realm = new EdgeRealm(authority, clientId);
         refusal = null;
         return true;
     }
@@ -128,4 +186,6 @@ internal sealed record SeederSettings(
     }
 
     private static string Refused(string key, string reason) => $"Demo data: the settings were refused: {Section}:{key} {reason}.";
+
+    private static string Reported(string field, string reason) => $"Demo data: the edge was refused: /api/config.json's {field} {reason}.";
 }

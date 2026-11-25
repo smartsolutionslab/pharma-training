@@ -39,6 +39,18 @@
   - the dead letters of those types whose body holds the id of any person in the module's `erased_persons`, matched as the purge matches a person (the id's D form in the body);
   - the handled incoming envelopes of those types, matched the same way.
 
+  Each statement takes every id in a candidate row's body (a lowercase Guid in D form, read through `encode(body, 'escape')` so any body reads) and looks it up in `erased_persons` by its key, so a pass costs the candidate rows it reads, whatever the number of tombstones (#462). The first version matched each tombstone's id against each body with `position()`, which no index serves; measured on PostgreSQL 17 with bodies of about 600 bytes, none naming a tombstone (the worst case):
+
+  | candidate rows | tombstones | `position()` per tombstone | ids looked up by key |
+  |---:|---:|---:|---:|
+  | 100 | 1,000 | 51 ms | 16 ms |
+  | 100 | 10,000 | 550 ms | not measured |
+  | 100 | 100,000 | 10.9 s | 4 ms |
+  | 1,000 | 1,000 | 538 ms | 169 ms |
+  | 1,000 | 100,000 | 75.7 s | 52 ms |
+
+  Candidate rows are the module's dead letters of the swept types and its handled envelopes kept for `KeepAfterMessageHandling`, so a few minutes of membership messages; tombstones only grow.
+
   The interval is `<Module>:ErasedPersonMessageSweep:Interval`, one minute by default, from one second to an hour. A bad value stops the host. Its behaviour:
   - It never touches the outbox, or an envelope still waiting in the inbox: that one is handled and dropped, or dead-lettered, and swept afterwards.
   - A pass takes `pg_try_advisory_xact_lock` first, so replicas of a service do not sweep at once.
@@ -51,5 +63,5 @@
   - Purging again after a delay: it misses whatever dead-letters after the delay.
   - A Wolverine recurring schedule: it needs a table the service role cannot create (ADR 0005).
   - Dead-letter expiry: it acts on every dead letter and keeps the name for days.
-- **What is left.** A late dead letter or dropped message's handled envelope holds the erased person's name for at most one sweep interval after Wolverine writes it. Organisation's outbox and the broker's queues hold a membership message only until it is delivered, where it is dropped.
+- **What is left.** A late dead letter or dropped message's handled envelope holds the erased person's name until the first pass that starts after Wolverine writes it: normally within one sweep interval and the length of a pass, longer while the service is down or its passes fail, and after a start, whose first pass comes one interval later. Organisation's outbox and the broker's queues hold a membership message only until it is delivered, where it is dropped.
 - **The Keycloak account (slice 6, ADR 0041).** Organisation deletes the person's account through the admin API as the confidential client `pharma-training-erasure`, from its own work item `AccountDeletionRequestedV1`, and records the step `keycloak`; an account already gone counts as deleted, and a staff (support, editor, manager) or service account is never deleted: its step stays open for an administrator (owner decision, #115). `GET` shows which steps are done: `organisation`, `keycloak`, `compliance`, `editorial`, `learning` and `certification` once the erasure is complete.
