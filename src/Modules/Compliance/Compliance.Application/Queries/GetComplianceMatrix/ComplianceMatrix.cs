@@ -65,7 +65,7 @@ public sealed class ComplianceMatrix
         List<ComplianceMatrixRow> rows =
         [
             .. members
-                .OrderBy(member => member.Name.Value, StringComparer.InvariantCultureIgnoreCase)
+                .OrderBy(member => member.Name?.Value ?? string.Empty, StringComparer.InvariantCultureIgnoreCase)
                 .ThenBy(member => member.Person.Value)
                 .Select(member => new ComplianceMatrixRow(member, CellsOf(member.Person, columns, byLearnerAndCourse, certifiedVersions, today))),
         ];

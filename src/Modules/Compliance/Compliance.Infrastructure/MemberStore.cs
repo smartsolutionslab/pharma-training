@@ -7,7 +7,8 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Infrastructure;
 
 /// <summary>
 /// The members, the changes and the endings of memberships. The module's unit of work saves what is added; nothing is
-/// ever updated, a change being a row of its own, so two deliveries of one event race only on its primary key.
+/// ever updated but a name a person's erasure forgets (#115), a change being a row of its own, so two deliveries of one
+/// event race only on its primary key.
 /// </summary>
 public sealed class MemberStore(ComplianceDbContext context) : IMemberStore
 {
@@ -26,11 +27,15 @@ public sealed class MemberStore(ComplianceDbContext context) : IMemberStore
 
     public void Add(MembershipChange change) => context.Add(change);
 
-    public Task<IReadOnlyList<Member>> MembersOfPersonAsync(PersonId person, CancellationToken cancellationToken) =>
-        throw new NotImplementedException();
+    public async Task<IReadOnlyList<Member>> MembersOfPersonAsync(PersonId person, CancellationToken cancellationToken) =>
+        await context.Set<Member>()
+            .Where(member => member.Person == person)
+            .ToListAsync(cancellationToken);
 
-    public Task<IReadOnlyList<MembershipChange>> ChangesOfPersonAsync(PersonId person, CancellationToken cancellationToken) =>
-        throw new NotImplementedException();
+    public async Task<IReadOnlyList<MembershipChange>> ChangesOfPersonAsync(PersonId person, CancellationToken cancellationToken) =>
+        await context.Set<MembershipChange>()
+            .Where(change => change.Person == person)
+            .ToListAsync(cancellationToken);
 
     public Task<IReadOnlyList<CurrentMembership>> ActiveMembershipsAsync(PersonId person, PharmacyId pharmacy, CancellationToken cancellationToken) =>
         CurrentAsync(Active().Where(member => member.Person == person && member.Pharmacy == pharmacy), cancellationToken);

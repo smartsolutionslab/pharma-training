@@ -1,6 +1,6 @@
 # 0036: Erasure is requested in Organisation and announced to every service
 
-**Status:** Accepted (#115, slice 1). Relies on ADR 0002 (409 through the use case), 0003, 0004 (mail from a durable local message), 0011 (publishing grants derived from code), 0015 (where names live), 0027 (error codes) and 0034 (retention as a cut-off).
+**Status:** Accepted (#115, slices 1 and 2). Relies on ADR 0002 (409 through the use case), 0003, 0004 (mail from a durable local message), 0011 (publishing grants derived from code), 0015 (where names live), 0027 (error codes) and 0034 (retention as a cut-off).
 
 ## Context
 
@@ -21,4 +21,5 @@
 
 - `organisation.memberships.email` is nullable (migration `AddErasures`); the filtered unique index on open memberships is unaffected. Code that reads an address reads open memberships only.
 - A send that returned before a later send or the commit failed mails the address again on retry, the same gap ADR 0004 accepts for invitations. An invitation to the person's address created between the request and the mail stays open and is logged.
-- Until the later slices land, the person's name remains in Compliance, Certification and Editorial, and their Keycloak account remains; `GET` shows which steps are done.
+- **Compliance (slice 2).** `PersonErasureRequestedV1Consumer` writes the name-free tombstone `compliance.erased_persons` (also for a person Compliance never saw, so a late membership event cannot write the name), sets `display_name` to NULL on every member and membership change of the person (migration `AddErasedPersons`, which also makes the column nullable), cancels their open and in-progress assignments in every pharmacy as `MembershipEndedV1Consumer` does, purges their stored membership messages (`IPersonalMessagePurge`: dead letters and handled incoming envelopes of `MembershipStartedV1`/`MembershipChangedV1` whose body holds the PersonId; never the outbox) and publishes `ComplianceErasureCompletedV1`, which Organisation records as the step `compliance`. The membership consumers drop and log (without the name) any event of a tombstoned person.
+- Until the later slices land, the person's name remains in Certification and Editorial, and their Keycloak account remains; `GET` shows which steps are done.
