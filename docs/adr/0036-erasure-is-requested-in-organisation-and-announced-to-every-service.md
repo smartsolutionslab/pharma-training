@@ -1,4 +1,4 @@
-# 0035: Erasure is requested in Organisation and announced to every service
+# 0036: Erasure is requested in Organisation and announced to every service
 
 **Status:** Accepted (#115, slice 1). Relies on ADR 0002 (409 through the use case), 0003, 0004 (mail from a durable local message), 0011 (publishing grants derived from code), 0015 (where names live), 0027 (error codes) and 0034 (retention as a cut-off).
 
