@@ -34,17 +34,10 @@ public sealed class KeycloakAdminContainer : IAsyncLifetime
     public async ValueTask InitializeAsync()
     {
         var (dockerfile, context) = await PublishedDockerfileAsync();
-        var file = Path.Combine(Path.GetTempPath(), $"{name}.Dockerfile");
-        await File.WriteAllTextAsync(file, dockerfile);
-        try
-        {
-            var build = await DockerAsync(["build", "-f", file, "-t", Image, context], new Dictionary<string, string>(StringComparer.Ordinal), null, BuildTimeout);
-            build.ExitCode.ShouldBe(0, $"Keycloak's published image did not build:\n{build}");
-        }
-        finally
-        {
-            File.Delete(file);
-        }
+
+        // The Dockerfile on standard input (-f -), not as a file: no temporary file for a parallel run to lose.
+        var build = await DockerAsync(["build", "-f", "-", "-t", Image, context], new Dictionary<string, string>(StringComparer.Ordinal), null, BuildTimeout, dockerfile);
+        build.ExitCode.ShouldBe(0, $"Keycloak's published image did not build:\n{build}");
 
         var run = await DockerAsync(
             ["run", "-d", "--name", name, "-e", "KC_BOOTSTRAP_ADMIN_USERNAME=" + Administrator, "-e", "KC_BOOTSTRAP_ADMIN_PASSWORD", Image, "start-dev"],

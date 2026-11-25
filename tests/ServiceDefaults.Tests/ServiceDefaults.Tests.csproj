@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Tests of what every host gets from src/ServiceDefaults: here, what its telemetry records of a request's path (#311). -->
+  <PropertyGroup>
+    <RootNamespace>SmartSolutionsLab.PharmaTraining.ServiceDefaults.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="../../src/ServiceDefaults/ServiceDefaults.csproj" />
+  </ItemGroup>
+
+</Project>

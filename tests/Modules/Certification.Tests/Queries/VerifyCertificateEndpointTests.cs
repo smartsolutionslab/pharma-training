@@ -114,6 +114,13 @@ public sealed class VerifyCertificateEndpointTests : IAsyncDisposable
         Endpoint().Metadata.GetMetadata<IAllowAnonymous>().ShouldNotBeNull();
     }
 
+    /// <summary>The code is a credential (#311): telemetry records the route's template, never the path it was called with.</summary>
+    [Fact]
+    public void The_endpoint_is_marked_so_telemetry_never_records_its_code()
+    {
+        Endpoint().Metadata.GetMetadata<RedactedRoute>().ShouldNotBeNull();
+    }
+
     [Fact]
     public void The_endpoint_declares_200_404_and_429()
     {
