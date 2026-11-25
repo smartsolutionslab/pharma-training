@@ -16,13 +16,13 @@ public static class ErasureConfirmationMails
         [
             "Guten Tag,",
             string.Empty,
-            "auf Ihren Wunsch haben wir Ihre personenbezogenen Daten bei PharmaTraining gelöscht (Art. 17 DSGVO).",
+            "die Löschung Ihrer personenbezogenen Daten bei PharmaTraining nach Art. 17 DSGVO wurde beauftragt und läuft.",
             "Ihre Mitgliedschaften in Apotheken sind beendet, offene Einladungen an diese Adresse wurden zurückgezogen.",
-            "Nach dieser E-Mail speichern wir weder Ihren Namen noch diese Adresse.",
+            "Ihr Name und diese Adresse werden direkt nach dieser E-Mail aus den Mitgliedschaftsdaten entfernt und in den folgenden Schritten aus den übrigen Bereichen von PharmaTraining.",
             string.Empty,
-            "Zertifikate, die eine Apotheke für ihre gesetzlichen Nachweispflichten aufbewahren muss, bleiben bis zum Ende der Aufbewahrungsfrist erhalten.",
+            "Zertifikate, die eine Apotheke für ihre gesetzlichen Nachweispflichten aufbewahren muss, bleiben bis zum Ende ihrer Aufbewahrungsfrist erhalten.",
             string.Empty,
-            "Wenn Sie diese Löschung nicht beauftragt haben, wenden Sie sich bitte an den Support von PharmaTraining.",
+            "Bei Fragen oder wenn Sie diese Löschung nicht beauftragt haben, wenden Sie sich bitte an den Support von PharmaTraining.",
         ];
         return new OutgoingMail(address.Value, Subject, string.Join("\n", lines));
     }

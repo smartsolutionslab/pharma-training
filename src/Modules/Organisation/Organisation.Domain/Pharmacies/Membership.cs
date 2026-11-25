@@ -82,6 +82,9 @@ public sealed class Membership : Entity<MembershipId>
         EndedAt = now;
     }
 
+    /// <summary>Forgets an address that was the erased person's, on a membership of another person who held it (#115); their name stays.</summary>
+    internal void ForgetAddress() => Email = null;
+
     /// <summary>Forgets the person's name and address (#115); the PersonId stays behind as the pseudonym.</summary>
     internal void Forget()
     {

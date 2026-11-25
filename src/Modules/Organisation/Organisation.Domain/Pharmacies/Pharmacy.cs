@@ -355,7 +355,8 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
 
     /// <summary>
     /// Forgets the name and address of every ended or revoked membership of the person or to one of their addresses
-    /// (#115), and answers the memberships it skipped because they are still invited or active.
+    /// (#115), and answers the memberships it skipped because they are still invited or active. On a membership of
+    /// another person who held one of the addresses, only the address goes: their name is not the erased person's data.
     /// </summary>
     public IReadOnlyList<MembershipId> ForgetPerson(PersonId person, IReadOnlyCollection<EmailAddress> addresses)
     {
@@ -365,13 +366,18 @@ public sealed class Pharmacy : AggregateRoot<PharmacyId>
         List<MembershipId> skipped = [];
         foreach (var membership in memberships.Where(m => m.Person == person || (m.Email is { } email && addresses.Contains(email))))
         {
-            if (membership.Status is MembershipStatus.Ended or MembershipStatus.Revoked)
+            if (membership.Status is not (MembershipStatus.Ended or MembershipStatus.Revoked))
+            {
+                skipped.Add(membership.Id);
+            }
+            else if (membership.Person == person || membership.Person is null)
             {
                 membership.Forget();
             }
             else
             {
-                skipped.Add(membership.Id);
+                // Another person's membership that held one of the addresses: the address goes, their name is theirs.
+                membership.ForgetAddress();
             }
         }
 
