@@ -185,6 +185,31 @@ public class BrokerEntrypointTests
         ShouldRefuse(run, variable, environment);
     }
 
+    /// <summary>
+    /// The image lets rabbitmq own <c>conf.d</c>, so an earlier boot could leave a default ACL there, which gives a new file
+    /// its mode whatever the umask (0666 for this one). The config file must come out root's, readable by rabbitmq alone.
+    /// </summary>
+    [Fact]
+    public async Task A_default_acl_on_the_config_directory_does_not_widen_the_config_file()
+    {
+        var environment = Valid();
+        environment["PLANT_LINKS"] = "acl";
+
+        var run = await RunAsync(environment);
+
+        run.ExitCode.ShouldBe(0, run.Error);
+        run.Files.ShouldContain(file => file.StartsWith("/etc/rabbitmq/conf.d/90-definitions.conf regular file root:rabbitmq 640 ", StringComparison.Ordinal), $"A default ACL on conf.d widened the config file: {string.Join("; ", run.Files)}");
+    }
+
+    [Fact]
+    public async Task RabbitMQ_starts_with_a_umask_that_keeps_its_files_to_itself()
+    {
+        var run = await RunAsync(Valid());
+
+        run.ExitCode.ShouldBe(0, run.Error);
+        run.Files.ShouldContain("umask 0077", $"RabbitMQ would start with another umask: {string.Join("; ", run.Files)}");
+    }
+
     private static Dictionary<string, string> Valid() => new(StringComparer.Ordinal)
     {
         ["BROKER_DEFINITIONS"] = Document,

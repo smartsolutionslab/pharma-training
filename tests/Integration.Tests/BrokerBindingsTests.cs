@@ -156,7 +156,6 @@ public partial class BrokerBindingsTests(AspireFixture aspire)
             .ShouldContain(binding => binding.Source == MembershipStarted && binding.Destination == "compliance" && binding.DestinationType == "queue");
     }
 
-    /// <summary>Learning reopens the failed chapters when Assessment announces the attempts used up (#42).</summary>
     /// <summary>#115: Compliance erases a person on Organisation's request, and Organisation records Compliance's completion.</summary>
     [Fact]
     public async Task The_erasure_request_is_bound_to_compliances_queue_and_its_completion_to_organisations()
@@ -174,6 +173,32 @@ public partial class BrokerBindingsTests(AspireFixture aspire)
         bindings.ShouldContain(binding => binding.Source == completed && binding.Destination == OrganisationQueue && binding.DestinationType == "queue");
     }
 
+    /// <summary>
+    /// #115: Editorial and Learning erase a person on Organisation's request too, and Organisation records each one's
+    /// completion.
+    /// </summary>
+    [Fact]
+    public async Task The_erasure_request_is_bound_to_editorials_and_learnings_queues_and_their_completions_to_organisations()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var management = await ManagementClientAsync(cancellationToken);
+        const string requested = "SmartSolutionsLab.PharmaTraining.Contracts.Organisation.PersonErasureRequestedV1";
+        const string editorialCompleted = "SmartSolutionsLab.PharmaTraining.Contracts.Editorial.EditorialErasureCompletedV1";
+        const string learningCompleted = "SmartSolutionsLab.PharmaTraining.Contracts.Learning.LearningErasureCompletedV1";
+
+        await WaitForBindingAsync(management, requested, "editorial", cancellationToken);
+        await WaitForBindingAsync(management, requested, LearningQueue, cancellationToken);
+        await WaitForBindingAsync(management, editorialCompleted, OrganisationQueue, cancellationToken);
+        await WaitForBindingAsync(management, learningCompleted, OrganisationQueue, cancellationToken);
+
+        var bindings = await BindingsAsync(management, cancellationToken);
+        bindings.ShouldContain(binding => binding.Source == requested && binding.Destination == "editorial" && binding.DestinationType == "queue");
+        bindings.ShouldContain(binding => binding.Source == requested && binding.Destination == LearningQueue && binding.DestinationType == "queue");
+        bindings.ShouldContain(binding => binding.Source == editorialCompleted && binding.Destination == OrganisationQueue && binding.DestinationType == "queue");
+        bindings.ShouldContain(binding => binding.Source == learningCompleted && binding.Destination == OrganisationQueue && binding.DestinationType == "queue");
+    }
+
+    /// <summary>Learning reopens the failed chapters when Assessment announces the attempts used up (#42).</summary>
     [Fact]
     public async Task Learnings_queue_is_bound_to_the_exhaustion()
     {

@@ -17,7 +17,7 @@ partial class EditorialModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261125020425_RestrictReturnHistoryDelete";
+    public override string LastMigrationId => "20261125085014_AddErasedPersons";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -254,6 +254,22 @@ partial class EditorialModelSnapshot : ModelSnapshot
                 b.HasIndex("Version", "ReturnedAt");
 
                 b.ToTable("course_version_returns", "editorial");
+            });
+
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions.ErasedPerson", b =>
+            {
+                b.Property<Guid>("Person")
+                    .HasColumnType("uuid")
+                    .HasColumnName("person_id");
+
+                b.Property<DateTimeOffset>("ErasedAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("erased_at");
+
+                b.HasKey("Person")
+                    .HasName("pk_erased_persons");
+
+                b.ToTable("erased_persons", "editorial");
             });
 
         modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Editorial.Domain.CourseVersions.Question", b =>
