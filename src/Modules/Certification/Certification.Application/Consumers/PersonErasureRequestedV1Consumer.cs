@@ -15,7 +15,8 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Application.Con
 /// the person (<see cref="IErasedPersonStore.HoldAsync"/>), tombstones them (an unknown person too, so a membership or
 /// passed test arriving late is dropped), and splits their certificates at Certification's clock: a certificate is
 /// <b>retained</b> while some membership of theirs covers its issue (start inclusive, end exclusive, docs/adr/0032) and
-/// pharmacies still keep it (<see cref="Certificate.IsKeptByPharmaciesAt"/>, docs/adr/0034), so it stays in a pharmacy's
+/// that membership's pharmacy still keeps it for its own retention period (<see cref="Certificate.IsKeptByPharmaciesAt"/>,
+/// docs/adr/0034, 0039), so it stays in a pharmacy's
 /// view and export and answers the public verification, name and PDF included; every other one is <b>removed</b>. The
 /// PDFs of the removed ones are deleted first, each by its derived name whether or not one was stored (a render in
 /// flight may write it), then their rows go with the commit, so a run that fails between the two leaves no PDF without
@@ -76,7 +77,13 @@ public sealed class PersonErasureRequestedV1Consumer(
         var persons = await memberships.OfPersonAsync(person, cancellationToken);
         var endings = await memberships.EndingsOfPersonAsync(person, cancellationToken);
 
-        var removed = held.Where(certificate => !IsRetained(certificate, persons, endings, now)).ToList();
+        var keptFor = new Dictionary<PharmacyId, RetentionPeriod>();
+        foreach (var pharmacy in persons.Select(membership => membership.Pharmacy).Distinct())
+        {
+            keptFor[pharmacy] = (await retention.FindAsync(pharmacy, cancellationToken)).Match(stored => stored.Period, () => RetentionPeriod.Default);
+        }
+
+        var removed = held.Where(certificate => !IsRetained(certificate, persons, endings, keptFor, now)).ToList();
         foreach (var certificate in removed)
         {
             // Blobs first: a failure here leaves every row, so the retry finds what is left to delete.
@@ -100,10 +107,17 @@ public sealed class PersonErasureRequestedV1Consumer(
     }
 
     /// <summary>
-    /// Whether a pharmacy still has the certificate in its view at <paramref name="now"/>: pharmacies keep it, and some
-    /// membership of its holder covers its issue (the rule <see cref="ICertificateStore.IssuedInPharmacyAsync"/> applies).
+    /// Whether a pharmacy still has the certificate in its view at <paramref name="now"/>: some membership of its holder
+    /// covers its issue, and that membership's pharmacy still keeps it for the period it chose (docs/adr/0039), the rules
+    /// <see cref="ICertificateStore.IssuedInPharmacyAsync"/> applies.
     /// </summary>
-    private static bool IsRetained(Certificate certificate, IReadOnlyList<Membership> persons, IReadOnlyList<MembershipEnding> endings, Timestamp now) =>
-        certificate.IsKeptByPharmaciesAt(now, RetentionPeriod.Default)
-        && persons.Any(membership => membership.Covers(certificate.IssuedAt, endings.FirstOrDefault(ending => ending.Id == membership.Id)));
+    private static bool IsRetained(
+        Certificate certificate,
+        IReadOnlyList<Membership> persons,
+        IReadOnlyList<MembershipEnding> endings,
+        Dictionary<PharmacyId, RetentionPeriod> keptFor,
+        Timestamp now) =>
+        persons.Any(membership =>
+            membership.Covers(certificate.IssuedAt, endings.FirstOrDefault(ending => ending.Id == membership.Id))
+            && certificate.IsKeptByPharmaciesAt(now, keptFor[membership.Pharmacy]));
 }
