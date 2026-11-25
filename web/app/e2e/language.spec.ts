@@ -1,14 +1,8 @@
-import { expect, type Page, test } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { signIn } from './signIn';
 
 // The app starts in the browser's language if it is German or English, and in German otherwise; the user menu switches
 // it, and the choice holds across a reload. playwright.config.ts gives the browser German.
-async function signIn(page: Page) {
-  await page.goto('/');
-  await page.getByLabel('Username or email').fill('developer');
-  await page.getByLabel('Password', { exact: true }).fill('developer');
-  await page.getByRole('button', { name: 'Sign In' }).click();
-}
-
 test('the user switches to English, keeps it across a reload, and switches back', async ({ page }) => {
   await signIn(page);
   await expect(page.getByText('Angemeldet als developer')).toBeVisible();
