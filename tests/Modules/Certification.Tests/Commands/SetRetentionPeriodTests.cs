@@ -87,9 +87,111 @@ public class SetRetentionPeriodTests
         ShouldBeRefused(result, HttpStatusCode.Forbidden, "certification.capability-missing");
     }
 
-    private Task<Result<Unit, ApiError>> HandleAsync(int years) =>
+    [Fact]
+    public async Task A_caller_who_is_no_person_is_forbidden_and_nothing_is_stored()
+    {
+        Start(MembershipRole.Manager);
+
+        var result = await HandleAsync(Option<PharmacyId>.Some(pharmacy), 7, Option<PersonId>.None);
+
+        ShouldBeRefused(result, HttpStatusCode.Forbidden, "certification.identity-incomplete");
+    }
+
+    [Fact]
+    public async Task The_empty_pharmacy_id_is_not_found_and_nothing_is_stored()
+    {
+        var result = await HandleAsync(Option<PharmacyId>.None, 7, Option<PersonId>.Some(manager));
+
+        ShouldBeRefused(result, HttpStatusCode.NotFound, "certification.pharmacy-not-found");
+    }
+
+    [Fact]
+    public async Task A_caller_who_is_no_person_is_forbidden_before_the_pharmacy_is_looked_at()
+    {
+        var result = await HandleAsync(Option<PharmacyId>.None, 7, Option<PersonId>.None);
+
+        ShouldBeRefused(result, HttpStatusCode.Forbidden, "certification.identity-incomplete");
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(31)]
+    [InlineData(0)]
+    [InlineData(null)]
+    public async Task A_period_outside_two_to_thirty_years_is_refused_and_nothing_is_stored(int? years)
+    {
+        Start(MembershipRole.Manager);
+
+        var result = await HandleAsync(years);
+
+        ShouldBeRefused(result, HttpStatusCode.BadRequest, "certification.invalid-retention-period");
+    }
+
+    [Theory]
+    [InlineData(2)]
+    [InlineData(30)]
+    public async Task The_shortest_and_the_longest_period_are_stored(int years)
+    {
+        Start(MembershipRole.Manager);
+
+        var result = await HandleAsync(years);
+
+        result.IsSuccess.ShouldBeTrue(result.IsFailure ? result.Error.Code : string.Empty);
+        retention.Stored[pharmacy].Period.ShouldBe(RetentionPeriod.From(years));
+    }
+
+    [Theory]
+    [InlineData(31)]
+    [InlineData(null)]
+    public async Task A_caller_who_is_no_person_is_forbidden_whatever_the_period(int? years)
+    {
+        Start(MembershipRole.Manager);
+
+        var result = await HandleAsync(Option<PharmacyId>.Some(pharmacy), years, Option<PersonId>.None);
+
+        ShouldBeRefused(result, HttpStatusCode.Forbidden, "certification.identity-incomplete");
+    }
+
+    [Theory]
+    [InlineData(31)]
+    [InlineData(null)]
+    public async Task The_empty_pharmacy_id_is_not_found_whatever_the_period(int? years)
+    {
+        var result = await HandleAsync(Option<PharmacyId>.None, years, Option<PersonId>.Some(manager));
+
+        ShouldBeRefused(result, HttpStatusCode.NotFound, "certification.pharmacy-not-found");
+    }
+
+    [Theory]
+    [InlineData(31)]
+    [InlineData(null)]
+    public async Task Someone_who_is_no_member_is_told_the_pharmacy_is_not_found_whatever_the_period(int? years)
+    {
+        Start(MembershipRole.Manager, PharmacyId.From(Guid.CreateVersion7()));
+
+        var result = await HandleAsync(years);
+
+        ShouldBeRefused(result, HttpStatusCode.NotFound, "certification.pharmacy-not-found");
+    }
+
+    [Theory]
+    [InlineData(31)]
+    [InlineData(null)]
+    public async Task An_employee_is_forbidden_whatever_the_period(int? years)
+    {
+        Start(MembershipRole.Employee);
+
+        var result = await HandleAsync(years);
+
+        ShouldBeRefused(result, HttpStatusCode.Forbidden, "certification.capability-missing");
+    }
+
+    private Task<Result<Unit, ApiError>> HandleAsync(int? years) =>
+        HandleAsync(Option<PharmacyId>.Some(pharmacy), years, Option<PersonId>.Some(manager));
+
+    private Task<Result<Unit, ApiError>> HandleAsync(Option<PharmacyId> where, int? years, Option<PersonId> caller) =>
         new SetRetentionPeriodHandler(memberships, retention)
-            .HandleAsync(new SetRetentionPeriod(pharmacy, RetentionPeriod.From(years), manager), TestContext.Current.CancellationToken);
+            .HandleAsync(new SetRetentionPeriod(where, RequestedRetentionYears.From(years), caller), TestContext.Current.CancellationToken);
 
     private MembershipId Start(MembershipRole role, PharmacyId? where = null)
     {
