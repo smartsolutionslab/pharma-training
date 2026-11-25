@@ -31,9 +31,6 @@ public sealed partial class MembershipStartedV1Consumer(
     ILearningUnitOfWork unitOfWork,
     ILogger<MembershipStartedV1Consumer> logger)
 {
-    /// <summary>The messages Learning stores that carry a person's name, purged for an erased person whose message is dropped.</summary>
-    private static readonly IReadOnlyCollection<Type> PersonalMessages = [typeof(MembershipStartedV1), typeof(MembershipChangedV1)];
-
     public async Task HandleAsync(MembershipStartedV1 message, CancellationToken cancellationToken)
     {
         // Refused here, each by its name, so a poison message dead-letters with a reason that says which field. Name,
@@ -48,7 +45,7 @@ public sealed partial class MembershipStartedV1Consumer(
         if (await erased.IsErasedAsync(person, cancellationToken))
         {
             ErasedPersonDropped(logger, message.MembershipId);
-            await purge.PurgeAsync(message.PersonId, PersonalMessages, cancellationToken);
+            await purge.PurgeAsync(message.PersonId, PersonalMessages.Types, cancellationToken);
             return;
         }
 

@@ -12,9 +12,6 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Compliance.Application.Consum
 /// </summary>
 public sealed partial class MembershipStartedV1Consumer(IMemberStore members, IErasedPersonStore erased, IPersonalMessagePurge purge, IComplianceUnitOfWork unitOfWork, ILogger<MembershipStartedV1Consumer> logger)
 {
-    /// <summary>The messages Compliance stores that carry a person's name, purged for an erased person whose message is dropped.</summary>
-    private static readonly IReadOnlyCollection<Type> PersonalMessages = [typeof(MembershipStartedV1), typeof(MembershipChangedV1)];
-
     public async Task HandleAsync(MembershipStartedV1 message, CancellationToken cancellationToken)
     {
         // Refused here, each by its name, so a poison message dead-letters with a reason that says which field.
@@ -35,7 +32,7 @@ public sealed partial class MembershipStartedV1Consumer(IMemberStore members, IE
             ErasedPersonDropped(logger, message.MembershipId);
 
             // It may have been in flight past the erasure's purge, so its stored copies are purged here too (#421 review).
-            await purge.PurgeAsync(message.PersonId, PersonalMessages, cancellationToken);
+            await purge.PurgeAsync(message.PersonId, PersonalMessages.Types, cancellationToken);
             return;
         }
 

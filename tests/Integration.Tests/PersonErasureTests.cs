@@ -25,7 +25,10 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 /// PDF, keeps the retained ones with the name, forgets the name on its copies of the memberships and drops what arrives
 /// for the person afterwards; a periodic purge (slice 5) deletes a retained one once no pharmacy keeps it any longer.
 /// Organisation deletes the person's Keycloak account and records the step keycloak, and confirms a person it holds no
-/// address for at the account's verified address (slice 6). Each announces its step; the steps after Organisation's arrive in any order. The class
+/// address for at the account's verified address (slice 6). A membership message of the person that is dead-lettered
+/// or dropped after the erasure is removed from Compliance's, Learning's and Certification's message storage by their
+/// sweeps of erased persons' messages (#439). Each announces its step; the steps after Organisation's arrive in any
+/// order. The class
 /// calls the public verification, so it runs in that endpoint's collection (one per-address limit, docs/adr/0029).
 /// </summary>
 [Collection(CertificationVerification.Name)]
@@ -49,6 +52,9 @@ public class PersonErasureTests(AspireFixture aspire)
 
     /// <summary>How long a staff account's erasure is watched, after every other step, for a step keycloak that must not come.</summary>
     private static readonly TimeSpan StaffSettle = TimeSpan.FromSeconds(10);
+
+    /// <summary>The services that store membership messages, and so sweep an erased person's (#439).</summary>
+    private static readonly string[] SweptServices = ["compliance", "learning", "certification"];
 
     private static readonly Uri Erasures = new("/organisation/erasures", UriKind.Relative);
     private static readonly Uri Pharmacies = new("/organisation/pharmacies", UriKind.Relative);
@@ -650,6 +656,49 @@ public class PersonErasureTests(AspireFixture aspire)
         }
     }
 
+    /// <summary>
+    /// #439: membership messages of the person that arrive after the erasure leave no copy of the name in Wolverine's
+    /// storage of Compliance, Learning or Certification, although no purge runs for them. A valid late start is consumed
+    /// and dropped, so only its handled envelope holds the name; a forged one (no <c>user_id</c>) is refused by the
+    /// publisher check and dead-lettered at once in each service. A forged start of another person, R, sent last, is the
+    /// barrier: the broker delivers a queue in order, so once R's message is dead-lettered in a service, the probe's two
+    /// were received there before it. Only the sweep of erased persons' messages can then remove what holds the name.
+    /// </summary>
+    [Fact]
+    public async Task A_membership_message_dead_lettered_after_the_erasure_is_removed_from_compliance_learning_and_certification_without_anyone_purging_it()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var probe = Probe.New();
+        var control = Probe.New();
+        using var owner = await aspire.CreateHostClientAsync("owner");
+        using var support = await aspire.CreateHostClientAsync("support");
+        var employer = await RegisterAsync(owner, cancellationToken);
+        await database.InsertMembershipOfPersonAsync(employer, probe.Person, probe.Address, "Active", cancellationToken, probe.Name);
+        var erasure = await RequestAsync(support, probe.Person, cancellationToken);
+        await WaitForStepsAsync(support, erasure, AllSteps, cancellationToken);
+
+        var late = Guid.CreateVersion7();
+        await Broker.SendAsync(aspire, StartedType, Started(Guid.CreateVersion7(), probe, employer), late, cancellationToken);
+        var forged = Guid.CreateVersion7();
+        await Broker.SendUnvouchedAsync(aspire, StartedType, Started(Guid.CreateVersion7(), probe, employer), forged, cancellationToken);
+        var barrier = Guid.CreateVersion7();
+        await Broker.SendUnvouchedAsync(aspire, StartedType, Started(Guid.CreateVersion7(), control, employer), barrier, cancellationToken);
+        foreach (var service in SweptServices)
+        {
+            await WolverineStorageRows.WaitForDeadLetterAsync(aspire, service, barrier, cancellationToken);
+        }
+
+        var left = await WolverineLeftoversAsync(probe.Name, [late, forged], cancellationToken);
+
+        foreach (var service in SweptServices)
+        {
+            await using var connection = await WolverineStorageRows.OpenAsync(aspire, service, cancellationToken);
+            await WolverineStorageRows.DeleteAsync(connection, "wolverine_dead_letters", barrier, cancellationToken);
+        }
+
+        left.ShouldBeEmpty($"Wolverine's storage still holds the erased person's name or late messages {StepWait.TotalSeconds:0} s after they arrived");
+    }
+
     [Fact]
     public async Task An_empty_person_id_is_a_bad_request()
     {
@@ -729,6 +778,46 @@ public class PersonErasureTests(AspireFixture aspire)
         new(started.MembershipId, started.PersonId, started.PharmacyId, started.DisplayName, "Pka", "Employee", version, NewMetadata());
 
     private static EventMetadata NewMetadata() => new(Guid.CreateVersion7(), TimeProvider.System.GetUtcNow());
+
+    /// <summary>
+    /// Reads Wolverine's storage of each swept service until no column holds <paramref name="name"/> and none of the
+    /// messages is dead-lettered or still waiting in the inbox, for at most <see cref="StepWait"/>; answers what was left
+    /// at the last read, <c>&lt;service&gt;: &lt;column or row&gt;</c>, empty when nothing was.
+    /// </summary>
+    private async Task<List<string>> WolverineLeftoversAsync(string name, Guid[] messages, CancellationToken cancellationToken)
+    {
+        var started = TimeProvider.System.GetTimestamp();
+        while (true)
+        {
+            List<string> left = [];
+            foreach (var service in SweptServices)
+            {
+                var columns = await new PersonalDataSweep(aspire, $"{service}-database", "wolverine").ColumnsHoldingAsync(name, cancellationToken);
+                left.AddRange(columns.Select(column => $"{service}: {column}"));
+                await using var connection = await WolverineStorageRows.OpenAsync(aspire, service, cancellationToken);
+                await using var command = new NpgsqlCommand(
+                    """
+                    SELECT 'dead letter ' || id FROM wolverine.wolverine_dead_letters WHERE id = ANY(@ids)
+                    UNION ALL
+                    SELECT status || ' envelope ' || id FROM wolverine.wolverine_incoming_envelopes WHERE id = ANY(@ids) AND status <> 'Handled'
+                    """,
+                    connection);
+                command.Parameters.AddWithValue("ids", messages);
+                await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    left.Add($"{service}: {reader.GetString(0)}");
+                }
+            }
+
+            if (left.Count == 0 || TimeProvider.System.GetElapsedTime(started) >= StepWait)
+            {
+                return left;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken);
+        }
+    }
 
     /// <summary>The display names Compliance holds for the person: on their members, then on their membership changes.</summary>
     private async Task<List<string?>> ComplianceNamesAsync(Guid person, CancellationToken cancellationToken)

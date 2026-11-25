@@ -144,7 +144,18 @@ public static class Broker
     /// Wolverine declares, with the type, the envelope id and that service's user as <c>user_id</c> in the message's
     /// properties and the event as camelCase JSON. A consumer refuses an event no user of its module sent (docs/adr/0011).
     /// </summary>
-    public static async Task SendAsync<T>(AspireFixture aspire, string type, T message, Guid messageId, CancellationToken cancellationToken)
+    public static Task SendAsync<T>(AspireFixture aspire, string type, T message, Guid messageId, CancellationToken cancellationToken) =>
+        SendAsync(aspire, type, message, messageId, vouched: true, cancellationToken);
+
+    /// <summary>
+    /// As <see cref="SendAsync"/>, but without <c>user_id</c>: no broker user vouches for the publisher, so every
+    /// consumer's publisher check refuses the event as forged and Wolverine dead-letters it at once in every service bound
+    /// to the exchange (docs/adr/0011).
+    /// </summary>
+    public static Task SendUnvouchedAsync<T>(AspireFixture aspire, string type, T message, Guid messageId, CancellationToken cancellationToken) =>
+        SendAsync(aspire, type, message, messageId, vouched: false, cancellationToken);
+
+    private static async Task SendAsync<T>(AspireFixture aspire, string type, T message, Guid messageId, bool vouched, CancellationToken cancellationToken)
     {
         await using (var admin = await ConnectAsync(aspire, cancellationToken))
         {
@@ -160,7 +171,7 @@ public static class Broker
             ContentType = "application/json",
             MessageId = messageId.ToString(),
             DeliveryMode = DeliveryModes.Persistent,
-            UserId = BrokerUsers.UserOf(publisher),
+            UserId = vouched ? BrokerUsers.UserOf(publisher) : null,
         };
 
         await channel.BasicPublishAsync(type, routingKey: string.Empty, mandatory: false, properties, JsonSerializer.SerializeToUtf8Bytes(message, JsonSerializerOptions.Web), cancellationToken);
