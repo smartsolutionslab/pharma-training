@@ -36,4 +36,7 @@ public sealed class ErasedPersonStore(CertificationDbContext context) : IErasedP
         context.Set<ErasedPerson>().AnyAsync(erased => erased.Person == person, cancellationToken);
 
     public void Add(ErasedPerson erased) => context.Add(erased);
+
+    public Task<IReadOnlyList<PersonId>> HoldingCertificatesAsync(CancellationToken cancellationToken) =>
+        throw new NotImplementedException("Reading the erased persons who still hold certificates is not implemented yet (#115, slice 5).");
 }

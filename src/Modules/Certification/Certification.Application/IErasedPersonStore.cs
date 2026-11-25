@@ -18,4 +18,10 @@ public interface IErasedPersonStore
     Task<bool> IsErasedAsync(PersonId person, CancellationToken cancellationToken);
 
     void Add(ErasedPerson erased);
+
+    /// <summary>
+    /// Every erased person who still holds at least one certificate, in id order, read without tracking: the persons whose
+    /// retained certificates the purge looks at again (#115, slice 5).
+    /// </summary>
+    Task<IReadOnlyList<PersonId>> HoldingCertificatesAsync(CancellationToken cancellationToken);
 }
