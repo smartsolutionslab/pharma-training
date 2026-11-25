@@ -3,11 +3,7 @@ import { useForm } from 'vee-validate';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useQueryClient } from '@tanstack/vue-query';
-import {
-  getGetCertificationPharmaciesIdRetentionPeriodQueryKey,
-  getGetOrganisationPharmaciesMineQueryKey,
-  type MyPharmacyDto,
-} from '@/api/generated';
+import { getGetOrganisationPharmaciesMineQueryKey, type MyPharmacyDto } from '@/api/generated';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toTypedSchema } from '@/forms/toTypedSchema';
@@ -127,8 +123,11 @@ async function focusField() {
   document.getElementById(field)?.focus();
 }
 
-/** Shows the refusal by its code: the period's at the field, any other in a toast, and the period read again. */
-function refuse(error: unknown, pharmacyId: string) {
+/**
+ * Shows the refusal by its code: the period's at the field, any other in a toast. The period is read again after any
+ * save (useRetentionPeriod): refused now, the read is likely refused too, and the section goes; the toast says why.
+ */
+function refuse(error: unknown) {
   const refusal = retentionRefusal(error);
   if (refusal.kind === 'field') {
     hostRefusal.value = refusal.message;
@@ -136,8 +135,6 @@ function refuse(error: unknown, pharmacyId: string) {
     return;
   }
   notify.failure(messageText(refusal.message));
-  // Refused now, the read is likely refused too, and the section goes: the toast says why.
-  void queryClient.invalidateQueries({ queryKey: getGetCertificationPharmaciesIdRetentionPeriodQueryKey(pharmacyId) });
   if (refusal.pharmacyGone) {
     // The membership is gone: the switcher and the audience catch up with the memberships read again.
     void queryClient.invalidateQueries({ queryKey: getGetOrganisationPharmaciesMineQueryKey() });
@@ -153,7 +150,7 @@ async function send({ years: chosen }: RetentionPeriod, pharmacyId: string) {
     if (change.ok) {
       notify.success(translate('certification.retention.saved', { years: n(chosen, 'integer') }));
     } else {
-      refuse(change.error, pharmacyId);
+      refuse(change.error);
     }
   } finally {
     sending.value = false;
