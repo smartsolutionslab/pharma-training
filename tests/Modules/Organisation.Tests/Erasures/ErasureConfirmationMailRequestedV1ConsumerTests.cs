@@ -49,7 +49,7 @@ public class ErasureConfirmationMailRequestedV1ConsumerTests
         await Consumer().HandleAsync(new ErasureConfirmationMailRequestedV1(setup.Erasure.Id.Value, person.Value), TestContext.Current.CancellationToken);
 
         sent.Select(mail => mail.To).ShouldBe([setup.First.Value, setup.Second.Value], ignoreOrder: true);
-        sent.ShouldAllBe(mail => mail.Subject == "Ihre Daten bei PharmaTraining wurden gelöscht");
+        sent.ShouldAllBe(mail => mail.Subject == "Löschung Ihrer Daten bei PharmaTraining");
         addressesAtSend.ShouldAllBe(addresses => addresses.All(address => address != null), "an address was forgotten before its mail was sent");
         foreach (var membership in store.Stored.SelectMany(pharmacy => pharmacy.Memberships).Where(m => m.Person == person))
         {
