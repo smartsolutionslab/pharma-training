@@ -27,12 +27,10 @@ public sealed class Membership : Entity<MembershipId>
     public PharmacyId Pharmacy { get; }
 
     /// <summary>
-    /// The name a certificate's holder is given; <see langword="null"/> once the person was erased (#115). Declared
-    /// without <c>?</c> only because the unit tests' in-memory store hands it to <c>Option.Some</c> as it is; every
-    /// reader checks it (an erased person's messages are dropped before a name is looked up).
+    /// The name a certificate's holder is given; <see langword="null"/> once the person was erased (#115). An erased
+    /// person's messages are dropped before a name is looked up.
     /// </summary>
-    [AllowNull]
-    public HolderName HolderName { get; private set; }
+    public HolderName? HolderName { get; private set; }
 
     /// <summary>The role the membership started in; <see cref="CurrentRole"/> is the one it has now.</summary>
     public MembershipRole Role { get; }

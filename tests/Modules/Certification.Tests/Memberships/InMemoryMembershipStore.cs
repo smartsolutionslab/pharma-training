@@ -58,8 +58,8 @@ internal sealed class InMemoryMembershipStore : IMembershipStore, ICertification
             .Where(membership => membership.Person == person)
             .OrderByDescending(membership => membership.StartedAt.Value)
             .ThenByDescending(membership => membership.Id.Value)
-            .FirstOrDefault() is { } latest
-            ? Option<HolderName>.Some(latest.HolderName)
+            .FirstOrDefault() is { HolderName: { } name }
+            ? Option<HolderName>.Some(name)
             : Option<HolderName>.None);
 
     public Task<IReadOnlyList<Membership>> OfPersonAsync(PersonId person, CancellationToken cancellationToken)
