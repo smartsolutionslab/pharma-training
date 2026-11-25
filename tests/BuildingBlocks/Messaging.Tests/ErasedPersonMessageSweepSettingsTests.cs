@@ -41,6 +41,11 @@ public class ErasedPersonMessageSweepSettingsTests
     [InlineData("00:00:00.5")]
     [InlineData("01:00:01")]
     [InlineData("-00:01:00")]
+    [InlineData("00:01")]
+    [InlineData(" 00:00:05 ")]
+    [InlineData("0:0:30")]
+    [InlineData("00:00:01.5")]
+    [InlineData("1:30")]
     public void An_interval_that_does_not_parse_or_lies_outside_its_range_stops_the_host_naming_the_key_and_the_value(string value)
     {
         var refused = Should.Throw<InvalidOperationException>(() => ErasedPersonMessageSweepSettings.From(Settings((Key, value)), "Learning"));

@@ -13,7 +13,7 @@ internal sealed class KeycloakUsers(HttpClient http, SeederSettings settings, Ur
 {
     private string? token;
 
-    private Uri AdminBase => settings.KeycloakAdminUrl ?? new Uri(authority.GetLeftPart(UriPartial.Authority));
+    private Uri AdminBase => settings.KeycloakAdminUrl;
 
     private string Realm => authority.AbsolutePath.TrimEnd('/').Split('/')[^1];
 
@@ -56,8 +56,12 @@ internal sealed class KeycloakUsers(HttpClient http, SeederSettings settings, Ur
             var held = await SendAsync(HttpMethod.Get, $"/users/{id}/role-mappings/realm", null, cancellationToken);
             if (!((held.Body as JsonArray)?.OfType<JsonNode>().Any(each => Json.Text(each, "name") == role) ?? false))
             {
-                var definition = await SendAsync(HttpMethod.Get, $"/roles/{Uri.EscapeDataString(role)}", null, cancellationToken);
-                await SendAsync(HttpMethod.Post, $"/users/{id}/role-mappings/realm", new JsonArray(definition.Body?.DeepClone()), cancellationToken);
+                // Read from the roles the user may still be given, which manage-users answers alone; reading the role by
+                // name would ask view-realm too, which staging's demo-seeder client does not hold (as X1's x1Users.ts).
+                var available = await SendAsync(HttpMethod.Get, $"/users/{id}/role-mappings/realm/available", null, cancellationToken);
+                var definition = (available.Body as JsonArray)?.OfType<JsonNode>().FirstOrDefault(each => Json.Text(each, "name") == role)
+                    ?? throw new SeedingException($"The realm role {role} cannot be given to {user.Username}.");
+                await SendAsync(HttpMethod.Post, $"/users/{id}/role-mappings/realm", new JsonArray(definition.DeepClone()), cancellationToken);
             }
         }
 

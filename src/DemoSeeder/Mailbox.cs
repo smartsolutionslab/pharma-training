@@ -1,3 +1,5 @@
+using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
@@ -5,9 +7,10 @@ namespace SmartSolutionsLab.PharmaTraining.DemoSeeder;
 
 /// <summary>
 /// Reads invitation tokens from Mailpit: the newest mail to the address whose subject names the pharmacy, waited for on
-/// the <see cref="Poller"/>; the token is the link's fragment (docs/adr/0014).
+/// the <see cref="Poller"/>; the token is the link's fragment (docs/adr/0014). Staging's Mailpit is read with its basic
+/// auth (<c>user:password</c>); the local one has none.
 /// </summary>
-internal sealed class Mailbox(HttpClient http, Uri mailpitUrl, Poller poller)
+internal sealed class Mailbox(HttpClient http, Uri mailpitUrl, string? basicAuth, Poller poller)
 {
     private static readonly TimeSpan MatchTimeout = TimeSpan.FromSeconds(1);
 
@@ -30,7 +33,13 @@ internal sealed class Mailbox(HttpClient http, Uri mailpitUrl, Poller poller)
 
     private async Task<JsonNode?> GetAsync(string path, CancellationToken cancellationToken)
     {
-        using var response = await http.GetAsync(new Uri($"{mailpitUrl.ToString().TrimEnd('/')}{path}"), cancellationToken);
+        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri($"{mailpitUrl.ToString().TrimEnd('/')}{path}"));
+        if (basicAuth is not null)
+        {
+            request.Headers.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes(basicAuth)));
+        }
+
+        using var response = await http.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
             throw new SeedingException($"Mailpit's {path.Split('?')[0]} answered {(int)response.StatusCode}.");

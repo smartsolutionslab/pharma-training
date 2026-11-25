@@ -1,5 +1,6 @@
 using Aspire.Hosting.Testing;
 using Npgsql;
+using SmartSolutionsLab.PharmaTraining.BuildingBlocks.Messaging;
 
 namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 
@@ -15,7 +16,7 @@ namespace SmartSolutionsLab.PharmaTraining.Integration.Tests;
 internal sealed class ErasedPersonSweepPause : IAsyncDisposable
 {
     /// <summary>The key of the advisory lock every pass takes in <c>PersonalMessagePurge.PurgeErasedAsync</c>.</summary>
-    private const string Key = "hashtextextended('wolverine.erased-person-sweep', 0)";
+    private const string Key = $"hashtextextended('{PersonalMessagePurge.SweepLockKey}', 0)";
 
     private static readonly string[] SweptTypes =
     [

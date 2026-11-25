@@ -5,13 +5,17 @@ namespace SmartSolutionsLab.PharmaTraining.DemoSeeder.Tests;
 
 /// <summary>
 /// Mailpit's HTTP API as the seeder reads it: a search by recipient (<c>to:</c>, optionally <c>subject:</c>), newest
-/// first, and a message by its ID with its text.
+/// first, and a message by its ID with its text. Staging's Mailpit sits behind basic auth (<c>user:password</c>); with
+/// <see cref="RequiredAuth"/> set, a request without it is answered 401.
 /// </summary>
 public sealed class FakeMailpit(FakeTimeProvider time)
 {
     private readonly List<CaughtMail> mails = [];
 
     public IReadOnlyList<CaughtMail> Mails => mails;
+
+    /// <summary>The basic auth (<c>user:password</c>) every request must carry, as staging's Mailpit asks; none by default.</summary>
+    public string? RequiredAuth { get; set; }
 
     public void Deliver(string to, string subject, string text) =>
         // A tick apart, so the newest mail is newest even when the clock stands still.
@@ -20,6 +24,12 @@ public sealed class FakeMailpit(FakeTimeProvider time)
     internal FakeAnswer Handle(HttpRequestMessage request)
     {
         var path = request.RequestUri?.AbsolutePath ?? string.Empty;
+        if (RequiredAuth is not null
+            && request.Headers.Authorization?.ToString() != "Basic " + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(RequiredAuth)))
+        {
+            return new FakeAnswer("auth", null, new HttpResponseMessage(HttpStatusCode.Unauthorized));
+        }
+
         if (request.Method == HttpMethod.Get && path == "/api/v1/search")
         {
             var found = Search(FakeRoute.Pairs(request.RequestUri?.Query ?? string.Empty).GetValueOrDefault("query") ?? string.Empty);

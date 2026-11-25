@@ -367,12 +367,16 @@ public partial class AppHostKeycloakTests
     /// <summary>
     /// C6 (K8, X2): the <c>auth</c> proxy forwards the realm <c>pharma-training</c> and the static resources to Keycloak's
     /// <c>http</c> endpoint, and nothing else: not <c>/realms/master</c>, whose token endpoint accepts the administrator's
-    /// password, not <c>/admin</c>, not the management port.
+    /// password, not <c>/admin</c> (the console, other realms), not the management port. Staging alone also forwards the
+    /// realm's admin users (#457, for the demo seeder's and X1's manage-users clients); production's public host exposes no
+    /// admin API at all, so a leaked manage-users secret there reaches nothing from the internet.
     /// </summary>
-    [Fact]
-    public async Task Only_the_pharma_training_realm_and_resources_reach_keycloak()
+    [Theory]
+    [InlineData(PublishedAppHost.Staging, new[] { "/admin/realms/pharma-training/users/{**catch-all}", "/realms/pharma-training/{**catch-all}", "/resources/{**catch-all}" })]
+    [InlineData(PublishedAppHost.Production, new[] { "/realms/pharma-training/{**catch-all}", "/resources/{**catch-all}" })]
+    public async Task Only_the_pharma_training_realm_and_resources_reach_keycloak(string deployment, string[] expected)
     {
-        await using var builder = await PublishedAppHost.ModelAsync(PublishedAppHost.Staging, TestContext.Current.CancellationToken);
+        await using var builder = await PublishedAppHost.ModelAsync(deployment, TestContext.Current.CancellationToken);
 
         var auth = builder.Resources.SingleOrDefault(resource => resource.Name == Auth);
         auth.ShouldNotBeNull("Published, there is no auth proxy; the browser cannot reach Keycloak.");
@@ -383,9 +387,9 @@ public partial class AppHostKeycloakTests
             .Where(route => route.Match.Success)
             .ToDictionary(route => route.Match.Groups["route"].Value, route => $"{route.Variable.Value}", StringComparer.Ordinal);
         routes.Values.Order(StringComparer.Ordinal).ShouldBe(
-            ["/realms/pharma-training/{**catch-all}", "/resources/{**catch-all}"],
+            expected,
             ignoreOrder: false,
-            $"The auth proxy should forward exactly the realm pharma-training and the static resources. Its routes: {string.Join(", ", routes.Select(route => $"{route.Key} {route.Value}"))}");
+            $"The {deployment} auth proxy should forward exactly {string.Join(", ", expected)}. Its routes: {string.Join(", ", routes.Select(route => $"{route.Key} {route.Value}"))}");
 
         foreach (var route in routes.Keys)
         {
