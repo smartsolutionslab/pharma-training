@@ -37,13 +37,21 @@ internal static class PlainText
     ];
 
     /// <summary>
-    /// The viramas (and the Khmer coeng) after which a joiner may end a word: a virama followed by a joiner is how
-    /// Malayalam chillu letters and Bengali khanda-ta are typed, at the end of a word as often as inside one.
+    /// The viramas after which a joiner may end a word: a virama followed by a joiner is how Malayalam chillu letters and
+    /// Bengali khanda-ta are typed, at the end of a word as often as inside one. These are every code point of canonical
+    /// combining class 9 (Virama) in UnicodeData.txt, complete through Unicode 18 (the last added, Tulu-Tigalari's and
+    /// Gurung Khema's, in Unicode 16): the viramas, the Khmer coeng, the Thai and Lao phinthu, the Myanmar asat and the
+    /// other killers and conjoiners. .NET does not expose the canonical combining class (<c>CharUnicodeInfo</c> has no
+    /// such method), so the list is written out; a new Unicode version's class 9 code points are added here.
     /// </summary>
     private static readonly HashSet<int> Viramas =
     [
-        0x094D, 0x09CD, 0x0A4D, 0x0ACD, 0x0B4D, 0x0BCD, 0x0C4D, 0x0CCD, 0x0D3B, 0x0D3C, 0x0D4D, 0x0DCA, 0x1039, 0x103A,
-        0x17D2, 0x1B44, 0xA8C4,
+        0x094D, 0x09CD, 0x0A4D, 0x0ACD, 0x0B4D, 0x0BCD, 0x0C4D, 0x0CCD, 0x0D3B, 0x0D3C, 0x0D4D, 0x0DCA, 0x0E3A,
+        0x0EBA, 0x0F84, 0x1039, 0x103A, 0x1714, 0x1715, 0x1734, 0x17D2, 0x1A60, 0x1B44, 0x1BAA, 0x1BAB, 0x1BF2,
+        0x1BF3, 0x2D7F, 0xA806, 0xA82C, 0xA8C4, 0xA953, 0xA9C0, 0xAAF6, 0xABED, 0x10A3F, 0x11046, 0x11070, 0x1107F,
+        0x110B9, 0x11133, 0x11134, 0x111C0, 0x11235, 0x112EA, 0x1134D, 0x113CE, 0x113CF, 0x113D0, 0x11442, 0x114C2,
+        0x115BF, 0x1163F, 0x116B6, 0x1172B, 0x11839, 0x1193D, 0x1193E, 0x119E0, 0x11A34, 0x11A47, 0x11A99, 0x11C3F,
+        0x11D44, 0x11D45, 0x11D97, 0x11F41, 0x11F42, 0x1612F,
     ];
 
     /// <summary>
