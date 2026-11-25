@@ -1050,6 +1050,7 @@ export const de = {
       'identity-incomplete': 'Ihre Anmeldung nennt keine Person. Melden Sie sich erneut an.',
       'invalid-export-period':
         'Wählen Sie Beginn und Ende; das Ende darf nicht vor dem Beginn und höchstens fünf Jahre danach liegen.',
+      'invalid-retention-period': 'Die Aufbewahrungsfrist ist eine ganze Zahl von {min} bis {max} Jahren.',
       'invalid-sample-name': 'Der Name eines Beispiels hat 1 bis {max} Zeichen und darf nicht leer sein.',
       'pharmacy-not-found': 'Sie sind nicht Mitglied dieser Apotheke, oder es gibt sie nicht.',
       'sample-not-found': 'Dieses Beispiel gibt es nicht.',

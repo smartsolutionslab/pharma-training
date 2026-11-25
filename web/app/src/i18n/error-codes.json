@@ -115,6 +115,11 @@
     "message": "An export needs from and to, with to not before from and at most five years after it."
   },
   {
+    "code": "certification.invalid-retention-period",
+    "status": 400,
+    "message": "A retention period is a whole number of years from 2 to 30."
+  },
+  {
     "code": "certification.invalid-sample-name",
     "status": 400,
     "message": "A sample's name is 1 to 100 characters and not blank."

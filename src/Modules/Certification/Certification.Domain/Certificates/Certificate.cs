@@ -10,12 +10,6 @@ namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Certific
 /// </summary>
 public sealed class Certificate : AggregateRoot<CertificateId>
 {
-    /// <summary>
-    /// Decision "Aufbewahrung" (docs/domain/README.md): pharmacies keep a certificate five years from issue; a period per
-    /// pharmacy is a follow-up. The export's query in Infrastructure counts the same years (docs/adr/0034).
-    /// </summary>
-    public const int PharmacyRetentionYears = 5;
-
     private Certificate(
         CertificateId id,
         AttemptId attempt,
@@ -105,12 +99,14 @@ public sealed class Certificate : AggregateRoot<CertificateId>
     public Validity ValidityOn(CalendarDate today) => today > ValidUntil ? Validity.Expired : Validity.Valid;
 
     /// <summary>
-    /// Whether a pharmacy still sees this certificate in its view at <paramref name="now"/> (#53, docs/adr/0034).
+    /// Whether a pharmacy that keeps certificates for <paramref name="period"/> still sees this one in its view at
+    /// <paramref name="now"/> (#53, docs/adr/0034, amended by docs/adr/0039): until the instant its issue is so many years
+    /// past on the UTC calendar. The export's query in Infrastructure counts the same years.
     /// </summary>
-    // stub for #391: ignores the period and keeps the five years of #53.
     public bool IsKeptByPharmaciesAt(Timestamp now, RetentionPeriod period)
     {
         Ensure.That(now).IsNotNull();
-        return IssuedAt.Value.AddYears(PharmacyRetentionYears) > now.Value;
+        Ensure.That(period).IsNotNull();
+        return IssuedAt.Value.AddYears(period.Value) > now.Value;
     }
 }

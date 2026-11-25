@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 
 namespace SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Retention;
 
@@ -15,9 +16,18 @@ public sealed record RetentionPeriod : IValueObject<int>
 
     public int Value { get; }
 
-    // stub for #391
-    public static RetentionPeriod From(int value) => throw new NotImplementedException();
+    public static RetentionPeriod From(int value)
+    {
+        Ensure.That(value).InRange(MinimumYears, MaximumYears);
+        return new RetentionPeriod(value);
+    }
 
-    // stub for #391
-    public static bool TryFrom(int value, [NotNullWhen(true)] out RetentionPeriod? period) => throw new NotImplementedException();
+    /// <summary>The period of so many years, or false where it lies outside two to thirty: for a caller's input.</summary>
+    public static bool TryFrom(int value, [NotNullWhen(true)] out RetentionPeriod? period)
+    {
+        period = value is >= MinimumYears and <= MaximumYears ? new RetentionPeriod(value) : null;
+        return period is not null;
+    }
+
+    public override string ToString() => Value.ToString(CultureInfo.InvariantCulture);
 }
