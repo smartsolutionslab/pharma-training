@@ -152,7 +152,7 @@ Regeln:
 
 - Namen im Perfekt, Version im Typnamen (`CertificateIssuedV1`); eine Änderung, die Konsumenten bricht, wird eine neue Version.
 - Jedes Event trägt `EventId`, `OccurredAt` und die IDs, die Konsumenten zum Zuordnen brauchen (immer `CourseId` und `CourseVersionId`).
-- Keine Personendaten in Events aus event-sourced Services (Learning, Assessment): nur `PersonId`, damit Löschung nach DSGVO möglich bleibt. Namen liegen außerhalb von Events nur hier: in Organisation, in Certification, in Compliance (Namen der Mitglieder, `MemberName`) und in Editorial (Anzeigename der Person, die eine Frage freigegeben hat, `editorial.course_version_questions.reviewed_by_name`, aus dem Claim `name` zum Zeitpunkt der Freigabe und in jede Folgeversion übernommen; Entscheidung des Owners zu #205; und Anzeigename der Person, die eine Kursversion zurückgegeben hat, `editorial.course_version_returns.returned_by_name`, aus dem Claim `name` zum Zeitpunkt der Rückgabe; dieselbe Entscheidung, für Rückgaben angewandt in #220). Die Löschung (#115) muss jede dieser Stellen erreichen.
+- Keine Personendaten in Events aus event-sourced Services (Learning, Assessment): nur `PersonId`, damit Löschung nach DSGVO möglich bleibt. Namen liegen außerhalb von Events nur hier: in Organisation, in Certification, in Compliance (Namen der Mitglieder, `MemberName`) und in Editorial (Anzeigename der Person, die eine Frage freigegeben hat, `editorial.course_version_questions.reviewed_by_name`, aus dem Claim `name` zum Zeitpunkt der Freigabe und in jede Folgeversion übernommen; Entscheidung des Owners zu #205; und Anzeigename der Person, die eine Kursversion zurückgegeben hat, `editorial.course_version_returns.returned_by_name`, aus dem Claim `name` zum Zeitpunkt der Rückgabe; dieselbe Entscheidung, für Rückgaben angewandt in #220). Die Löschung (#115) muss jede dieser Stellen erreichen: Support beauftragt sie in Organisation, das sie mit `PersonErasureRequestedV1` jedem Service ankündigt (ADR 0035).
 - Prüfungsfragen mit Lösungen gehen nur an Assessment, nie an Catalog oder Frontend.
 
 | Event | Publisher | Konsumenten | Wichtige Felder |
@@ -164,6 +164,7 @@ Regeln:
 | `MembershipStarted` | Organisation | Compliance, Certification, Learning | MembershipId, PersonId, PharmacyId, DisplayName, JobFunction, Role |
 | `MembershipEnded` | Organisation | Compliance, Learning | MembershipId, PersonId, PharmacyId, EndedAt |
 | `MembershipChanged` | Organisation | Compliance, Learning, Certification | MembershipId, PersonId, PharmacyId, DisplayName, JobFunction, Role, Version |
+| `PersonErasureRequestedV1` | Organisation | (keiner in Slice 1 von #115; später Compliance, Certification, Editorial, Learning) | ErasureId, PersonId; erst nach der Bestätigungsmail und nachdem Organisation Name und Adresse vergessen hat (ADR 0035) |
 | `CourseAssigned` | Compliance | (keiner in MVP 1, später Benachrichtigung) | AssignmentId, PersonId, PharmacyId, CourseId, DueDate |
 | `AssignmentCompleted` | Compliance | (keiner in MVP 1) | AssignmentId, CertificateId, CompletedAt, Late |
 | `LearningSessionStarted` | Learning | Compliance | SessionId, PersonId, CourseId, CourseVersionId |
@@ -250,8 +251,10 @@ Mitgliedschaften sind Entities **innerhalb** der Apotheke. Eine Apotheke hat wen
 | `RevokeInvitation` | Nur offene Einladungen | `InvitationRevoked` |
 | `EndMembership` | Nicht die letzte aktive Leitung | `MembershipEnded` |
 | `ChangeJobFunction` / `ChangeRole` | Letzte Leitung kann nicht zum Mitarbeiter werden | `MembershipChanged` |
+| `ReleaseForErasure` | Nicht die letzte aktive Leitung (sonst 409 `organisation.erasure-refused-last-manager`, geprüft in allen betroffenen Apotheken, bevor eine geändert wird); beendet die aktive Mitgliedschaft der Person und zieht offene Einladungen an ihre Adressen zurück (#115) | `MembershipEnded`, `InvitationRevoked` |
+| `ForgetPerson` | Nur beendete oder zurückgezogene Mitgliedschaften verlieren Name und Adresse; die PersonId bleibt als Pseudonym; offene werden übersprungen und protokolliert (#115) | – |
 
-Value Objects: `PharmacyId`, `PharmacyName`, `MembershipId`, `EmailAddress`, `InvitationToken`, `InvitationTokenHash` (SHA-256 des Tokens, nur er wird gespeichert), `DisplayName`, `UtcDay` und `InvitationMailCount` (der Tageszähler der Einladungsmails), `RenewCooldown` und `DailyMailCap` (die Grenzen, aus der Konfiguration, zusammen `InvitationMailLimits`). Enums: `MembershipRole` (Manager, Employee), `JobFunction` (Pharmacist, Pta, Pka, Trainee, Other), `MembershipStatus` (Invited, Active, Ended, Revoked). Fähigkeiten wie `CanAssignCourses` leiten sich aus der Rolle ab.
+Value Objects: `PharmacyId`, `PharmacyName`, `MembershipId`, `EmailAddress`, `InvitationToken`, `InvitationTokenHash` (SHA-256 des Tokens, nur er wird gespeichert), `DisplayName`, `UtcDay` und `InvitationMailCount` (der Tageszähler der Einladungsmails), `RenewCooldown` und `DailyMailCap` (die Grenzen, aus der Konfiguration, zusammen `InvitationMailLimits`). Löschprotokoll (#115, ADR 0035): Aggregat `Erasure` mit `ErasureId`, `ErasureModule` (Kleinbuchstaben, z. B. `organisation`) und den Schritten `ErasureStep`; Enum `ErasureConfirmation` (Pending, Mailed, NoAddress). Es hält weder PersonId, Namen noch Adresse der gelöschten Person. Enums: `MembershipRole` (Manager, Employee), `JobFunction` (Pharmacist, Pta, Pka, Trainee, Other), `MembershipStatus` (Invited, Active, Ended, Revoked). Fähigkeiten wie `CanAssignCourses` leiten sich aus der Rolle ab.
 
 ### CourseVersion (Editorial)
 
@@ -297,6 +300,7 @@ Alle Pfade beginnen mit dem Modulnamen; der Edge leitet danach weiter. Kein Serv
 | organisation | `POST …/invitations/{membershipId}/renew`, `DELETE …/invitations/{membershipId}` | Leitung | Neu senden, zurückziehen |
 | organisation | `POST /organisation/invitations/accept` | angemeldet | Einladung annehmen |
 | organisation | `PATCH …/members/{membershipId}`, `DELETE …/members/{membershipId}` | Leitung | Tätigkeit/Rolle ändern, austragen (O3) |
+| organisation | `POST /organisation/erasures`, `GET /organisation/erasures/{id}` | Support (Rolle `support`) | Löschung einer Person beauftragen (201 mit Location) und ihr Protokoll lesen (#115, ADR 0035) |
 | editorial | `POST /editorial/courses`, `POST /editorial/course-versions/{id}/next` | Redaktion | Erste bzw. nächste Version anlegen |
 | editorial | `GET /editorial/course-versions?status=` , `GET …/{id}` | Redaktion | Redaktions-Eingang, Version laden |
 | editorial | `POST/PUT/DELETE …/{id}/chapters`, `PUT …/{id}/chapters/order` | Redaktion | Kapitel (E1) |
