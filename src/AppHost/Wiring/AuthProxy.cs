@@ -28,18 +28,16 @@ public static class AuthProxy
 
     private const string ImageDigest = "540266215e741cebd0152343f8a6018ee7ebc34f7caaa4022e3a93ff2f778b58";
 
-    // The paths the browser needs: the realm's endpoints and login pages, and the themes' static files. And of the admin
-    // API only the realm's users and roles (#457): a manage-users client of the realm (the demo seeder's, X1's) creates
-    // and updates its users from outside the environment. It authenticates with its own token from the realm's token
-    // endpoint, and Keycloak checks its realm-management roles on every call; the console, other realms and /realms/master
-    // stay unreachable.
-    private static readonly string[] Paths =
-    [
-        $"/realms/{Realm}/{{**catch-all}}",
-        "/resources/{**catch-all}",
-        $"/admin/realms/{Realm}/users/{{**catch-all}}",
-        $"/admin/realms/{Realm}/roles/{{**catch-all}}",
-    ];
+    // The paths the browser needs: the realm's endpoints and login pages, and the themes' static files.
+    private static readonly string[] Paths = [$"/realms/{Realm}/{{**catch-all}}", "/resources/{**catch-all}"];
+
+    // Staging alone also forwards the realm's admin users (#457): a manage-users client of the realm (the demo seeder's,
+    // X1's) creates and updates its users from outside the environment, with its own token from the realm's token endpoint,
+    // and Keycloak checks its realm-management roles on every call. Roles are read through the users' role mappings, so no
+    // other admin path is needed. Production's public host exposes no admin API at all: a leaked manage-users secret there
+    // (the erasure client's) reaches nothing from the internet. The console, other realms and /realms/master stay
+    // unreachable everywhere.
+    private static readonly string[] StagingAdminPaths = [$"/admin/realms/{Realm}/users/{{**catch-all}}"];
 
     /// <summary>Published, the auth proxy in front of <paramref name="keycloak"/>, which it names as its hostname; null in run mode.</summary>
     public static IResourceBuilder<YarpResource>? AddAuthProxy(this IDistributedApplicationBuilder builder, IResourceBuilder<ContainerResource> keycloak)
@@ -63,7 +61,8 @@ public static class AuthProxy
                 // Keycloak's endpoint as its address, which the publisher resolves to Keycloak's internal URL; an
                 // EndpointReference alone would become a service-discovery name.
                 var cluster = yarp.AddCluster(keycloak.Resource.Name, ReferenceExpression.Create($"{endpoint}"));
-                foreach (var path in Paths)
+                var paths = builder.Environment.EnvironmentName == DatabaseServerSize.Staging ? [.. Paths, .. StagingAdminPaths] : Paths;
+                foreach (var path in paths)
                 {
                     yarp.AddRoute(path, cluster);
                 }
