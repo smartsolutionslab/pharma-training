@@ -45,6 +45,8 @@ public class AppHostBrokerUsersTests(AspireFixture aspire)
 
     private const string ComplianceErasureCompleted = Contracts + "Compliance.ComplianceErasureCompletedV1";
 
+    private const string CertificationErasureCompleted = Contracts + "Certification.CertificationErasureCompletedV1";
+
     private const string EditorialErasureCompleted = Contracts + "Editorial.EditorialErasureCompletedV1";
 
     private const string LearningErasureCompleted = Contracts + "Learning.LearningErasureCompletedV1";
@@ -81,9 +83,9 @@ public class AppHostBrokerUsersTests(AspireFixture aspire)
         },
         {
             "organisation",
-            ["organisation", ComplianceErasureCompleted, EditorialErasureCompleted, LearningErasureCompleted, MembershipChanged, MembershipEnded, MembershipStarted, PersonErasureRequested, Contracts + "Organisation.PharmacyRegisteredV1"],
+            ["organisation", CertificationErasureCompleted, ComplianceErasureCompleted, EditorialErasureCompleted, LearningErasureCompleted, MembershipChanged, MembershipEnded, MembershipStarted, PersonErasureRequested, Contracts + "Organisation.PharmacyRegisteredV1"],
             ["organisation", MembershipChanged, MembershipEnded, MembershipStarted, PersonErasureRequested, Contracts + "Organisation.PharmacyRegisteredV1"],
-            ["organisation", ComplianceErasureCompleted, EditorialErasureCompleted, LearningErasureCompleted]
+            ["organisation", CertificationErasureCompleted, ComplianceErasureCompleted, EditorialErasureCompleted, LearningErasureCompleted]
         },
     };
 

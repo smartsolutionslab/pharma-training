@@ -16,7 +16,7 @@ partial class CertificationModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261125081729_AddPharmacyRetentionPeriods";
+    public override string LastMigrationId => "20261125102546_AddErasedPersons";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -145,6 +145,22 @@ partial class CertificationModelSnapshot : ModelSnapshot
                 b.ToTable("course_versions", "certification");
             });
 
+        modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.ErasedPersons.ErasedPerson", b =>
+            {
+                b.Property<Guid>("Person")
+                    .HasColumnType("uuid")
+                    .HasColumnName("person_id");
+
+                b.Property<DateTimeOffset>("ErasedAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("erased_at");
+
+                b.HasKey("Person")
+                    .HasName("pk_erased_persons");
+
+                b.ToTable("erased_persons", "certification");
+            });
+
         modelBuilder.Entity("SmartSolutionsLab.PharmaTraining.Modules.Certification.Domain.Memberships.Membership", b =>
             {
                 b.Property<Guid>("Id")
@@ -152,7 +168,6 @@ partial class CertificationModelSnapshot : ModelSnapshot
                     .HasColumnName("id");
 
                 b.Property<string>("HolderName")
-                    .IsRequired()
                     .HasMaxLength(100)
                     .HasColumnType("character varying(100)")
                     .HasColumnName("holder_name");

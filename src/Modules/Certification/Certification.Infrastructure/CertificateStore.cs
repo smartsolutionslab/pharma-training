@@ -16,6 +16,9 @@ public sealed class CertificateStore(CertificationDbContext context) : ICertific
     public Task<bool> ExistsForAttemptAsync(AttemptId attempt, CancellationToken cancellationToken) =>
         context.Set<Certificate>().AnyAsync(certificate => certificate.Attempt == attempt, cancellationToken);
 
+    public Task<bool> ExistsAsync(CertificateId id, CancellationToken cancellationToken) =>
+        context.Set<Certificate>().AnyAsync(certificate => certificate.Id == id, cancellationToken);
+
     public async Task<Option<Certificate>> LoadAsync(CertificateId id, CancellationToken cancellationToken) =>
         await context.Set<Certificate>().SingleOrDefaultAsync(certificate => certificate.Id == id, cancellationToken) is { } certificate
             ? Option<Certificate>.Some(certificate)
@@ -90,4 +93,18 @@ public sealed class CertificateStore(CertificationDbContext context) : ICertific
     }
 
     public void Add(Certificate certificate) => context.Add(certificate);
+
+    public async Task<IReadOnlyList<Certificate>> OfHolderAsync(PersonId holder, CancellationToken cancellationToken)
+    {
+        Ensure.That(holder).IsNotNull();
+
+        return await context.Set<Certificate>().Where(certificate => certificate.Holder == holder).ToListAsync(cancellationToken);
+    }
+
+    public void Remove(Certificate certificate)
+    {
+        Ensure.That(certificate).IsNotNull();
+
+        context.Remove(certificate);
+    }
 }
