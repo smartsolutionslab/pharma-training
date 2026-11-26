@@ -6,15 +6,15 @@ namespace SmartSolutionsLab.PharmaTraining.Architecture.Tests.Rules;
 /// <summary>
 /// <c>deploy.yml</c> is the only path to Azure (docs/adr/0005): someone starts it by hand, it signs in with the
 /// repository's federated credential (OIDC, no client secret), it deploys <c>staging</c> and then <c>production</c>, which
-/// waits for staging and for the production environment's reviewers, in Germany West Central, which no code names. A
+/// waits for staging and for the production environment's reviewers, in Sweden Central (docs/adr/0043), which no code names. A
 /// secret reaches a step only through an <c>env</c> entry, never inside a script or an action's input, and no script
 /// traces its commands, so no value is written into a log by the workflow itself.
 /// </summary>
 public sealed partial class DeployWorkflowDeploysStagingThenApprovedProduction : IArchitectureRule
 {
-    private const string Location = "germanywestcentral";
+    private const string Location = "swedencentral";
 
-    public string Description => "deploy.yml runs by hand alone, signs in with OIDC, deploys staging then production in germanywestcentral, and passes secrets through env alone.";
+    public string Description => "deploy.yml runs by hand alone, signs in with OIDC, deploys staging then production in swedencentral, and passes secrets through env alone.";
 
     public IEnumerable<string> Violations(ArchitectureModel model)
     {
