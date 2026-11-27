@@ -72,9 +72,9 @@ public sealed partial class ErasedPersonMessageSweep : BackgroundService
         try
         {
             var removed = await purge.PurgeErasedAsync(erasedPersonsSchema, types, stoppingToken);
-            if (removed > 0)
+            if (removed.HasValue && removed.Value > 0)
             {
-                LogRemoved(logger, removed, module);
+                LogRemoved(logger, removed.Value, module);
             }
         }
         catch (Exception exception) when (!IsStopping(exception, stoppingToken))

@@ -68,7 +68,7 @@ public sealed partial class PersonalMessagePurge(NpgsqlDataSource dataSource) : 
         await transaction.CommitAsync(cancellationToken);
     }
 
-    public async Task<int> PurgeErasedAsync(string erasedPersonsSchema, IReadOnlyCollection<Type> types, CancellationToken cancellationToken)
+    public async Task<Option<int>> PurgeErasedAsync(string erasedPersonsSchema, IReadOnlyCollection<Type> types, CancellationToken cancellationToken)
     {
         Ensure.That(erasedPersonsSchema, nameof(erasedPersonsSchema))
             .IsNotNullOrWhiteSpace()
@@ -78,7 +78,7 @@ public sealed partial class PersonalMessagePurge(NpgsqlDataSource dataSource) : 
         var names = Names(types);
         if (names.Length == 0)
         {
-            return 0;
+            return Option<int>.Some(0);
         }
 
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
@@ -87,8 +87,10 @@ public sealed partial class PersonalMessagePurge(NpgsqlDataSource dataSource) : 
         {
             if (await locking.ExecuteScalarAsync(cancellationToken) is not true)
             {
+                // Another sweep of this database holds the lock: this pass ran nothing, which is not a pass that found
+                // nothing (#482).
                 await transaction.RollbackAsync(cancellationToken);
-                return 0;
+                return Option<int>.None;
             }
         }
 
@@ -101,7 +103,7 @@ public sealed partial class PersonalMessagePurge(NpgsqlDataSource dataSource) : 
         }
 
         await transaction.CommitAsync(cancellationToken);
-        return removed;
+        return Option<int>.Some(removed);
     }
 
     private static string[] Names(IReadOnlyCollection<Type> types) => [.. types.Select(type => type.FullName ?? type.Name)];

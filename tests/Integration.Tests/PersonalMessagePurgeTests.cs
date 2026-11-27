@@ -85,7 +85,7 @@ public class PersonalMessagePurgeTests(AspireFixture aspire)
         var handledOfAnother = await WolverineStorageRows.IncomingAsync(connection, Service, Changed, someoneElse, "Handled", cancellationToken);
         var outgoing = await WolverineStorageRows.OutgoingAsync(connection, Started, person, cancellationToken);
 
-        await PurgeErasedAsync(cancellationToken);
+        await SweepOnceAsync(cancellationToken);
 
         (await WolverineStorageRows.CountAsync(connection, "wolverine_dead_letters", [deadStart], cancellationToken)).ShouldBe(0);
         (await WolverineStorageRows.CountAsync(connection, "wolverine_incoming_envelopes", [handledChange], cancellationToken)).ShouldBe(0);
@@ -100,6 +100,40 @@ public class PersonalMessagePurgeTests(AspireFixture aspire)
         await WolverineStorageRows.DeleteAsync(connection, "wolverine_outgoing_envelopes", outgoing, cancellationToken);
     }
 
+    /// <summary>
+    /// #482: a pass that finds the sweep's lock taken (the host's own sweep runs every second in this fixture) is skipped and
+    /// says so; it deletes nothing, even a row that would be its to delete, and the next pass does.
+    /// </summary>
+    [Fact]
+    public async Task A_pass_while_another_sweep_holds_the_lock_is_skipped_and_deletes_nothing()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var person = Guid.CreateVersion7();
+        await using var connection = await WolverineStorageRows.OpenAsync(aspire, Service, cancellationToken);
+        await using var holder = await WolverineStorageRows.OpenAsync(aspire, Service, cancellationToken);
+        await using (var hold = new NpgsqlCommand($"SELECT pg_advisory_lock(hashtextextended('{PersonalMessagePurge.SweepLockKey}', 0))", holder))
+        {
+            await hold.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await WolverineStorageRows.TombstoneAsync(connection, Service, person, cancellationToken);
+        var deadStart = await WolverineStorageRows.DeadLetterAsync(connection, Service, Started, person, cancellationToken);
+
+        var skipped = await PurgeErasedAsync(cancellationToken);
+
+        skipped.HasValue.ShouldBeFalse("a pass that could not take the sweep's lock ran nothing, and must not say it removed 0 rows");
+        (await WolverineStorageRows.CountAsync(connection, "wolverine_dead_letters", [deadStart], cancellationToken)).ShouldBe(1);
+
+        await using (var release = new NpgsqlCommand($"SELECT pg_advisory_unlock(hashtextextended('{PersonalMessagePurge.SweepLockKey}', 0))", holder))
+        {
+            await release.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await SweepOnceAsync(cancellationToken);
+
+        (await WolverineStorageRows.CountAsync(connection, "wolverine_dead_letters", [deadStart], cancellationToken)).ShouldBe(0);
+    }
+
     private async Task PurgeAsync(Guid person, CancellationToken cancellationToken)
     {
         var connectionString = await aspire.App.GetConnectionStringAsync("compliance-database", cancellationToken)
@@ -108,11 +142,30 @@ public class PersonalMessagePurgeTests(AspireFixture aspire)
         await new PersonalMessagePurge(dataSource).PurgeAsync(person, MembershipNames, cancellationToken);
     }
 
-    private async Task PurgeErasedAsync(CancellationToken cancellationToken)
+    private async Task<Option<int>> PurgeErasedAsync(CancellationToken cancellationToken)
     {
         var connectionString = await aspire.App.GetConnectionStringAsync("compliance-database", cancellationToken)
             ?? throw new InvalidOperationException("Compliance's database has no connection string.");
         await using var dataSource = NpgsqlDataSource.Create(connectionString);
-        await new PersonalMessagePurge(dataSource).PurgeErasedAsync(Service, MembershipNames, cancellationToken);
+        return await new PersonalMessagePurge(dataSource).PurgeErasedAsync(Service, MembershipNames, cancellationToken);
+    }
+
+    /// <summary>
+    /// Runs one pass of the test's own that really ran. The host's sweep, every second here, may hold the lock at that
+    /// moment, and its statements may have read before the test's rows were written; a skipped pass is run again (#482).
+    /// </summary>
+    private async Task SweepOnceAsync(CancellationToken cancellationToken)
+    {
+        for (var attempt = 0; attempt < 100; attempt++)
+        {
+            if ((await PurgeErasedAsync(cancellationToken)).HasValue)
+            {
+                return;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
+        }
+
+        throw new InvalidOperationException("No pass of the sweep could take its lock within 10 seconds.");
     }
 }

@@ -177,7 +177,7 @@ public sealed partial class ErasedPersonMessageSweepTests : IAsyncDisposable
         return pass.Task.WaitAsync(PassTimeout, Token);
     }
 
-    private Task<int> Run(string schema, IReadOnlyCollection<Type> types, CancellationToken cancellationToken)
+    private async Task<Option<int>> Run(string schema, IReadOnlyCollection<Type> types, CancellationToken cancellationToken)
     {
         TaskCompletionSource<Pass> pass;
         Func<CancellationToken, Task<int>> behaviour;
@@ -194,7 +194,7 @@ public sealed partial class ErasedPersonMessageSweepTests : IAsyncDisposable
         }
 
         pass.TrySetResult(new Pass(time.GetUtcNow(), schema, types));
-        return behaviour(cancellationToken);
+        return Option<int>.Some(await behaviour(cancellationToken));
     }
 
     /// <summary>A pass as the purge saw it: when, over which schema and which message types.</summary>
