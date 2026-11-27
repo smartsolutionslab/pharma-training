@@ -18,3 +18,4 @@
 - A resource group made for Germany West Central is refused by `deploy.yml`. Staging's was recreated in Sweden Central, and the deploy identity's two role assignments on it with it (README, "Deploy to Azure", step 3); what the failed run had created there was deleted, its Key Vault purged so the name is free.
 - Production's resource group is created in Sweden Central when production is set up.
 - Moving back to Germany West Central later is a change of `deploy.yml`, the rule and this ADR, and a new resource group: Azure moves none of these resources between regions.
+- The first deploy in Sweden Central failed provisioning the server with `RegionalAllocationFailed`: Aspire pins a Flexible Server to availability zone 1, and that zone had no capacity for `Standard_B2s` then, although the region offers the size in zones 1 to 3. The server is published without a zone (`DatabaseServerSize.ApplyTo`), so Azure places it in a zone that has capacity.
