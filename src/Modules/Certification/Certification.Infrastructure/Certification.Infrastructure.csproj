@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <!-- The certificate's PDF (#50, docs/adr/0030). PDFsharp is pinned to its last MIT release, 6.2.4; see Directory.Packages.props. -->
+    <PackageReference Include="Npgsql" />
     <PackageReference Include="PDFsharp" />
     <PackageReference Include="Net.Codecrete.QrCodeGenerator" />
   </ItemGroup>

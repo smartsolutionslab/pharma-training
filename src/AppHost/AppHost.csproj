@@ -26,6 +26,7 @@
     <!-- Sets the emulator's CORS rule for the web app's origin (Wiring/BrowserUploads.cs). -->
     <PackageReference Include="Azure.Storage.Blobs" />
     <!-- Reads the modules' Application assemblies and the contracts as metadata, never loading them (Wiring/MessagingTopology.cs). -->
+    <PackageReference Include="Npgsql" />
     <PackageReference Include="System.Reflection.MetadataLoadContext" />
   </ItemGroup>
 
