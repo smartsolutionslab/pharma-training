@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <!-- Reads a PDF chapter's page text when it is recorded (#157, ADR 0008 D11); Apache-2.0. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" VersionOverride="11.0.0" />
     <PackageReference Include="PdfPig" />
   </ItemGroup>
 
