@@ -484,3 +484,23 @@ test('a page past the last one shows the last page and puts it in the address in
   router.back();
   await waitFor(() => expect(router.currentRoute.value.path).toBe('/'));
 });
+
+// #479: the inbox is read again while it shows, and a version listed meanwhile can come before the others.
+test("a version's link stays that version's when the inbox is read again with a version before it", async () => {
+  const { router, queryClient } = await renderAt();
+  const link = await screen.findByRole('link', { name: hygiene.title });
+
+  const newer: EditorialCourseVersionSummaryDto = {
+    ...hygiene,
+    id: '0198c1a0-0000-7000-8000-0000000000c3',
+    courseId: '0198c1a0-0000-7000-8000-0000000000d3',
+    title: 'Arzneimittelsicherheit',
+  };
+  lists = { ...lists, Draft: [newer, hygiene] };
+  await queryClient.invalidateQueries();
+  await screen.findByRole('link', { name: newer.title });
+
+  expect(link).toHaveAccessibleName(hygiene.title);
+  await userEvent.click(link);
+  await waitFor(() => expect(router.currentRoute.value.path).toBe(`/editorial/versions/${hygiene.id}`));
+});

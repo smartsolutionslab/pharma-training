@@ -260,3 +260,23 @@ test('the selection is kept when the user goes back to the course step and on ag
   expect(await memberCheckbox(ben)).toBeChecked();
   await liveCount(1);
 });
+
+// #479: the members are read again while the step shows, and a member who joined meanwhile can come before the others.
+test("a member's checkbox stays that member's when the members are read again with one before them", async () => {
+  const user = userEvent.setup();
+  const { queryClient } = await renderAssignPage();
+  await toLearners(user);
+  const checkbox = await memberCheckbox(ben);
+
+  const aaron = { ...anna, personId: '0198c1a0-0000-7000-8000-0000000000e5', name: 'Aaron Adler' };
+  state.members = { ...state.members, [markt.id]: [aaron, ...team] };
+  await queryClient.invalidateQueries();
+  await memberCheckbox(aaron);
+
+  expect(checkbox).toHaveAccessibleName(t('compliance.assign.learners.select', { name: ben.name }));
+  await user.click(checkbox);
+  await liveCount(1);
+  expect(await memberCheckbox(ben)).toBeChecked();
+  expect(await memberCheckbox(aaron)).not.toBeChecked();
+  expect(await memberCheckbox(anna)).not.toBeChecked();
+});

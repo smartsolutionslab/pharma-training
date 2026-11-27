@@ -32,16 +32,18 @@ const hygiene: HeldCertificateDto = {
 const signedUrl = 'https://storage.example/certification/certificates/0198c1a0-0000-7000-8000-0000000000e1.pdf?sig=x';
 
 let documentUrl: () => Promise<Response>;
+let held: HeldCertificateDto[];
 
 const problem = (status: number, code: string, detail: string) =>
   Response.json({ status, code, title: 'Refused', detail }, { status });
 
 beforeEach(() => {
   documentUrl = async () => Response.json({ url: signedUrl, expiresAt: '2026-11-24T12:05:00Z' });
+  held = [hygiene];
   host.mockImplementation(async (input) => {
     const url = new URL(String(input), 'http://localhost');
     if (url.pathname === '/api/certification/me/certificates') {
-      return Response.json({ items: [hygiene], totalCount: 1, page: 1, pageSize: 20 });
+      return Response.json({ items: held, totalCount: held.length, page: 1, pageSize: 20 });
     }
     if (url.pathname === `/api/certification/certificates/${hygiene.certificateId}/pdf`) {
       return documentUrl();
@@ -64,7 +66,7 @@ async function renderPage() {
   render(CertificationPage, {
     global: { plugins: [router, createPinia(), signedInAsDeveloper, [VueQueryPlugin, { queryClient }]] },
   });
-  return { open };
+  return { open, queryClient };
 }
 
 test('a certificate whose document is ready opens its PDF in this tab, at the URL the host signed', async () => {
@@ -147,4 +149,26 @@ test('a signed URL over plain http is followed too', async () => {
 
   await waitFor(() => expect(open).toHaveBeenCalledWith(plain));
   expect(notify.failure).not.toHaveBeenCalled();
+});
+
+// #479: the list is read again while it shows, and a certificate issued meanwhile comes first (newest first).
+test("a certificate's Open button stays that certificate's when the list is read again with a newer one before it", async () => {
+  const { open, queryClient } = await renderPage();
+  const button = await screen.findByRole('button', { name: 'PDF öffnen für Hygiene in der Apotheke' });
+
+  const newer: HeldCertificateDto = {
+    ...hygiene,
+    certificateId: '0198c1a0-0000-7000-8000-0000000000e2',
+    courseTitle: 'Arzneimittelsicherheit',
+    issuedOn: '2026-02-01',
+  };
+  held = [newer, hygiene];
+  await queryClient.invalidateQueries();
+  await screen.findByRole('button', { name: 'PDF öffnen für Arzneimittelsicherheit' });
+
+  expect(button).toHaveAccessibleName('PDF öffnen für Hygiene in der Apotheke');
+  await userEvent.click(button);
+  await waitFor(() => expect(open).toHaveBeenCalledWith(signedUrl));
+  const asked = host.mock.calls.map(([input]) => new URL(String(input), 'http://localhost').pathname);
+  expect(asked).not.toContain(`/api/certification/certificates/${newer.certificateId}/pdf`);
 });
