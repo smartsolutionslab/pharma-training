@@ -90,6 +90,21 @@ public class AppHostPostgresTests
         PublishedBicep.Block(postgres, "highAvailability").ShouldContain("mode: 'Disabled'");
     }
 
+    [Theory]
+    [InlineData(PublishedAppHost.Staging)]
+    [InlineData(PublishedAppHost.Production)]
+    public async Task The_published_server_lets_azure_choose_its_availability_zone(string environment)
+    {
+        var bicep = await PublishedAppHost.PublishAsync(environment, TestContext.Current.CancellationToken);
+
+        var postgres = bicep.Module("postgres");
+
+        postgres.ShouldNotContain(
+            "availabilityZone",
+            Case.Insensitive,
+            "A server pinned to one availability zone fails to deploy whenever that zone lacks capacity for its size (RegionalAllocationFailed); without a zone, Azure places it in one that has it.");
+    }
+
     [Fact]
     public async Task Run_mode_postgres_allows_the_connections_the_whole_suite_opens()
     {

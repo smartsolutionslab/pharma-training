@@ -5,7 +5,10 @@ namespace Aspire.Hosting;
 /// <summary>
 /// The Flexible Server's size and backups for each environment the deploy workflow publishes (docs/adr/0005). Staging is
 /// the smallest Burstable size that has connections enough for every service's pools and Keycloak (Standard_B1ms allows
-/// 50); production the smallest General Purpose size. Neither has high availability or geo-redundant backups.
+/// 50); production the smallest General Purpose size. Neither has high availability or geo-redundant backups, and
+/// neither is pinned to an availability zone: Aspire pins the server to zone 1, and a zone without capacity for the size
+/// fails the deploy (RegionalAllocationFailed, the first staging deploy in Sweden Central, ADR 0043), while a server
+/// without a zone is placed by Azure in one that has it.
 /// </summary>
 public sealed record DatabaseServerSize(string Sku, PostgreSqlFlexibleServerSkuTier Tier, int BackupRetentionDays)
 {
@@ -41,5 +44,6 @@ public sealed record DatabaseServerSize(string Sku, PostgreSqlFlexibleServerSkuT
             GeoRedundantBackup = PostgreSqlFlexibleServerGeoRedundantBackupEnum.Disabled,
         };
         server.HighAvailability = new PostgreSqlFlexibleServerHighAvailability { Mode = PostgreSqlFlexibleServerHighAvailabilityMode.Disabled };
+        server.AvailabilityZone.ClearValue();
     }
 }
