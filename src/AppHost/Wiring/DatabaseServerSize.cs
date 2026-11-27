@@ -7,7 +7,7 @@ namespace Aspire.Hosting;
 /// the smallest Burstable size that has connections enough for every service's pools and Keycloak (Standard_B1ms allows
 /// 50); production the smallest General Purpose size. Neither has high availability or geo-redundant backups, and
 /// neither is pinned to an availability zone: Aspire pins the server to zone 1, and a zone without capacity for the size
-/// fails the deploy (RegionalAllocationFailed, the first staging deploy in Sweden Central, ADR 0043), while a server
+/// fails the deploy (RegionalAllocationFailed, the first staging deploys in Sweden Central, ADR 0043 and 0044), while a server
 /// without a zone is placed by Azure in one that has it.
 /// </summary>
 public sealed record DatabaseServerSize(string Sku, PostgreSqlFlexibleServerSkuTier Tier, int BackupRetentionDays)
