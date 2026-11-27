@@ -87,8 +87,10 @@ public sealed partial class PersonalMessagePurge(NpgsqlDataSource dataSource) : 
         {
             if (await locking.ExecuteScalarAsync(cancellationToken) is not true)
             {
+                // Another sweep of this database holds the lock: this pass ran nothing, which is not a pass that found
+                // nothing (#482).
                 await transaction.RollbackAsync(cancellationToken);
-                return Option<int>.Some(0);
+                return Option<int>.None;
             }
         }
 
