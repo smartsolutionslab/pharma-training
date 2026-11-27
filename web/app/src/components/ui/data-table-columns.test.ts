@@ -18,6 +18,7 @@ const columns = members.columns([
   members.accessor('pharmacy', translatedHeader('shell.pharmacy.region')),
 ]);
 const data: Member[] = [{ name: 'Anna', pharmacy: 'Apotheke am Markt' }];
+const rowId = (row: Member) => row.name;
 
 test('translatedHeader gives a column its header from the catalog and keeps the key for the Columns control', () => {
   const column = translatedHeader('shell.pharmacy.region');
@@ -28,7 +29,7 @@ test('translatedHeader gives a column its header from the catalog and keeps the 
 });
 
 test('a translated column is headed in the language shown', () => {
-  render(DataTable<Member>, { props: { columns, data } });
+  render(DataTable<Member>, { props: { columns, rowId, data } });
 
   expect(screen.getByRole('columnheader', { name: t('shell.pharmacy.region') })).toBeInTheDocument();
   expect(screen.getByRole('columnheader', { name: 'Apotheke' })).toBeInTheDocument();
@@ -36,7 +37,7 @@ test('a translated column is headed in the language shown', () => {
 
 test('the Columns control names a translated column as its header does', async () => {
   const user = userEvent.setup();
-  render(DataTable<Member>, { props: { columns, data } });
+  render(DataTable<Member>, { props: { columns, rowId, data } });
 
   await user.click(screen.getByRole('button', { name: t('dataTable.columns') }));
 
@@ -49,7 +50,7 @@ test('the Columns control names a translated column as its header does', async (
 
 test('a translated column follows a change of language, in its header and in the Columns control', async () => {
   const user = userEvent.setup();
-  render(DataTable<Member>, { props: { columns, data } });
+  render(DataTable<Member>, { props: { columns, rowId, data } });
 
   setLanguage('en-GB', { remember: false });
 

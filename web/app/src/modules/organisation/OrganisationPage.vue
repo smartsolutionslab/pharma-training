@@ -337,7 +337,14 @@ async function confirm() {
         <p v-if="membersFailed" role="alert" class="text-body text-destructive">
           {{ teamFailureText(teamLoadFailureMessage(membersError, 'organisation.team.members.loadFailed')) }}
         </p>
-        <DataTable v-else :columns="membersColumns" :data="memberRows" :loading="membersPending" :paging="membersPage">
+        <DataTable
+          v-else
+          :columns="membersColumns"
+          :data="memberRows"
+          :loading="membersPending"
+          :row-id="(member) => member.membershipId"
+          :paging="membersPage"
+        >
           <template #empty>
             <EmptyState>
               <template #icon><Users /></template>
@@ -382,6 +389,7 @@ async function confirm() {
           :columns="invitationsColumns"
           :data="invitationRows"
           :loading="invitationsPending"
+          :row-id="(invitation) => invitation.membershipId"
           :paging="invitationsPage"
         >
           <template #empty>

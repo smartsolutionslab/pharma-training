@@ -134,6 +134,7 @@ async function selectEveryone(jobFunction: ComplianceJobFunction) {
       :columns="columns"
       :data="rows"
       :loading="isPending"
+      :row-id="(member) => member.personId"
       :paging="data"
       @update:page="(next) => (page = next)"
     >

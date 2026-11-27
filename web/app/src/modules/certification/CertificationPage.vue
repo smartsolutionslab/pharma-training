@@ -113,6 +113,7 @@ async function open(certificate: HeldCertificateDto) {
       :columns="columns"
       :data="rows ?? none"
       :loading="isPending"
+      :row-id="(certificate) => certificate.certificateId"
       :paging="page"
       @update:page="turnTo"
     >
