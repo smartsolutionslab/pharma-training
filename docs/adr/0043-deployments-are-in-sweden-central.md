@@ -1,6 +1,6 @@
 # 0043: Deployments are in Sweden Central
 
-**Status:** Accepted (the owner decided on 2026-11-26). Supersedes in part ADR 0005 ("everything planned for Germany West Central"): staging and production are deployed to `swedencentral`.
+**Status:** Superseded by [0044](0044-deployments-are-in-north-europe.md) (2026-11-27): Sweden Central had no capacity for the staging database. Was: accepted (the owner decided on 2026-11-26), superseding in part ADR 0005 ("everything planned for Germany West Central"): staging and production deployed to `swedencentral`.
 
 ## Context
 
