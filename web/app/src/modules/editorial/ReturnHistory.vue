@@ -86,6 +86,7 @@ defineExpose({ showFirstPage });
       :columns="columns"
       :data="rows ?? none"
       :loading="isPending"
+      :row-id="(returned) => returned.id"
       :paging="paging"
       @update:page="turnTo"
     >

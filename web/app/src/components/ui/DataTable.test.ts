@@ -21,12 +21,13 @@ const data: Person[] = [
   { name: 'second', team: 'green' },
 ];
 const none: Person[] = [];
+const rowId = (row: Person) => row.name;
 const empty = '<p>No people yet.</p>';
 const summaryOf = (first: string, last: string, total: string) => t('dataTable.showing', { first, last, total });
 
 test('the table shows a header and one row per item', () => {
   // A generic component is rendered for one row type, as a template does it from its props.
-  render(DataTable<Person>, { props: { columns, data } });
+  render(DataTable<Person>, { props: { columns, rowId, data } });
 
   expect(screen.getByRole('columnheader', { name: 'Name' })).toBeInTheDocument();
   expect(screen.getAllByRole('row')).toHaveLength(3);
@@ -34,7 +35,7 @@ test('the table shows a header and one row per item', () => {
 
 test('while its query is pending the table is busy, says it is loading and shows skeleton rows in its shape', () => {
   const { container } = render(DataTable<Person>, {
-    props: { columns, data: none, loading: true },
+    props: { columns, rowId, data: none, loading: true },
     slots: { empty },
   });
 
@@ -49,7 +50,7 @@ test('while its query is pending the table is busy, says it is loading and shows
 });
 
 test('a table without rows shows its empty state in place of them', () => {
-  render(DataTable<Person>, { props: { columns, data: none }, slots: { empty } });
+  render(DataTable<Person>, { props: { columns, rowId, data: none }, slots: { empty } });
 
   const table = screen.getByRole('table');
   expect(table).not.toHaveAttribute('aria-busy');
@@ -58,14 +59,14 @@ test('a table without rows shows its empty state in place of them', () => {
 });
 
 test('a table with rows shows no empty state', () => {
-  render(DataTable<Person>, { props: { columns, data }, slots: { empty } });
+  render(DataTable<Person>, { props: { columns, rowId, data }, slots: { empty } });
 
   expect(screen.getByRole('cell', { name: 'second' })).toBeInTheDocument();
   expect(screen.queryByText('No people yet.')).not.toBeInTheDocument();
 });
 
 test('the header stays in view while the rows scroll under it', () => {
-  render(DataTable<Person>, { props: { columns, data } });
+  render(DataTable<Person>, { props: { columns, rowId, data } });
 
   for (const header of screen.getAllByRole('columnheader')) {
     expect(header).toHaveClass('sticky', 'top-0');
@@ -74,7 +75,7 @@ test('the header stays in view while the rows scroll under it', () => {
 
 test('the density toggle switches the rows between comfortable and compact from the keyboard and says which is on', async () => {
   const user = userEvent.setup();
-  render(DataTable<Person>, { props: { columns, data } });
+  render(DataTable<Person>, { props: { columns, rowId, data } });
   const density = screen.getByRole('group', { name: t('dataTable.density') });
   const comfortable = within(density).getByRole('button', { name: t('dataTable.comfortable') });
   const compact = within(density).getByRole('button', { name: t('dataTable.compact') });
@@ -91,7 +92,7 @@ test('the density toggle switches the rows between comfortable and compact from 
 
 test('the columns control hides and shows columns from the keyboard and always keeps one', async () => {
   const user = userEvent.setup();
-  render(DataTable<Person>, { props: { columns, data } });
+  render(DataTable<Person>, { props: { columns, rowId, data } });
   const button = screen.getByRole('button', { name: t('dataTable.columns') });
   expect(button).toHaveAttribute('aria-expanded', 'false');
   expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
@@ -122,11 +123,39 @@ test('the columns control hides and shows columns from the keyboard and always k
   expect(screen.getByRole('columnheader', { name: 'Team' })).toBeInTheDocument();
 });
 
+// #479: rows are their records', by rowId, so a list read again with a record before the others moves the rows.
+test("a row's action stays its record's when the data comes again with another record before it", async () => {
+  const user = userEvent.setup();
+  const edit = vi.fn<(person: Person) => void>();
+  const { rerender } = render(DataTable<Person>, {
+    props: { columns, rowId, data },
+    slots: {
+      actions: ({ row }: { row: Person }) =>
+        h('button', { type: 'button', onClick: () => edit(row) }, `Edit ${row.name}`),
+    },
+  });
+  const held = screen.getByRole('button', { name: 'Edit first' });
+
+  await rerender({ columns, rowId, data: [{ name: 'newer', team: 'red' }, ...data] });
+  await screen.findByRole('button', { name: 'Edit newer' });
+
+  expect(held).toHaveAccessibleName('Edit first');
+  await user.click(held);
+  expect(edit).toHaveBeenCalledWith(data[0]);
+});
+
+test('a table names its rows by their records: rowId is required', () => {
+  // @ts-expect-error a table without rowId does not type-check (vue-tsc), so no new table can key rows by place.
+  render(DataTable<Person>, { props: { columns, data } });
+
+  expect(screen.getAllByRole('row')).toHaveLength(3);
+});
+
 test("a row's actions sit in its last cell, show on hover or focus, and are reached with the keyboard", async () => {
   const user = userEvent.setup();
   const edit = vi.fn<(person: Person) => void>();
   render(DataTable<Person>, {
-    props: { columns, data },
+    props: { columns, rowId, data },
     slots: {
       actions: ({ row }: { row: Person }) =>
         h('button', { type: 'button', onClick: () => edit(row) }, `Edit ${row.name}`),
@@ -154,7 +183,7 @@ test("a row's actions sit in its last cell, show on hover or focus, and are reac
 });
 
 test('with a page of a longer list the table says which rows it shows of how many, and screen readers hear it with the table', () => {
-  render(DataTable<Person>, { props: { columns, data, paging: { page: 2, pageSize: '2', totalCount: '312' } } });
+  render(DataTable<Person>, { props: { columns, rowId, data, paging: { page: 2, pageSize: '2', totalCount: '312' } } });
 
   expect(screen.getByText(summaryOf('3', '4', '312'))).toBeInTheDocument();
   expect(screen.getByRole('table')).toHaveAccessibleDescription(summaryOf('3', '4', '312'));
@@ -162,7 +191,7 @@ test('with a page of a longer list the table says which rows it shows of how man
 
 test('the table says nothing of its page while it loads or when it has no rows', async () => {
   const paging = { page: 1, pageSize: 20, totalCount: 0 };
-  const { rerender } = render(DataTable<Person>, { props: { columns, data: none, loading: true, paging } });
+  const { rerender } = render(DataTable<Person>, { props: { columns, rowId, data: none, loading: true, paging } });
   expect(screen.queryByText(/\d+–\d+/)).not.toBeInTheDocument();
 
   await rerender({ columns, data: none, loading: false, paging });
@@ -175,7 +204,7 @@ const fullPage: Person[] = Array.from({ length: 25 }, (_, index) => ({ name: `pe
 const longList = { page: 1, pageSize: 25, totalCount: 1312 };
 
 test('in German the table says which rows it shows of how many, with German digit grouping', () => {
-  render(DataTable<Person>, { props: { columns, data: fullPage, paging: longList } });
+  render(DataTable<Person>, { props: { columns, rowId, data: fullPage, paging: longList } });
 
   expect(screen.getByText(summaryOf('1', '25', '1.312'))).toBeInTheDocument();
   expect(screen.getByText('Einträge 1–25 von 1.312')).toBeInTheDocument();
@@ -184,7 +213,7 @@ test('in German the table says which rows it shows of how many, with German digi
 
 test('in English the table says which rows it shows of how many, with English digit grouping', () => {
   setLanguage('en-GB', { remember: false });
-  render(DataTable<Person>, { props: { columns, data: fullPage, paging: longList } });
+  render(DataTable<Person>, { props: { columns, rowId, data: fullPage, paging: longList } });
 
   expect(screen.getByText(summaryOf('1', '25', '1,312'))).toBeInTheDocument();
   expect(screen.getByText('Showing 1–25 of 1,312')).toBeInTheDocument();
@@ -193,7 +222,7 @@ test('in English the table says which rows it shows of how many, with English di
 test("the table's own controls speak German by default", async () => {
   const user = userEvent.setup();
   render(DataTable<Person>, {
-    props: { columns, data },
+    props: { columns, rowId, data },
     slots: { actions: ({ row }: { row: Person }) => h('button', { type: 'button' }, `Edit ${row.name}`) },
   });
 
@@ -206,13 +235,13 @@ test("the table's own controls speak German by default", async () => {
 });
 
 test('while its query is pending the table says so in German', () => {
-  render(DataTable<Person>, { props: { columns, data: none, loading: true } });
+  render(DataTable<Person>, { props: { columns, rowId, data: none, loading: true } });
 
   expect(screen.getByRole('table', { name: 'Wird geladen…', busy: true })).toBeInTheDocument();
 });
 
 test('the table follows a change of language while it is shown', async () => {
-  render(DataTable<Person>, { props: { columns, data: fullPage, paging: longList } });
+  render(DataTable<Person>, { props: { columns, rowId, data: fullPage, paging: longList } });
   const german = { density: t('dataTable.density'), summary: summaryOf('1', '25', '1.312') };
 
   setLanguage('en-GB', { remember: false });
@@ -234,7 +263,7 @@ const next = () => within(pager()).getByRole('button', { name: t('dataTable.next
 test('on a middle page of a longer list the pager goes back and forth, asking for the page by its number', async () => {
   const user = userEvent.setup();
   const { emitted } = render(DataTable<Person>, {
-    props: { columns, data: twentyRows, paging: { page: 2, pageSize: 20, totalCount: 45 } },
+    props: { columns, rowId, data: twentyRows, paging: { page: 2, pageSize: 20, totalCount: 45 } },
   });
 
   expect(previous()).toBeEnabled();
@@ -249,7 +278,7 @@ test('on a middle page of a longer list the pager goes back and forth, asking fo
 test('the pager takes the numbers as the host sends them, as strings too', async () => {
   const user = userEvent.setup();
   const { emitted } = render(DataTable<Person>, {
-    props: { columns, data: twentyRows, paging: { page: '2', pageSize: '20', totalCount: '45' } },
+    props: { columns, rowId, data: twentyRows, paging: { page: '2', pageSize: '20', totalCount: '45' } },
   });
 
   await user.click(next());
@@ -259,7 +288,7 @@ test('the pager takes the numbers as the host sends them, as strings too', async
 
 test('on the first page the pager cannot go back, on the last it cannot go on, and one page has none', async () => {
   const { rerender } = render(DataTable<Person>, {
-    props: { columns, data: twentyRows, paging: { page: 1, pageSize: 20, totalCount: 45 } },
+    props: { columns, rowId, data: twentyRows, paging: { page: 1, pageSize: 20, totalCount: 45 } },
   });
   expect(previous()).toBeDisabled();
   expect(next()).toBeEnabled();
@@ -279,7 +308,7 @@ test('on the first page the pager cannot go back, on the last it cannot go on, a
 
 test('the pager speaks German by default and follows a change of language', async () => {
   render(DataTable<Person>, {
-    props: { columns, data: twentyRows, paging: { page: 2, pageSize: 20, totalCount: 45 } },
+    props: { columns, rowId, data: twentyRows, paging: { page: 2, pageSize: 20, totalCount: 45 } },
   });
 
   const german = screen.getByRole('navigation', { name: 'Seiten' });

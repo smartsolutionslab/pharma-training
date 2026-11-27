@@ -16,14 +16,15 @@ import { features, type Features } from './data-table-columns';
  * page its rows are of (`paging`, a `PagedResult` as the host answers it), it says below them which rows it shows of
  * how many ("Einträge 1–25 von 312") and, for a list longer than a page, pages through it: Previous and Next ask the
  * list's owner for that page with `update:page`, since the table does not page itself. Its texts come from the catalogs (`dataTable.*`), in the language shown.
- * Rows are told apart by their place unless `rowId` names each one: give it for a list that can change under the reader
- * (read again while shown), so a row's cells and actions stay its own instead of passing to the row now in its place.
+ * `rowId` names each row by its record's stable id (#477, #479). It is required: a list read again while shown can put
+ * a record before the others, and rows told apart by their place would then hand a row's cells, controls and actions
+ * to the record now in its place, so a click acts on another record. A read-only table passes its records' id too.
  */
 const props = defineProps<{
   columns: ColumnDef<Features, TRow, unknown>[];
   data: TRow[];
   loading?: boolean;
-  rowId?: (row: TRow) => string;
+  rowId: (row: TRow) => string;
   paging?: { page: number | string; pageSize: number | string; totalCount: number | string };
 }>();
 
@@ -45,7 +46,7 @@ const table = useTable({
   features,
   columns: props.columns,
   data: toRef(() => props.data),
-  ...(props.rowId === undefined ? {} : { getRowId: props.rowId }),
+  getRowId: props.rowId,
 });
 const density = ref<Density>('comfortable');
 const choosing = ref(false);

@@ -118,6 +118,7 @@ function turnTo(next: InboxQuery['page']) {
             :columns="columns"
             :data="rows ?? none"
             :loading="isPending"
+            :row-id="(version) => version.id"
             :paging="page"
             @update:page="turnTo"
           >

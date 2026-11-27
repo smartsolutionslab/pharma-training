@@ -24,6 +24,7 @@ const data: Person[] = [
   { name: 'second', team: 'green' },
 ];
 const none: Person[] = [];
+const rowId = (row: Person) => row.name;
 const empty = () =>
   h(EmptyState, null, {
     icon: () => h(Inbox),
@@ -49,17 +50,17 @@ const themes = [
 ];
 
 const states = [
-  { state: 'while it loads', props: { columns, data: none, loading: true } },
-  { state: 'when it is empty', props: { columns, data: none } },
-  { state: 'with rows', props: { columns, data } },
+  { state: 'while it loads', props: { columns, rowId, data: none, loading: true } },
+  { state: 'when it is empty', props: { columns, rowId, data: none } },
+  { state: 'with rows', props: { columns, rowId, data } },
   {
     state: 'with actions, a page and columns open',
-    props: { columns, data, paging: { page: 1, pageSize: 25, totalCount: 312 } },
+    props: { columns, rowId, data, paging: { page: 1, pageSize: 25, totalCount: 312 } },
     open: true,
   },
   {
     state: 'with a pager on a middle page',
-    props: { columns, data, paging: { page: 2, pageSize: 2, totalCount: 45 } },
+    props: { columns, rowId, data, paging: { page: 2, pageSize: 2, totalCount: 45 } },
     pager: true,
   },
 ];

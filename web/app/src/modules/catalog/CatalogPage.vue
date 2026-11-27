@@ -49,7 +49,14 @@ async function onCreate(name: string) {
       <h2 id="catalog-samples">{{ t('samples.title') }}</h2>
       <CreateCatalogSampleForm ref="form" :on-create="onCreate" :saving="isSaving" />
       <p v-if="isError" role="alert">{{ t('samples.loadFailed') }}</p>
-      <DataTable v-else :columns="columns" :data="rows ?? none" :loading="isLoading" :paging="page">
+      <DataTable
+        v-else
+        :columns="columns"
+        :data="rows ?? none"
+        :loading="isLoading"
+        :row-id="(sample) => sample.id"
+        :paging="page"
+      >
         <template #empty>
           <EmptyState>
             <template #icon><Inbox /></template>
