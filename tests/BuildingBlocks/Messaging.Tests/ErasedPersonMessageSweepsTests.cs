@@ -29,7 +29,7 @@ public class ErasedPersonMessageSweepsTests
             .Returns(call =>
             {
                 passed.TrySetResult((call.ArgAt<string>(0), call.ArgAt<IReadOnlyCollection<Type>>(1)));
-                return Task.FromResult(0);
+                return Task.FromResult(Option<int>.Some(0));
             });
         var services = new ServiceCollection();
         services.AddLogging();

@@ -34,7 +34,8 @@ public sealed class PersonalMessagePurgeGuardTests : IAsyncDisposable
 
         var removed = await purge.PurgeErasedAsync("learning", [], Token);
 
-        removed.ShouldBe(0);
+        removed.HasValue.ShouldBeTrue("a pass over no types runs, and finds nothing");
+        removed.Value.ShouldBe(0);
     }
 
     public ValueTask DisposeAsync() => dataSource.DisposeAsync();
