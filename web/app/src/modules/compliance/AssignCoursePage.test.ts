@@ -1,6 +1,7 @@
 import { cleanup, screen, waitFor, within } from '@testing-library/vue';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import type { CatalogCourseDto } from '@/api/generated';
 import { moduleRoutes } from '@/modules';
 import { setLanguage, t } from '@/i18n';
 import { useSelectedPharmacyStore } from '@/stores/selectedPharmacy';
@@ -158,6 +159,28 @@ test('choosing a course presses its button and no other', async () => {
   await user.click(await chooseButton(labelling));
   expect(await chooseButton(labelling)).toHaveAttribute('aria-pressed', 'true');
   expect(await chooseButton(hygiene)).toHaveAttribute('aria-pressed', 'false');
+});
+
+// #477: the catalog is read again whenever the step shows, and a course published meanwhile can come before the others.
+test("a course's Choose button stays that course's when the catalog is read again with a course before it", async () => {
+  const user = userEvent.setup();
+  const { queryClient } = await renderAssignPage();
+  const choose = await chooseButton(labelling);
+
+  const newer: CatalogCourseDto = {
+    ...hygiene,
+    courseId: '0198c1a0-0000-7000-8000-0000000000c3',
+    courseVersionId: '0198c1a0-0000-7000-8000-0000000000d3',
+    title: 'Arzneimittelsicherheit',
+  };
+  state.courses = [newer, hygiene, labelling];
+  await queryClient.invalidateQueries();
+  await chooseButton(newer);
+
+  expect(choose).toHaveAccessibleName(t('compliance.assign.course.choose', { title: labelling.title }));
+  await user.click(choose);
+  expect(await chooseButton(labelling)).toHaveAttribute('aria-pressed', 'true');
+  expect(await chooseButton(newer)).toHaveAttribute('aria-pressed', 'false');
 });
 
 test('Next without a course is refused with an alert that takes the focus, and stays on the course step', async () => {

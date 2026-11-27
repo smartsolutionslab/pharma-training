@@ -10,7 +10,9 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { i18n, t as translate } from '@/i18n';
 
 // The wizard's first step: the published courses of the catalog, a page at a time, one of them chosen. The row's
-// Choose button shows only while the row is hovered or has focus, so the chosen course's title carries a mark too.
+// Choose button shows only while the row is hovered or has focus, so the chosen course's title carries a mark too. The
+// catalog is read again each time the step shows, and a course published meanwhile comes first: the rows are the
+// courses' own (by id), so a Choose button pointed at stays that course's (#477).
 const props = defineProps<{ chosen?: string }>();
 const emit = defineEmits<{ choose: [course: CatalogCourseDto] }>();
 
@@ -61,6 +63,7 @@ const rows = computed(() => data.value?.items ?? none);
     :columns="columns"
     :data="rows"
     :loading="isPending"
+    :row-id="(course) => course.courseId"
     :paging="data"
     @update:page="(next) => (page = next)"
   >
