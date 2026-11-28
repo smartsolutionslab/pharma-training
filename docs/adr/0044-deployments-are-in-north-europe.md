@@ -1,6 +1,6 @@
 # 0044: Deployments are in North Europe
 
-**Status:** Accepted (the owner decided on 2026-11-27). Supersedes [0043](0043-deployments-are-in-sweden-central.md): staging and production are deployed to `northeurope`.
+**Status:** Superseded by [0046](0046-deployments-are-in-frankfurt.md) (2026-11-28): the owner chose Frankfurt. Was: accepted (the owner decided on 2026-11-27). Supersedes [0043](0043-deployments-are-in-sweden-central.md): staging and production are deployed to `northeurope`.
 
 ## Context
 
