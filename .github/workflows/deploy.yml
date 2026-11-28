@@ -49,12 +49,12 @@ jobs:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-      # No region is named in the AppHost; this job deploys to northeurope alone. A resource group that exists
+      # No region is named in the AppHost; this job deploys to francecentral alone. A resource group that exists
       # elsewhere stops the deploy before anything is created in it.
-      - name: The resource group is in northeurope
+      - name: The resource group is in francecentral
         env:
           RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
-          LOCATION: northeurope
+          LOCATION: francecentral
         run: |
           if [ -z "$RESOURCE_GROUP" ]; then
             echo "::error::The environment has no variable AZURE_RESOURCE_GROUP."
@@ -106,7 +106,7 @@ jobs:
           Azure__SubscriptionId: ${{ vars.AZURE_SUBSCRIPTION_ID }}
           Azure__TenantId: ${{ vars.AZURE_TENANT_ID }}
           Azure__ResourceGroup: ${{ vars.AZURE_RESOURCE_GROUP }}
-          Azure__Location: northeurope
+          Azure__Location: francecentral
           Azure__CredentialSource: AzureCli
           Parameters__postgres-username: ${{ vars.POSTGRES_USERNAME }}
           Parameters__postgres-password: ${{ secrets.POSTGRES_PASSWORD }}
@@ -181,12 +181,12 @@ jobs:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-      # No region is named in the AppHost; this job deploys to northeurope alone. A resource group that exists
+      # No region is named in the AppHost; this job deploys to francecentral alone. A resource group that exists
       # elsewhere stops the deploy before anything is created in it.
-      - name: The resource group is in northeurope
+      - name: The resource group is in francecentral
         env:
           RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
-          LOCATION: northeurope
+          LOCATION: francecentral
         run: |
           if [ -z "$RESOURCE_GROUP" ]; then
             echo "::error::The environment has no variable AZURE_RESOURCE_GROUP."
@@ -238,7 +238,7 @@ jobs:
           Azure__SubscriptionId: ${{ vars.AZURE_SUBSCRIPTION_ID }}
           Azure__TenantId: ${{ vars.AZURE_TENANT_ID }}
           Azure__ResourceGroup: ${{ vars.AZURE_RESOURCE_GROUP }}
-          Azure__Location: northeurope
+          Azure__Location: francecentral
           Azure__CredentialSource: AzureCli
           Parameters__postgres-username: ${{ vars.POSTGRES_USERNAME }}
           Parameters__postgres-password: ${{ secrets.POSTGRES_PASSWORD }}

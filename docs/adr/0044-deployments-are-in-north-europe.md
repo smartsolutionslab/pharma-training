@@ -1,6 +1,6 @@
 # 0044: Deployments are in North Europe
 
-**Status:** Accepted (the owner decided on 2026-11-27). Supersedes [0043](0043-deployments-are-in-sweden-central.md): staging and production are deployed to `northeurope`.
+**Status:** Superseded by [0045](0045-deployments-are-in-france-central.md) (2026-11-28): the subscription may have one Container Apps environment in North Europe, which another application holds. Was: accepted (the owner decided on 2026-11-27), superseding [0043](0043-deployments-are-in-sweden-central.md): staging and production deployed to `northeurope`.
 
 ## Context
 
