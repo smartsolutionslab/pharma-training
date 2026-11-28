@@ -1,6 +1,6 @@
 # 0044: Deployments are in North Europe
 
-**Status:** Superseded by [0045](0045-deployments-are-in-france-central.md) (2026-11-28): the subscription may have one Container Apps environment in North Europe, which another application holds. Was: accepted (the owner decided on 2026-11-27), superseding [0043](0043-deployments-are-in-sweden-central.md): staging and production deployed to `northeurope`.
+**Status:** Accepted (the owner decided on 2026-11-27). Supersedes [0043](0043-deployments-are-in-sweden-central.md): staging and production are deployed to `northeurope`.
 
 ## Context
 
@@ -17,5 +17,6 @@
 ## Consequences
 
 - Staging's resource group was recreated in North Europe, with the deploy identity's two role assignments on it (README, "Deploy to Azure", step 3); what the failed runs had created in Sweden Central was deleted, its Key Vault purged so the name is free.
+- The subscription may have one Container Apps environment per region (`ManagedEnvironmentCount`), and another application holds North Europe's: the first deploy there created the server and failed creating the environment (`MaxNumberOfRegionalEnvironmentsInSubExceeded`, run 46055600263). The limit is raised to 3 by a quota request (Service and subscription limits (quotas), Azure Container Apps, Managed Environment Count): the other application, staging and production. France Central, tried instead, refused the server's size (ADR 0045).
 - Production's resource group is created in North Europe when production is set up.
 - Moving to another region later is a change of `deploy.yml`, the rule and a new ADR, and a new resource group: Azure moves none of these resources between regions.

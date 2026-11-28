@@ -1,6 +1,6 @@
 # 0045: Deployments are in France Central
 
-**Status:** Accepted (the owner decided on 2026-11-28). Supersedes [0044](0044-deployments-are-in-north-europe.md): staging and production are deployed to `francecentral`.
+**Status:** Rejected (2026-11-28). Tried and taken back: the staging deploy to France Central (run 46090782950) failed provisioning the server with `SkuNotAvailable: Specified SKU is not supported in this region`, although `list-skus` lists `Standard_B2s` there. [0044](0044-deployments-are-in-north-europe.md) stands: staging and production are deployed to `northeurope`, and the subscription's Container Apps environment limit there is raised by a quota request.
 
 ## Context
 
